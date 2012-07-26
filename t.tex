@@ -41,6 +41,7 @@
 \tikzset{stateSideEffect/.style={rectangle,draw}}
 \tikzset{stateIf/.style={diamond,draw}}
 \tikzset{stateTerminal/.style={circle,draw}}
+\tikzset{flowChartState/.style={rectangle,draw}}
 \tikzset{killEdge/.style={decorate,decoration={snake,segment length=1mm,post length=0.4mm}}}
 \tikzset{swungEdge/.style={color=red}}
 \tikzset{happensBeforeEdge/.style={dashed}}
@@ -1415,7 +1416,7 @@ SLI therefore implements some canonicalisation passes which remove some of this 
 The aliasing table is converted into a predicate on the addresses accessed by the various memory accessing instructions and then added to the verification condition.
 
 \subsubsection{Splitting SSA variables}
-Two generations of a single SSA variable can be treated as independent variables provided that they're never used in the same \Phi node.
+Two generations of a single SSA variable can be treated as independent variables provided that they're never used in the same $\Phi$ node.
 This has no directly useful effects on any of the analyses which we perform, but it makes it a bit easier to canonicalise things.
 
 \subsubsection{Thread ID canonicalisation}
@@ -1511,7 +1512,6 @@ If $x$ and $y$ are boolean variables then you can then do a case split on $x$ to
 $y_F$ and $y_T$ are then separate variables, and the two $f$ cases can be subjected to redundant clause removal and underspecified clause removal independently.
 
 \todo{This is in dire need of an example.}
-
 
 \subsection{Phase 4 canonicalisation}
 The compound functions stuff.
@@ -1699,7 +1699,7 @@ Actual algorithm:
   \begin{itemize}
   \item
     Simplify using the implicit ordering.
-    \eidtorial{I suspect that this is actually redundant now with the better machine interpreter.  Need to check that.}
+    \editorial{I suspect that this is actually redundant now with the better machine interpreter.  Need to check that.}
   \item
     Figure out where to stash the variables need to compute verification conditions.
   \item
@@ -1722,27 +1722,270 @@ Actual algorithm:
 \subsubsection{Simplify using the implicit ordering}
 Might kill this section.
 
-\subsubsection{Figuring out which computed values need to be stashed, and where}
-
 \subsubsection{Placing the evaluation of verification conditions}
+The DNF clause to be enforced consists, at this stage, of a conjunction of simple boolean expressions.
+It is now necessary to decide, for each such expression, where in the CFG it is to be evaluated.
+Each expression is placed independently.
+There are several constraints on the placement of expressions:
+
+\begin{itemize}
+\item
+  It must be possible to evaluate the expression at that point in the CFG.
+  In other words, a thread which is at that place in the CFG must know the values of all of the variables which are used in the expression.
+\item
+  Expressions should not be evaluated more often than strictly necessary, for simple efficiency reasons.
+\item
+  Expressions should be evaluated as early as possible, so that threads which are definitely not going to trigger the bug are not unnecessarily delayed.
+\end{itemize}
+
+SLI starts by determining the complete set of CFG nodes which satisfy the first constraint and then selecting a subset of those nodes at which to actually evaluate the expression using the second and third constraints.
+
+To determine the set of nodes at which an expression is in principle evaluatable, SLI first builds a map showing which variables are available at each node.
+A variable is available at a node if either:
+
+\begin{itemize}
+\item
+  the node generates the variable, or
+\item
+  the variable is available at all of the node's possible control-flow predecessors, or
+\item
+  the node has a happens-before predecessor and the variable is available at that predecessor.
+\end{itemize}
+
+Note, in particular, that a variable is available if it has been received over a happens-before edge, even if it isn't available at any control-flow predecessors, and that, at this stage, we effectively assume that all messages carry as payload all of the variables which are available at the source of the message.
+An expression is evaluatable at a node if all of the variables used by the expression are available at that node.
+
+Given the set of places at which the expression could conceivably be evaluated we must now select which nodes to actually evaluate at.
+We do this by eliminating all of the places at which the expression should definitely not be evaluated and then evaluating it at all of the remaining nodes.
+An expression should not be evaluated at a node if either:
+
+\begin{itemize}
+\item the expression could be evaluated at all of the control-flow predecessors of the node, or
+\item the node has a happens-before predecessor and the expression could be evaluated at that node.
+\end{itemize}
+
+This resulting assignment of expressions to nodes satisfies the third requirement, of evaluating expressions as soon as possible, but is guaranteed to satisfy the second one, of evaluating expressions the minimum number of times.
+Redundant evaluation is, however, very rare, and is only a minor performance problem when it does happen, so this is not a major problem.
+\editorial{I'm at least half convinced that it can't happen at all in practice, but showing that requires lots of complicated interactions with other phases, so I don't want to do that.}
 
 \subsubsection{Computing message payloads}
 
-\subsubsection{Combining multiple machines}
+Once expressions have been assigned to nodes in the graph, it is possible to determine where variables are actually needed, and hence what ancillary information needs to be included in messages.
+This is a simple data flow problem.
+
+\todo{This really needs to be discussed somewhere, but it's so simple that it doesn't want a section to itself, and it doesn't really fit anywhere else.}
+
+\subsubsection{Combining DNF clauses}
 
 \subsubsection{Optimising the crash enforcement plan}
 Defer register stash, strip redundant CFG prefix.
+
+\subsubsection{Allocate simulation slots for variables}
 
 \subsubsection{Determining patch entry points}
 
 \subsubsection{Compiling the plan to a patch}
 
-This is massively fiddly to implement, but only really needs a few basic ideas to get the message across.
-Best way of describing it is probably just to give the semantics of the cross machines, and then just state that the CFG compiler implements them, rather than trying to give the actual compilation algorithm.
+\todo{This is massively fiddly to implement, but only really needs a
+  few basic ideas to get the message across.  Best way of describing
+  it is probably just to give the semantics of the cross machines, and
+  then just state that the CFG compiler implements them, rather than
+  trying to give the actual compilation algorithm.}
+
+We now have a CFG whose nodes are annotated with several potential additional operations:
+
+\begin{itemize}
+\item Store a generated value into a simulation slot.
+\item Send a message, with some payload expressions.
+\item Receive a message, storing the payload expressions into simulation slots.
+\item Evaluate a side condition.
+\end{itemize}
+
+And we also have a mapping from locations in the original program to points in the control-flow graph.
+We must now compile the annotated CFG into a fragment of machine code which performs the desired actions.
+
+This compiler is easiest to understand by comparison with a hypothetical interpreter for these annotated CFGs.
+Such an interpreter would live inside the target program and take over whenever a thread in the program steps on one of the entry-point instructions, interpreting the CFG and performing the annotation actions when appropriate, until the thread left the CFG, at which point the interpreter would branch back to the original program text.
+It maintains the following items of state:
+
+\begin{itemize}
+\item
+  The identity of the crash enforcement plan-level thread which it is currently executing.
+  At a minimum there will be one such thread for the read \StateMachine and one for the write \StateMachine; there may also be additional threads if multiple plans have been combined.
+\item
+  A reference to the CFG node which the instruction is currently executing.
+\item
+  The set of messages which the thread has sent.
+  This is used when the thread exits to ensure that the correct messages are cancelled.
+\item
+  The current phase of the instruction, discussed next.
+\end{itemize}
+
+\begin{figure}
+\begin{tikzpicture}
+\node[flowChartState] (RecvMsg) {RecvMsg};
+\node[flowChartState, below = of RecvMsg] (OrigInstr) {OrigInstr};
+\node[flowChartState, below = of OrigInstr] (VerfCond) {VerfCond};
+\node[flowChartState, below = of VerfCond] (SendMsg) {SendMsg};
+\node[flowChartState, below = of SendMsg] (FindSucc) {FindSucc};
+\node[flowChartState, right = of VerfCond] (CondFail) {CondFail};
+\node[flowChartState, right = of CondFail] (Exit) {Exit};
+\node[flowChartState, right = of RecvMsg] (RecvdMsg) {RecvdMsg};
+\draw[->] (RecvMsg) -- (OrigInstr) -- (VerfCond) -- (SendMsg) -- (FindSucc);
+\draw[->,dashed] (FindSucc.west) to [bend left=90] (RecvMsg.west);
+\draw[->] (RecvMsg) -- (RecvdMsg) -- (OrigInstr);
+\draw[->] (RecvMsg) -- (Exit);
+\draw[->] (VerfCond) -- (CondFail) -- (Exit);
+\draw[->] (FindSucc) -- (Exit);
+\end{tikzpicture}
+\caption{Intra-instruction state machine.  The dashed arc indicates that the thread advances to the next instruction during that transition.}
+\label{fig:enforcement:intra_instruction_machine}
+\end{figure}
+
+The interpreter proceeds by advancing the instruction phase through the intra-instruction state machine, shown in figure~\ref{fig:enforcement:intra_instruction_machine}.
+The meaning of the phases is as follows:
+
+\begin{itemize}
+\item[RecvMsg]
+  Receive any incoming messages, unpacking the payload into simulation slots as appropriate.
+  In some cases, this will involve evaluating verification conditions, so as to check whether the incoming message is acceptable, and waiting for a better one if it isn't.
+  If the receive times out then the interpreter will exit back to the original program.
+  Otherwise, it unpacks the message and moves on to the OrigInstr state.
+\item[OrigInstr]
+  Store any generated values into simulation slots and issue the original instruction.
+  There are four main cases to consider here:
+
+  \begin{itemize}
+  \item
+    Registers.
+    Some nodes in the CFG will have to save the value of a particular register to a given CFG slot.
+    This is straightforward: the value of the register is saved before issuing the original instruction.
+  \item
+    Simple memory loads.
+    If the instruction is of the form \verb|LOAD *location -> register|, and the value loaded is to be saved, then it is sufficient to just copy \verb|register| into the simulation slot after the original instruction has completed.
+  \item
+    Compound memory loads.
+    Instructions which load from memory but are not themselves simple loads are more difficult to handle.
+    For concreteness, suppose that the instruction is \verb|CMP 76,*loc1|, and the annotation requires us to save the value loaded.
+    The instruction loads from \verb|*loc1| but does not leave the result in any locations which we can easily access.
+    It would be possible to solve this problem by adding another load of \verb|*loc1|, but that would run the risk of a store in a remote thread modifying \verb|*loc1| between the two loads, leading to very confusing results.
+    SLI instead solves this problem by rewriting the instruction to this:
+
+\begin{verbatim}
+LOAD *loc1 -> reg1
+STORE reg1 -> simslot
+CMP 76, reg1
+\end{verbatim}
+
+    This exposes the loaded value to the instrumentation framework, allowing it to be stored to the simulation slot as desired.
+
+    Instructions which modify memory in-place, such as \verb|ADD 1 + *loc1 -> *loc1|, pose a similar problem and can be solved in the same way, provided that they do not have a \verb|LOCK| prefix.
+    \verb|LOCK|ed instructions are instead replaced with a \verb|CMPXCHG| loop in the conventional way\editorial{Not sure I'll get away with that}.
+  \item
+    Branch instructions are deferred to the FindSucc state.
+  \end{itemize}
+  
+\item[VerfCond]
+  Check any verification conditions which were not checked during the message receive phase.
+  If any fail then the interpreter exits, and otherwise it moves on to the SendMsg state.
+\item[SendMsg]
+  Send any outgoing messages.
+  This always succeeds and the interpreter moves on to the FindSucc state.
+\item[FindSucc]
+  Determine where the thread needs to move to next.
+  The details are given later.
+\end{itemize}
+
+There is, however, a complication with this simple model, which is that it isn't always clear where in the CFG a given thread is currently executing.
+There are a couple of reasons for this:
+
+\begin{itemize}
+\item
+  The verification condition is converted to conjunctive normal form near the beginning of the analysis, and if there are multiple clauses then SLI produces, in effect, multiple crash enforcement plans.
+  It is not necessarily clear at the start of the CFG which of these plans is to be followed.
+\item
+  The instructions involved in the read and write \StateMachines might overlap, and the two machines will generate different CFGs with different annotations.
+\item
+  The CFG unrolling mechanism used by the initial analysis to handle loops means that there may be several CFG nodes associated with a given instruction.
+\end{itemize}
+
+The interpreter must therefore keep track of which plan-level threads a given concrete thread might be executing, and for each plan-level thread which CFG nodes the thread might currently be executing.
+
+The solution to this is to modify the interpreter by effectively taking the cross product over all of the state which is uncertain, in effect converting the simple interpreter into a high-level interpreter which interprets sets of simple interpreters in parallel\editorial{Kind of a cross product; also quite a lot like a power set construction}.
+The state of the high-level interpreter could then be expressed like this:
+
+\begin{verbatim}
+HLState :: Set (PlanThreadId, CfgNode, Set(SentMessages), Phase)
+\end{verbatim}
+
+The small-step low-level interpreter maps each member of this state set into a new set of low-level states.
+The small-step high-level interpreter then just needs to map the small-step low-level interpreter over its current state and take the union of the results, producing a new high level state.
+If the resulting set is empty then the high-level interpreter can exit.
+
+\todo{The way this is actually works is \emph{much} more complicated than that, but that's the important bit.}
+
+We can now give details of the FindSucc state of the low-level interpreter.
+The behaviour depends on the underlying instruction:
+
+\begin{itemize}
+\item
+  Zero-exit instructions, such as \verb|ud2| or \verb|int3|, just moves to the Exit phase, causing the plan-level thread to exit.
+\item
+  Single-exit instructions.
+  The interpreter examines the node in the CFG which it is interpreting.
+  It creates a new successor state for every successor of that node, starting in the RecvMsg phase.
+\item
+  Multiple-exit instructions.
+  The interpreter determines examines the underlying instruction and compares it to the actual program state to determine which of the possible exits will be taken.
+  It then uses that to select the successors of the CFG node which might be taken and creates a new successor state for each one, again starting in the RecvMsg phase.
+\end{itemize}
+
+There is one remaining complication, which is that an additional plan-level thread might start while the high-level interpreter is running if the high-level interpreter interprets an instruction which starts a thread.
+This is modelled by introducing two new instruction phases:
+
+\begin{itemize}
+\item[CheckForThreadStart]
+  This state checks which instruction of the underlying program is currently being interpreted.
+  If it matches with any thread entry point in any of the crash enforcement plans, and the relevant plan-level thread is not currently represented in the high-level plan, the interpreter moves to the StartThread state.
+  Otherwise, it moves to the RecvMsg state.
+\item[StartThread]
+  This state starts a single additional plan-level thread, adding it to the current high-level state and then returning to the CheckForThreadStart state to see whether any further threads need to be started.
+\end{itemize}
+
+The final intra-instruction state machine then looks like this:
+
+\begin{tikzpicture}
+\node[flowChartState,above left = of RecvMsg] (StartThread) {StartThread};
+\node[flowChartState,above right = of RecvMsg] (CheckForThreadStart) {CheckForThreadStart};
+\node[flowChartState] (RecvMsg) {RecvMsg};
+\node[flowChartState, below = of RecvMsg] (OrigInstr) {OrigInstr};
+\node[flowChartState, below = of OrigInstr] (VerfCond) {VerfCond};
+\node[flowChartState, below = of VerfCond] (SendMsg) {SendMsg};
+\node[flowChartState, below = of SendMsg] (FindSucc) {FindSucc};
+\node[flowChartState, right = of VerfCond] (CondFail) {CondFail};
+\node[flowChartState, right = of CondFail] (Exit) {Exit};
+\node[flowChartState, right = of RecvMsg] (RecvdMsg) {RecvdMsg};
+\draw[->] (CheckForThreadStart) -- (RecvMsg) -- (OrigInstr) -- (VerfCond) -- (SendMsg) -- (FindSucc);
+\draw[->] (StartThread) to [bend right=10] (CheckForThreadStart);
+\draw[->] (CheckForThreadStart) to [bend right=10] (StartThread);
+\draw[->,dashed] (FindSucc.east) to [bend right=75] (CheckForThreadStart.east);
+\draw[->] (RecvMsg) -- (RecvdMsg) -- (OrigInstr);
+\draw[->] (RecvMsg) -- (Exit);
+\draw[->] (VerfCond) -- (CondFail) -- (Exit);
+\draw[->] (FindSucc) -- (Exit);
+\end{tikzpicture}
+
+\todo{And then we do all of that, but as a compiler rather than an interpreter, which doesn't make it any easier to understand.}
+  
+
+\subsubsection{Compiling entry point stubs}
+
 
 \subsubsection{Run-time considerations}
 
 Timeouts are important in the case where the bug you're looking for doesn't happen, but I don't have a particularly good story about them, which is a bit sad.
+
+Also recovery from spurious segfaults in the patch due to e.g. LD operations.
 
 \subsection{Comparison to schedule memoisation}
 \subsection{Comparison to STM block inference stuff}
