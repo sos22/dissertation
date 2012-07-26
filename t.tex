@@ -1,0 +1,2187 @@
+% Final thing is style report, not article.
+\documentclass[12pt,a4paper]{book}
+
+\usepackage{algorithmic}
+\usepackage{color}
+\usepackage{amsmath}
+\usepackage{tikz}
+\usepackage{tabularx}
+\usetikzlibrary{arrows,decorations.pathmorphing,backgrounds,positioning,fit,petri,automata,shapes}
+
+\pgfdeclarelayer{bg}
+\pgfsetlayers{bg,main}
+
+% MGK recommends these formatting settings:
+
+% for hard-bound final submission, use:
+\setlength{\oddsidemargin}{4.6mm}     % 30 mm left margin - 1 in
+% for soft-bound version and techreport, use instead:
+%\setlength{\oddsidemargin}{-0.4mm}    % 25 mm left margin - 1 in
+\setlength{\evensidemargin}{\oddsidemargin}
+\setlength{\topmargin}{-5.4mm}        % 20 mm top margin - 1 in
+\setlength{\textwidth}{160mm}         % 20/25 mm right margin
+\setlength{\textheight}{247mm}        % 20 mm bottom margin
+\setlength{\headheight}{5mm}
+\setlength{\headsep}{5mm}
+\setlength{\parindent}{0mm}
+\setlength{\parskip}{\medskipamount}
+\renewcommand\baselinestretch{1.2}
+\renewcommand\topfraction{.9}
+\renewcommand\textfraction{.1}
+\renewcommand\floatpagefraction{.8}
+
+\author{Steven Smith}
+\title{SLI: Speculative Lock Insertion}
+\begin{document}
+
+\tikzset{CfgInstr/.style={rectangle,minimum size=6mm}}
+\tikzset{TrueCfgInstr/.style={rectangle,minimum size=6mm,fill=blue!50}}
+\tikzset{DupeCfgInstr/.style={rectangle,minimum size=6mm,fill=blue!10}}
+\tikzset{NewCfgInstr/.style={rectangle,minimum size=6mm,fill=red!50}}
+\tikzset{stateSideEffect/.style={rectangle,draw}}
+\tikzset{stateIf/.style={diamond,draw}}
+\tikzset{stateTerminal/.style={circle,draw}}
+\tikzset{killEdge/.style={decorate,decoration={snake,segment length=1mm,post length=0.4mm}}}
+\tikzset{swungEdge/.style={color=red}}
+\tikzset{happensBeforeEdge/.style={dashed}}
+\newcommand{\editorial}[1]{\textcolor{red}{\footnote{\textcolor{red}{#1}}}}
+\newcommand{\needCite}{\editorial{need cite}}
+\newcommand{\todo}[1]{\textcolor{red}{#1}}
+\newcommand{\StateMachine}{finite state automaton}
+\newcommand{\StateMachines}{finite state automata}
+\newcommand{\CrashSummary}{crash summary}
+\newcommand{\CrashSummaries}{crash summaries}
+\newcommand{\concatDynTraces}{\oplus}
+\newcommand{\queue}[1]{\{#1\}}
+\newcommand{\map}[1]{\{#1\}}
+\newcommand{\mapIndex}[2]{#1[#2]}
+\newcommand{\state}[1]{#1}
+
+\maketitle
+
+\chapter{Abstract}
+Blah.
+
+\chapter{Introduction}
+\section{Motivation}
+Concurrency bugs are becoming more common, don't always have source (abandonware, libraries), so need something which works on binaries
+
+\section{Overview of approach}
+\subsection{Pipeline}
+Overview of the basic pipeline: find bugs with bug finding more, then instantiate them into an enforcement patch, then analyse the core dump/DRS log to better characterise the bug, and then instantiate a fix.
+
+\subsection{Analysis technique}
+Overview of basic analysis technique: building \StateMachines which approximate a fragment of the program and then doing the analysis on that.
+Explain that \StateMachines are derived for some specific behaviour which is currently being investigated, and that the simplifications used depend on that.
+Explain that the specification of the behaviour must be a simple boolean i.e. the interesting thing either happens or does not happen, but that's usually not an issue because the \StateMachines themselves are reasonably computationally powerful (although not Turing complete), so properties like ``X must never be greater than 5'' can be checked without needing to check properties of X.
+Explain that \StateMachines are acyclic and finite, and hence executions are also finite; makes analysis much, much easier.
+Explain that they can cross function boundaries and can include fragments from multiple program threads.
+Explain that each \StateMachine corresponds to some possible point in the program execution (defined by a set of suffixes of stacks, such that at least one thread must match each of the suffixes), and that if you have a snapshot of the program in that state you can interpret the \StateMachine to predict whether the program is going to experience the behaviour which is being investigated.
+
+This is probably a good place to give some examples and a very informal semantics; the full semantics will wait until later.
+
+\section{Background}
+All the bits you need to understand before reading the rest of the dissertation.
+Fairly dumb summary of a little bit of related work.
+
+\chapter{Finding bugs}
+\section{Finding candidate bugs}
+\subsection{Formal definition of the kind of bug which we look for}
+\label{sect:finding_bugs:finding_candidate_bugs:formal_definition}
+For the purposes of this section, we define a bug to be a tuple $(R, W, S)$ such that:
+
+\begin{itemize}
+\item[R valid] $R$ is a fragment of a possible program execution containing $N_r$ dynamic instructions.
+\item[W valid] $W$ is a fragment of a possible program execution containing $N_w$ dynamic instructions.
+\item[S valid] $S$ is a possible state of the program.
+\item[R atomic] Running $R$ to completion from state $S$ does not cause a crash.
+\item[W atomic] Running $W$ to completion and then running $R$ to completion starting from $S$ does not lead to a crash.
+\item[W isolation] $W$ does not load from any locations which are stored to by $R$.
+\item[Crash possible] Interleaving $W$ and $R$ starting from state $S$ might cause $R$ to crash due to dereferencing a bad pointer in its final instruction.
+\item[Concurrent] It is possible for the program to be in state S with one thread at the first instruction of $R$ while another thread is simultaneously at the first instruction of $W$.
+\end{itemize}
+
+We assume that programs execute an infinite sequence of no-op operations before the start of the program itself.
+
+The intuition for this is that R is an operation which reads from some shared structure and W is an operation which updates it, and the bugs which we're looking for are those where inadequate synchronisation causes the read operation to crash.
+The R atomic and W atomic rules ensure that we only need to consider concurrency-related bugs (if some behaviour is possible when the machines are run atomically then it clearly isn't a concurrency bug).
+W isolation is a somewhat unfortunate property, and restricts the set of bugs which we can consider in an important way, but is necessary for the analysis to be tractable~\needCite{}.
+
+\subsubsection{Assumptions about the program}
+
+Big ones:
+
+\begin{itemize}
+\item
+  Only need to consider two threads at a time.
+  This is stronger than just assuming that each bug only involves two threads, because a third thread can sometimes make a race either possible or not possible, and that can lead to bug hiding as $N_r$ increases.
+\item
+  The no-mandatory-concurrency assumption.
+\end{itemize}
+
+\subsubsection{Effect of setting $N_r$ and $N_w$}
+Effect of setting $N_r$ and $N_w$: obviously setting it too small will miss bugs, but it's also possible to miss things by setting it too big.
+Easiest example to understand: mandatory concurrency
+
+e.g. the reading thread says this:
+
+\begin{itemize}
+\item Load $t$ from loc1
+\item Store $t$ to loc2
+\item Load $t'$ from loc1
+\item Load $t''$ from loc2
+\item Crash if $t' == t''$
+\end{itemize}
+
+while the writing thread says this:
+
+\begin{itemize}
+\item Load $t'''$ from loc1
+\item Store $t'''$ to loc2
+\item Store $t''' + 1$ to loc2
+\end{itemize}
+
+These will not form a valid bug tuple because running the reading thread atomically will always crash.
+However, if the reading thread is truncated to just this:
+
+\begin{itemize}
+\item Load $t'$ from loc1
+\item Load $t''$ from loc2
+\item Crash if $t' == t''$
+\end{itemize}
+
+then there will be a valid tuple:
+
+\begin{itemize}
+\item The R atomic rule is satisfied provided that the initial value of loc1 is not equal to loc2.
+\item The W atomic rule is satisfied by any initial state.
+\item The concurrent rule is satisfied by this crashing interleaving:
+  \begin{itemize}
+  \item Load $t'$ from loc1
+  \item Load $t'''$ from loc1
+  \item Store $t'''$ to loc2
+  \item Load $t''$ from loc2
+  \item Crash if $t' == t''$
+  \end{itemize}
+\end{itemize}
+
+Within the definition used by SLI, the larger program fragment is correct even though the smaller one is incorrect, and so using a larger window size can lead to bugs not being reported.
+
+The fundamental problem here is that the larger read side will crash when run in isolation, but can be saved by concurrent modifications to the structures which it is accessing.
+This kind of mandatory concurrency, where the program crashes because of insufficient concurrency rather than excessive concurrency, is handled badly by SLI.
+It is in almost all cases a bug in the underlying program, since essentially no processor architectures or operating systems provide sufficient guarantees to ensure that the modification will not be delayed; however, it is not a bug which SLI is able to detect, and it can mask other bugs which SLI would otherwise be able to find and fix\editorial{I really don't believe that this is ever actually happening, but I should probably check that}.
+
+
+Apart from that, can extending the thresholds ever lead to bug tuples being lost?
+Sometimes.
+Suppose that there is a bug tuple $(R_a, W_a, S_a)$ with $N_r = a$, and we're interested in the behaviour when $N_r = b$, where $b > a$.
+Suppose further that there is some sequence of instructions $R'$ of length $b - a$ ending at the start of $R_a$ which transforms state $S_a$ to state $T$.
+In that case, $(R' \concatDynTraces R_a, W_a, T)$ is a valid bug tuple with $N_r = b$, where $\concatDynTraces$ is the concatenation of dynamic instruction sequences.
+To see this, take each of the constraints on bug tuples in turn:
+
+\begin{itemize}
+\item R valid, W valid, and S valid are all true by construction.
+\item R atomic is true because $R'$ transforms $T$ into $S_a$ and we know that $R_a(S_a)$ is true from the assumption that the original tuple was valid.
+\item
+  W atomic is true because $(W ++ R)(S) = (W ++ R)(R'(T)) = (R' ++ W ++ R)(T)$ definitely doesn't crash, from the original tuple.
+  If $(W ++ R' ++ R)(T)$ can crash then that means that the program has mandatory concurrency, which has already been discussed.
+\item
+  W isolation \editorial{God only knows what I'm going to do as an argument here.}.
+\item
+  The crash possible constraint is true because the cross product scheduling $((R' \concatDynTraces R_a) x W)(T)$ will include as one of its possible schedulings $(R' \concatDynTraces (R_a x W))(T) = (R_a x W)(R'(T)) = (R_a x W)(S_a)$, which we know crashes from the original tuple.
+\item
+  The concurrent constraint is true by construction\editorial{Do I believe this?}.
+\end{itemize}
+
+So in the case where $T$ exists, no bugs will be lost by increasing the read threshold.
+What happens when $T$ does not exist?
+This implies that, while it is possible for the read thread to reach the start of $R$ in state $S$, there is no sequence of instructions in the read thread of appropriate length which ends at the start of $R$ in state $S$ when run in isolation.
+In other words, the read thread can only reach $R$ in state $S$ with the assistance of some other thread, and in particular by loading some location which is stored by that other thread.
+
+Suppose that $b = a + 1$.
+Then it must be that the way to reach $S$ is to start in $T$, issue $I_R$ and then issue some alien store.
+i.e. $W'(I(T)) == S$.
+If the alien store gets incorporated into $W$ then we have $W_b = W' ++ W_a$.
+
+\begin{itemize}
+\item
+  If R valid is false then running $(I ++ R)(T)$ must predict a crash when $(I ++ W' ++ R)(T)$ doesn't, which is violation of the no-mandatory-concurrency property.
+\item
+  If W valid is false then running $W' ++ W ++ I ++ R$ from $T$ must predict a crash when $W ++ R$ from S doesn't
+  i.e. $(W' ++ W ++ I ++ R)(T)$ includes crash and $(W ++ R)(S)$ isn't.
+  So $(W ++ R)(W'(I(T))) == (I ++ W' ++ W ++ R)(T)$ doesn't crash.
+  The no-mandatory-concurrency property then allows us to permute the read section through the write operations to give me that $(W' ++ W ++ I ++ R)(T)$ doesn't crash, as desired.
+\item
+  W isolation \editorial{Don't know what to say about this either}.
+\item
+  The crash constraint is true because the cross-product scheduling $((I ++ R) x (W' ++ W))(T)$ includes $(I ++ W' ++ (R x W))(T) == (R x W)(W'(I(T))) == (R x W)(S)$, which we already know crashes.
+\item
+  The concurrent constraint is true by construction\editorial{Do I believe that?}.
+\end{itemize}
+
+We can then use an \editorial{kind of induction, but not really sound} induction argument to suggest that $N_r$ can be increased without hiding bugs.
+
+Suppose instead that the alien store cannot be incorporated into the write machine.
+That implies that either:
+
+\begin{itemize}
+\item
+  The alien store is in a different thread to the write fragment.
+  This analysis only attempts to consider two-thread bugs, but the results can be influenced by the effects of additional threads because they can influence what program states we need to consider for $S$.
+  In effect, $S$ ranges over all states which the program can possibly adopt, taking full account of every thread which might ever exist in any execution, but for each $S$ we only consider the effects of two nominated threads running program fragments of a known length.
+  Increasing this threshold then reduces the amount of the program for which we consider the full program's concurrency patterns.
+
+  The result is that the induction is only actually sound for programs which have at most two threads.
+\item
+  The alien store is in the same thread as the write fragment, but is far enough back that it is cut off by the $N_w$ threshold.
+  In this case, increasing the $N_w$ threshold will make the hidden bugs reappear.
+
+  The result is that increasing $N_r$ is only safe when $N_w$ is increased by more.
+  The difference between the two increments reflects the possibility that the write thread might be able to execute more instructions in unit time than the read thread.
+  The size of the necessary difference depends on the exact details of the ISA and operating system\editorial{This is really begging for some quick experiments}.
+\end{itemize}
+
+So the result is that increasing $N_r$ will not mask bugs, provided that the no-mandatory-concurrency property holds, the program only has two threads, and $N_w$ is increased at least as quickly.
+
+Is it safe to increase $N_w$?
+
+
+
+So I really need to formalise the no-mandatory-concurrency property in order for this to make sense, and ideally check whether it holds for realistic programs.
+
+So, yeah, summary of that is that increasing the thresholds can definitely lead to hiding bugs.
+I guess, from intuition, that the bugs it hides tend to be unimportant, but I can't prove it.
+That sucks.
+
+Hmm.
+This is more complicated than I'd expected, and only really important for the rhetoric and not for the actual meat.
+Maybe I should cull it, or at least try less hard to be nice and formal about it?
+
+\subsection{Crash summaries}
+
+This analysis produces a series of crash summaries.
+Each summary represents a (possibly infinite) set of bug tuples has several components:
+
+\begin{itemize}
+\item The read \StateMachine, corresponding to the $R$ member of the bug tuple.
+\item The write \StateMachine, corresponding to the $W$ member of the bug tuple.
+\item The verification condition, a predicate on the program's state which corresponds to the $S$ member of the bug tuple.
+\item An aliasing table, which says which memory-accessing instructions in the read and write \StateMachines might access the same area of memory.
+\end{itemize}
+
+A crash summary represents a bug tuple $(R, W, S)$ if the summary's read \StateMachine includes the dynamic instruction trace $R$, its write \StateMachine includes the dynamic instruction trace $W$, and the verification condition is true of $S$.
+The set of summaries produced by the analysis is defined to be complete if every possible bug tuple is represented by at least one crash summary, and sound if the crash summaries only represent valid bug tuples.
+The analysis presented here is, in that sense, complete, subject to some caveats discussed in later sections, but not sound.
+
+\subsection{Building read-side \StateMachines}
+
+The aim of this phase of the algorithm is to find every fragment of the program which might act as the first ($R$) element of the bug tuple.
+The simplest approach would be to simply enumerate every dynamic fragment containing $N_r$ instructions which ends in a memory-accessing instruction and convert each one independently into a \StateMachine.
+While it would be effective, this would be extremely time consuming, especially for larger values of $N_r$, and would perform a large amount of redundant work.
+SLI therefore uses a slightly more involved approach.
+
+The core of the algorithm is to first select the final, crashing, instruction in the fragment, then to build up a static control-flow graph (CFG) containing every static instruction which might be part of the dynamic trace, unroll any loops in the graph until every path of length $N_r$ is represented, and then compile the resulting CFG into a \StateMachine.
+This is repeated for every possible final instruction in the program.
+The next few sections will describe this system in more detail.
+
+\subsubsection{Building the static control-flow graph}
+The first step of the algorithm, once a potentially-crashing instruction has been selected for investigation, is to build a static control-flow graph containing all of the instructions which might appear in the dynamic trace.
+This is done by starting with a trivial CFG containing just the crashing instruction and then expanding it backwards, one instruction at a time, until every needed instruction has been discovered.
+
+The simple case is that all of the needed instructions are contained within a single instruction.
+In that case, the algorithm is as follows:
+
+\begin{algorithmic}[1]
+\STATE $depth \gets 0$
+\STATE $pendingAtDepth \gets \queue{targetInstrAddress}$
+\STATE $result \gets \map{}$
+\WHILE{$depth < N_r$}
+  \STATE $pendingAtNextDepth \gets \queue{}$
+  \WHILE{$\neg{}empty(pendingAtDepth)$}
+    \STATE $currentInstr \gets pop(pendingAtDepth)$
+    \IF {$result \textrm{ has entry for } currentInstr$}
+      \STATE \textbf{continue}
+    \ENDIF
+    \STATE $current \gets \text{decode instruction at } currentInstr$
+    \STATE $\mapIndex{result}{currentInstr} \gets current$
+    \STATE $predecessors \gets \text{predecessors of } currentInstr$
+    \STATE Add $predecessors$ to $pendingAtNextDepth$
+  \ENDWHILE
+  \STATE $pendingAtDepth \gets pendingAtNextDepth$
+  \STATE $depth \gets depth + 1$
+\ENDWHILE
+\end{algorithmic}
+
+This algorithm builds, in $result$, a mapping from instruction addresses to decoded instructions, working backwards from the address of the potentially crashing instruction until every instruction which might be executed up to $N_r$ dynamic instructions before the target is present.
+
+There is a slight subtlety on line 13, when determining the predecessors of a given instruction.
+This is not always obvious, given only a binary program, for three reasons:
+
+\begin{itemize}
+\item
+  The program might contain indirect branches.
+  It is difficult to determine statically where these might branch to.
+  A conservative approach would be to assume that they might branch anywhere, but this leads to unmanageably complex CFGs even for trivial programs.
+  At the same time, ignoring them completely means that many important program paths will be missed.
+\item
+  The AMD64 instruction set includes variable-length instructions, and so there might be several overlapping instructions which all finish at the start of the instruction currently being investigated.
+  In most programs, only one of these will ever be executed, and it is important to pick the right one.
+\item
+  It is not always trivial to locate all of the branch instructions in a program.
+\end{itemize}
+
+SLI solves this problem using a combination of static and dynamic analysis.
+First, the dynamic analysis tracks the targets of all indirect branch and call instructions.
+This makes the first problem trivial (assuming that the dynamic analysis is complete).
+It also means that a simple static analysis can enumerate every instruction reachable from the program's entry point (which can itself be determined from the ELF binary's metadata), hence building up a complete CFG of the entire program.
+That CFG then makes solving the second and third problems trivial.
+
+\todo{Slight complication for async OS callbacks like signal handlers.}
+
+\todo{There are two different CFGs here.  Should maybe do some alpha conversion to remove that ambiguity.}
+
+\todo{Point out that the CFG can have multiple roots here.}
+
+\subsubsection{Handling loops in the CFG}
+\editorial{This is very similar to the way we handle loops in the
+  write-side CFG, but more complicated and harder to explain.  That
+  suggests that we should maybe explain the write-side algorithm
+  first, except that the write-side CFG generation algorithm uses the
+  read-side CFG as one of its inputs, which then makes that much
+  harder to describe.}
+
+There may be loops in the CFGs generated by this algorithm, but SLI requires that the \StateMachines be finite and acyclic.
+These loops must therefore be eliminated in a way which is guaranteed to preserve all paths of length $N_r$.
+The approach SLI takes is, in essence, to unroll the loops, duplicating instructions as necessary, until every path from a root of the CFG to the target instruction is either free from cycles or of length greater than $N_r$.
+
+\begin{tikzpicture}
+  [node distance=1 and 0.3]
+  \begin{scope}
+    \node (A) at (0,2) [CfgInstr] {A};
+    \node (B) [CfgInstr] [below=of A] {B}; 
+    \node (C) [CfgInstr] [below=of B] {C}; 
+    \node (D) [CfgInstr] [below=of C] {D}; 
+    \draw[->] (A) -- (B);
+    \draw[->] (B) -- (C);
+    \draw[->] (C) -- (D);
+    \draw[->] (C.east) to [bend right=90] (B.east) node (edge1) [right] {};
+    \begin{pgfonlayer}{bg}
+      \node (box1) [fill=black!10,fit=(A) (B) (C) (D) (edge1)] {};
+    \end{pgfonlayer}
+  \end{scope}
+  \begin{scope}[xshift=4cm]
+    \node (A) at (0,2) [CfgInstr] {A};
+    \node (B) [CfgInstr] [below=of A] {B}; 
+    \node (C) [CfgInstr] [below=of B] {C}; 
+    \node (D) [CfgInstr] [below=of C] {D};  
+    \node (C') [CfgInstr] [right=of C] {C'};
+    \draw[->] (A) -- (B);
+    \draw[->] (B) -- (C);
+    \draw[->] (C) -- (D);
+    \draw[->] (B) to [bend right=10] (C');
+    \draw[->] (C') to [bend right=10] (B);
+    \begin{pgfonlayer}{bg}
+      \node (box2) [fill=black!10,fit=(A) (B) (C) (D) (C')] {};
+    \end{pgfonlayer}
+  \end{scope}
+  \begin{scope}[xshift=8cm]
+    \node (A) at (0,2) [CfgInstr] {A};
+    \node (B) [CfgInstr] [below=of A] {B};
+    \node (B') [CfgInstr] [right=of B] {B'};
+    \node (C) [CfgInstr] [below=of B] {C};
+    \node (D) [CfgInstr] [below=of C] {D};
+    \node (C') [CfgInstr] [right=of C] {C'};
+    \draw[->] (A) -- (B);
+    \draw[->] (B) -- (C);
+    \draw[->] (C) -- (D);
+    \draw[->] (C') -- (B);
+    \draw[->] (A) -- (B');
+    \draw[->] (B') to [bend right=10] (C');
+    \draw[->] (C') to [bend right=10] (B');
+    \begin{pgfonlayer}{bg}
+      \node (box3) [fill=black!10,fit=(A) (B) (C) (D) (C') (B')] {};
+    \end{pgfonlayer}
+  \end{scope}
+  \begin{scope}[xshift=12cm]
+    \node (A) at (0,2) [CfgInstr] {A};
+    \node (B) [CfgInstr] [below=of A] {B};
+    \node (B') [CfgInstr] [right=of B] {B'};
+    \node (C) [CfgInstr] [below=of B] {C};
+    \node (C') [CfgInstr] [right=of C] {C'};
+    \node (C'') [CfgInstr] [right=of C'] {C''};
+    \node (D) [CfgInstr] [below=of C] {D};
+    \draw[->] (A) -- (B);
+    \draw[->] (B) -- (C);
+    \draw[->] (C) -- (D);
+    \draw[->] (C') -- (B);
+    \draw[->] (A) -- (B');
+    \draw[->] (B') -- (C');
+    \draw[->] (C'') to [bend right=10] (B');
+    \draw[->] (B') to [bend right=10] (C'');
+    \begin{pgfonlayer}{bg}
+      \node (box4) [fill=black!10,fit=(A) (B) (C) (D) (C') (B') (C'')] {};
+    \end{pgfonlayer}
+  \end{scope}
+  \draw[->,thick] (box1) -- (box2) node [above,midway] {duplicate C};
+  \draw[->,thick] (box2) -- (box3) node [above,midway] {duplicate B};
+  \draw[->,thick] (box3) -- (box4) node [above,midway] {duplicate C'};
+  \draw[->,thick] (box4) -- +(2.5,0) node [above,midway] {...};
+\end{tikzpicture}
+
+The diagram shows a CFG with four instructions, A, B, C, and D, and a loop between B and C.
+This loop must be removed from the CFG whilst maintaining all paths which terminate at D and which contain $N_r$ instructions.
+SLI does this by duplicating nodes in the CFG so as to unroll the loop and hence increase the distance between the loop and instruction D.
+Consider the leftmost diagram first.
+SLI will start at instruction D and perform a depth-first traversal backwards through the graph until it finds an edge which closes a cycle; in this case, that is the edge from C to B.
+We will therefore try to break the cycle along this edge.
+Note that we break on the back edge, C to B, rather than the forwards edge B to C.
+To break the edge, SLI duplicates the instruction at the start of the edge and all of the edges to that instruction (in this case, duplicating C to form C' and the B to C edge to form a B to C' edge).
+It then redirects the breaking edge to come from the new instruction (so the edge from C to B is replaced by an edge from C' to B).
+All paths which were possible in the old graph will also be possible in the new one, if duplicated nodes are treated as semantically equivalent, and the loop is now one instruction further away from the target instruction D.
+
+There is still a cycle in this graph, and so the process will repeat.
+In this case, the first cycle encountered when performing depth-first traversal backwards from D is the B to C' edge, and so the loop will be broken on that edge by duplicating B to form B'.
+As before, all of the incoming edges of the duplicated node are duplicated as well, so new edges are created from A to B' and from C' to B'.
+The B to C' edge is then replaced with one from B' to C'.
+Again, all paths through the graph are preserved and the cycle moved further away from D.
+
+This algorithm can be iterated as many times as necessary until the cycle is at least $N_r$ instructions away from D.
+At that point, every path of length $N_r$ traverses the cycle at most once, and so the cycle can be removed completely without changing the set of possible paths through the graph.
+
+\begin{algorithmic}
+  \WHILE {graph is not cycle-free}
+     \STATE $edge \gets findEdgeToBeBroken(targetInstr, \{\})$
+     \IF {$edge$ is at least $N_f$ instructions from target instruction}
+        \STATE {Erase $edge$ from graph}
+     \ELSE
+        \STATE {$newNode \gets$ duplicate of $edge.source$}
+        \FORALL {$i$ incoming edge of $edge.source$}
+           \STATE {Create a new edge from $newNode$ to $i.destination$}
+        \ENDFOR
+        \STATE {Replace $edge$ with an edge from $newNode$ to $edge.destination$}
+     \ENDIF
+  \ENDWHILE
+\end{algorithmic}
+
+\begin{algorithmic}
+  \STATE {findEdgeToBeBroken($node$, $path$) ->}
+  \FORALL {$p$ predecessor of $node$}
+     \IF {$path$ contains $p$}
+         \RETURN {Success; edge from $p$ to $node$}
+     \ENDIF
+     \STATE $r \gets findEdgeToBeBroken(p, node::path)$
+     \IF {$r$ is a success}
+         \RETURN $r$
+     \ENDIF
+  \ENDFOR
+  \RETURN {Failed; graph starting at $node$ is acyclic}
+\end{algorithmic}
+
+\todo{This really isn't very well explained.}
+
+\todo{I think I might need a proof of correctness here.}
+
+\subsubsection{Compiling the CFG to a \StateMachine}
+
+The result of the previous phases is a control-flow graph containing all of the instructions which might be present in the $R$ trace of the crash tuple.
+The next step is to compile this CFG into a \StateMachine.
+Were it not for the transformations performed in the loop unrolling phase this would be straightforward: simply decode each instruction in isolation and convert it into an appropriate fragment of \StateMachine, and then stitch all of the fragments together again in the obvious way.
+Loop unrolling introduces two major complications:
+
+\begin{itemize}
+\item
+  Some edges will be erased from the CFG, so that the program can branch from instruction A to instruction B but the CFG does not allow that to happen.
+  The way in which the CFG is constructed ensures that this will only happen to conditional branch instructions, and will always preserve at least one successor instruction for the branch, and so the reduced branch can be compiled to a special \state{assert} node in the \StateMachine which asserts that the program proceed to one of the remaining successor instructions.
+  This means that later analysis phases will only consider the desired paths through the program\editorial{Huh?}.
+
+  In the example, the instruction C in the original program is a conditional branch operation, and so has two successor instructions.
+  Loop breaking removes the edge from C to B, and so the CFG will not match the control-flow structure of the underlying program.
+  Suppose that the condition is $C_D$, so that the program moves from C to D if $C_D$ is true at C and to B otherwise.
+  The \StateMachine fragment for C will then be simply an assertion that $C_D$ is true.
+  Likewise, the CFG requires that C' advance to B and not to D, and so its fragment of \StateMachine will just be an assertion that $C_D$ is false.
+
+\item
+  Some additional edges will have been introduced which do not correspond to anything in the original program.
+  In the example, instruction A had a single successor, B, in the original program, but has multiple successors in the unrolled CFG.
+  SLI handles this case by allocating a new fresh variable and then using that to index into the available successors in the CFG.
+  Since there are no constraints on the value of the new variable, later phases of the analysis will be forced to consider every possible successor, as desired.
+  In effect, the new variable specifies how many times the original loop should be executed.
+\end{itemize}
+
+\todo{Effect of multiply-rooted CFGs?}
+
+\todo{Give an example of the assertions on removed edges constraining the free variables for additional edges.}
+
+\begin{verbatim}
+l1: DEC rcx <- rcx - 1
+l2: STORE $0 -> *(rcx + rdx)
+l3: JMP_IF_NOT_EQ rcx, 0, l1
+l4:
+\end{verbatim}
+
+Produces this CFG before unrolling:
+
+\begin{tikzpicture}
+  \node (l1) at (0,2) [CfgInstr] {l1};
+  \node (l2) [CfgInstr] [below=of l1] {l2};
+  \node (l3) [CfgInstr] [below=of l2] {l3};
+  \node (l4) [CfgInstr] [below=of l3] {l4};
+  \draw[->] (l1) -- (l2);
+  \draw[->] (l2) -- (l3);
+  \draw[->] (l3) -- (l4);
+  \draw[->] (l3.east) to [bend right=90] (l1.east) node (edge1) [right] {};
+  \begin{pgfonlayer}{bg}
+    \node (box1) [fill=black!10,fit=(l1) (l2) (l3) (l4) (edge1)] {};
+  \end{pgfonlayer}
+\end{tikzpicture}
+
+After unrolling, the CFG might look like this:
+
+\begin{tikzpicture}
+  \node (l1) at (0,2) [CfgInstr] {l1};
+  \node (l2) [CfgInstr] [below=of l1] {l2};
+  \node (l3) [CfgInstr] [below=of l2] {l3};
+  \node (l4) [CfgInstr] [below=of l3] {l4};
+  \draw[->] (l1) -- (l2);
+  \draw[->] (l2) -- (l3);
+  \draw[->] (l3) -- (l4);
+  \node (l1') [CfgInstr] [right=of l1] {l1'};
+  \node (l2') [CfgInstr] [right=of l2] {l2'};
+  \node (l3') [CfgInstr] [right=of l3] {l3'};
+  \draw[->] (l1') -- (l2');
+  \draw[->] (l2') -- (l3');
+  \draw[->] (l3') -- (l1);
+  \node (l1'') [CfgInstr] [right=of l1'] {l1''};
+  \node (l2'') [CfgInstr] [right=of l2'] {l2''};
+  \node (l3'') [CfgInstr] [right=of l3'] {l3''};
+  \draw[->] (l1'') -- (l2'');
+  \draw[->] (l2'') -- (l3'');
+  \draw[->] (l3'') -- (l1');
+  \begin{pgfonlayer}{bg}
+    \node (box1) [fill=black!10,fit=(l1) (l2) (l3) (l4) (l1') (l2') (l3') (l1'') (l2'') (l3'')] {};
+  \end{pgfonlayer}
+\end{tikzpicture}
+
+This will produce a \StateMachine something like this:
+
+\begin{tikzpicture}
+  \node[stateSideEffect,initial] (start) {$t = \text{fresh}$};
+  \node[stateIf,below=of start] (l1Guard) {If $t == 0$?};
+  \node[stateIf,right=of l1Guard] (l1'Guard) {If $t == 1$?};
+  \node[stateSideEffect,below=of l1Guard] (l1) {$rcx = rcx - 1$};
+  \node[stateSideEffect,below=of l1] (l2) {Store $0$ to $rcx + rdx$};
+  \node[stateSideEffect,below=of l2] (l3) {Assert $rcx=0$};
+  \node[stateTerminal,below=of l3] (l4) {l4};
+  \node[stateSideEffect,right=of l1] (l1') {$rcx = rcx - 1$};
+  \node[stateSideEffect,below=of l1'] (l2') {Store $0$ to $rcx + rdx$};
+  \node[stateSideEffect,below=of l2'] (l3') {Assert $\neg{} rcx=0$};
+  \node[stateSideEffect,right=of l1'] (l1'') {$rcx = rcx - 1$};
+  \node[stateSideEffect,below=of l1''] (l2'') {Store $0$ to $rcx + rdx$};
+  \node[stateSideEffect,below=of l2''] (l3'') {Assert $\neg{} rcx=0$};
+  \draw[->] (start) -- (l1Guard);
+  \draw[->] (l1Guard) -- node [above] {false} (l1'Guard);
+  \draw[->] (l1Guard) -- node {true} (l1);
+  \draw[->] (l1) -- (l2);
+  \draw[->] (l2) -- (l3);
+  \draw[->] (l3) -- (l4);
+  \draw[->] (l1'Guard.east) to [bend left=45] node {false} (l1'');
+  \draw[->] (l1'Guard.south) -- node {true} (l1');
+  \draw[->] (l1') -- (l2');
+  \draw[->] (l2') -- (l3');
+  \draw[->] (l3') -- (l1);
+  \draw[->] (l1'') -- (l2'');
+  \draw[->] (l2'') -- (l3'');
+  \draw[->] (l3'') -- (l1');
+\end{tikzpicture}
+
+\subsubsection{Performing additional conditional backtracking}
+
+\subsubsection{Cross-function behaviour}
+
+Important complications:
+
+\begin{itemize}
+\item Sometimes end up with multiply-rooted CFGs.
+\item Prefer to backtrack to head-of-function; explain what effect that has on the set of paths considered.
+\item Removing cycles in a way which definitely preserves all the sufficiently-short paths.
+\item What happens when you back into a function call.
+\end{itemize}
+
+\subsection{Building write-side \StateMachines}
+
+Once SLI has obtained the read-side \StateMachine, it can analyse it to determine which loads affect the ultimate prediction, and then compare this set to the dynamic model to determine which stores might potentially influence it.
+The analysis must then consider all dynamic paths of $N^w$ instructions which contain at least one of those store operations.
+The basic approach here is essentially the same as that used for read-side \StateMachines: convert the set of dynamic paths into a (hopefully much smaller) set of acyclic control-flow graphs and then compile those CFGs into \StateMachines.
+The details of the algorithms used are, however, slightly different.
+
+\subsubsection{Finding relevant stores}
+
+Simple: just rip out all the optional bits of the read machine (assertions, start and end function markers) and then simplify the result machine.
+Any loads left over after that are potentially relevant.
+Finding the potentially-relevant stores is then just a matter of reading them out of the dynamic profiling information.
+
+\subsubsection{Build write-side CFGs}
+
+The input to this phase of the analysis is a set of potentially relevant static store instructions, and the analysis must build a collection of acyclic CFGs which cover all possible paths through the program which use at least one of those static instructions and which contain at most $N_w$ instructions.
+\editorial{That's not quite the problem definition I used earlier, but it's a bit easier to describe.}
+
+One important assumption here is that the set of potentially relevant store instructions is complete, in the sense that no instruction not in that set can influence the behaviour of the load machine (this follows from the assumption that the dynamic model is itself complete).
+This implies that the only parts of the dynamic write path which are actually important are the potentially relevant store instructions; everything else simply acts to constrain the behaviour of those instructions.
+That in turn means that it is safe to ignore any prefix or suffix of a dynamic path which does not involve any potentially-relevant store instructions, or, to put it another way, the store CFGs only need to represent dynamic paths which start and end with potentially-relevant instructions.
+This is a useful simplification.
+
+The algorithm begins by building a partial static CFG starting at each of the potentially-relevant store instructions and covering every instruction reachable within $N_w$ instructions of that point.
+As with read-side CFGs, called functions are effectively inlined into each call site, and returns from the function containing the potentially-relevant store are handled by replacing the instruction with one with a synthesised call stack and restarting.
+The CFGs generated by different starting instructions will often overlap; this is handled by sharing nodes between the relevant CFGs.
+The resulting CFG is then trimmed to remove any instructions which cannot reach a potentially-relevant store within $N_w$ instructions.
+
+At this point, the CFG represents a fragment of the program and contains every instruction which might be on one of the trimmed dynamic paths which need to be represented by the output CFG, and it only remains to remove any cycles from it.
+As with read-side CFGs, this is accomplished by duplicating nodes so as to unroll loops until any path which uses the loop more than once must be longer than $N_w$ instructions and can hence be discarded.
+There is, however, one important difference: in the read-side CFG, we are interested in any path which terminates at a specific point, whereas in the write-side CFG we need to preserve any path which starts and ends with any member of a set of interesting instructions.
+This makes it more difficult to determine when a loop has been unrolled sufficiently, as it is no longer sufficient to just check the distance to a nominated target instruction.
+SLI solves this problem by labelling each node in the graph with information about where it might occur in an interesting path.
+This label consists of:
+
+\begin{itemize}
+\item
+  For each possibly-relevant store, the minimum distance from that store to the labelled node.
+\item
+  For each possible-relevant store, the minimum distance from the labelled node to that store or any of its duplicates.
+\end{itemize}
+
+We only need to consider paths of length $N_w$ or less which start with one of the potentially-relevant stores and which end with a potentially-relevant store or one of its duplicates.
+Therefore, if, for any node, the minimum of the first type of label plus the minimum of the second type of label exceeds $N_w$ the node can be safely discarded.
+This allows us to break cycles once they have been unrolled far enough.
+
+\begin{algorithmic}
+  \STATE {Compute initial labelling of graph}
+  \FORALL {$t$ in the set of potentially-relevant stores}
+    \WHILE {graph rooted at $t$ is not cycle-free}
+       \STATE $edge \gets findEdgeToBeBroken(t, \{\})$
+       \STATE $newLabel \gets combineLabels(\text{current label of } edge.start, \text{current label of } edge.end)$
+       \IF {$min(newLabel.minFrom) + min(newLabel.minTo) > N_w$}
+           \STATE {remove $edge$}
+       \ELSE
+           \STATE $newNode <- \text{duplicate } edge.end$
+           \FORALL {Edges $e$ leaving $edge.end$}
+              \STATE {Create a new edge from $newNode$ to $e.end$}
+           \ENDFOR
+           \STATE {Set label of $newNode$ to $newLabel$}
+           \STATE {Replace $edge$ with an edge from $edge.start$ to $newNode$}
+       \ENDIF
+    \ENDWHILE
+  \ENDFOR
+\end{algorithmic}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B} edge [in=30,out=-30,loop] ();
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \draw[->] (A) -- (B);
+  \draw[->] (B) -- (C);
+  \draw[->] (C) to [bend left=90] (A) node (edge1) [right,midway] {~~~~~~~~};
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (B) (C) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A & 0 & 0 & 2 & 1\\
+      B & 2 & 1 & 1 & 2\\
+      C & 1 & 2 & 0 & 0\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [NewCfgInstr, right=of B] {B1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \draw[->] (A) -- (B);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) to [bend left=10] (B1);
+  \draw[->,swungEdge] (B1) to [bend left=10] (B);
+  \draw[->] (B1) -- (C);
+  \draw[->] (C) to [bend left=90] (A) node (edge1) [right,midway] {~~~~~~~~};
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (B) (B1) (C) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & 1\\
+      B  & 2 & 1 & 1 & 2\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & 3\\
+    \end{tabular}
+    (dupe B)
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (A1) [NewCfgInstr,right=of C] {A1};
+  \draw[->] (A) -- (B);
+  \draw[->,swungEdge] (A1) -- (B);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) to [bend left=10] (B1);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B1) to [bend left=10] (B);
+  \draw[->] (C) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (B) (B1) (C) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & 2\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & 3\\
+    \end{tabular}
+    (dupe A)
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [NewCfgInstr, right=of B1] {B2};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->,swungEdge] (B1) to [bend left=10] (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) to [bend left=10] (B1);
+  \draw[->] (B2) -- (C);
+  \draw[->] (C) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (B) (B1) (B2) (C) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & 2\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & 3\\
+      B2 & 2 & 3 & 1 & 4\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [NewCfgInstr, below=of A1] {B3};
+  \draw[->] (A) -- (B);
+  \draw[->,swungEdge] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) to [bend left=10] (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) to [bend left=10] (B1);
+  \draw[->] (B2) -- (C);
+  \draw[->] (B3) -- (C);
+  \draw[->] (B3) to [bend right=45] (B1);
+  \draw[->] (C) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (B) (B1) (B2) (B3) (C) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & 3\\
+      B2 & 2 & 3 & 1 & 4\\
+      B3 & 2 & 4 & 1 & 2\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) to [bend left=10] (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) to [bend left=10] (B1);
+  \draw[->,killEdge] (B2) to [bend left=10] (B1);
+  \draw[->] (B2) -- (C);
+  \draw[->] (B3) -- (C);
+  \draw[->] (B3) to [bend right=45] (B1);
+  \draw[->] (C) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (B) (B1) (B2) (B3) (C) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & 3\\
+      B2 & 2 & 3 & 1 & 4\\
+      New label & 2 & 4 & 1 & 5\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [NewCfgInstr, below=of B3] {C1};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C);
+  \draw[->] (B3) to [bend left=45] (B1);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) to [bend right=90] (A1);
+  \draw[->,swungEdge] (B3) -- (C1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (B) (B1) (B2) (B3) (C) (C1) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & 3\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [NewCfgInstr, right=of B3] {B4};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C);
+  \draw[->,swungEdge] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) to [bend right=45] (A1);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C);
+  \draw[->] (B4) -- (B2);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (B) (B1) (B2) (B3) (C) (C1) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+      B4 & 2 & 5 & 1 & 3\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [NewCfgInstr, left=of C1] {A2};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->,swungEdge] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C);
+  \draw[->] (B4) -- (B2);
+  \draw[->] (A2) -- (B3);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [NewCfgInstr, below=of B4] {C2};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->,swungEdge] (B4) -- (C2);
+  \draw[->] (B4) -- (B2);
+  \draw[->] (A2) -- (B3);
+  \draw[->] (C2) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+      C2 & 1 & 6 & 0 & 4\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [DupeCfgInstr, below=of B4] {C2};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C2);
+  \draw[->] (B4) -- (B2);
+  \draw[->] (A2) -- (B3);
+  \draw[->,killEdge] (A2) -- (B3);
+  \draw[->] (C2) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+      C2 & 1 & 6 & 0 & 4\\
+      New label & 2 & 7 & 1 & 5\\
+    \end{tabular}\\
+    (Dupe B5)
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [DupeCfgInstr, below=of B4] {C2};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C2);
+  \draw[->] (B4) -- (B2);
+  \draw[->] (C2) -- (A1);
+  \draw[->,killEdge] (C2) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+      C2 & 1 & 6 & 0 & 4\\
+      New label & 0 & 7 & 2 & 5\\
+    \end{tabular}\\
+    (Dupe A1)
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [DupeCfgInstr, below=of B4] {C2};
+  \node (C3) [NewCfgInstr, right=of A1] {C3};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->,swungEdge] (B2) -- (C3);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C2);
+  \draw[->] (B4) to [bend left=45] (B2);
+  \draw[->] (C3) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (C3) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+      C2 & 1 & 6 & 0 & 4\\
+      C3 & 1 & 4 & 0 & 5\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [DupeCfgInstr, below=of B4] {C2};
+  \node (C3) [DupeCfgInstr, right=of A1] {C3};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C3);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C2);
+  \draw[->] (B4) to [bend left=45] (B2);
+  \draw[->,killEdge] (B4) to [bend left=45] (B2);
+  \draw[->] (C3) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (C3) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & $\infty$\\
+      C3 & 1 & 4 & 0 & $\infty$\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+      C2 & 1 & 6 & 0 & 4\\
+      C3 & 1 & 4 & 0 & 5\\
+      New label & 2 & 6 & 1 & 4\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [DupeCfgInstr, below=of B4] {C2};
+  \node (C3) [DupeCfgInstr, right=of A1] {C3};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C3);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C2);
+  \draw[->] (C3) -- (A1);
+  \draw[->,killEdge] (C3) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (C3) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & $\infty$\\
+      C3 & 1 & 4 & 0 & $\infty$\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+      C2 & 1 & 6 & 0 & 4\\
+      C3 & 1 & 4 & 0 & 5\\
+      New label & 0 & 5 & 2 & 6\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [DupeCfgInstr, below=of B4] {C2};
+  \node (C3) [DupeCfgInstr, right=of A1] {C3};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C3);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C2);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (C3) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & $\infty$\\
+      C3 & 1 & 4 & 0 & $\infty$\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+      C2 & 1 & 6 & 0 & 4\\
+      C3 & 1 & 4 & 0 & 5\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+
+\subsection{Converting pairs of machines into verification conditions}
+
+We now convert some of the rules in section~\ref{sect:finding_bugs:finding_candidate_bugs:formal_definition} into simple predicates on the program's state.
+The technique used for each rule is essentially the same: build or select a \StateMachine which describes the rule (in a sense described in subsequent sections) and then symbolically execute it, collecting path conditions as we go, until it reaches a terminal state.
+The analysis then combines the path conditions collected at the terminal states in a way which depends on the rule in question.
+
+Complications: non-determinacy of \StateMachines, and the schizophrenic handling of assertions.
+
+Rules which don't convert:
+
+\begin{itemize}
+\item R valid -- true by construction of read machine.
+\item W valid -- true by construction of write machine.
+\item S valid -- model of program isn't strong enough to say anything useful about it.
+\item W isolation -- used extensively when deriving write machine, to
+  the extent that there's rarely any additional useful information to
+  extract by this stage in the pipeline.
+\item Concurrent -- model of program isn't strong enough to say anything useful about it.
+\end{itemize}
+
+The other rules produce two interesting expressions:
+
+\begin{itemize}
+\item The validity constraint -- this is a predicate on the initial system state which is true for states which satisfy R atomic and W atomic.
+\item The crash constraint -- this is a predicate on the initial system state which is true for states which satisfy the crash possible rule.
+\end{itemize}
+
+We need to report a bug if there exists any state which satisfies both the validity constraint and the crash constraint.
+Alternatively, to avoid reporting a bug, we need to prove that $\textrm{validity constraint} \rightarrow \not{}\textrm{crash constraint}$, which means that we report a bug if the predicate $\textrm{validity constraint} \wedge \textrm{crash constraint}$ is satisfiable.
+
+\subsubsection{Symbolically executing machines}
+Not sure how much detail to give here.
+It's a fairly standard symbolic execution engine, so there's nothing really exciting here, but it's also quite important, and not really very hard to describe.
+I think it's worth a couple of paragraphs.
+
+\subsubsection{R atomic}
+
+This rule states that the read machine must run to completion without crashing if run in isolation.
+Once the read machine has been completely determined, this is in effect a condition on the states of the program which have to be considered: if the read machine would crash when run atomically in state S, any concurrency-related bugs detected starting from state S are highly unlikely to be interesting.
+The first phase of building the verification condition is to build the condition.
+To do so, the analysis first simplifies the probe machine on the assumption that it is running atomically and then symbolically executes it.
+The constraint is then the conjunction of the inverses of the path conditions to reach crashing states.
+Escaping states, those which correspond to assertion failures, are treated as crashing states at this stage of the analysis.
+
+Path explosion: once you're assuming that the machine is completely atomic the state machine simplifier turns most machines into a simple predicate on the initial state and so the symbolic execution is pretty much trivial and there aren't really any paths to explode.
+The main exception is where Phi nodes prevent us from simplifying control flow as far as we'd like.
+Aliasing can also be an issue, but much less often than you'd expect.
+
+\subsection{W atomic}
+
+This rule requires that the read machine does not crash if run after the write machine has completed.
+This, again, is about restricting the analysis to only consider bugs which are due to concurrency, and not any crashes which might be caused by other bugs.
+For this rule, the analysis first concatenates the two machines by replacing the terminal states of the write machine with the first state in the read machine.
+The resulting machine is then simplified and interpreted.
+In this case, the symbolic execution engine is allowed to assume that the R atomic condition holds while performing this interpretation
+The resulting path conditions are converted into a validity predicate in essentially the same way as they are for the R atomic rule.
+
+Path explosion: again modest at this stage.
+Most store machines just consist of a small number of store instructions (usually one, almost never more than three) and no control flow, and so we're effectively repeating the R atomic calculations in a slightly different initial state.
+The aliasing problems are more complicated here but generally still not intractable.
+
+\subsection{Crash possible}
+
+This rule requires that the read machine must sometimes crash if run in parallel with the store machine.
+To build this predicate, the analysis builds a new \StateMachine which is the cross product of the input read and write machines and then interprets that.
+For this interpretation, escaping states, where assertions fail, are assumed to survive.
+The final result is the disjunction of all of the path conditions which reach crashing states; combined with the validity condition, this describes all of the states which might exhibit a bug of the target class.
+
+Complication: we arrange to build the machines in a way which avoids running either machine to completion in isolation.
+
+I'm going to have to describe the algorithm here, because it's a little bit subtle.
+
+Path explosion: much more of a concern now.
+We're effectively considering most possible interleavings, of which there are a lot, and all possible aliasing configurations.
+You save a little because the validity predicate eliminates a bunch of configurations.
+
+\subsection{Use of the induction rule}
+
+The analysis uses a form of induction to eliminate some bugs.
+The idea is that when analysing target instruction T, we can assume that there are no bugs of the target class for any other instruction T', and hence that the verification condition for T' is false.
+There is therefore a post-pass once the base verification has been generated which does precisely that.
+If this eliminates a crash then we log the fact that we've used induction, and then once every instruction has been completed we go back and check for cycles in this induction graph.
+Usually, there aren't any, and so the induction is sound.
+Otherwise, we count each such cycle as a single bug.
+
+\subsection{Completeness}
+This is going to have a lot of forward references, because so many of the potential sources of uncompleteness are in the simplification bits, which I describe much later.
+
+\subsection{Canonicalising machines}
+
+The crash summaries generated by this analysis often contain a lot of redundant information, and this complicates later analysis, and also makes manually reviewing the generated summaries quite difficult.
+SLI therefore implements some canonicalisation passes which remove some of this redundancy.
+
+\todo{Caution, brain dump ahead}
+
+\subsection{Phase 1 canonicalisation}
+\subsubsection{Aliasing canonicalisation}
+The aliasing table is converted into a predicate on the addresses accessed by the various memory accessing instructions and then added to the verification condition.
+
+\subsubsection{Splitting SSA variables}
+Two generations of a single SSA variable can be treated as independent variables provided that they're never used in the same \Phi node.
+This has no directly useful effects on any of the analyses which we perform, but it makes it a bit easier to canonicalise things.
+
+\subsubsection{Thread ID canonicalisation}
+\todo{Not worth mentioning}
+The IDs of threads have no meaning beyond a simple equality test.
+Therefore, if a single summary involves threads 1 and 3, but not thread 2, thread 3 could be renamed to thread 2 without it having any semantic effects.
+Assigning thread IDs deterministically to members of the crash summary increases canonical-ness.
+
+\subsubsection{Register canonicalisation}
+Likewise, register identifiers are pretty much arbitrary, and differences which can be expressed by simple alpha conversion are generally not very interesting.
+We therefore rename them in a way which is deterministic given the structure of the summary.
+\todo{Analogy with De Bruijn indices?}
+
+\subsubsection{CFG canonicalisation}
+\todo{Should really do this, but don't.}
+
+\subsection{Phase 2 canonicalisation}
+The \StateMachines generated by the analysis can include some information which is helpful to the analysis but not usually directly relevant to understanding the bug which is being described.
+The main examples are start and end of function markers and assertions.
+For instance, suppose that the program looks like this:
+
+\begin{verbatim}
+f1() {
+    if (complicated_condition1)
+        return;
+    g()
+}
+f2() {
+    if (complicated_condition2)
+        return;
+    g()
+}
+\end{verbatim}
+
+And that the \StateMachine for \verb|g| is \verb|g'|.
+The state machines for $f1$ and $f2$ might then be:
+
+\begin{verbatim}
+f1: Assert (!complicated_condition1)
+    g'
+f2: Assert (!complicated_condition2)
+    g'
+\end{verbatim}
+
+It is useful to retain \verb|complicated_condition1| and \verb|complicated_condition2| while generating the summaries, because they may contain information important to the bug, but once the summaries have been generated they become much less useful.
+At this point, the only effect of the assertions is to make summaries which would otherwise be identical look like they are different.
+Assertions are therefore removed completely during summary canonicalisation.
+
+Likewise, function start and end markers are only used to determine when on-stack variables become live and dead, which is useful during analysis but becomes redundant once the full aliasing table is available.
+They are therefore removed at this stage.
+
+\subsection{Phase 3 canonicalisation}
+
+Something about load canonicalisation, and why it has to be reversed later?
+
+Important thing to worry about here is satisfiability of verification condition.
+
+\subsubsection{Equality substitution}
+Find equality constraints in the verification condition and use them to eliminate register from the summary.
+This is done even when the result is more ``complex'' than the original input summary.
+Approach is to find all of the registers which we can eliminate, then pick the one which occurs most often and eliminate it, then repeat until we can't eliminate anything else.
+
+\todo{Need to come up with a coherent explanation of why doing this during analysis is bad.  Experimentally, it is, but it's not entirely obvious why that should be so.}
+
+\subsubsection{Assume that the machines survive when run in isolation}
+The verification condition includes the R atomic and W atomic assumptions.
+These are necessary for the analysis to be valid, but tend not to provide a great deal of useful information.
+This canonicalisation phase removes those components of the condition.
+It re-derives the R atomic and W atomic assumptions as conditions, and then simplifies the verification condition and the \StateMachines under the assumption that they hold.
+
+\subsubsection{Removal of redundant clauses}
+The verification condition can sometimes include constraints on registers and memory locations which do not occur anywhere in any of the \StateMachines, usually because the \StateMachines have been simplified after the relevant part of the condition was derived.
+In the simplest case, these variables are completely independent of the interesting variables.
+\todo{Interesting variables are those which appear, or might appear (e.g. LD aliasing), in the \StateMachines.}
+To find these, convert the verification condition to conjunctive normal form and then draw a graph whose nodes are variables and which has an edge between A and B if there is any clause in the verification condition which mentions both A and B.
+Now find the connected components in this graph, $C_i$.
+The verification condition can then be written as $f_1(C_1) \wedge f_2(C_2) \ldots$.
+If any of the $C_i$ don't mention any variables in the interesting set then $f_i(C_i)$ can be set to true and hence discarded.
+
+This is safe if $f_i(C_i)$ is satisfiable, which is the common case anyway.
+
+\subsubsection{Removal of underspecified clauses}
+
+If a free variable (i.e. one which isn't mentioned in the \StateMachines) occurs in precisely one place in the verification condition then it is referred to as being underspecified.
+This means that, from the point of view of satisfiability checking, it can be set to anything at all, without reference to the rest of verification condition, which in turn means that certain clauses can become trivially satisfiable.
+For instance, if $x$ is underspecified in this sense, and the verification condition includes the clause $x == y$, then a satisfiability checker would be able to select an $x$ to make that either true or false, and so our simplifications can assume that $x == y$ is either true or false according to whatever happens to be most convenient in context.
+
+\subsubsection{Functionalisation/conditional independence}
+
+This is analogous to the SSA transformation, but for boolean expressions rather than for programs.
+The idea is that if you have a function of two free variables $f(x, y)$, you can treat $y$ as a function of $x$ to get $f(x, y_x)$
+If $x$ and $y$ are boolean variables then you can then do a case split on $x$ to get $(x \wedge f(T, y_T)) \vee (\not{}x \wedge f(F, y_F))$.
+$y_F$ and $y_T$ are then separate variables, and the two $f$ cases can be subjected to redundant clause removal and underspecified clause removal independently.
+
+\todo{This is in dire need of an example.}
+
+
+\subsection{Phase 4 canonicalisation}
+The compound functions stuff.
+
+\section{Building enforcement patches}
+
+The previous phase of the algorithm produces a set of crash summaries, each of which consists of a read \StateMachine, a write \StateMachine, a verification condition, and an unrolled fragment of the program's control-flow graph.
+Each summary is considered in turn and converted into a binary patch which makes the relevant bug more likely to reproduce.
+We now illustrate the basic approach with a simple example before giving details of the algorithms used.
+
+Suppose that the bug to be exhibited involves two threads:
+
+\begin{verbatim}
+int *global_ptr[];
+void thread1(int idx1) {
+    if (global_ptr[idx1])
+        *global_ptr[idx1] = 7;
+} 
+void thread2(int idx2) {
+    global_ptr[idx2] = NULL;
+}
+\end{verbatim}
+
+Suppose further that these functions compile to this machine code:
+
+\begin{verbatim}
+thread1:
+
+l1:   ADD global_ptr + idx1 -> reg1
+l2:   LOAD *reg1 -> reg2
+l3:   CMP 0, reg2
+l4:   jmp_if_eq l7
+l5:   LOAD *reg1 -> reg3
+l6:   STORE 7 -> *reg3
+l7:
+
+thread2:
+
+l8:   ADD global_ptr + idx2 -> reg4
+l9:   STORE 0 -> *reg4
+\end{verbatim}
+
+There is a risk here that \verb|thread1| might crash if \verb|l9| is interleaved between \verb|l2| and \verb|l5| and \verb|idx1 == idx2|.
+The previous analysis phase will produce \StateMachines something like these:
+
+\begin{tikzpicture}
+  \node[stateSideEffect,initial] (l2) {l2: Load $global\_ptr + idx1$ to $tmp1$};
+  \node[stateIf,below = of l2] (l4) {l4: If $tmp1 == 0$?};
+  \node[stateSideEffect, below = of l4] (l5) {l5: Load $global\_ptr + idx1$ to $tmp2$};
+  \node[stateIf,below = of l5] (l6) {If $BadPtr(tmp2)$?};
+  \node[stateTerminal,below right = of l6] (crash) {Crash};
+  \node[stateTerminal,below left = of l6] (survive) {Survive};
+  \draw[->] (l2) -- (l4);
+  \draw[->] (l4) -- node {false} (l5);
+  \draw[->] (l5) -- (l6);
+  \draw[->] (l4.west) to [bend right=80] node {true} (survive);
+  \draw[->] (l6.east) to [bend left=70] node {true} (crash);
+  \draw[->] (l6.west) to [bend right=75] node {false} (survive);
+  \begin{pgfonlayer}{bg}
+    \node(box99) [fill=black!10,fit=(l2) (l4) (l5) (l6) (survive) (crash)] {};
+  \end{pgfonlayer}
+
+  \begin{scope} [xshift=8cm,yshift=-3cm]
+    \node[stateSideEffect,initial] (l9) {l9: Store $0$ to $global\_ptr + idx2$};
+    \node[stateTerminal,below=of l9] (end) {Finish};
+    \draw[->] (l9) -- (end);
+    \begin{pgfonlayer} {bg}
+      \node [fill=black!10,fit=(l9) (end)] {};
+    \end{pgfonlayer}
+  \end{scope}
+\end{tikzpicture}
+
+With a verification condition that $idx1 == idx2$.
+Using symbolic execution it is then easy to show that, for the crash to happen, \verb|l9| must happen in between \verb|l2| and \verb|l5|, and so we can augment the \StateMachines with happens before edges as shown:
+
+\begin{tikzpicture}
+  \node[stateSideEffect,initial] (l2) {l2: Load $global\_ptr + idx1$ to $tmp1$};
+  \node[stateIf,below = of l2] (l4) {l4: If $tmp1 == 0$?};
+  \node[stateSideEffect, below = of l4] (l5) {l5: Load $global\_ptr + idx1$ to $tmp2$};
+  \node[stateIf,below = of l5] (l6) {If $BadPtr(tmp2)$?};
+  \node[stateTerminal,below right = of l6] (crash) {Crash};
+  \node[stateTerminal,below left = of l6] (survive) {Survive};
+  \draw[->] (l2) -- (l4);
+  \draw[->] (l4) -- node {false} (l5);
+  \draw[->] (l5) -- (l6);
+  \draw[->] (l4.west) to [bend right=80] node {true} (survive);
+  \draw[->] (l6.east) to [bend left=70] node {true} (crash);
+  \draw[->] (l6.west) to [bend right=75] node {false} (survive);
+  \begin{pgfonlayer}{bg}
+    \node(box99) [fill=black!10,fit=(l2) (l4) (l5) (l6) (survive) (crash)] {};
+  \end{pgfonlayer}
+
+  \begin{scope} [xshift=8cm,yshift=-3cm]
+    \node[stateSideEffect,initial] (l9) {l9: Store $0$ to $global\_ptr + idx2$};
+    \node[stateTerminal,below=of l9] (end) {Finish};
+    \draw[->] (l9) -- (end);
+    \begin{pgfonlayer} {bg}
+      \node [fill=black!10,fit=(l9) (end)] {};
+    \end{pgfonlayer}
+  \end{scope}
+
+  \draw[->,happensBeforeEdge] (l2.south) -- (l9.north);
+  \draw[->,happensBeforeEdge] (l9.south) -- (l5.north);
+\end{tikzpicture}
+
+The task is then to modify the program so as to make it more likely that this happen-before graph will be satisfied when the program runs.
+Apart from that, the program should be left unchanged.
+This can be accomplished by inserting small delays into the program's execution.
+In this case, simply inserting a delay before \verb|l5| would probably be sufficient, as that would enlarge the critical section and hence make it more likely that the critical store will intervene.
+
+More complex happens-before graphs can make it more complex to determine where delays should be inserted.
+For instance, suppose that the read \StateMachine consisted of three loads, A, B, and C, and the store \StateMachine of two stores, X and Y, and analysis determines that the bug will reproduce in the interleaving AXBYC.
+There is no simple critical section structure here, making it less obvious where delays need to be inserted.
+Even once it has been determined where to insert the delays, deciding their magnitude remains non-trivial: the delay between X and Y for instance, must be large enough to be confident that B happens before Y if A happens before X, but not so large that C is also likely to happen before Y.
+Simply picking the largest delay which avoids unacceptable performance overheads risks masking such bugs.
+Solving such constraints requires a far more detailed model of the program's structure and the time taken by various instructions, and such models are both difficult to derive and fragile once they are available.
+
+SLI solves this problem using a message-passing system.
+The core idea is to model a happens-before ordering X before Y as a message which is sent by X, after it completes, and collected by Y, before it starts.
+A delay is inserted if Y attempts to collect a message which has not been sent.
+In this way, instructions are delayed long enough to satisfy the happens-before relationships, but no longer, and so the risk that a too-long delay might mask a bug is eliminated.
+The messages used in this system are asynchronous, in the sense that an instruction which sends a message does not need to wait for another instruction to collect it.
+Messages remain sent until the sending thread either finishes its \StateMachine or cannot proceed further through the machine (which might be due to a failed message receive or due to failing a verification condition check; see later), at which point they are cancelled by the thread which originally sent them.
+
+In the example, there will be two messages, one sent from \verb|l2| to \verb|l9| and the other sent from \verb|l9| to \verb|l5|.
+This will lead to types of delay: \verb|l5| will wait for \verb|l9| and \verb|l9| will wait for \verb|l2|.
+These correspond to two different ways of reproducing the bug:
+
+\begin{itemize}
+\item
+  The bug could be reproduced by enlarging the critical section in the read thread and then hoping that a critical store arrives during it.
+  In this approach, we treat the critical stores as a kind of unchanging background of events and try to manipulate the read thread's critical sections so that they cover one of the stores.
+  This corresponds to delaying \verb|l5| until \verb|l9| arrives.
+\item
+  The bug could also be reproduced by capturing whatever critical stores might happen and making them wait until a read thread enters a critical section which they might interfere with before releasing them.
+  Here, we are treating the read thread's critical sections as the unchanging background and manipulating the critical stores to interrupt a critical section.
+  This corresponds to delaying \verb|l9| until \verb|l2| arrives.
+\end{itemize}
+
+The relative effectiveness and performance of these two approaches will depend on the structure of the program.
+SLI can move continuously between the two modes by adjusting the relative magnitude of the delays.
+\editorial{But it doesn't do so quite yet...}
+
+
+This basic message passing scheme is sufficient to ensure that the instructions of the program obey the happens-before graph.
+That is sufficient to trigger the desired behaviour in some cases but not all.
+In particular, it can be insufficient if the read and writing threads are operations on some dynamic structure and there are many instances of the structure in the running program.
+The bug will only be reproduced if the two threads access the same index into \verb|global_ptr|, and, if there are a large number of possible indexes, that is a very low-probability event, so the probability of the bug being reproduced remains very low even when all happens-before relationships are satisfied.
+Even worse, the additional delays mean that the buggy code is run less often than it otherwise would be, and so enforcing the happens-before graph in isolation might actually make the bug less likely to reproduce.
+
+This problem can be avoided if the crash summary's verification condition is checked, in addition to enforcing the happens-before relationships.
+Once a verification condition has failed there is no need to insert additional delays, reducing the overhead of the enforcement patch so that the buggy code will run more often in unit time and hence increasing the likelihood of the desired bug being exhibited.
+
+In the case of the example, the verification condition is $idx1 == idx2$, and so we are only interested in executions where the two indices coincide.
+This illustrates one immediate complication: $idx1$ is a local variable in one thread, and $idx2$ is a local variable in a different thread.
+There are no points in the original program which know the values of both variables, and so no obvious place in which to check the condition.
+SLI solves this problem by attaching the value of $idx1$ to the message which is sent from \verb|l2| to \verb|l9|.
+\verb|l9| then knows the value of both variables, and so the verification condition can be checked there.
+\verb|l9| can therefore be delayed until it receives a message which allows the verification condition to succeed\editorial{Not actually how this is implemented right now; need to fix that.}.
+
+The result of this phase is a crash enforcement plan, which contains the following items:
+
+\begin{itemize}
+\item Send message 1 from \verb|l2|, including the value of $idx1$.
+\item Receive message 1 at \verb|l9|, subject to the condition that $idx1 == idx2$.
+\item Send message 2 from \verb|l9|.
+\item Receive message 2 from \verb|l5|.
+\end{itemize}
+
+The CFG in the crash summary is then annotated with these actions and compiled down into a fragment of machine code which can be loaded into the target program at run time.
+Finally, the target program is modified to between the original program and the new fragment in appropriate places (in this case, it will branch to the new fragment from \verb|l2| and \verb|l9| and return after \verb|l5| and \verb|l9|, and if the branch at \verb|l4| is taken).
+The modified program can then be run as before, and will be more likely to exhibit the target bug.
+
+\subsection{Outline of algorithm}
+
+Actual algorithm:
+
+\begin{itemize}
+\item
+  Augment verification condition with happens-before edges.
+  \editorial{I could actually rework things so that the HB edges are included in the verification condition.  Not really sure why I didn't do that first time around.}
+\item
+  Convert to DNF.
+  For each clause:
+  \begin{itemize}
+  \item
+    Simplify using the implicit ordering.
+    \eidtorial{I suspect that this is actually redundant now with the better machine interpreter.  Need to check that.}
+  \item
+    Figure out where to stash the variables need to compute verification conditions.
+  \item
+    Figure out where to evaluate verification conditions.
+  \item
+    Figure out what the payload of each message should be.
+  \end{itemize}
+\item
+  Combine the results of the various clauses back together.
+\item
+  Optimise the resulting enforcement plan: defer stashing registers where safe, and then remove any prefix of the CFG which runs unmodified.
+\item
+  Figure out where we need to transition between unmodified client code and the augmented version.
+\item
+  Compile the enforcement plan down to a binary patch.
+\end{itemize}
+
+\subsubsection{Deriving happens-before edges}
+
+\subsubsection{Simplify using the implicit ordering}
+Might kill this section.
+
+\subsubsection{Figuring out which computed values need to be stashed, and where}
+
+\subsubsection{Placing the evaluation of verification conditions}
+
+\subsubsection{Computing message payloads}
+
+\subsubsection{Combining multiple machines}
+
+\subsubsection{Optimising the crash enforcement plan}
+Defer register stash, strip redundant CFG prefix.
+
+\subsubsection{Determining patch entry points}
+
+\subsubsection{Compiling the plan to a patch}
+
+This is massively fiddly to implement, but only really needs a few basic ideas to get the message across.
+Best way of describing it is probably just to give the semantics of the cross machines, and then just state that the CFG compiler implements them, rather than trying to give the actual compilation algorithm.
+
+\subsubsection{Run-time considerations}
+
+Timeouts are important in the case where the bug you're looking for doesn't happen, but I don't have a particularly good story about them, which is a bit sad.
+
+\subsection{Comparison to schedule memoisation}
+\subsection{Comparison to STM block inference stuff}
+
+\section{Fixing bugs}
+
+\subsection{Using global locks}
+\subsection{Using message passing}
+
+\chapter{Other modes of operation}
+\section{Building \StateMachines from DRS logs}
+The simplest way to fix a bug is to start from a DRS log.
+Given a log, identifying the thread and which is most responsible for a crash is generally straightforward.
+If the crash is caused by dereferencing a bad pointer then the responsible thread is the one which dereferenced the pointer; if the crash is an assertion failure then the responsible thread is the one which called \verb|abort()| (or equivalent).
+The log then makes it trivial to determine what instructions the responsible thread executed before it crashed, and a suffix of these can be compiled into a \StateMachine capturing the most relevant parts of the responsible thread's behaviour.
+
+
+\subsection{Requirements on the DRS}
+\section{Building \StateMachines from crash dumps}
+\section{Turning a collection of \StateMachines into a fix}
+
+\chapter{Analysis on \StateMachines}
+\section{Alias analysis}
+\subsection{Alias analysis and identification of thread-local accesses}
+There are two major complications to optimising memory accesses:
+
+\begin{itemize}
+\item
+  Alias analysis.
+  Most memory-related optimisations rely on being able to tell whether two pointers alias with each other.
+  This is impossible in the general case, but it is possible to develop some useful (sound and unsound) approximations.
+  This is very similar to the problem of the same name faced by optimising compilers, except that optimising compilers generally have more information (e.g. type information).
+\item
+  Checking whether an access is thread-local.
+  Most races are mediated through memory, and all of the races targeted by SLI will involve some memory-accessing component.
+  Correctly handling races restricts the available space of optimisations, often substantially.
+  For instance, if a machine stores to a location and then immediately loads from it again then it might be tempting to forward the stored expression to the load, but this is invalid if another thread might store to the same location in between the two accesses.
+  This is a common cause of races, and one which can be easily handled by SLI-like techniques, and so it is important not to eliminate it at the machine simplification stage.
+\end{itemize}
+
+If a DRS log is available then this is generally trivial, as all of the necessary information will be present in the log\editorial{should really have a ref to the DRS section, which'll have more details.}.
+Otherwise, SLI uses a combination of static and dynamic analyses to solve these problems.
+
+\subsubsection{Dynamic analysis}
+
+The most important technique used by SLI is a dynamic analysis which is used before starting static analysis to build a model of how the program behaves.
+This attempts to classify the memory-accessing instructions in the program according to which other memory accesses they might alias with and whether the memory accesses appears to be private to that thread.
+The result is an aliasing database which consists of a set of aliasing entries.
+Each aliasing entry consists of a pair of sets of instructions, with one set containing loads and the other stores, with each instruction tagged with a bit saying whether the accessed memory was thread-local or possibly-shared.
+The database is generated using a dynamic analysis implemented as a Valgrind skin.
+
+\todo{Should really describe how the skin works.  Mostly just an engineering detail, though.}
+
+\todo{The bit where we figure out whether a dynamic pointer is thread-private is kind of interesting, though.}
+
+Given this database, it is generally possible to eliminate the vast majority of possibly-aliasing pairs quickly, which means that the aliasing problem becomes much simpler.
+Of course, it is only correct if the dynamic execution completely captures every possible behaviour of the program.
+This is a particular concern if the program is misbehaving, as such misbehaviour might lead to wild pointer-type bugs, or uses after free, or a number of other bugs, which would mean that the afflicted instructions could potentially alias with almost any other memory-accessing instruction in the program, and this would not be accurately reflected in the aliasing database.
+
+\todo{Should really say something more about that}
+
+This database does not include accesses to the local stack, in order to keep its size down to something reasonable.
+
+\subsubsection{Accesses to the current stack frame}
+
+The dynamic aliasing database does not include any information on accesses to the current thread's stack, and so SLI needs to employ a different mechanism to determine aliasing relations for those accesses.
+Most such accesses take the form of constant offsets from \verb|RSP| (or \verb|RBP|, which is converted to a \verb|RSP| offset as discussed in \S\ref{sect:rbp_canonicalisation}), and these can be handled trivially.
+More interesting are cases where pointers to stack-allocated objects are stored into other registers.
+These are moderately rare\editorial{Numbers?}, but, when they do occur, tend to cause significant complications for the other analysis passes, as stores to those objects cannot be easily shown to be independent of independent accesses.
+For instance, suppose that SLI had derived a machine fragment like so:
+
+\begin{verbatim}
+STORE t1 -> RSP + 8 @ A
+STORE t2 -> RBX     @ B
+LOAD  t3 <- RSP + 8 @ C
+\end{verbatim}
+
+and that \verb|RBX| in this cases points at the local stack.
+Neither the dynamic aliasing database nor simple peephole alias checking will be able to show that \verb|A| and \verb|B| do not alias, and so it will not be possible to forward the store at \verb|A| to the load at \verb|C|.
+In larger examples this can cause significant problems.
+
+Most such non-\verb|RSP| stack pointers point outside of the current stack frame (usually because the calling function has allocated a local variable and then passed in a pointer to it), as the compiler will generally emit \verb|RSP|- or \verb|RBP|-relative accesses for most local variables.
+SLI therefore uses a static points-to analysis to classify registers according to where they point:
+
+\begin{itemize}
+\item
+  The current function's stack frame.
+\item
+  Outside the current function's stack frame.
+  This could be a calling function's frame, the heap, statically allocated data, or somewhere else entirely.
+\item
+  Nowhere at all.
+  The register is not a valid pointer.
+  Strictly speaking, this could be treated as a pointer outside of the current frame, but splitting the state out like this does not complicate the analysis and can provide marginally better results in some corner cases.
+\end{itemize}
+
+Each combination of register and static instruction is assigned some subset of those classifications representing the possible dynamic values of the register.
+Static instructions are also assigned a flag indicating whether any pointers to the current stack frame have escaped i.e. been stored to memory outside of the stack frame.
+If the stack has not escaped then loads can be assumed to return something which does not point to the current frame; otherwise, any loaded pointer might be a stack pointer.
+\editorial{Could do better than this with a more complete analysis, but I really don't care all that much.}
+
+The static analysis is, at its core, an iteration to a fixed point applied independently to each function.
+In the initial state, the entrypoint instruction of the function is assigned a configuration in which \verb|RSP| is definitely a pointer to the current frame and every other register is either not a pointer or a pointer outside of the current frame.
+Other instructions start with a bottom configuration: no registers are assigned any classification, and the stack pointer is considered not to have escaped.
+
+\todo{The update step is pretty damn obvious, but I should probably describe it explicitly for completeness.}
+
+\todo{Once the iteration has converged, any un-visited instructions have their bottom configuration replaced by a top configuration, in which any aliasing relationships are possible.  Not entirely convinced that's a good idea; I suspect it's just going to hide bugs.}
+
+As usual, called functions are assumed to be pure, in the sense that they compute some function of their arguments and return it in a well-known register, with no other side-effects.
+The return register is considered to possibly contain a stack pointer if any of the arguments to the function possibly contain a stack pointer.
+If the call has multiple possible targets then each is considered in turn, and the result is the join of all of the results of the individual callable functions.
+\todo{Explain how I determine the possible targets.}
+\todo{Explain how I determine what arguments a function has.}
+\todo{This is unsound only because of the way we handle escaped stack pointers.  Doing it properly would be trivial, but would make the analysis less effective.  Should collect numbers on how bad it would be.}
+
+The underlying assumption here is essentially that the program to be analysed follows a broadly normal calling convention where local variables cannot be accessed until the relevant function is invoked, and must not be accessed after the function returns.
+There is also an assumption that the analysis can correctly determine the entry points of functions, and that every instruction is part of precisely one function\editorial{Really need to explain how we define functions in the presence of tail calls.}.
+That ensures that, at the start of a function, no pointers to function-local variables can exist anywhere in the program's address space or register state, except for the stack pointer itself.
+Assuming that that assumption is correct, this analysis is sound, except for the handling of called functions.
+
+The result of this analysis is a map which classifies every combination of static instruction and register name according to what type of memory (current stack frame, other memory, or invalid memory) it points to.
+This allows the alias analysis to rapidly eliminate the vast majority of aliasing checks comparing accesses to local variables to accesses to other types of memory, which is a significant win\editorial{blah}.
+
+\subsubsection{Fallback resolution}
+When neither the dynamic nor local-frame static analyses can answer an aliasing question, SLI attempts to resolve it using a peephole resolver.
+To check whether \verb|A| and \verb|B| might possibly refer to the same memory location, SLI generates the expression \verb|A == B| and then passes it to the expression simplifier (see \S\ref{sect:peephole_simplification_expressions}).
+If the result is the constant \verb|1| then \verb|A| and \verb|B| definitely alias; if it is the constant \verb|0| then they definitely don't; and otherwise they might alias and might not.
+In the last case alias analysis, finally, fails.
+Depending on the intended use of the alias result, SLI will then either choose a safe default or use a case split to consider both possibilities.
+
+\section{Static analysis-based simplifications}
+\section{Discussion of the SSA form used}
+Because it's very subtly different from the form most commonly used in optimising compilers.
+Also worth talking about the use of SDA form here as well.
+
+\section{Other simplifications}
+\subsection{Dead register elimination}
+\todo{I suspect I'm being a bit condescending describing this at all, much less giving it this many words.}
+
+SLI is generally only interested in a small part of the program's behaviour.
+This means that many of the values computed by the program will be completely irrelevant and can be safely eliminated.
+Dead register elimination is one of the simplest ways of doing so.
+In this pass, SLI examines the generated machine to discover temporary variables whose values are never used, and then eliminates them completely.
+It is analogous to the dead code elimination pass of an optimising compiler.
+
+As an example, suppose that the original program looked like this:
+
+\begin{verbatim}
+*ptr = global_variable1->field1->field2 + global_variable2;
+\end{verbatim}
+
+This might generate machine code like this:
+
+\begin{verbatim}
+A:  load ptr -> rsi
+B:  load global_variable1 -> rax
+C:  load (rax + offsetof(field1)) -> rax
+D:  load (rax + offsetof(field2)) -> rax
+E:  load global_variable2 -> rdx
+F:  add rdx + rax -> rax
+G:  load rax -> (rsi)
+\end{verbatim}
+
+and SLI is attempting to investigate a possible crash caused by \verb|rsi| being a bad pointer at \verb|G|.
+The first approximation machine generated might be (after conversion to SSA):
+
+\begin{verbatim}
+@A:
+l1: LOAD ptr -> rsi:0
+    LOAD global_variable1 -> rax:0
+    LOAD (rax:0 + offsetof(field1)) -> rax:1
+    LOAD (rax:1 + offsetof(field2)) -> rax:2
+    LOAD global_variable2 -> rdx:0
+    COPY rax:3 <- rax:2 + rdx:0
+    l2
+l2: if (BadPtr(rsi))
+    then l3
+    else l4
+l3: <crash>
+l4: <survive>
+\end{verbatim}
+
+Most of the loads can have no possible effect on the outcome of the machine, as the value loaded can never reach the condition of the \verb|l2| state\footnote{Assuming that they do not themselves dereference bad memory, of course.  However, if they do, the crash of interest will not occur, and so that case can be at some level ignored.}.
+In that sense, they are dead, and should be removed.
+
+The algorithm used for doing so has two parts.
+In the first, the machine is examined to determine where each variable is live using a straightforward Tarski-style fixed-point iteration.
+In the second, any definitions of variables which are never used are eliminated.
+
+The Tarski iteration works by building up a mapping from machine states to sets of variables which are valid at the start of that state.
+In the initial state, anything referenced by the free variables table is considered to be valid everywhere (see~\ref{sect:freevars}), and anything else is considered to be dead everywhere.
+The update rule proceeds by propagating liveness information backwards through machine edges until it reaches the start of the edge, marking variables live when they are used and dead when they are assigned to.
+Meets in the state graph are handled by taking the union of the liveness information at the starts of all of the successor edges.
+This process iterates until it converges.
+At that point, the analysis has a mapping from locations in the state machine to the set registers which are live at those locations, and given that it is trivial to determine which side effects are dead and to eliminate them.
+
+This optimisation has a pleasant cascading property: when a side-effect is eliminated, it will no longer keep its inputs live, which can cause them to become dead.
+That often causes further side effects to become dead, and so allow more of the machine to be eliminated.
+This allows this very simple optimisation to sometimes eliminate\editorial{si} large amounts of the machine.
+
+\subsection{Register copy propagation}
+\todo{I'm basically restating how Cifuentes' register copy propagation algorithm works here, which might be a bit of a waste of time.  Expand on it later on, though, so having the details here helps a bit.}
+
+Compiling a high-level language into machine code requires complex expressions to be broken down into a series of smaller operations.
+SLI then examines the resulting sequence of small operations, and this tends to lead to approximation machines with a large number of intermediate temporary values each of which stores the result of a very simple calculation.
+Later analysis phases are generally more straightforward if these simple expressions are re-combined into one larger one.
+For instance, a C program like this:
+
+\begin{verbatim}
+x = (y * 32 + z / 8) % (y + 2);
+\end{verbatim}
+
+might compile into machine code\footnote{This is intended to be a representation of x86 machine code.  It is somewhat more explicit than the usual Intel or AT\&{}T syntaxes, in the hope that it will be easily understood by readers unfamiliar with the details of the x86 architecture.} like this:
+
+\begin{verbatim}
+A: mov y -> rax
+   shl rax << 5 -> rax
+   mov z -> rdx
+   shr rdx >> 3 -> rdx
+   add rdx + rax -> rax
+   mov y -> rdx
+   add 2 + rdx -> rdx
+   div rax/rdx -> rax ; rax%rdx -> rdx
+\end{verbatim}
+
+This might translate to an approximation machine like so:
+
+\begin{verbatim}
+@A: COPY y -> rax:0
+    COPY rax:1 <- rax:0 << 5
+    COPY z -> rdx:0
+    COPY rdx:1 <- rdx:0 >> 3
+    COPY rax:2 <- rax:1 + rdx:1
+    COPY y -> rdx:2
+    COPY rdx:3 <- 2 + rdx:2
+    COPY rax:3 <- rax:2/rdx:3
+    COPY rdx:4 <- rax:3%rdx:3
+\end{verbatim}
+
+after the SSA transformation\footnote{This assumes that y and z are not in memory; the effects of loads are explained later.}.
+SLI's register copy analysis will transform this to
+
+\begin{verbatim}
+@A: COPY y -> rax:0
+    COPY rax:1 <- y << 5
+    COPY z -> rdx:0
+    COPY rdx:1 <- z >> 3
+    COPY rax:2 <- (y << 5) + (z >> 3)
+    COPY y -> rdx:2
+    COPY rdx:3 <- 2 + y
+    COPY rax:3 <- ((y << 5) + (z >> 3))/(2+y)
+    COPY rdx:4 <- ((y << 5) + (z >> 3))%(2+y)
+\end{verbatim}
+
+A simple dead code elimination pass can then reduce this to:
+
+\begin{verbatim}
+@A: COPY rdx:4 <- ((y << 5) + (z >> 3))%(2+y)
+\end{verbatim}
+
+which is a reasonable representation of the original code.
+
+The algorithm here is essentially Cifuentes' register copy propagation algorithm\needCite{}.
+It is explained in some detail here, as later sections will extend it to work in a wider variety of circumstances, and so it is useful to understand all of the details.
+The first phase is to determine which expressions are available at the start and end of each edge.
+At a high-level, this is a simple Tarski-style fixed point iteration, starting by assuming that every possible side-effect is available at every location, except for the start location at which nothing is available.
+We then check whether the available sets are consistent with the structure of the approximation machine, and, if not, remove some set of possibly-available side-effects, iterating until the available sets are consistent.
+There are two main subtleties here:
+
+\begin{itemize}
+\item
+  The join of two control flow paths: just take the intersection of what's available on the two paths.
+\item
+  Updating the available set across a side-effect: introduce the new side-effect, then kill anything which depends on the register which is being modified.
+\end{itemize}
+
+\todo{Expand and make sane.}
+
+Once the available expression map has been built, it can be used to simplify the approximation machine.
+This is straightforward: if a side-effect \verb|COPY t1 <- e1| is available at a side-effect \verb|S|, and \verb|S| makes some reference to \verb|t1|, \verb|S| can be rewritten so that all of the references to \verb|t1| are replaced with references to \verb|e1|.
+This is likely to make \verb|S| itself larger, in many cases exponentially so, but eliminates the dependency on the earlier side-effect, which makes the resulting expressions easier to analyse and can also lead to the earlier side-effect becoming dead.
+
+\subsection{RBP canonicalisation}
+\label{sect:rbp_canonicalisation}
+
+Many of the optimisations and simplifications used in SLI depend on having a reasonably effective oracle for resolving pointer aliasing questions, and in particular for resolving pointer aliasing questions when the pointers refer to local variables in the current function's stack frame.
+For some functions, all of the local variable references will be expressed as simple static references to the \verb|RSP| register, and in those cases this is straightforward.
+Other functions will establish a frame pointer, almost always \verb|RBP|, and refer to local variables exclusively via that pointer, and those cases are also straightforward.
+More complicated are those which use a mixture of both styles of reference\editorial{Really need a better handle on why the compiler does this}.
+In those cases the alias resolution algorithm must be able to compare \verb|RBP|-relative pointers to \verb|RSP|-relative ones, and determine whether they refer to the same memory location, and this is difficult without knowing the relationship between the two registers.
+This can mean that, for instance, available expression analysis is unable to identify local variables, and this then inhibits most other simplifications\editorial{problem is that one wild pointer can kill off an enormous number of stores, so they're then not available for forwarding to loads and it all goes a bit wrong.}.
+
+Fortunately, when a function uses a frame pointer, its prologue will almost always initialise \verb|RBP| to be a constant offset from \verb|RSP| at the start of the function.
+Once the machine building process has backtracked far enough to reach this initialisation the usual register copy propagation simplifications will rewrite all of the \verb|RBP|-based references into equivalent \verb|RSP|-based ones, and the various other simplifications become viable again.
+Unfortunately, the intermediate machines generated during backtracking can become extremely complex and this can lead to very poor performance in large functions (remember that many of these simplifications have greater than $O(n)$ cost).
+SLI ameliorates this issue by using static analysis to determine, for each instruction, whether \verb|RBP| at that instruction can be expressed as \verb|RSP| plus a constant, and, if so, what that constant is.
+This will be possible for the vast majority of instructions in functions which use a frame pointer, due to the way in which frame pointers are implemented by most compilers.
+When there is such a constant offset it is trivial to rewrite \verb|RBP| references into equivalent \verb|RSP| ones as soon as they are encountered, and this is what SLI does.
+This ensures that alias analysis is effective throughout the life of the machine, and so the complexity of intermediate machines is kept to an acceptably low level\footnote{It would also have been possible to use this analysis directly in the alias resolution engine.  Rewriting the references in the machines is preferred because it makes the information easily available elsewhere in the analysis, e.g. if the program itself checks for aliasing between two stack pointers.  This is a rare operation, however, and the two approaches are equivalent for most practical purposes.}.
+
+The static analysis is run before the main machine building process starts.
+It is, as usual, structured as a fixed point iteration.
+We use the results of a prior analysis to find the entry points of every function, defined here as non-overlapping blocks of instructions with a defined head instruction, such that there are no branches of any sort from outside the function into it and such that every instruction which can be targeted by a call instruction is the head of a function\editorial{explain the algorithm for doing this somewhere, and also why this definition is correct in the presence of tail calls.}.
+We perform a fixed point iteration for each function independently.
+The structure to be iterated is a map from instructions to offset states, where a state is one of $unknown$, $valid(k)$, or $impossible$, and the map starts off mapping every instruction to $unknown$.
+A value of $valid(k)$ indicates that at the end of the instruction the offset is guaranteed to be precisely $k$, while a value of $impossible$ indicates that no constant offset is possible.
+$unknown$ indicates simply that the algorithm has been unable to assign a state to that instruction so far.
+The monotonicity constraint is that $unknown$ can be transformed into $valid(k)$ or $impossible$, and $valid(k)$ can be transformed into $impossible$, but no other transitions are possible.
+There is a join rule for these states, where $unknown \vee k = k$, for any k; $impossible \vee k = impossible$, for any k; $valid(k) \vee valid(k) = valid(k)$ and $valid(k) \vee valid(k') = impossible$ if $k \neq k'$;
+Recalculating the state of an instruction is then straightforward:
+
+\begin{itemize}
+\item
+  If the instruction does not modify either \verb|RBP| or \verb|RSP| then its state is simply the join of all of its predecessor states.
+\item
+  If it simply sets \verb|RBP| to be \verb|RSP| plus a constant $k$ then its state is $valid(k)$.
+\item
+  If it increments \verb|RBP| by a constant $k$, and the join of its predecessor states is $valid(k')$ then its state is $valid(k'+k)$.
+\item
+  If it increments \verb|RSP| by a constant $k$, and the join of its predecessor states is $valid(k')$ then its state is $valid(k'-k)$.
+\item
+  Otherwise, its state is $impossible$.
+\end{itemize}
+
+This fixed point iteration is guaranteed to converge by the existence of $\vee$, the monotonicity of the update process, and Tarski's theorem.
+When it does, the instructions whose state is $valid(k)$ will be (with one exception) those where the \verb|RBP| to \verb|RSP| offset is $k$.
+
+There is a slightly subtlety here, which is that when building the join of an instruction's predecessors' states instructions which currently have state $unknown$ are ignored, and this can sometimes lead to $valid(k)$ being set for those instructions even if they do not have a fixed \verb|RBP| to \verb|RSP| offset.
+In the final, converged, state space, these\editorial{the ones which use $unknown$ predecessors, not the bad ones} correspond to instructions which the function's initial value of \verb|RBP| and \verb|RSP| can reach with only a constant offset.
+Under the standard AMD64 calling convention, \verb|RBP| is undefined on entry to a function, and so, assuming that the compiler honours the convention and has not produced a dependency on an uninitialised value, these instructions cannot themselves make any use of \verb|RBP|.
+This means that, even if the result is sometimes inaccurate, the inaccurate value will never be used, and so is unimportant.
+
+\todo{I had a note in the first draft of this to explain why it's not
+  a good idea to do this every time, but I don't remember why that
+  would be the case, and looking at the source I in fact do do it
+  every time.  Hmm.}
+
+\todo{Should really eval how often the static analysis works, and explain the situations in which it doesn't.}
+
+\todo{This isn't really how I do it any more.}
+
+\subsection{Extended copy propagation}
+\todo{It'd be a really good idea to do another literature trawl and make sure I'm not repeating someone else's work here.}
+
+The register copy propagation algorithm described in \S\ref{sect:register_copy_propagation} acts to remove temporary registers from the approximation machine.
+The extended copy propagation algorithm extends this algorithm to also remove temporary memory locations.
+This has two components:
+
+\begin{itemize}
+\item
+  First, \verb|LOAD| and \verb|STORE| side effects must be introduced to the set of available side-effects when appropriate.
+  If a memory access is definitely to thread-local memory (which can be determined either by the aliasing database or by determining that the pointer is to the current thread's stack) then the access can be made available as soon as it is encountered.
+  Otherwise, it can only be introduced if the analysis has some reason to believe that there are no interfering stores.
+  This is generally decided when the approximation machine is derived, and is set for the entire approximation machine.
+\item
+  Second, they must be updated to remain consistent with the structure of the approximation machine.
+  The rules for \verb|LOAD|s are essentially the same as those for stores: they are introduced to the available set as soon as they are encountered, and then any available side effects which refer to the temporary overwritten by the \verb|LOAD| are removed from the available set.
+
+  \verb|STORE|s are conceptually similar, except that instead of removing side-effects which refer to a targeted temporary the analysis must remove and memory access which potentially aliases with the \verb|STORE|.
+  This is checked by calling into the alias analysis engine.
+  If the alias analysis engine fails then the analysis must assume that the side-effects possibly alias, and hence remove the earlier one from the available set.
+\end{itemize}
+
+This algorithm ensures that:
+
+\begin{itemize}
+\item
+  If the available set for a side-effect includes the side-effect \verb|LOAD t <- addr| then the memory location referred to by \verb|addr| is definitely equal to the temporary \verb|t| when the original side-effect executes.
+  Therefore, if \verb|LOAD t1 <- addr1| is available at \verb|LOAD t2 <- addr2|, and \verb|addr1| and \verb|addr2| can be shown to definitely alias, the second side-effect can be replaced by \verb|COPY t2 <- t1|.
+\item
+  If the available set instead contains \verb|STORE val -> addr| then the location \verb|addr| instead contains the value of the expression \verb|val|.
+  Therefore, if \verb|STORE val -> addr1| is available at \verb|LOAD t <- addr2|, and \verb|addr1| and \verb|addr2| can be shown to definitely alias, the second side-effect can be replaced by \verb|COPY t <- val|.
+\end{itemize}
+
+These simplifications are sufficient to remove the vast majority of loads from function-local variables, and can also eliminate a useful number of accesses to thread-local data outside of the current stack frame\editorial{Numbers?}.
+
+\todo{Not sure whether I want to try to prove this is correct wrt the
+  semantics.  On the one hand, it is, but on the other, proving it is
+  tedious and uninformative.  Probably best to just state it.}
+
+\todo{Maybe mention that this can be used to convert acyclic machines
+  into DSA without going through SSA?  Interesting, but not very
+  important, since by the time I run this I use SSA anyway.}
+
+\subsection{Dead store elimination}
+Many \verb|STORE| side-effects in an approximation machine will never be \verb|LOAD|ed by that machine (in particular, the extended copy propagation algorithm can often generate these by eliminating \verb|LOAD| side-effects).
+If these can be shown to never by \verb|LOAD|ed by a concurrently-executing machine then they can be eliminated completely, which may in turn cause the computation of the address and value to be stored to themselves become dead, potentially allowing extensive further simplifications.
+The dead store elimination pass identifies and eliminates most of these redundant stores.
+
+\todo{I'm pretty confident that there's a fundamental reason not to do
+  this as a Tarski iteration, but I can't quite remember what it is.
+  Should probably try to recover that a bit.}
+
+The algorithm used by SLI is the simplest possible: for each \verb|STORE| side effect which does not appear to be thread-local\editorial{Need ref to the section on identifying thread-local stores}, explore the approximation machine forwards from that point looking for subsequent \verb|LOAD| side effects.
+For each one found, test whether that load might alias with the store of interest.
+If, after exploring the entire machine, no potentially-aliasing loads have been found, the store is considered to be dead and is eliminated.
+In this way stores to thread-local memory which are never loaded will be eliminated.
+
+This algorithm is arguably somewhat less efficient than a fixed point iteration-based one, but profiling showed that it does not account for a large proportion of the total run time of the system under any of the test workloads evaluated\editorial{Need to dig out numbers for this.}, and so this is not a major concern.
+
+\todo{Again, we don't actually remove the stores, but instead replace them with assertion side effects.}
+
+\todo{I'm using a somewhat odd definition of thread-local memory here (which includes, for instance, all stores issued by a load machine).}
+
+\todo{There's a variant of this which optimises two machines which are going to be executed together, by eliminating some non-thread-local stores which definitely aren't used by the other machine.  Should probably explain that one here as well.}
+
+\todo{Making this sound wrt bad pointers requires a bit of fancy footwork, but should be doable with a bit of effort.}
+
+\subsection{CFG trimming}
+
+Many of the instructions examined in the analysis will ultimately prove to be irrelevant to the final result, and so will be eliminated by the analysis
+They will, however, continue to be represented in the \StateMachine CFG.
+This pass eliminates these wherever possible.
+
+\todo{Write me.}
+
+\section{Unsound simplifications}
+\section{The satisfiability checker}
+This doesn't really belong here.  I should figure out where to put it.  I should also figure out whether I'd be better off using someone else's checker.
+
+\section{The expression simplifier}
+These are pretty much just local arithmetic rules.
+I should describe them somewhere, but it'll probably just be a single big display with all of the rules I use.
+Most of them are very stupid.
+
+\section{Comparison to decompilation techniques}
+Not sure what I'm going to put in here, but it seems kind of necessary.
+Generally need to spend some more time looking at the decompilation literature.
+
+\todo{One obvious decompilation technique which I'm \emph{not} using is local variable recovery.  Should really explain why I didn't use it.}
+
+\section{Comparison to reverse slicing techniques}
+Surprisingly few, but probably worth discussing here anyway.
+Pretty much all of the existing slicing literature is on source-level stuff, rather than binary-level, but there are still a few parallels.
+
+\chapter{Evaluation}
+\chapter{Related work}
+\chapter{Conclusions}
+
+\end{document}
+
