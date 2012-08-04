@@ -52,7 +52,11 @@
 \newcommand{\StateMachines}{finite state automata}
 \newcommand{\CrashSummary}{crash summary}
 \newcommand{\CrashSummaries}{crash summaries}
+
 \newcommand{\concatDynTraces}{\oplus}
+\newcommand{\interleaveDynTraces}{\otimes}
+\newcommand{\survive}{\top}
+\newcommand{\crash}{\bot}
 \newcommand{\queue}[1]{\{#1\}}
 \newcommand{\map}[1]{\{#1\}}
 \newcommand{\mapIndex}[2]{#1[#2]}
@@ -89,16 +93,16 @@ Fairly dumb summary of a little bit of related work.
 \section{Finding candidate bugs}
 \subsection{Formal definition of the kind of bug which we look for}
 \label{sect:finding_bugs:finding_candidate_bugs:formal_definition}
-For the purposes of this section, we define a bug to be a tuple $(R, W, S)$ such that:
+For the purposes of this section, we define a bug to be a tuple $(R, W, P)$ such that:
 
 \begin{itemize}
-\item[R valid] $R$ is a fragment of a possible program execution containing $N_r$ dynamic instructions.
-\item[W valid] $W$ is a fragment of a possible program execution containing $N_w$ dynamic instructions.
-\item[S valid] $S$ is a possible state of the program.
-\item[R atomic] Running $R$ to completion from state $S$ does not cause a crash.
-\item[W atomic] Running $W$ to completion and then running $R$ to completion starting from $S$ does not lead to a crash.
+\item[P valid] $P$ is a sequence of dynamic instructions which form a prefix of a possible execution of the program.
+\item[R valid] $R$ is a sequence of dynamic instructions in a single thread such that $P \concatDynTraces R$, where $\concatDynTraces$ is simple concatenation, is a prefix of a possible execution of the program.
+\item[W valid] Similarly, $W$ is a sequence of dynamic instructions in a single thread such that $P \concatDynTraces W$ is a prefix of a possible execution of the program.
+\item[R atomic] $P \concatDynTraces R$ does not crash.
+\item[W atomic] $P \concatDynTraces W \concatDynTraces R$ does not crash.
 \item[W isolation] $W$ does not load from any locations which are stored to by $R$.
-\item[Crash possible] Interleaving $W$ and $R$ starting from state $S$ might cause $R$ to crash due to dereferencing a bad pointer in its final instruction.
+\item[Crash possible] $P \concatDynTraces (W \interleaveDynTraces R)$ can crash, where $\interleaveDynTraces$ is the interleaving of dynamic instruction traces.
 \item[Concurrent] It is possible for the program to be in state S with one thread at the first instruction of $R$ while another thread is simultaneously at the first instruction of $W$.
 \end{itemize}
 
@@ -120,38 +124,56 @@ Big ones:
   The no-mandatory-concurrency assumption.
 \end{itemize}
 
-\subsubsection{Effect of setting $N_r$ and $N_w$}
+\subsubsection{Effect of setting the $N_r$ and $N_w$}
+
 Effect of setting $N_r$ and $N_w$: obviously setting it too small will miss bugs, but it's also possible to miss things by setting it too big.
-Easiest example to understand: mandatory concurrency
+This can happen if the program relies on a certain minimum level of concurrency for correctness, such that running two threads in isolation is guaranteed to crash but running them in parallel can allow the program to complete successfully.
 
-e.g. the reading thread says this:
+\begin{figure}
+\begin{tabular}{ll}
+Read thread:
 
-\begin{itemize}
-\item Load $t$ from loc1
-\item Store $t$ to loc2
-\item Load $t'$ from loc1
-\item Load $t''$ from loc2
-\item Crash if $t' == t''$
-\end{itemize}
+Load $t$ from loc1
+Store $t$ to loc2
+Load $t'$ from loc1
+Load $t''$ from loc2
+Crash if $t' == t''$
 
-while the writing thread says this:
+&
 
-\begin{itemize}
-\item Load $t'''$ from loc1
-\item Store $t'''$ to loc2
-\item Store $t''' + 1$ to loc2
-\end{itemize}
+Write thread:
 
-These will not form a valid bug tuple because running the reading thread atomically will always crash.
-However, if the reading thread is truncated to just this:
+Load $t'''$ from loc1
+Store $t'''$ to loc2
+Store $t''' + 1$ to loc2
+\end{tabular}
+\label{fig:mandatory_concurrrency1}
+\caption{Example of threads with mandatory concurrency.}
+\end{figure}
 
-\begin{itemize}
-\item Load $t'$ from loc1
-\item Load $t''$ from loc2
-\item Crash if $t' == t''$
-\end{itemize}
+\begin{figure}
+\begin{tabular}{ll}
+Read thread:
 
-then there will be a valid tuple:
+Load $t'$ from loc1
+Load $t''$ from loc2
+Crash if $t' == t''$
+
+&
+
+Write thread:
+
+Load $t'''$ from loc1
+Store $t'''$ to loc2
+Store $t''' + 1$ to loc2
+\end{tabular}
+\label{fig:mandatory_concurrrency2}
+\caption{Truncation of the example in figure~\ref{fig:mandatory_concurrency1}.}
+\end{figure}
+
+For example, consider the threads show in figure~\ref{fig:mandatory_concurrency1}.
+Running the read thread atomically is guaranteed to crash, from any starting thread, and so there will be no valid bug tuples based on the complete definition of these threads.
+On the other hand, if the read thread is truncated as shown in figure~\ref{fig:mandatory_concurrency2} then there may be such a tuple:
 
 \begin{itemize}
 \item The R atomic rule is satisfied provided that the initial value of loc1 is not equal to loc2.
@@ -168,95 +190,115 @@ then there will be a valid tuple:
 
 Within the definition used by SLI, the larger program fragment is correct even though the smaller one is incorrect, and so using a larger window size can lead to bugs not being reported.
 
-The fundamental problem here is that the larger read side will crash when run in isolation, but can be saved by concurrent modifications to the structures which it is accessing.
-This kind of mandatory concurrency, where the program crashes because of insufficient concurrency rather than excessive concurrency, is handled badly by SLI.
-It is in almost all cases a bug in the underlying program, since essentially no processor architectures or operating systems provide sufficient guarantees to ensure that the modification will not be delayed; however, it is not a bug which SLI is able to detect, and it can mask other bugs which SLI would otherwise be able to find and fix\editorial{I really don't believe that this is ever actually happening, but I should probably check that}.
-
-
-Apart from that, can extending the thresholds ever lead to bug tuples being lost?
-Sometimes.
-Suppose that there is a bug tuple $(R_a, W_a, S_a)$ with $N_r = a$, and we're interested in the behaviour when $N_r = b$, where $b > a$.
-Suppose further that there is some sequence of instructions $R'$ of length $b - a$ ending at the start of $R_a$ which transforms state $S_a$ to state $T$.
-In that case, $(R' \concatDynTraces R_a, W_a, T)$ is a valid bug tuple with $N_r = b$, where $\concatDynTraces$ is the concatenation of dynamic instruction sequences.
-To see this, take each of the constraints on bug tuples in turn:
-
-\begin{itemize}
-\item R valid, W valid, and S valid are all true by construction.
-\item R atomic is true because $R'$ transforms $T$ into $S_a$ and we know that $R_a(S_a)$ is true from the assumption that the original tuple was valid.
-\item
-  W atomic is true because $(W ++ R)(S) = (W ++ R)(R'(T)) = (R' ++ W ++ R)(T)$ definitely doesn't crash, from the original tuple.
-  If $(W ++ R' ++ R)(T)$ can crash then that means that the program has mandatory concurrency, which has already been discussed.
-\item
-  W isolation \editorial{God only knows what I'm going to do as an argument here.}.
-\item
-  The crash possible constraint is true because the cross product scheduling $((R' \concatDynTraces R_a) x W)(T)$ will include as one of its possible schedulings $(R' \concatDynTraces (R_a x W))(T) = (R_a x W)(R'(T)) = (R_a x W)(S_a)$, which we know crashes from the original tuple.
-\item
-  The concurrent constraint is true by construction\editorial{Do I believe this?}.
-\end{itemize}
-
-So in the case where $T$ exists, no bugs will be lost by increasing the read threshold.
-What happens when $T$ does not exist?
-This implies that, while it is possible for the read thread to reach the start of $R$ in state $S$, there is no sequence of instructions in the read thread of appropriate length which ends at the start of $R$ in state $S$ when run in isolation.
-In other words, the read thread can only reach $R$ in state $S$ with the assistance of some other thread, and in particular by loading some location which is stored by that other thread.
-
-Suppose that $b = a + 1$.
-Then it must be that the way to reach $S$ is to start in $T$, issue $I_R$ and then issue some alien store.
-i.e. $W'(I(T)) == S$.
-If the alien store gets incorporated into $W$ then we have $W_b = W' ++ W_a$.
+The fundamental problem here is one of mandatory concurrency: in the larger program, running the read thread in isolation is guaranteed to crash, but it can be ``rescued'' by being interleaved with the write thread.
+The bug here is caused by insufficient concurrency, but SLI is only capable of handling bugs caused by excessive concurrency.
+Excess-concurrency bugs are far more common than insufficient-concurrency bugs, for several reasons:
 
 \begin{itemize}
 \item
-  If R valid is false then running $(I ++ R)(T)$ must predict a crash when $(I ++ W' ++ R)(T)$ doesn't, which is violation of the no-mandatory-concurrency property.
+  An insufficient-concurrency bug indicates that the programmer got the sequential case wrong but the concurrent case correct.
+  The concurrent case is usually far more difficult to design and reason about than the sequential one, and so this is an unusual outcome\needCite{}.
 \item
-  If W valid is false then running $W' ++ W ++ I ++ R$ from $T$ must predict a crash when $W ++ R$ from S doesn't
-  i.e. $(W' ++ W ++ I ++ R)(T)$ includes crash and $(W ++ R)(S)$ isn't.
-  So $(W ++ R)(W'(I(T))) == (I ++ W' ++ W ++ R)(T)$ doesn't crash.
-  The no-mandatory-concurrency property then allows us to permute the read section through the write operations to give me that $(W' ++ W ++ I ++ R)(T)$ doesn't crash, as desired.
+  The sequential case generally receives more testing than the concurrent one, simply as an artifact of the way most test cases are constructed\needCite{}.
 \item
-  W isolation \editorial{Don't know what to say about this either}.
-\item
-  The crash constraint is true because the cross-product scheduling $((I ++ R) x (W' ++ W))(T)$ includes $(I ++ W' ++ (R x W))(T) == (R x W)(W'(I(T))) == (R x W)(S)$, which we already know crashes.
-\item
-  The concurrent constraint is true by construction\editorial{Do I believe that?}.
+  For most programs, there are far more concurrent executions than sequential ones, and so it is more likely that there are errors on an untested concurrent path than that there are errors on an untested sequential one.
 \end{itemize}
 
-We can then use an \editorial{kind of induction, but not really sound} induction argument to suggest that $N_r$ can be increased without hiding bugs.
+SLI therefore completely ignores these insufficient-concurrency bugs.
 
-Suppose instead that the alien store cannot be incorporated into the write machine.
-That implies that either:
+\begin{figure}
+Illustration of a bug tuple.  We have a prefix P, write section W, and read section R.
+\label{fig:mandatory_concurrency3}
+\end{figure}
+
+Fortunately, an insufficient-concurrency bug is the only case in which increasing the sizes of the analysis windows $N_r$ and $N_w$ can lead to bugs being masked.
+To see this, consider execution shown in figure~\ref{fig:mandatory_concurrency3}.
+Suppose that this execution does not generate a bug tuple.
+Then moving an instruction from $R$ or $W$ into $P$ also cannot generate a bug tuple, and so by induction no smaller analysis windows can generate bug tuples.
+
+From the fact that larger windows do not generate bug tuples, we know that:
 
 \begin{itemize}
-\item
-  The alien store is in a different thread to the write fragment.
-  This analysis only attempts to consider two-thread bugs, but the results can be influenced by the effects of additional threads because they can influence what program states we need to consider for $S$.
-  In effect, $S$ ranges over all states which the program can possibly adopt, taking full account of every thread which might ever exist in any execution, but for each $S$ we only consider the effects of two nominated threads running program fragments of a known length.
-  Increasing this threshold then reduces the amount of the program for which we consider the full program's concurrency patterns.
-
-  The result is that the induction is only actually sound for programs which have at most two threads.
-\item
-  The alien store is in the same thread as the write fragment, but is far enough back that it is cut off by the $N_w$ threshold.
-  In this case, increasing the $N_w$ threshold will make the hidden bugs reappear.
-
-  The result is that increasing $N_r$ is only safe when $N_w$ is increased by more.
-  The difference between the two increments reflects the possibility that the write thread might be able to execute more instructions in unit time than the read thread.
-  The size of the necessary difference depends on the exact details of the ISA and operating system\editorial{This is really begging for some quick experiments}.
+\item $P \concatDynTraces R \not= \survive$, from the R atomic rule, or
+\item $P \concatDynTraces W \concatDynTraces R \not= \survive$, from the W atomic rule, or
+\item $\crash \notin P \concatDynTraces (R \interleaveDynTraces W)$, from the concurrent rule.
 \end{itemize}
 
-So the result is that increasing $N_r$ will not mask bugs, provided that the no-mandatory-concurrency property holds, the program only has two threads, and $N_w$ is increased at least as quickly.
+Define $W = w \concatDynTraces W'$ and $R = r \concatDynTraces R'$, so that $w$ is the first instruction of $W$ and $W'$ all the others, and likewise for $r$, $R$, and $R'$.
+Shrinking the analysis window then corresponds to replacing $R$ with $R'$ and $P$ with $P \concatDynTraces r$, or replacing $W$ with $W'$ and $P$ with $P \concatDynTraces w$.
+We therefore generate a bug tuple with the reduced window if:
 
-Is it safe to increase $N_w$?
+\begin{align*}
+( & (P \concatDynTraces w \concatDynTraces R & = & \survive) & \wedge \\
+  & (P \concatDynTraces W \concatDynTraces R & = & \survive) & \wedge \\
+  & ((P \concatDynTraces w \concatDynTraces (R \interleaveDynTraces W')) & \ni & \crash)) & \vee \\
+( & (P \concatDynTraces R & = & \survive) & \wedge \\
+  & (P \concatDynTraces r \concatDynTraces W \concatDynTraces R' & = & \survive) & \wedge \\
+  & ((P \concatDynTraces r \concatDynTraces (R' \interleaveDynTraces W)) & \ni & \crash))
+\end{align*}
 
+Combining those together, we find that reducing the analysis window can introduce a new bug if:
 
+\begin{align*}
+( & (P \concatDynTraces R & \not= & \survive) & \wedge \\
+  & (P \concatDynTraces W \concatDynTraces R & \not= & \survive) & \wedge \\
+  & ((P \concatDynTraces (R \interleaveDynTraces W)) & \not{}\ni & \crash)) & \vee \\
+( & (P \concatDynTraces w \concatDynTraces R & = & \survive) & \wedge \\
+  & (P \concatDynTraces W \concatDynTraces R & = & \survive) & \wedge \\
+  & ((P \concatDynTraces w \concatDynTraces (R \interleaveDynTraces W')) & \ni & \crash)) & \vee \\
+( & (P \concatDynTraces R & = & \survive) & \wedge \\
+  & (P \concatDynTraces r \concatDynTraces W \concatDynTraces R' & = & \survive) & \wedge \\
+  & ((P \concatDynTraces r \concatDynTraces (R' \interleaveDynTraces W)) & \ni & \crash))
+\end{align*}
 
-So I really need to formalise the no-mandatory-concurrency property in order for this to make sense, and ideally check whether it holds for realistic programs.
+Simple boolean algebra, plus the obvious rule that $P \concatDynTraces (R \interleaveDynTraces W) = (P \concatDynTraces r \concatDynTraces (R' \interleaveDynTraces W) ) \cup (P \concatDynTraces w \concatDynTraces (R \interleaveDynTraces W') ) $, reduces that to this:
 
-So, yeah, summary of that is that increasing the thresholds can definitely lead to hiding bugs.
-I guess, from intuition, that the bugs it hides tend to be unimportant, but I can't prove it.
-That sucks.
+\begin{align*}
+( & (P \concatDynTraces r \concatDynTraces R' & = & \crash) & \wedge \\
+  & (P \concatDynTraces w \concatDynTraces r \concatDynTraces R' & = & \survive) & \wedge \\
+  & (P \concatDynTraces w \concatDynTraces W' \concatDynTraces r \concatDynTraces R' & = & \survive) & \wedge \\
+  & ((P \concatDynTraces w \concatDynTraces (W' \interleaveDynTraces R)) & \ni & \crash)) & \vee \\
+( & (P \concatDynTraces r \concatDynTraces R' & = & \survive) & \wedge \\
+  & (P \concatDynTraces w \concatDynTraces W' \concatDynTraces r \concatDynTraces R' & = & \crash) & \wedge \\
+  & (P \concatDynTraces w \concatDynTraces r \concatDynTraces R' & = & \survive) & \wedge \\
+  & (P \concatDynTraces r \concatDynTraces w \concatDynTraces W' \concatDynTraces R' & = & \survive) & \wedge \\
+  & ((P \concatDynTraces r \concatDynTraces (W \interleaveDynTraces R')) & \ni & \crash))
+\end{align*}
 
-Hmm.
-This is more complicated than I'd expected, and only really important for the rhetoric and not for the actual meat.
-Maybe I should cull it, or at least try less hard to be nice and formal about it?
+Consider the first clause of the disjunction first, and in particular consider these two terms:
+
+\begin{align*}
+ & (P \concatDynTraces r \concatDynTraces R' & = & \crash) & \wedge \\
+ & (P \concatDynTraces w \concatDynTraces r \concatDynTraces R' & = & \survive)
+\end{align*}
+
+The definition of crash used in SLI is that the final instruction of $R'$ crashes, and so adding further instructions after that point cannot possible change the result.
+Those terms are therefore equivalent to these:
+
+\begin{align*}
+ & (P \concatDynTraces r \concatDynTraces R' \concatDynTraces w \concatDynTraces W' & = & \crash) & \wedge \\
+ & (P \concatDynTraces w \concatDynTraces r \concatDynTraces R' \concatDynTraces W' & = & \survive)
+\end{align*}
+
+In other words, $R$ is doomed when run in isolation, but running it in parallel with $W$ can save it.
+That is precisely the definition of mandatory concurrency used above.
+
+Consider the second clause now.
+That contains these two terms:
+
+\begin{align*}
+  & (P \concatDynTraces w \concatDynTraces W' \concatDynTraces r \concatDynTraces R' & = & \crash) & \wedge \\
+  & (P \concatDynTraces r \concatDynTraces w \concatDynTraces W' \concatDynTraces R' & = & \survive)
+\end{align*}
+
+This is even more clear: running $W$ and then $R$ atomically leads to a crash, but allowing $W$ to interrupt $R$ saves the execution.
+Once again, this clause is only satisfiable in the presence of mandatory concurrency.
+
+Therefore, it is only possible for shrinking the analysis window to reveal more bugs in the presence of mandatory concurrency, and, conversely, when the program does not use mandatory concurrency, enlarging the analysis window cannot disguise bugs.
+This monotonicity property is useful because it provides a simple rule for setting the size of the analysis window: use the largest such that the analysis completes in a reasonable amount of time.
+There is no need for the user to carefully select a window size for their program, or to try multiple window sizes in order to reveal additional bugs.
+
+\todo{This proof feels quite circular and unconvincing.  May need more though here.}
 
 \subsection{Crash summaries}
 
