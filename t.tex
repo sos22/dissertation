@@ -6,7 +6,7 @@
 \usepackage{amsmath}
 \usepackage{tikz}
 \usepackage{tabularx}
-\usetikzlibrary{arrows,decorations.pathmorphing,backgrounds,positioning,fit,petri,automata,shapes}
+\usetikzlibrary{arrows,decorations.pathmorphing,backgrounds,positioning,fit,petri,automata,shapes,petri}
 
 \pgfdeclarelayer{bg}
 \pgfsetlayers{bg,main}
@@ -1558,7 +1558,7 @@ $y_F$ and $y_T$ are then separate variables, and the two $f$ cases can be subjec
 \subsection{Phase 4 canonicalisation}
 The compound functions stuff.
 
-\section{Building enforcement patches}
+\section{Building crash enforcement plans}
 
 The previous phase of the algorithm produces a set of crash summaries, each of which consists of a read \StateMachine, a write \StateMachine, a verification condition, and an unrolled fragment of the program's control-flow graph.
 Each summary is considered in turn and converted into a binary patch which makes the relevant bug more likely to reproduce.
@@ -1673,30 +1673,29 @@ Solving such constraints requires a far more detailed model of the program's str
 
 SLI solves this problem using a message-passing system.
 The core idea is to model a happens-before ordering X before Y as a message which is sent by X, after it completes, and collected by Y, before it starts.
-A delay is inserted if Y attempts to collect a message which has not been sent.
-In this way, instructions are delayed long enough to satisfy the happens-before relationships, but no longer, and so the risk that a too-long delay might mask a bug is eliminated.
-The messages used in this system are asynchronous, in the sense that an instruction which sends a message does not need to wait for another instruction to collect it.
-Messages remain sent until the sending thread either finishes its \StateMachine or cannot proceed further through the machine (which might be due to a failed message receive or due to failing a verification condition check; see later), at which point they are cancelled by the thread which originally sent them.
-
+These messages are synchronous: the sender will wait for the receiver, and the receiver will wait for the sender, in both cases with a short timeout.
 In the example, there will be two messages, one sent from \verb|l2| to \verb|l9| and the other sent from \verb|l9| to \verb|l5|.
-This will lead to types of delay: \verb|l5| will wait for \verb|l9| and \verb|l9| will wait for \verb|l2|.
-These correspond to two different ways of reproducing the bug:
+Delays will be inserted immediately before \verb|l9| and \verb|l5|, and also immediately after \verb|l2| and \verb|l9|.
+These delays have slightly different functions:
 
 \begin{itemize}
 \item
-  The bug could be reproduced by enlarging the critical section in the read thread and then hoping that a critical store arrives during it.
-  In this approach, we treat the critical stores as a kind of unchanging background of events and try to manipulate the read thread's critical sections so that they cover one of the stores.
-  This corresponds to delaying \verb|l5| until \verb|l9| arrives.
+  The delay after \verb|l2| makes the read-side of the critical section wait for a matching write-side.
+  In effect, this delay enlarges the read-side critical section in the hope that a write-side operation will come along which can be dropped into it.
+  This is useful for bugs where the write-side occurs much more frequently than the read-side.
 \item
-  The bug could also be reproduced by capturing whatever critical stores might happen and making them wait until a read thread enters a critical section which they might interfere with before releasing them.
-  Here, we are treating the read thread's critical sections as the unchanging background and manipulating the critical stores to interrupt a critical section.
-  This corresponds to delaying \verb|l9| until \verb|l2| arrives.
+  The delay before \verb|l9| makes the write-side wait for a matching read-side.
+  The intuition here is that the enforcer will maintain a ``pool'' or write-side operations, which can then be deployed as soon as a read-side operation turns up.
+  This is useful for bugs where the read-side occurs much more frequently than the write-side.
+\item
+  The delays after \verb|l9| and before \verb|l5| help the read- and write-sides of the critical section to proceed with the desired interleaving.
+  By this point, the two threads have rendezvoused and been bound together, and so there is no need to wait for a matching operation to arrive, and the delay is necessary only to wait for the paired thread to reach the appropriate place in its control-flow graph (or to exit the simulation, causing the message operation to fail).
+  The timeout is in this case necessary only to prevent deadlocks: it is possible that the program contains some synchronisation structure of which SLI is unaware, so that one thread might be waiting for the other, and introducing an additional unbounded wait would be unsafe.
 \end{itemize}
 
-The relative effectiveness and performance of these two approaches will depend on the structure of the program.
-SLI can move continuously between the two modes by adjusting the relative magnitude of the delays.
-\editorial{But it doesn't do so quite yet...}
-
+Setting the sizes of these delays, especially those after \verb|l2| and \verb|l9|, involves a delicate trade-off between performance and the likelihood of uncovering bugs.
+In general, SLI will choose one of \verb|l2| or \verb|l9| as a delay-able instruction, according to their relative frequency, and use a large timeout for the delay-able instruction and a very small one for the non-delay-able one.
+This is discussed further in section\needCite{}.
 
 This basic message passing scheme is sufficient to ensure that the instructions of the program obey the happens-before graph.
 That is sufficient to trigger the desired behaviour in some cases but not all.
@@ -1710,9 +1709,14 @@ Once a verification condition has failed there is no need to insert additional d
 In the case of the example, the verification condition is $idx1 == idx2$, and so we are only interested in executions where the two indices coincide.
 This illustrates one immediate complication: $idx1$ is a local variable in one thread, and $idx2$ is a local variable in a different thread.
 There are no points in the original program which know the values of both variables, and so no obvious place in which to check the condition.
-SLI solves this problem by attaching the value of $idx1$ to the message which is sent from \verb|l2| to \verb|l9|.
-\verb|l9| then knows the value of both variables, and so the verification condition can be checked there.
-\verb|l9| can therefore be delayed until it receives a message which allows the verification condition to succeed\editorial{Not actually how this is implemented right now; need to fix that.}.
+SLI solves this problem by checking the condition as part of the \verb|l2| to \verb|l9| message operation.
+If \verb|l2| is delayed while sending the message, it will publish the value of \verb|idx1| to a globally-accessible location, and \verb|l9| will then check that as part of its receive operation.
+If the indices do not match, the receive operation fails and \verb|l9| will continue waiting for another sender subject to its own timeout.
+Likewise, if \verb|l9| is delayed while receiving the message it will publish the value of \verb|idx2|, and this will then be checked by any other thread trying to send the message from \verb|l2|.
+The timeout balancing mechanism will then ensure that the timeouts are adjusted so that both \verb|l9| and \verb|l2| occur with reasonable frequency so that a message operation is likely to succeed eventually.
+
+\todo{Implementing this reminded me very strongly of Petri nets, although that's not particularly obvious from that description.  I should probably figure out what the actual correspondence is and then write something about it.}
+
 
 The result of this phase is a crash enforcement plan, which contains the following items:
 
@@ -1724,8 +1728,7 @@ The result of this phase is a crash enforcement plan, which contains the followi
 \end{itemize}
 
 The CFG in the crash summary is then annotated with these actions and compiled down into a fragment of machine code which can be loaded into the target program at run time.
-Finally, the target program is modified to between the original program and the new fragment in appropriate places (in this case, it will branch to the new fragment from \verb|l2| and \verb|l9| and return after \verb|l5| and \verb|l9|, and if the branch at \verb|l4| is taken).
-The modified program can then be run as before, and will be more likely to exhibit the target bug.
+The original program is then executed in lockstep with this annotated CFG, automatically inserting delays as appropriate to make the bug reproduce more easily.
 
 \subsection{Outline of algorithm}
 
@@ -1756,7 +1759,7 @@ Actual algorithm:
 \item
   Figure out where we need to transition between unmodified client code and the augmented version.
 \item
-  Compile the enforcement plan down to a binary patch.
+  Pass the plan and the original program off to the plan interpreter, allowing the program to be run under the control of the plan.
 \end{itemize}
 
 \subsubsection{Deriving happens-before edges}
@@ -1818,6 +1821,7 @@ This is a simple data flow problem.
 \todo{This really needs to be discussed somewhere, but it's so simple that it doesn't want a section to itself, and it doesn't really fit anywhere else.}
 
 \subsubsection{Combining DNF clauses}
+Rename apart threads, then take a simple union.
 
 \subsubsection{Optimising the crash enforcement plan}
 Defer register stash, strip redundant CFG prefix.
@@ -1825,8 +1829,9 @@ Defer register stash, strip redundant CFG prefix.
 \subsubsection{Allocate simulation slots for variables}
 
 \subsubsection{Determining patch entry points}
+Might kill this section; it's pretty damn simple.
 
-\subsubsection{Compiling the plan to a patch}
+\subsubsection{Enforcing the plan}
 
 \todo{This is massively fiddly to implement, but only really needs a
   few basic ideas to get the message across.  Best way of describing
@@ -1844,64 +1849,524 @@ We now have a CFG whose nodes are annotated with several potential additional op
 \end{itemize}
 
 And we also have a mapping from locations in the original program to points in the control-flow graph.
-We must now compile the annotated CFG into a fragment of machine code which performs the desired actions.
-
-This compiler is easiest to understand by comparison with a hypothetical interpreter for these annotated CFGs.
-Such an interpreter would live inside the target program and take over whenever a thread in the program steps on one of the entry-point instructions, interpreting the CFG and performing the annotation actions when appropriate, until the thread left the CFG, at which point the interpreter would branch back to the original program text.
-It maintains the following items of state:
+Our task now is to force the program to follow this plan.
+SLI implements two mechanisms for doing so:
 
 \begin{itemize}
 \item
-  The identity of the crash enforcement plan-level thread which it is currently executing.
-  At a minimum there will be one such thread for the read \StateMachine and one for the write \StateMachine; there may also be additional threads if multiple plans have been combined.
+  An interpreter with well-defined semantics, a high likelihood of successfully imposing the plan, and some useful theoretical properties, but very high run-time overheads.
 \item
-  A reference to the CFG node which the instruction is currently executing.
-\item
-  The set of messages which the thread has sent.
-  This is used when the thread exits to ensure that the correct messages are cancelled.
-\item
-  The current phase of the instruction, discussed next.
+  A compiler which makes far more approximations, and hence is far less likely to impose the plan successfully and far less analytically tractable, but which has slightly lower run-time overhead.
 \end{itemize}
 
-\begin{figure}
-\begin{tikzpicture}
-\node[flowChartState] (RecvMsg) {RecvMsg};
-\node[flowChartState, below = of RecvMsg] (OrigInstr) {OrigInstr};
-\node[flowChartState, below = of OrigInstr] (VerfCond) {VerfCond};
-\node[flowChartState, below = of VerfCond] (SendMsg) {SendMsg};
-\node[flowChartState, below = of SendMsg] (FindSucc) {FindSucc};
-\node[flowChartState, right = of VerfCond] (CondFail) {CondFail};
-\node[flowChartState, right = of CondFail] (Exit) {Exit};
-\node[flowChartState, right = of RecvMsg] (RecvdMsg) {RecvdMsg};
-\draw[->] (RecvMsg) -- (OrigInstr) -- (VerfCond) -- (SendMsg) -- (FindSucc);
-\draw[->,dashed] (FindSucc.west) to [bend left=90] (RecvMsg.west);
-\draw[->] (RecvMsg) -- (RecvdMsg) -- (OrigInstr);
-\draw[->] (RecvMsg) -- (Exit);
-\draw[->] (VerfCond) -- (CondFail) -- (Exit);
-\draw[->] (FindSucc) -- (Exit);
-\end{tikzpicture}
-\caption{Intra-instruction state machine.  The dashed arc indicates that the thread advances to the next instruction during that transition.}
-\label{fig:enforcement:intra_instruction_machine}
-\end{figure}
+The interpreter is somewhat easier to understand and so I discuss it first\editorial{Even though I actually implemented the compiler before the interpreter.}.
 
-The interpreter proceeds by advancing the instruction phase through the intra-instruction state machine, shown in figure~\ref{fig:enforcement:intra_instruction_machine}.
-The meaning of the phases is as follows:
+\subsubsection{Interpreting the plan}
+
+The plan interpreter runs in the address space of the target program.
+It arranges to take control of the program at the plan entry points and then interprets the program's machine code until the plan either completes or fails.
+In either case, the interpreter then restores the target program's register state and branches back to the original program's code.
+
+\todo{Should mention that I pulled the interpreter out of Xen.}
+
+The annotated CFG forms, in effect, a very simple language, with very simple semantics.
+Unfortunately, those semantics are non-deterministic, in the sense that the interpreter must often choose between several possible options using information which only becomes available later in the execution.
+SLI resolves this issue using a power set-like construction\editorial{Probably want a cite for that, maybe.}.
+This means that we must first define a low-level, abstract, semantics for the interpreter, using that look-ahead nondeterministic choice operator, and then implement a higher-level, concrete, interpreter which effectively interprets sets of lower-level interpreters in lockstep parallelism.
+In effect, the higher-level interpreter resolves the non-deterministic choice by forking the lower-level interpreter as necessary, allowing them all to execute at first, and then later discarding any which fail.
+We present the abstract semantics for the low-level interpreter first, and will then discuss the subtleties involved in implementing the higher-level interpreter afterwards.
+
+The non-deterministic language emulates the annotated CFG one node at a time.
+For each node, it proceeds through these stages:
 
 \begin{itemize}
-\item[RecvMsg]
-  Receive any incoming messages, unpacking the payload into simulation slots as appropriate.
-  In some cases, this will involve evaluating verification conditions, so as to check whether the incoming message is acceptable, and waiting for a better one if it isn't.
-  If the receive times out then the interpreter will exit back to the original program.
-  Otherwise, it unpacks the message and moves on to the OrigInstr state.
-\item[OrigInstr]
-  Store any generated values into simulation slots and issue the original instruction.
-  There are four main cases to consider here:
+\item[Stash]
+  Examine the annotations on the CFG node.
+  If these include an instruction to stash a register to a simulation slot, do so now.
+  This might make some side-conditions evaluatable.
+  If so, evaluate them immediately, exiting the interpreter if any fail.
+\item[RX]
+  Receive any message demanded by the plan.
+  The most important part of a message-receive operation is selecting a message-transmit operation to synchronise with.
+  The procedure for doing so depends on the type of receive operation:
 
   \begin{itemize}
   \item
-    Registers.
-    Some nodes in the CFG will have to save the value of a particular register to a given CFG slot.
-    This is straightforward: the value of the register is saved before issuing the original instruction.
+    Unbound receives.
+    The first message operation performed by an interpreter is ``unbound'', meaning that it can synchronise with any other low-level interpreter in a different thread of the program.
+    In the abstract semantics, these operations are simple: each has a delay $t$ associated with it, and looks forward $t$ seconds through the program's execution to find all suitable message send operations, and then non-deterministically chooses one to synchronise with.
+    The receiving thread is delayed until the chosen message-send operation happens, the two threads are bound together, and the receive proceeds.
+
+    Instantiating this into a concrete interpreter is moderately subtle and is discussed in more detail below.
+  \item
+    Bound receives.
+    Every message operation which is not the first is ``bound'', meaning that there is only one thread which can possibly be synchronised with.
+    If that thread is ready to transmit a suitable message then the receive can proceed immediately.
+    Otherwise, the receiving thread is delayed until its bound peer is ready to transmit.
+  \end{itemize}
+
+  Once a send operation has been selected the message operation can be discharged.
+  Relevant simulation slots in the message sender are copied into the message payload area and thence to the receiver's simulation slots.
+  This, again, might make further side-conditions evaluatable, and if so they are checked here.
+\item[Emul]
+  Emulate the original program's instruction corresponding to this CFG node.
+  This includes issuing any memory loads which the program would issue at this point, and stashing the values of those loads if the crash enforcement plan says to do so.
+  This might make additional side-conditions evaluatable.
+  As in the stash phase, these side-conditions are evaluated as soon as possible, and the interpreter exits if they fail.
+\item[TX]
+  Send any message demanded by the plan.
+  This is the converse of the receive operation: select an appropriate receive operation to synchronise with, performing a non-deterministic choice if more than one is available, and then copy local simulation slots to remote ones in accordance with the message payload defined by the crash execution plan.
+\item[Succ]
+  Find successor instructions.
+  The emulation phase will have determined the instruction pointer of the next instruction to be executed.
+  This can be compared to the CFG to determine which control-flow nodes might need to be executed next.
+  There are three interesting cases:
+
+  \begin{itemize}
+  \item
+    None of the successor nodes of this CFG node have the desired instruction pointer.
+    In that case, the interpreter can proceed no further and exits.
+  \item
+    Precisely one of the successor nodes has the desired instruction pointer.
+    The interpreter simply advances to that node.
+  \item
+    Multiple successor nodes have the desired instruction pointer.
+    The most common reason for this is loop unrolling: if a loop in the program is unrolled three times, say, then the CFG node for the instruction just prior to the loop will have four successors, corresponding to skipping the loop completely or running it once, twice, or three times.
+    It is not possible, at this stage, to determine how many times the loop must be run, and so the abstract interpreter makes a non-deterministic choice between all of the available options.
+  \end{itemize}
+\end{itemize}
+
+\subsubsection{Sending and receiving messages in the abstract semantics}
+
+If both the sending and receiving threads of a message operation are known, the operation can be modelled by this simple Petri net:
+
+\begin{tikzpicture}
+  \node[place,tokens=1,label=above:{before receive}] (beforeRx) {};
+  \node[place,tokens=1,right = of beforeRx, label=above:{before transmit}] (beforeTx) {};
+  \node[place,tokens=0,below=of beforeRx, label=below:{after receive}] (afterRx) {};
+  \node[place,tokens=0,below=of beforeTx, label=below:{after transmit}] (afterTx) {};
+  \node[transition,below right=of beforeRx, label=right:{discharge message}] (trans)
+  edge [pre] (beforeRx)
+  edge [pre] (beforeTx)
+  edge [post] (afterRx)
+  edge [post] (afterTx);
+\end{tikzpicture}
+
+Discharging a message here means copying the relevant bits of state from the transmitting thread's local state into the receiving thread's local state.
+A message can be discharged if there is one thread willing to send it and one thread willing to receive it.
+While the message is being discharged the two threads are effectively merged, with only one thread actually executing the message side effects.
+Once the message is finished the two threads separate again and continue to execute independently.
+
+A thread is only willing to receive a message if the message would pass the thread's message filter.
+This has two parts:
+
+\begin{itemize}
+\item
+  The message must have the correct message ID.
+  This simply means that the send and receive parts of the message operation must be trying to enforce the same happens-before edge.
+\item
+  The message must pass the receiving thread's message receive filter.
+  This filter consists of all of the side-conditions present in the crash enforcement plan which will become evaluatable once the message has been received.
+\end{itemize}
+
+However, in a real implementation, the threads are not pre-specified, and most of the complexity of the message algorithm lies in determining them.
+When the plan demands that a message be sent or received, one side can be determined trivially, but the other must be discovered.
+For a receive operation, the algorithm to do so in the abstract semantics looks like so:
+
+\begin{algorithmic}[1]
+  \IF {$l$ has a bound thread}
+    \IF {The bound thread does not have an outgoing message}
+      \STATE {Wait for it to send one}
+    \ENDIF
+    \IF {The bound thread has an outgoing message and it passes the message filter}
+      \STATE {Discharge the message}
+    \ELSE
+      \STATE {$l$ has failed; remove it from the active set}
+    \ENDIF
+  \ELSE
+    \STATE {Examine the set of outstanding unbound message sends and collect all of the ones which pass the message filter into $s$}
+    \STATE {Extend $s$ with $\bot$}
+    \STATE {Choose $s'$ non-deterministically from $s$}
+    \IF $s' = \bot$
+      \STATE {Register $l$ as a receiver of unbound messages}
+      \STATE {Wait for the delay specified in this receive operation}
+      \STATE {Unregister $l$ as a receiver of unbound messages}
+      \STATE {Collect all of the unbound sends which pass the filter which started while we were waiting into $s$}
+      \STATE {Select $s'$ non-deterministically from $s$}
+    \ENDIF
+    \STATE {Discharge $s'$}
+  \ENDIF
+\end{algorithmic}
+
+The send operation is symmetric:
+
+\begin{algorithmic}[1]
+  \IF {$l$ has a bound thread}
+    \IF {The bound thread is attempting to receive a message}
+      \STATE {Wait for it to start receiving}
+    \ENDIF
+    \IF {The bound thread is receiving a message and this message would pass its filter}
+      \STATE {Discharge the message}
+    \ELSE
+      \STATE {$l$ has failed; remove it from the active set}
+    \ENDIF
+  \ELSE
+    \STATE {Examine the set of outstanding unbound message receives and collect all of the ones whose filters this message would pass into $s$}
+    \STATE {Extend $s$ with $\bot$}
+    \STATE {Choose $s'$ non-deterministically from $s$}
+    \IF $s' = \bot$
+      \STATE {Register $l$ as a sender of unbound messages}
+      \STATE {Wait for the delay specified in this receive operation}
+      \STATE {Unregister $l$ as a sender of unbound messages}
+      \STATE {Collect all of the unbound receives whose filters this message would pass which started while we were waiting into $s$}
+      \STATE {Select $s'$ non-deterministically from $s$}
+    \ENDIF
+    \STATE {Discharge $s'$}
+  \ENDIF
+\end{algorithmic}
+
+As shown in figure ..., each message operation effectively defines an interval in time, and a send and receive match up if these windows overlap.
+The behaviour when $s' = \bot$ is perhaps somewhat surprising: the thread waits a little while and then selects a peer thread to discharge the message with non-deterministically.
+Meanwhile, all of the other threads are simultaneously performing similar non-deterministic choices.
+The use of look-ahead nondeterminism means that all of the threads will make these selections in a mutually compatible way, so that there is no danger of A attempting to discharge its message with B while B discharges with C.
+The actual implementation must resolve these constraints much more carefully, and is discussed in detail later.
+
+Note that the message receive filter is evaluated as the message is being discharged, while the two threads are merged.
+It is possible to imagine an alternative implementation in which the filter is instead evaluated locally in the receiver after the discharge operation is complete.
+This would reduce the size of the synchronised section and so would appear, on the face of it, to offer greater parallelism, and hence potentially better performance.
+Unfortunately, it does not work.
+To illustrate the problem, consider again the example shown in figure \todo{...}.
+One thread modifies a shared structure while another thread reads it, and the program will crash if the two threads happen to be operating on the same structure at the same time.
+Suppose that the read thread runs far more often than the write one and that there are many instances of the structure.
+The timeout balancing logic will quickly reduce the delay on the read side's first message send to zero and increase the delay on the write side's first message receive to compensate.
+Now, when the write thread does run, it will stop just before \verb|l9| waiting for a matching read thread to arrive.
+By hypothesis, many such threads will arrive, as the read thread runs more often than the write one.
+In the alternative design, the read thread cannot evaluate the write thread's receive filter, and so every read thread will attempt to bind to the write thread, forcing the write thread to be duplicated many times.
+Because of timeout rebalancing, the read thread will proceed from \verb|l2| immediately and quickly reach \verb|l5|, where it has to receive a message from \verb|l9|.
+At this point, there are two possible outcomes:
+
+\begin{itemize}
+\item
+  The thread is delayed at \verb|l5| waiting for the message from \verb|l9|.
+  The write thread is still waiting in case any other threads reach \verb|l2| and attempt to synchronise with it, and so this might potentially be a rather long delay.
+  Since the read thread runs far more often than the write thread, this will have a very large performance impact.
+  Worse, it will probably be pointless: there, by hypothesis, a large number of instances of the structure which is being examined, and so, with high probability, the write thread will be modifying a different one.
+  When the write thread does finally escape from its receive delay and evaluate its receive filter it will discover that the filter fails, and so the write thread will exit.
+  The read thread will then discover that its bound thread has exited and be forced to exit as well.
+  The crash enforcement plan will therefore not complete and the bug is highly unlikely to reproduce.
+  
+  Even worse, the performance hit might mean that the read thread will run far less frequently, further reducing the likelihood of the bug reproducing.
+  In extreme cases, the attempt at enforcing a crash might actually make the bug less likely to reproduce in unit time.
+\item
+  The thread is not delayed at \verb|l5|.
+  It never receives the message from \verb|l9| and must therefore exit without completing the plan, so is unlikely to reproduce the bug.
+  The write thread's high-level interpreter will then accumulate a collection of low-level threads which have bound to exited read threads and which will themselves immediately exit.
+\end{itemize}
+
+Neither outcome helps to reproduce the target bug.
+
+By contrast, in the scheme used by SLI, the read thread is able to evaluate the write thread's message receive filter at \verb|l2|.
+It will therefore only bind to write threads which modify the structure which it is reading.
+That means that the thread can be delayed a relatively long time at \verb|l5| without fear of apocalyptic performance damage, and so the bug will reproduce relatively easily.
+
+\subsubsection{Discuss the timeout balancing bit}
+
+\subsubsection{Implementing non-deterministic choice in the Succ phase}
+
+It might be that an instruction has several possible successors in the control flow graph in the crash execution plan, and in that case the interpreter must choose one of these successors using look-ahead non-determinism.
+This cannot be implemented in any physically-realisable system, as it is non-causal, and so SLI must emulate it.
+SLI uses a power-set construction to do so.
+Rather than operating a single interpreter context, the actual implementation maintains a set of low-level interpreter contexts, which roughly follow the abstract semantics given above, and interprets them all in lock-step parallelism.
+When one of these low-level interpreters needs to perform a non-deterministic choice between $n$ possible values, the high-level interpreter creates $n$ successor low-level interpreter states, one corresponding to each possible outcome of the choice, and inserts all of them into its current-state set.
+They are then interpreted in parallel until enough information is available to resolve the earlier choice, at which point all but one of the threads will exit and the interpreter can revert to single-threaded execution.
+If a thread is bound when it performs a non-deterministic choice then its bound thread must also be duplicated, to ensure that the new thread has something to bind to.
+
+One subtlety here is that the original program's underlying instruction can only be retired once, and so the high-level interpreter must ensure that all low-level interpreters arrive at that point in the execution cycle at the same time.
+SLI actually enforces a slightly stronger constraint, which is that every low-level interpreter in a given high-level interpreter must be at the same phase in the instruction execution cycle.
+The only phases for which this is difficult are the message send and receive phases, which are discussed in more detail in the next section.
+
+\subsubsection{Concrete implementations of message send and receive}
+
+The message receive operation looks like this:
+
+\begin{algorithmic}[1]
+  \STATE {$lls \gets $ the set of currently-active low-level interpreter states}
+  \STATE {$newLls \gets $ an empty set of low-level interpreter states}
+  \FORALL {$l$ in currently-active low-level interpreter states}
+    \IF {$l$ does not receive any messages}
+      \STATE {Move $l$ from $lls$ to $newLls$ without changing it}
+    \ELSEIF {$l$ has a bound thread}
+      \IF {$l$'s bound thread has exited}
+        \STATE {$l$ exits as well; remove it from $lls$ without adding it to $newLls$}
+      \ELSEIF {$l$'s bound thread has an outgoing message}
+        \IF {The bound thread's outgoing message passes the message filter}
+          \STATE {Copy stashed values from the sending low-level interpreter's state to the receiving one}
+          \STATE {Move $l$ from $lls$ to $newLls$}
+        \ELSE
+          \STATE {$l$ exits; remove it from $lls$}
+        \ENDIF
+      \ELSE
+        \COMMENT {Wait for a the bound thread to send a message}
+      \ENDIF
+    \ELSE
+      \COMMENT{Unbound receive}
+      \FORALL {$s$ registered unbound senders}
+        \IF {$s$'s outgoing message passes the message filter}
+          \STATE {$l' \gets $ duplicate $l$}
+          \STATE {$s' \gets $ duplicate $s$}
+          \STATE {Copy stashed values from $s'$'s state to $l'$'s}
+          \STATE {Bind $l'$ and $s'$ together}
+          \STATE {Insert $l'$ into $newLls$}
+          \STATE {Insert $s'$ into $s$'s high-level interpreter's active low-level interpreter list}
+        \ENDIF
+      \ENDFOR
+      \STATE {Register $l$ as an unbound receiver}
+    \ENDIF
+  \ENDFOR
+
+  \IF {$lls$ is empty}
+    \RETURN
+  \ENDIF
+
+  \STATE {$end \gets now() + bound\_delay$}
+  \IF {There is a minimum delay}
+    \STATE {Release lock}
+    \STATE {Sleep for the minimum delay}
+    \STATE {Acquire lock}
+  \ENDIF
+
+  \WHILE {There are bound receives in $lls$ and $now() \lt end$}
+    \STATE {Release lock}
+    \STATE {Wait for some bound receive to complete, or for the current time to pass $end$}
+    \STATE {Acquire lock}
+    \FORALL {$l$ performing bound receives in $lls$}
+      \IF {$l$'s bound thread has exited}
+        \STATE {Remove $l$ from $lls$}
+        \STATE {$l$ exits}
+      \ELSEIF {$l$'s receiving-bound-message flag is clear}
+        \STATE {Remove $l$ from $lls$}
+        \STATE {Add $l$ to $newLls$}
+      \ELSE
+        \STATE Continue waiting
+      \ENDIF
+    \ENDFOR
+  \ENDWHILE
+
+  \FORALL {$l$ in $lls$}
+    \IF {$l$ is registered as an unbound receiver}
+      \STATE {Unregister $l$ as an unbound receiver}
+    \ENDIF
+    \IF {$l$ was attempting a bound receive and the bound thread hasn't sent any messages}
+      \STATE {Exit $l$}
+    \ELSEIF {$l$ is unbound}
+      \STATE {The thread must have been attempting an unbound receive which failed, so exit $l$}
+    \ELSE
+      \COMMENT {Receive succeeded}
+      \STATE {Add $l$ to $newLls$}
+    \ENDIF
+  \ENDFOR
+
+  \STATE {Set high-level interpreters set of currently-active low-level interpreters to $newLls$
+\end{algorithmic}
+
+The send algorithm is very similar:
+
+\begin{algorithmic}[1]
+  \STATE {$lls \gets $ the set of currently-active low-level interpreter states}
+  \STATE {$newLls \gets $ an empty set of low-level interpreter states}
+  \FORALL {$s$ in currently-active low-level interpreter states}
+    \IF {$s$ does not send a message}
+      \STATE {Move $l$ from $lls$ to $newLls$ without changing it}
+    \ELSEIF {$s$ has a bound thread}
+      \IF {$s$'s bound thread has exited}
+        \STATE {$s$ exits as well; remove it from $lls$ without adding it to $newLls$}
+      \ELSEIF {$s$'s bound thread is waiting to receive a message}
+        \IF {$s$'s outgoing message passes the message filter}
+          \STATE {Copy stashed values from the sending low-level interpreter's state to the receiving one}
+          \STATE {Move $s$ from $lls$ to $newLls$}
+          \STATE {Clear the bound thread's receiving-bound-message flag}
+        \ELSE
+          \STATE {$s$ exits; remove it from $lls$}
+        \ENDIF
+      \ELSE
+        \COMMENT {Wait for a the bound thread to be ready to receive a message}
+      \ENDIF
+    \ELSE
+      \COMMENT{Unbound send}
+      \FORALL {$l$ registered unbound receivers}
+        \IF {The outgoing message passes $l$'s message filter}
+          \STATE {$l' \gets $ duplicate $l$}
+          \STATE {$s' \gets $ duplicate $s$}
+          \STATE {Copy stashed values from $s'$'s state to $l'$'s}
+          \STATE {Bind $l'$ and $s'$ together}
+          \STATE {Insert $s'$ into $newLls$}
+          \STATE {Insert $l'$ into $l$'s high-level interpreter's active low-level interpreter list}
+        \ENDIF
+      \ENDFOR
+      \STATE {Register $s$ as an unbound sender}
+    \ENDIF
+  \ENDFOR
+
+  \IF {$lls$ is empty}
+    \RETURN
+  \ENDIF
+
+  \STATE {$end \gets now() + bound\_delay$}
+  \IF {There is a minimum delay}
+    \STATE {Release lock}
+    \STATE {Sleep for the minimum delay}
+    \STATE {Acquire lock}
+  \ENDIF
+
+  \WHILE {There are bound sends in $lls$ and $now() \lt end$}
+    \STATE {Release lock}
+    \STATE {Wait for some bound send to complete, or for the current time to pass $end$}
+    \STATE {Acquire lock}
+    \FORALL {$s$ performing bound sends in $lls$}
+      \IF {$s$'s bound thread has exited}
+        \STATE {Remove $s$ from $lls$}
+        \STATE {$s$ exits}
+      \ELSEIF {$s$'s sending-bound-message flag is clear}
+        \STATE {Remove $s$ from $lls$}
+        \STATE {Add $s$ to $newLls$}
+      \ELSE
+        \STATE Continue waiting
+      \ENDIF
+    \ENDFOR
+  \ENDWHILE
+
+  \FORALL {$s$ in $lls$}
+    \IF {$s$ is registered as an unbound sender}
+      \STATE {Unregister $s$ as an unbound sender}
+    \ENDIF
+    \IF {$s$ was attempting a bound send and the bound thread hasn't tried to receive any messages}
+      \STATE {Exit $s$}
+    \ELSEIF {$s$ is unbound}
+      \STATE {The thread must have been attempting an unbound send which failed, so exit $s$}
+    \ELSE
+      \COMMENT {Send succeeded}
+      \STATE {Add $s$ to $newLls$}
+    \ENDIF
+  \ENDFOR
+
+  \STATE {Set high-level interpreters set of currently-active low-level interpreters to $newLls$
+\end{algorithmic}
+
+One further optimisation, not shown here, avoids redundantly duplicating low-level interpreter contexts in the common case that a message operation is discharged precisely once.
+
+\todo{Discuss setting minimum delays here}
+
+\subsubsection{The await-bound-thread-exit state}
+
+When a thread completes its plan, it is sometimes useful for it to wait for its bound thread to exit before proceeding.
+This is because the crash summary from which the plan is generated does not have complete information on the structure of the program.
+If the last edge in a happens-before graph is from memory access A to memory access B, that generally means that A is a store and B is a load and B must load the value stored by A.
+That means that, not only must B happen after A, but B must happen before any other writes to the memory location modified by A.
+If there were other stores to that location in the crash summary then the happens-before graph would include additional edges to ensure that that happens, but if there are stores outside of the summary then it will not.
+For instance, suppose that the write thread looks like this:
+
+\begin{verbatim}
+while (1) {
+l1:  *x = 5;
+l2:  *x = 7;
+     <something_complicated>
+}
+\end{verbatim}
+
+And the read thread looks like this:
+
+\begin{verbatim}
+l3: a = *x;
+l4: b = *x;
+    crash if a != b;
+\end{verbatim}
+
+This program is clearly buggy.
+One way of reproducing this bug would be to interleave instructions as \verb|l1|, \verb|l3|, \verb|l2|, \verb|l4|.
+SLI will discover this interleaving as the happens-before graph show in figure \todo{...}.
+The algorithm described so far will be sufficient to enforce this graph (assuming that the two fragments of code shown can actually execute in parallel).
+This is not, however, sufficient to cause the program to crash, because the generated happens-before graph is incomplete: it misses the edge from \verb|l4| to \verb|l1| in the next iteration of the loop.
+If the loop completes and reaches the store at \verb|l1| before the load \verb|l4| completes then the bug will not reproduce even though the happens-before graph was successfully enforced.
+Any scheme with an analysis horizon based on a simple instruction count will suffer from a similar problem, but this is particularly serious for SLI, because the delays inserted are in almost precisely the right place to maximise the chance of this kind of bug-hiding race.
+Returning to the example, SLI's crash enforcement plan will include a delay after \verb|l1| (to implement the \verb|l1| to \verb|l3| happens-before edge), and this delay will be large relative to a short sequence of normal instructions, and so the bug will be hidden completely provided that the delay to wake up the read thread after the final edge is greater than the time taken to execute \verb|<something_complicated>|.
+This is perfectly plausible, given that \verb|<something_complicated>| only needs to be a few dozen instructions to exceed SLI's analysis window.
+This bug will therefore never reproduce under SLI's crash enforcer, even when the happens-before graph is enforced perfectly.
+The fix is simple: have the store thread delay slightly after completing its final message send operation, until the read thread also completes its crash enforcement plan.
+This ensures that activity beyond the analysis horizon cannot prevent bug reproduction, and, because it only happens when the plan is mostly complete, and hence happens very rarely, it has very low performance overhead.
+
+\begin{tikzfigure}
+\node[CfgInstr] (l1) {l1};
+\node[CfgInstr, below = of l1] (l2) {l2};
+\node[CfgInstr, right = of l1] (l3) {l3};
+\node[CfgInstr, below = of l3] (l4) {l4};
+\edge[->] (l1) -- (l2);
+\edge[->] (l3) -- (l4);
+\edge[->,happensBeforeEdge] (l1) -- (l3);
+\edge[->,happensBeforeEdge] (l3) -- (l2);
+\edge[->,happensBeforeEdge] (l2) -- (l4);
+\end{tikzfigure}
+
+\todo{I need a better example.}
+
+
+\subsubsection{Compiling the plan}
+
+In addition to a plan interpreter, SLI also includes a plan compiler, which combines the plan with the program's original machine code to produce a modified version of the program which performs the necessary enforcement actions without needing an interpreter.
+The intent here is to reduce the overhead of the interpreter in the case where SLI is investigating many bugs most of which do not exist.
+Making this practical requires several simplifications to the semantics:
+
+\begin{itemize}
+\item
+  The number of physical program threads operating in the plan is limited.
+  In particular, it is assumed that only one program thread will be executing the read side of the plan at any time, and likewise only one thread will be executing the write side.
+\item
+  The message semantics are simplified: messages are sent asynchronously, with a delay only on the read side, and must be ``cancelled'' when the relevant thread exits.
+  This has two important implications: first, that a message send can never fail and, second, the something must keep track of what messages a given thread currently has outstanding.
+  Combined with the first simplification, it also means that at most one instance of any given message can be outstanding at any one time, and so it is easy to place the relevant information in a global structure without needing any dynamic memory allocation.
+\item
+  High-level interpreter contexts only ever access the state of their own low-level interpreters.
+  This has two important implications:
+
+  \begin{itemize}
+  \item
+    Remote low-level interpreters are never duplicated during message operations.
+    If the normal semantics would require an interpreter to be duplicated then the local message operation fails.
+  \item
+    The receive message filter can only be executed by the receiving thread after receiving a message.
+  \end{itemize}
+\item
+  When a low-level interpreter is duplicated due to a non-deterministic choice in the Succ phase the low-level state's stash table is not duplicated.
+  Instead, all low-level interpreters in a given high-level interpreter share a single stash table.
+\end{itemize}
+
+The result is a system with lower run-time overheads, but also a lower probability of reproducing interesting bugs.
+It has a much larger I-cache footprint but a smaller D-cache one\editorial{Not sure where I'm going with that, although it is true and kind of interesting}.
+
+I now briefly outline the implementation of this compiler.
+The core idea is to compile the CFG in the enforcement plan into a state machine.
+This state machine consists of a large number of smaller intra-instruction state machines, as illustrated in figure~\todo{...}, each of which models a single instruction in the original program.
+The label on each state is itself a set of low-level labels which consist of a four-tuple of the plan thread which is executing, a reference to the plan CFG node, a set of messages which have been sent by the thread, and the phase of the intra-instruction state machine.
+Each state is compiled to a small fragment of machine code (which might be empty, if this instruction does not have an relevant annotation in the plan) plus a set of relocations specifying the fragment's relationships to the other states.
+Once every state has been compiled these relocations can be discharged and the fragments concatenated together to form the final patch.
+
+I now discuss the details of each phase of the intra-instruction machine:
+
+\begin{itemize}
+\item[RecvMsg]
+  Examine the set of CFG nodes which are active in the current state and determine whether the plan requires any of them to receive messages.
+  If so, emit code to examine the global outstanding-message structures to see whether of the desired messages are currently outstanding.
+  If there are, receive precisely that message.
+  Any other message receive operations are considered to have failed and the relevant CFG nodes removed from the current state label.
+  If no message sends are currently outstanding then the physical thread is delayed until either one is available or some timeout is reached.
+  If a message becomes available then it is received, and otherwise all receives fail and all receiving CFG nodes are removed from the label.
+  Note that this does not necessarily mean that the state label will become empty\footnote{Although that is the common case.} as there may be some CFG nodes which do not need to receive messages.
+
+  Once a message is received its content is simply copied from the global message area into the local thread's stash area.
+\item[OrigInstr]
+  Store any generated values into simulation slots and issue the original instruction.
+  There are three main cases to consider here:
+
+  \begin{itemize}
   \item
     Simple memory loads.
     If the instruction is of the form \verb|LOAD *location -> register|, and the value loaded is to be saved, then it is sufficient to just copy \verb|register| into the simulation slot after the original instruction has completed.
@@ -1922,79 +2387,36 @@ CMP 76, reg1
     This exposes the loaded value to the instrumentation framework, allowing it to be stored to the simulation slot as desired.
 
     Instructions which modify memory in-place, such as \verb|ADD 1 + *loc1 -> *loc1|, pose a similar problem and can be solved in the same way, provided that they do not have a \verb|LOCK| prefix.
-    \verb|LOCK|ed instructions are instead replaced with a \verb|CMPXCHG| loop in the conventional way\editorial{Not sure I'll get away with that}.
+    \verb|LOCK|ed instructions are more complex, as separating the load and store phases into separate instructions would violate the semantics of the program and might introduce new bugs.
+    SLI solves this problem using a \verb|CMPXCHG| loop.
+    For instance, the instruction \verb|LOCK ADD 1 + *loc1 -> *loc1| would be converted to this machine code fragment:
+
+\begin{verbatim}
+1: LOAD *loc1 -> reg1
+ADD 1 + reg1 -> reg2
+LOCK CMPXCHG *loc1, reg1 -> reg2
+if_cmpxchg_failed goto l1
+STORE reg1 -> simslot
+\end{verbatim}
+
+    The \verb|CMPXCHG| instruction here is supposed to be an invented syntax for the x86 machine code instruction which atomically compares \verb|*loc1| to \verb|reg1| and, if they are equal, sets \verb|*loc1| to \verb|reg2|.
+    This allows SLI to expose the value of the implicit load while preserving the \verb|LOCK| semantics of the original instruction.
   \item
     Branch instructions are deferred to the FindSucc state.
   \end{itemize}
   
-\item[VerfCond]
-  Check any verification conditions which were not checked during the message receive phase.
-  If any fail then the interpreter exits, and otherwise it moves on to the SendMsg state.
 \item[SendMsg]
   Send any outgoing messages.
-  This always succeeds and the interpreter moves on to the FindSucc state.
-\item[FindSucc]
-  Determine where the thread needs to move to next.
-  The details are given later.
+  This amounts to simply copying the message payload into the global message area, setting a global flag to indicate that the message is currently outstanding, and adding the message ID to the state label's set of sent messages.
+  This always succeeds and advances to the FindSucc state.
+
+\item[ExitThread]
+  When a low-level thread exits it is necessary to cancel any messages which it has sent.
+  The compiler takes the union of all of the sent-messages sets in its low-level, removes the thread which is to exit, and then takes the union again.
+  Any messages present in the first set but not the second need to be cancelled by setting the relevant global message-outstanding flag to zero.
+  The compiler will then either exit the patch, if the last low-level thread has exited, or resume the intra-instruction state machine at an appropriate place.
 \end{itemize}
 
-There is, however, a complication with this simple model, which is that it isn't always clear where in the CFG a given thread is currently executing.
-There are a couple of reasons for this:
-
-\begin{itemize}
-\item
-  The verification condition is converted to conjunctive normal form near the beginning of the analysis, and if there are multiple clauses then SLI produces, in effect, multiple crash enforcement plans.
-  It is not necessarily clear at the start of the CFG which of these plans is to be followed.
-\item
-  The instructions involved in the read and write \StateMachines might overlap, and the two machines will generate different CFGs with different annotations.
-\item
-  The CFG unrolling mechanism used by the initial analysis to handle loops means that there may be several CFG nodes associated with a given instruction.
-\end{itemize}
-
-The interpreter must therefore keep track of which plan-level threads a given concrete thread might be executing, and for each plan-level thread which CFG nodes the thread might currently be executing.
-
-The solution to this is to modify the interpreter by effectively taking the cross product over all of the state which is uncertain, in effect converting the simple interpreter into a high-level interpreter which interprets sets of simple interpreters in parallel\editorial{Kind of a cross product; also quite a lot like a power set construction}.
-The state of the high-level interpreter could then be expressed like this:
-
-\begin{verbatim}
-HLState :: Set (PlanThreadId, CfgNode, Set(SentMessages), Phase)
-\end{verbatim}
-
-The small-step low-level interpreter maps each member of this state set into a new set of low-level states.
-The small-step high-level interpreter then just needs to map the small-step low-level interpreter over its current state and take the union of the results, producing a new high level state.
-If the resulting set is empty then the high-level interpreter can exit.
-
-\todo{The way this is actually works is \emph{much} more complicated than that, but that's the important bit.}
-
-We can now give details of the FindSucc state of the low-level interpreter.
-The behaviour depends on the underlying instruction:
-
-\begin{itemize}
-\item
-  Zero-exit instructions, such as \verb|ud2| or \verb|int3|, just moves to the Exit phase, causing the plan-level thread to exit.
-\item
-  Single-exit instructions.
-  The interpreter examines the node in the CFG which it is interpreting.
-  It creates a new successor state for every successor of that node, starting in the RecvMsg phase.
-\item
-  Multiple-exit instructions.
-  The interpreter determines examines the underlying instruction and compares it to the actual program state to determine which of the possible exits will be taken.
-  It then uses that to select the successors of the CFG node which might be taken and creates a new successor state for each one, again starting in the RecvMsg phase.
-\end{itemize}
-
-There is one remaining complication, which is that an additional plan-level thread might start while the high-level interpreter is running if the high-level interpreter interprets an instruction which starts a thread.
-This is modelled by introducing two new instruction phases:
-
-\begin{itemize}
-\item[CheckForThreadStart]
-  This state checks which instruction of the underlying program is currently being interpreted.
-  If it matches with any thread entry point in any of the crash enforcement plans, and the relevant plan-level thread is not currently represented in the high-level plan, the interpreter moves to the StartThread state.
-  Otherwise, it moves to the RecvMsg state.
-\item[StartThread]
-  This state starts a single additional plan-level thread, adding it to the current high-level state and then returning to the CheckForThreadStart state to see whether any further threads need to be started.
-\end{itemize}
-
-The final intra-instruction state machine then looks like this:
 
 \begin{tikzpicture}
 \node[flowChartState,above left = of RecvMsg] (StartThread) {StartThread};
@@ -2017,7 +2439,6 @@ The final intra-instruction state machine then looks like this:
 \draw[->] (FindSucc) -- (Exit);
 \end{tikzpicture}
 
-\todo{And then we do all of that, but as a compiler rather than an interpreter, which doesn't make it any easier to understand.}
   
 
 \subsubsection{Compiling entry point stubs}
@@ -2025,9 +2446,7 @@ The final intra-instruction state machine then looks like this:
 
 \subsubsection{Run-time considerations}
 
-Timeouts are important in the case where the bug you're looking for doesn't happen, but I don't have a particularly good story about them, which is a bit sad.
-
-Also recovery from spurious segfaults in the patch due to e.g. LD operations.
+Recovery from spurious segfaults in the patch due to e.g. LD operations.
 
 \subsection{Comparison to schedule memoisation}
 \subsection{Comparison to STM block inference stuff}
