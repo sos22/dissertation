@@ -206,6 +206,8 @@ Excess-concurrency bugs are far more common than insufficient-concurrency bugs, 
 
 SLI therefore completely ignores these insufficient-concurrency bugs.
 
+\todo{Mention something about finding a bunch of insufficient-concurrency bugs related to malloc() failure.}
+
 \begin{figure}
 Illustration of a bug tuple.  We have a prefix P, write section W, and read section R.
 \label{fig:mandatory_concurrency3}
@@ -1945,7 +1947,7 @@ If both the sending and receiving threads of a message operation are known, the 
   \node[place,tokens=1,right = of beforeRx, label=above:{before transmit}] (beforeTx) {};
   \node[place,tokens=0,below=of beforeRx, label=below:{after receive}] (afterRx) {};
   \node[place,tokens=0,below=of beforeTx, label=below:{after transmit}] (afterTx) {};
-  \node[transition,below right=of beforeRx, label=right:{discharge message}] (trans)
+  \node[transition,below right=of beforeRx, label=right:{discharge message}] (trans) {}
   edge [pre] (beforeRx)
   edge [pre] (beforeTx)
   edge [post] (afterRx)
@@ -1987,7 +1989,7 @@ For a receive operation, the algorithm to do so in the abstract semantics looks 
     \STATE {Examine the set of outstanding unbound message sends and collect all of the ones which pass the message filter into $s$}
     \STATE {Extend $s$ with $\bot$}
     \STATE {Choose $s'$ non-deterministically from $s$}
-    \IF $s' = \bot$
+    \IF {$s\prime = \bot$}
       \STATE {Register $l$ as a receiver of unbound messages}
       \STATE {Wait for the delay specified in this receive operation}
       \STATE {Unregister $l$ as a receiver of unbound messages}
@@ -2014,7 +2016,7 @@ The send operation is symmetric:
     \STATE {Examine the set of outstanding unbound message receives and collect all of the ones whose filters this message would pass into $s$}
     \STATE {Extend $s$ with $\bot$}
     \STATE {Choose $s'$ non-deterministically from $s$}
-    \IF $s' = \bot$
+    \IF {$s' = \bot$}
       \STATE {Register $l$ as a sender of unbound messages}
       \STATE {Wait for the delay specified in this receive operation}
       \STATE {Unregister $l$ as a sender of unbound messages}
@@ -2095,10 +2097,10 @@ The message receive operation looks like this:
   \FORALL {$l$ in currently-active low-level interpreter states}
     \IF {$l$ does not receive any messages}
       \STATE {Move $l$ from $lls$ to $newLls$ without changing it}
-    \ELSEIF {$l$ has a bound thread}
+    \ELSIF {$l$ has a bound thread}
       \IF {$l$'s bound thread has exited}
         \STATE {$l$ exits as well; remove it from $lls$ without adding it to $newLls$}
-      \ELSEIF {$l$'s bound thread has an outgoing message}
+      \ELSIF {$l$'s bound thread has an outgoing message}
         \IF {The bound thread's outgoing message passes the message filter}
           \STATE {Copy stashed values from the sending low-level interpreter's state to the receiving one}
           \STATE {Move $l$ from $lls$ to $newLls$}
@@ -2106,10 +2108,10 @@ The message receive operation looks like this:
           \STATE {$l$ exits; remove it from $lls$}
         \ENDIF
       \ELSE
-        \COMMENT {Wait for a the bound thread to send a message}
+        \STATE {} \COMMENT {Wait for a the bound thread to send a message}
       \ENDIF
     \ELSE
-      \COMMENT{Unbound receive}
+      \STATE {} \COMMENT{Unbound receive}
       \FORALL {$s$ registered unbound senders}
         \IF {$s$'s outgoing message passes the message filter}
           \STATE {$l' \gets $ duplicate $l$}
@@ -2135,7 +2137,7 @@ The message receive operation looks like this:
     \STATE {Acquire lock}
   \ENDIF
 
-  \WHILE {There are bound receives in $lls$ and $now() \lt end$}
+  \WHILE {There are bound receives in $lls$ and $now() < end$}
     \STATE {Release lock}
     \STATE {Wait for some bound receive to complete, or for the current time to pass $end$}
     \STATE {Acquire lock}
@@ -2143,7 +2145,7 @@ The message receive operation looks like this:
       \IF {$l$'s bound thread has exited}
         \STATE {Remove $l$ from $lls$}
         \STATE {$l$ exits}
-      \ELSEIF {$l$'s receiving-bound-message flag is clear}
+      \ELSIF {$l$'s receiving-bound-message flag is clear}
         \STATE {Remove $l$ from $lls$}
         \STATE {Add $l$ to $newLls$}
       \ELSE
@@ -2158,15 +2160,15 @@ The message receive operation looks like this:
     \ENDIF
     \IF {$l$ was attempting a bound receive and the bound thread hasn't sent any messages}
       \STATE {Exit $l$}
-    \ELSEIF {$l$ is unbound}
+    \ELSIF {$l$ is unbound}
       \STATE {The thread must have been attempting an unbound receive which failed, so exit $l$}
     \ELSE
-      \COMMENT {Receive succeeded}
+      \STATE {} \COMMENT {Receive succeeded}
       \STATE {Add $l$ to $newLls$}
     \ENDIF
   \ENDFOR
 
-  \STATE {Set high-level interpreters set of currently-active low-level interpreters to $newLls$
+  \STATE {Set high-level interpreters set of currently-active low-level interpreters to $newLls$}
 \end{algorithmic}
 
 The send algorithm is very similar:
@@ -2177,10 +2179,10 @@ The send algorithm is very similar:
   \FORALL {$s$ in currently-active low-level interpreter states}
     \IF {$s$ does not send a message}
       \STATE {Move $l$ from $lls$ to $newLls$ without changing it}
-    \ELSEIF {$s$ has a bound thread}
+    \ELSIF {$s$ has a bound thread}
       \IF {$s$'s bound thread has exited}
         \STATE {$s$ exits as well; remove it from $lls$ without adding it to $newLls$}
-      \ELSEIF {$s$'s bound thread is waiting to receive a message}
+      \ELSIF {$s$'s bound thread is waiting to receive a message}
         \IF {$s$'s outgoing message passes the message filter}
           \STATE {Copy stashed values from the sending low-level interpreter's state to the receiving one}
           \STATE {Move $s$ from $lls$ to $newLls$}
@@ -2189,10 +2191,10 @@ The send algorithm is very similar:
           \STATE {$s$ exits; remove it from $lls$}
         \ENDIF
       \ELSE
-        \COMMENT {Wait for a the bound thread to be ready to receive a message}
+        \STATE {} \COMMENT {Wait for a the bound thread to be ready to receive a message}
       \ENDIF
     \ELSE
-      \COMMENT{Unbound send}
+      \STATE {} \COMMENT{Unbound send}
       \FORALL {$l$ registered unbound receivers}
         \IF {The outgoing message passes $l$'s message filter}
           \STATE {$l' \gets $ duplicate $l$}
@@ -2218,7 +2220,7 @@ The send algorithm is very similar:
     \STATE {Acquire lock}
   \ENDIF
 
-  \WHILE {There are bound sends in $lls$ and $now() \lt end$}
+  \WHILE {There are bound sends in $lls$ and $now() < end$}
     \STATE {Release lock}
     \STATE {Wait for some bound send to complete, or for the current time to pass $end$}
     \STATE {Acquire lock}
@@ -2226,7 +2228,7 @@ The send algorithm is very similar:
       \IF {$s$'s bound thread has exited}
         \STATE {Remove $s$ from $lls$}
         \STATE {$s$ exits}
-      \ELSEIF {$s$'s sending-bound-message flag is clear}
+      \ELSIF {$s$'s sending-bound-message flag is clear}
         \STATE {Remove $s$ from $lls$}
         \STATE {Add $s$ to $newLls$}
       \ELSE
@@ -2241,15 +2243,15 @@ The send algorithm is very similar:
     \ENDIF
     \IF {$s$ was attempting a bound send and the bound thread hasn't tried to receive any messages}
       \STATE {Exit $s$}
-    \ELSEIF {$s$ is unbound}
+    \ELSIF {$s$ is unbound}
       \STATE {The thread must have been attempting an unbound send which failed, so exit $s$}
     \ELSE
-      \COMMENT {Send succeeded}
+      \STATE {} \COMMENT {Send succeeded}
       \STATE {Add $s$ to $newLls$}
     \ENDIF
   \ENDFOR
 
-  \STATE {Set high-level interpreters set of currently-active low-level interpreters to $newLls$
+  \STATE {Set high-level interpreters set of currently-active low-level interpreters to $newLls$}
 \end{algorithmic}
 
 One further optimisation, not shown here, avoids redundantly duplicating low-level interpreter contexts in the common case that a message operation is discharged precisely once.
@@ -2294,19 +2296,17 @@ This bug will therefore never reproduce under SLI's crash enforcer, even when th
 The fix is simple: have the store thread delay slightly after completing its final message send operation, until the read thread also completes its crash enforcement plan.
 This ensures that activity beyond the analysis horizon cannot prevent bug reproduction, and, because it only happens when the plan is mostly complete, and hence happens very rarely, it has very low performance overhead.
 
-\begin{tikzfigure}
+\begin{tikzpicture}
 \node[CfgInstr] (l1) {l1};
 \node[CfgInstr, below = of l1] (l2) {l2};
 \node[CfgInstr, right = of l1] (l3) {l3};
 \node[CfgInstr, below = of l3] (l4) {l4};
-\edge[->] (l1) -- (l2);
-\edge[->] (l3) -- (l4);
-\edge[->,happensBeforeEdge] (l1) -- (l3);
-\edge[->,happensBeforeEdge] (l3) -- (l2);
-\edge[->,happensBeforeEdge] (l2) -- (l4);
-\end{tikzfigure}
-
-\todo{I need a better example.}
+\draw[->] (l1) -- (l2);
+\draw[->] (l3) -- (l4);
+\draw[->,happensBeforeEdge] (l1) -- (l3);
+\draw[->,happensBeforeEdge] (l3) -- (l2);
+\draw[->,happensBeforeEdge] (l2) -- (l4);
+\end{tikzpicture}
 
 
 \subsubsection{Compiling the plan}
@@ -2419,16 +2419,16 @@ STORE reg1 -> simslot
 
 
 \begin{tikzpicture}
+\node[flowChartState] (RecvMsg) {RecvMsg};
 \node[flowChartState,above left = of RecvMsg] (StartThread) {StartThread};
 \node[flowChartState,above right = of RecvMsg] (CheckForThreadStart) {CheckForThreadStart};
-\node[flowChartState] (RecvMsg) {RecvMsg};
 \node[flowChartState, below = of RecvMsg] (OrigInstr) {OrigInstr};
 \node[flowChartState, below = of OrigInstr] (VerfCond) {VerfCond};
 \node[flowChartState, below = of VerfCond] (SendMsg) {SendMsg};
 \node[flowChartState, below = of SendMsg] (FindSucc) {FindSucc};
 \node[flowChartState, right = of VerfCond] (CondFail) {CondFail};
 \node[flowChartState, right = of CondFail] (Exit) {Exit};
-\node[flowChartState, right = of RecvMsg] (RecvdMsg) {RecvdMsg};
+\node[flowChartState, left = of RecvMsg] (RecvdMsg) {RecvdMsg};
 \draw[->] (CheckForThreadStart) -- (RecvMsg) -- (OrigInstr) -- (VerfCond) -- (SendMsg) -- (FindSucc);
 \draw[->] (StartThread) to [bend right=10] (CheckForThreadStart);
 \draw[->] (CheckForThreadStart) to [bend right=10] (StartThread);
@@ -2885,7 +2885,87 @@ Pretty much all of the existing slicing literature is on source-level stuff, rat
 
 \chapter{Evaluation}
 \chapter{Related work}
+
+Alias analysis:
+
+\begin{itemize}
+\item
+  Balakrishnan, G. and Reps, T. Analyzing memory accesses in x86 executables. In Proc. Int. Conf. on Compiler Construction, Springer-Verlag, New York, NY, 2004, 5-23. (Awarded the EAPLS Best Paper Award at ETAPS 2004.)
+\item
+  Joisher, Schieder, et al, On a technique for transparently empowering classical compiler optimizations on multithreaded code, 2012.
+\end{itemize}
+
+Generic binary analysis stuff:
+
+\begin{itemize}
+\item
+  Balakrishnan, G., Reps, T., Kidd, N., Lal, A., Lim, J., Melski, D., Gruian, R., Yong, S., Chen, C.-H., and Teitelbaum, T., Model checking x86 executables with CodeSurfer/x86 and WPDS++, (tool-demonstration paper). In Proc. Computer-Aided Verification, 2005.
+\item
+  Balakrishnan, G., Reps, T., Melski, D., and Teitelbaum, T., WYSINWYX: What You See Is Not What You eXecute. In Proc. IFIP Working Conference on Verified Software: Theories, Tools, Experiments, Zurich, Switzerland, Oct. 10-13, 2005.
+\item
+  BAP: A binary analysis platform, Jager et al, 2011.
+\item
+  Something about separation logic?
+  Should certainly explain somewhere why it doesn't work so well when doing concurrency things.
+\end{itemize}
+
+SSA bits:
+
+\begin{itemize}
+\item
+  HSSA -- Chow et al, Effective representation of aliases and indirect memory operations in SSA form, 1996.
+\end{itemize}
+
+Concurrency analysis:
+
+\begin{itemize}
+\item
+  Synchronisation removal: Choi et al, Escape analysis for Java, 1999; Ruf 2000.
+\item
+  Procedural concurrency graph: Joisher, Schieder, et al, On a technique for transparently empowering classical compiler optimizations on multithreaded code, 2012.
+\item
+  Something on parallel execution graphs and may-happen-in-parallel e.g. Li and Verbrugge 2004, A practical MHP information analysis for concurrent Java programs
+\item
+  Thread escape analysis: Choi et al, Escape analysis for Java, 1999.
+\item
+  Have a look at Chugh et al, 2008, RADAR.  Dataflow analysis for concurrent programs using datarace detection.
+\end{itemize}
+
+VC generation:
+
+\begin{itemize}
+\item
+  Dijkstra's weakest precondition thing.
+\item
+  Jager and Brumley, Efficient directionless weakest preconditions, 2010.
+\end{itemize}
+
+VC checking:
+
+\begin{itemize}
+\item
+  Find some simple SMT solvers and see if they actually win anything over just using the SLI sat checker.
+  e.g. CVC3, Yices.
+\end{itemize}
+
+Enforcement:
+
+\begin{itemize}
+\item
+  Quite a lot of other papers on using runtime monitors for non-concurrency properties.
+  Chain refs from ``Partially evaluating finite-state runtime monitors ahead of time'', Bodden, Lam, and Hendren, 2012.
+\item
+  DataCollider, obviously.
+\end{itemize}
+
+Other things to compare to:
+
+\begin{itemize}
+\item
+  SOAP: Long, Ganesh, et al, Automatic Input Rectification, ~2011.
 \chapter{Conclusions}
+
+\todo{I should really have more discussion of memory models.  I'm assuming strongly consistent, but don't really say that anywhere.}
 
 \end{document}
 
