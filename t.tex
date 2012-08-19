@@ -300,7 +300,9 @@ Therefore, it is only possible for shrinking the analysis window to reveal more 
 This monotonicity property is useful because it provides a simple rule for setting the size of the analysis window: use the largest such that the analysis completes in a reasonable amount of time.
 There is no need for the user to carefully select a window size for their program, or to try multiple window sizes in order to reveal additional bugs.
 
-\todo{This proof feels quite circular and unconvincing.  May need more though here.}
+\label{sect:monotonicity}
+
+\todo{This proof feels quite circular and unconvincing.  May need more thought here.}
 
 \subsection{Crash summaries}
 
@@ -651,6 +653,12 @@ Important complications:
 \item Removing cycles in a way which definitely preserves all the sufficiently-short paths.
 \item What happens when you back into a function call.
 \end{itemize}
+
+\subsubsection{Conversion to SSA}
+\label{sect:ssa}
+
+The conversion to SSA itself is absolutely standard, but it's a slightly unusual form of SSA (because we're going to be doing symbolic execution rather than compiling).
+This isn't obviously the perfect place to describe that, but it's the best place I've been able to come up with so far.
 
 \subsection{Building write-side \StateMachines}
 
@@ -1391,9 +1399,79 @@ We need to report a bug if there exists any state which satisfies both the valid
 Alternatively, to avoid reporting a bug, we need to prove that $\textrm{validity constraint} \rightarrow \not{}\textrm{crash constraint}$, which means that we report a bug if the predicate $\textrm{validity constraint} \wedge \textrm{crash constraint}$ is satisfiable.
 
 \subsubsection{Symbolically executing machines}
-Not sure how much detail to give here.
-It's a fairly standard symbolic execution engine, so there's nothing really exciting here, but it's also quite important, and not really very hard to describe.
-I think it's worth a couple of paragraphs.
+
+SLI uses a simple symbolic execution engine to evaluate machines and determine when \StateMachines will crash.
+The details of this are fairly standard, and I only give a brief overview here.
+The core data structure used by the execution engine is a queue of (mostly) symbolic configurations which the \StateMachine might occupy, and the main operation is to take a state out of this queue, determine what the \StateMachine might do next, and possibly add some additional configurations to the queue to explore further.
+Each configuration contains:
+
+\begin{itemize}
+\item
+  A mapping from temporary variable identifiers to the (symbolic) values of those variables.
+\item
+  A reference to the {\StateMachine}'s current (non-symbolic) state.
+\item
+  The order in which those temporaries were assigned to.
+  As discussed in \S~\ref{sect:ssa}, SLI uses a slightly unusual form of single static assignment in which $\Phi$ nodes select their input variable based on which was assigned to most recently, rather than based on the preceding control flow, and this keeping track of that ordering allows that semantics to be implemented simply.
+\item
+  A log of all of the memory stores issued by the \StateMachine so far.
+\item
+  The current assumption.
+  This is simply the conjunction of all of the conditions which are known to be true at this point in the execution.
+\item
+  The current ``path'' assumption.
+  This is the subset of the current assumption which was introduced during the machine's execution.
+  In other words, it is all of the things which are known to be true at this point in the execution but which were not known to be true at the start of the execution.
+  This is often useful when building verification conditions, as discussed below.
+
+  An alternative design would instead keep the path assumption and the initial assumption completely separate, and get rid of the current assumption, but this is slightly more convenient\editorial{think harder.}.
+\end{itemize}\editorial{Plus some debug crap, but we don't care about that here.}
+
+There are three possible outcomes from an execution: crash, survive, or escape.
+The first two are obvious.
+An escaping result indicates that the \StateMachine behaved in a way which indicates that this execution is not one of the ones which are of interest to the current bug.
+This might, for instance, be because an assertion fails, or because a memory access (other than the one being investigated) dereferenced bad memory.
+The exact treatment of escaping executions depends on how the results of the symbolic execution are to be used.
+
+Implementing the various types of \StateMachine operation is straightforward:
+
+\begin{itemize}
+\item[cond]
+  Check whether the assumption allows the condition to be simplified to a constant.
+  If it does, simplify advance to the appropriate successor state.
+  Otherwise, create two new successor configurations, moving one to the state's condition-true successor state and the other to the condition-false one and adding either the constraint (for the condition-true successor) or its inverse (for the condition-false one) to the current assumption and the path assumption.
+\item[assert]
+  Check whether the assumption allows the asserted value to be reduced to a constant.
+  If it can, and that constant is one, simply move to the assertion's successor state.
+  If the constant is zero, the execution escapes.
+  Otherwise, if the asserted expression cannot be reduced to a constant, it is added to the current assumption and path assumption and the execution moves to the successor state.
+\item[copy]
+  Simplify the right-hand side of the copy as far as possible using the current assumption and then copy it to the appropriate place in the temporary variable table.
+  The current assumption is then rewritten to replace any instances of the left-hand side of the copy with the simplified version of the right-hand side.
+  The path assumption is not rewritten, and neither are the values of any of the other temporary values.
+  \todo{I'm at least half convinced that this doesn't actually matter any more, due to changes elsewhere in the analysis pipeline.  Need to check that.}
+\item[store]
+  Assert that the pointer stored to is itself valid and then add the store to the log of issued stores.
+\item[load]
+  Assert that the pointer to be loaded is itself valid.
+  Look through the log of issued stores, checking each one to see whether it might be storing to the location loaded by the load.
+  If the load is unambiguously satisfied by a single store then create a single successor configuration then copy the value stored into the temporary variable targeted by the load using the same mechanism as used for copy side-effects.
+  Otherwise, create one for each possible store, and potentially also one in which the load returns the initial value of memory.
+\item[phi]
+  Essentially as far copy operations.
+\item
+  Every operation is a no-op in the interpreter and simply moves to the next state.
+  In particular, the execution engine ignores operations such as ``StartLayout'' and ``PointerAliasing'' which simply provide additional hints to the various \StateMachine simplification phases.
+\end{itemize}
+
+\todo{Possibly important that this uses the simplifier rather than the sat checker to see whether things reduce to a constant.}
+
+Asserting that pointers are valid before performing memory operations is perhaps slightly surprising, as it means that the execution engine will never consider paths which crash due to dereferencing bad pointers.
+This may appear odd in a system designed to investigate crashes due to dereferencing bad pointers.
+However, it simply reflects the fact that, at this stage, SLI is only interested in a single possibly-crashing instruction, and so crashes at memory accesses prior to that one need to be ignored; asserting that dereferenced pointers are valid achieves that.
+The interesting instruction itself is encoded without an explicit memory-accessing state (see \S~\todo{...}), so crashes there will not be affected by these assertions.
+
+\todo{At one point, the execution engine was the reason we needed dynamic single assignment form.  I can't really see why it depends on it now, though, so that might be worth looking at more.}
 
 \subsubsection{R atomic}
 
@@ -1402,7 +1480,7 @@ Once the read machine has been completely determined, this is in effect a condit
 The first phase of building the verification condition is to build the condition.
 To do so, the analysis first simplifies the probe machine on the assumption that it is running atomically and then symbolically executes it.
 The constraint is then the conjunction of the inverses of the path conditions to reach crashing states.
-Escaping states, those which correspond to assertion failures, are treated as crashing states at this stage of the analysis.
+Escaping executions are treated as crashing ones at this stage, so that they will not be considered by later stages of the analysis.
 
 Path explosion: once you're assuming that the machine is completely atomic the state machine simplifier turns most machines into a simple predicate on the initial state and so the symbolic execution is pretty much trivial and there aren't really any paths to explode.
 The main exception is where Phi nodes prevent us from simplifying control flow as far as we'd like.
@@ -1432,18 +1510,39 @@ Complication: we arrange to build the machines in a way which avoids running eit
 
 I'm going to have to describe the algorithm here, because it's a little bit subtle.
 
+Interesting properties of the algorithm:
+
+\begin{itemize}
+\item
+  Needs to maintain atomic blocks.
+\item
+  Need to avoid considering the cases where either machine runs to completion before the other one starts.
+\item
+  Avoid considering both orderings of a load-store pair if they can't ever possibly access the same memory location.
+  Slight complication: need to look past the current memory access to see if there's anything after it which might possibly race in an interesting way.
+\item
+  When you do need to consider both orderings, one of the orderings asserts that the two accesses access the same location and the other one doesn't.
+\end{itemize}
+
 Path explosion: much more of a concern now.
-We're effectively considering most possible interleavings, of which there are a lot, and all possible aliasing configurations.
-You save a little because the validity predicate eliminates a bunch of configurations.
+The cross machine will only have $O(n.m)$ states, which isn't \emph{too} bad, but once you combine that with the potential exponential blow-up in the execution engine proper's alias analysis it gets really quite messy.
+You save a little because the validity predicate eliminates a bunch of possible configurations, though.
 
 \subsection{Use of the induction rule}
 
 The analysis uses a form of induction to eliminate some bugs.
 The idea is that when analysing target instruction T, we can assume that there are no bugs of the target class for any other instruction T', and hence that the verification condition for T' is false.
-There is therefore a post-pass once the base verification has been generated which does precisely that.
+Therefore, once we've finished generating the verification condition for a \StateMachine pair (L,S) we look at ``truncations'' of $L$, produced by cutting it off at each intermediate memory access, and generate verification conditions for each of them.
+We can safely assume that these conditions are false while checking for satisfiability of the verification condition for the original \StateMachine pair.
+This relies on the monotonicity property of the definition of crashes discussed in \S~\ref{sect:monotonicity}.
+
 If this eliminates a crash then we log the fact that we've used induction, and then once every instruction has been completed we go back and check for cycles in this induction graph.
 Usually, there aren't any, and so the induction is sound.
 Otherwise, we count each such cycle as a single bug.
+
+\todo{This isn't particularly effective, and it is very computationally expensive.}
+
+\todo{Haven't actually found any cycles in that graph yet...}
 
 \subsection{Completeness}
 This is going to have a lot of forward references, because so many of the potential sources of uncompleteness are in the simplification bits, which I describe much later.
@@ -1737,9 +1836,6 @@ The original program is then executed in lockstep with this annotated CFG, autom
 Actual algorithm:
 
 \begin{itemize}
-\item
-  Augment verification condition with happens-before edges.
-  \editorial{I could actually rework things so that the HB edges are included in the verification condition.  Not really sure why I didn't do that first time around.}
 \item
   Convert to DNF.
   For each clause:
@@ -2443,6 +2539,31 @@ STORE reg1 -> simslot
 
 \subsubsection{Compiling entry point stubs}
 
+\todo{Good Lord, this is completely incomprehensible.}
+
+The entry points of the crash enforcement plan are given as mappings from call stacks to CFG nodes.
+The program must be patched so that it transfers control to the interpreter whenever the call stack matches up with one of these entry-point call stacks.
+This is a multi-step process:
+
+\begin{itemize}
+\item
+  The last pointer in the call stack is a raw instruction pointer.
+  The relevant instruction is patched into a jump into the interpreter trampoline.
+\item
+  The interpreter trampoline transitions to a different stack, saves the client program's register state, and starts the main interpreter.
+\item
+  The main interpreter then examines the program's stack to determine whether it matches up with the entry-point stack.
+  If it does then a new high-level interpreter state is created and interpretation starts.
+  Otherwise, the interpreter exits back to the original program (possibly after emulating enough instructions to avoid returning into the middle of the new jump instruction).
+\end{itemize}
+
+The last point is more subtle than it might appear, as the interpreter must be able to find arbitrary return addresses on the program's stack, and this is difficult if the program is compiled without frame pointers or debug symbols.
+SLI uses a static analysis, performed when generating the crash enforcement plan, to solve this problem.
+The static analyses already described are sufficient to determine the entry point of the function containing a given RIP, and so it is easy to perform a simple abstract interpretation forwards from that point to the given RIP and hence find the number of bytes which the function will push onto the stack on the way\footnote{This is generally fixed for all possible paths}.
+The first entry in the call stack is trivially true because of the way the jumps are patched in.
+The second one is the return address of the current function, which can be found using that offset.
+The third one is the return address of the calling function, and the offset there is just the previous offset plus the offset in the calling function.
+In this way all necessary offsets can be found and the entry-point stack checked completely.
 
 \subsubsection{Run-time considerations}
 
@@ -2454,19 +2575,80 @@ Recovery from spurious segfaults in the patch due to e.g. LD operations.
 \section{Fixing bugs}
 
 \subsection{Using global locks}
-\subsection{Using message passing}
+\label{sect:fix_global_lock}
+
+\todo{Write me.  This is supposed to be about how you patch in lock-acquire and lock-release operations.}
+
+\subsection{Using a message-passing network}
+\todo{I've come up with an algorithm for doing this, but I really don't have time to implement it.  It is kind of cool, though; I'd like to include it somewhere, even if it's just a future work-type thing.}
 
 \chapter{Other modes of operation}
-\section{Building \StateMachines from DRS logs}
+\section{Building \StateMachines from crash dumps}
+
+\section{Fixing bugs from DRS logs}
 The simplest way to fix a bug is to start from a DRS log.
 Given a log, identifying the thread and which is most responsible for a crash is generally straightforward.
 If the crash is caused by dereferencing a bad pointer then the responsible thread is the one which dereferenced the pointer; if the crash is an assertion failure then the responsible thread is the one which called \verb|abort()| (or equivalent).
 The log then makes it trivial to determine what instructions the responsible thread executed before it crashed, and a suffix of these can be compiled into a \StateMachine capturing the most relevant parts of the responsible thread's behaviour.
 
+The log also makes it trivial to determine precisely which stores the read-side thread raced with, and so building a write-side \StateMachine is redundant.
+Instead, the read-side \StateMachine is ``slid across'' the log, evaluating it at every step (subject to some typing constraints which ensure that the result is reasonable), and the resulting pattern of safe and unsafe regions converted directly into critical sections, without ever needing to generate an explicit write-side \StateMachines.
+
+\subsection{Building the read-side \StateMachine}
+\todo{This is gratuitously different from the non-DRS mode in an enormous number of places.  I should fix that.}
 
 \subsection{Requirements on the DRS}
-\section{Building \StateMachines from crash dumps}
-\section{Turning a collection of \StateMachines into a fix}
+
+\subsection{Finding remote critical regions}
+
+The fixes generated by SLI rely on making the read-side \StateMachine operate as-if atomically and then ensuring that it does not execute in any states where doing so would lead to a crash.
+In the normal mode of operation, the regions which would lead to a crash are determined by modelling the rest of the program as a set if write-side \StateMachines and then using symbolic execution, but it is possible to be more accurate\editorial{or possibly precise?} if a full DRS log is available.
+Instead of the set of \StateMachines, the log itself can be used as a model for the rest of the program.
+The idea here is that the log contains a sequence of possible states of the program, and contains all of the ones which are relevant to this particular way of reproducing the bug of interest.
+SLI therefore slides the read-side \StateMachine over this log, evaluating it at every instruction, and hence classifies the log into ``safe'' and ``unsafe'' regions, and the transitions between these two types of region give the boundaries of the write-side critical regions.
+
+As a minor optimisation, SLI only re-evaluates the \StateMachine if there has been a store to some memory location which is loaded by the \StateMachine.
+This cannot affect the results in any way, but means that the \StateMachine does not have to be evaluated as often.
+
+One important complication here is the presence of dynamically-allocated data structures.
+SLI relies on being able to identify points in the program where these are allocated and released.
+The loads in the read \StateMachine will correspond to specific load operations in the DRS log and SLI is then able to check which dynamic instance of structures those accesses access and will only evaluate the \StateMachine while all of the relevant structures remain live.
+
+Once the log has been classified, the classification must be converted into realisable critical sections.
+In other words, SLI must identify points in the program at which it must insert lock acquire operations and points where it must insert lock release operations.
+Ideally, each unsafe region in the log would correspond to a single critical section, with a single acquire operation and a single release one.
+This can fail in several ways:
+
+\begin{itemize}
+\item
+  The start and end of the unsafe region might be in different threads, if, for instance, one thread violates an invariant and another thread then restores it.
+  It is difficult to model a cross-thread operation as a critical section.
+  SLI cannot prevent this kind of bug, and the unsafe region is simply ignored.
+\item
+  There might be non-trivial control flow between the start and end of an unsafe region within a single thread.
+  In that case additional acquire and release operations must be inserted to ensure that locks are not leaked, double-acquired, or double-released.
+\item
+  The program might have additional synchronisation mechanisms which, when combined with the SLI-inferred synchronisation, lead to a deadlock.
+\end{itemize}
+
+These are discussed in more detail in \S~\ref{sect:fix_global_lock}.
+
+\todo{This is in dire need of rewriting.}
+
+Note that the definition of a dynamic structure is somewhat subtle here.
+Most obviously, \verb|malloc| and \verb|free| represent boundaries in the lifespan of such structures (with \verb|malloc| being the start and \verb|free| being the end), but ``re-typing'' operations can also impose such boundaries.
+The intent of the sliding procedure is to capture other operations which the program might perform on the data structures involved in the synchronisation bug, in the same way that write-side \StateMachines do in the non-DRS case.
+In effect, the program's behaviour is constrained using a heuristic memory safety property, and this memory safety property must correspond reasonably closely to the program's actual structure.
+
+The underlying hypothesis here is that the program has some kind of internal type system which constrains which operations will be performed on a given memory location.
+This means that two pieces of code can only race if they have types which are in some sense compatible, so that they might access overlapping memory locations.
+The combination of the read-side \StateMachine and the set of dynamic instances accessed by it defines, in a slightly ill-defined way, a set of types which the read side of the critical section might access.
+SLI must then find some other operations on the same types to synchronise against, and this is the aim of the sliding procedure.
+In order for this to work, the read \StateMachine must only be slid to places where the current types match up with the types for which it was derived.
+SLI must therefore be able to identify points where the types of memory locations change.
+This includes things like \verb|malloc| and \verb|free|, but is also likely to include things like program-specific memory allocators or object pools.
+The precise set will depend on the program's type system, and so can only be sensibly modelled with assistance from the programmer.
+
 
 \chapter{Analysis on \StateMachines}
 \section{Alias analysis}
@@ -2789,8 +2971,12 @@ This means that, even if the result is sometimes inaccurate, the inaccurate valu
 
 \todo{This isn't really how I do it any more.}
 
+\todo{Should also discuss RSP canonicalisation around here.}
+
 \subsection{Extended copy propagation}
 \todo{It'd be a really good idea to do another literature trawl and make sure I'm not repeating someone else's work here.}
+
+\todo{This isn't really how I do this any more, anyway.}
 
 The register copy propagation algorithm described in \S\ref{sect:register_copy_propagation} acts to remove temporary registers from the approximation machine.
 The extended copy propagation algorithm extends this algorithm to also remove temporary memory locations.
