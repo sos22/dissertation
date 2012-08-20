@@ -1,0 +1,402 @@
+\section{Digression into theory-land}
+
+The meta-problem here is to transform a program into another program,
+preserving some properties whilst introducing others.  This is
+problematic at the best of times (see: basically all of the theory
+underlying compiler design), but in this case we have the particular
+difficulty that some or all of the properties will be underspecified
+or completely unknown.  This makes the problem, in principle,
+impossible to solve, and also impossible to evaluate: given a proposed
+auto-fixing transformation, a program to apply it to, and an
+arbitrarily intelligent assistant, it is still impossible to tell
+whether the transformation was successful.  This is a challenge.
+
+One potential approach is to consider auto-fixers as being
+transformations on the semantics against which the program is written,
+rather than as transformations of the program itself.  Whenever a
+programmer writes a program, they will have some (usually quite
+informal) model of the semantics of the underlying hardware, operating
+system, language, etc., and they will have designed their program
+against that semantic model.  This semantic model is extremely
+unlikely to be exactly the same as the semantics which is actually
+implemented by any physical computer (if nothing else, the physical
+semantics differ markedly across computers, and most programs are
+designed to run on more than one system), and that semantic gap gives
+us some room to manoeuvre.  In particular, the programmer's semantic
+model will usually leave some parts unspecified, and hence map to a
+large set of physical semantics such that any property which is
+guaranteed by the programmer's model will be guaranteed by any of the
+physical semantics.  This means that we can safely select any physical
+semantics from this set, secure in the knowledge that doing so will
+preserve whatever correctness the original program might have had, and
+it is this flexibility which potentially allows us to fix or mask
+errors.
+
+Of course, this does not solve the problem, because we have no way of
+knowing what semantics the original programmer had in mind when
+writing the program.  We can make some intelligent guesses, however:
+
+\begin{itemize}
+\item Some parts of the physical semantics will differ from run to
+  run.  One obvious example is the exact memory interleaving when two
+  processors run in parallel.  Assuming the program is intended to
+  work every time it runs, it is reasonable to assume that the
+  programmer's semantics leave this behaviour undefined, and so
+  it is safe for the auto-fix tool to change it.
+
+\item Likewise, language specifications and processor architecture
+  manuals also often leave certain boundary cases unspecified,
+  e.g. the effect of a use-after-free in C\cite{Kernighan1988}.  While
+  it is possible for a program to depend on this unspecified
+  behaviour, it is usually considered to be poor software engineering
+  practise\cite{CWE758}, and so it is often safe to assume that it
+  remains unspecified in the programmer's semantic model.
+
+\item Sometimes, an operation is perfectly well defined, but indicates
+  an error sufficiently often that we are willing to assume that it
+  does so every time, and hence that it is safe to change its meaning.
+  For instance, one might reasonably require that a program never
+  produces a core dump, and hence allow the meaning of any operation
+  which would normally produce a dump to be changed.
+
+\item Many systems leave the exact circumstances under which certain
+  components fail undefined, and hence allow us to inject artificial
+  errors safely.
+
+\item More controversially, it would be possible to introduce a kind
+  of extra memory or hysteresis\footnote{A better metaphor would be a
+    kind of software Alzheimer's: the program keeps reverting to
+    whatever it did or thought in its youth, regardless of the
+    situation in which it finds itself.}\editorial{Need a less
+    offencive analogy.} into the program, such that once it has been
+  observed to behave in a certain way a certain number of times, it is
+  forced to keep behaving in that way from then on.  For instance, if
+  a particular variable is found to be between five and ten in every
+  training run, and is then found to be twelve in a subsequent one, it
+  could be forcibly changed back to ten.  It is hard to imagine any
+  programmer ever using this as their semantic model of the hardware,
+  but it might sometimes capture part of their model of the program,
+  and hence allow ``sympathetic'' fixes.
+
+\end{itemize}
+
+In order to make a useful bug-healing system, it is generally
+necessary to change the semantics in two ways.  First, there must be
+some indication that something has gone wrong: in the physical
+semantics, every operation has a defined result, and so there is no
+way to tell whether a given operation was desired, and so no way of
+triggering the automatic healing process.  This issue can be avoided
+by declaring certain actions to be bad, so that we can assume that any
+such action is considered to be a failure\footnote{Note that it is
+  also possible to design always-on systems, which try to fix or
+  ameliorate bugs in general without caring about any \emph{specific}
+  instance, and in that case no trigger is needed.}.  Second, we must
+unconstrain the semantics enough to give us the necessary flexibility
+to avoid the bad actions.  The choice of these two changes is one of
+the most critical aspects of a program auto-fix system.  In many
+cases, they can be changed independently of one another.
+
+Interestingly, the new semantics is not always required to be causal.
+It may, in some cases, be useful to respond to an error by rolling
+back to an earlier checkpoint and taking a slightly different path.
+From the point of view of the program, the error influenced the
+behaviour at the checkpoint, even though the error happened strictly
+after the checkpoint, and hence, from the program's perspective, this
+is a non-causal semantics\footnote{Causality is, of course, maintained
+  from the perspective of the auto-fixer itself, and so the semantics
+  is paradox-free and implementable.}.
+
+\section{Other solutions to similar problems}
+
+One of the earliest attempts at fault remediation was software
+rejuvenation\cite{Huang1995}, which attempted to ameliorate the
+effects of resource leaks by periodically rebooting the affected
+systems.  This spawned a surprising amount of work on calculating the
+optimum reboot schedule
+\cite{Li2002,Vaidyanathan1999,Vaidyanathan2001,Trivedi2000,Garg1998,Garg1995,Garg1998a,Castelli2001}\editorial{
+  Google Scholar gives more than four hundred citations of the
+  original paper, and a quick look through the first few pages
+  suggests that about three-quarters of them are just estimating
+  reboot schedules, some in quite respectable journals.  Seriously,
+  what's wrong with these people?  On the plus side, it seems to have
+  dropped out of fashion in the past few years.} and, somewhat more
+usefully, some attempts at reducing the cost of reboots
+\cite{Candea2002,Candea2001,Candea,Patterson2002}.  While historically
+interesting\footnote{in a what-were-they-thinking kind of way}, these
+are unlikely to be applicable to the current problem, and so are not
+discussed further here.
+
+More recently, Rinard et al\cite{Rinard2004} described failure
+obliviousness, a technique for disguising certain classes of memory
+faults in high-availability systems at the (possible) expense of
+reduced integrity.  The core idea here is, essentially, to treat
+hardware exceptions as warnings rather than errors, and to try to
+execute through them as far as possible in the hope that the error
+will self-cleanse rather than propagating further.  Some faults are
+trivial to ignore (e.g. a wild write, which can just be ignored),
+while others require more sophistication\footnote{In every sense of
+  the word.} e.g. following a wild read, the value read must be
+invented somehow.  The original paper simply used a manually
+pre-defined sequence of plausible values; later work expanded upon
+this by looking at the dynamic dataflow context\cite{Nagarajan2009} or
+by using a lookaside table of recently discarded
+writes\cite{Rinard2005a}.  There might be some scope for using static
+analysis to find more useful values to return, but, given how well
+simpler techniques appear to work, I suspect this scope would be
+limited.
+
+The reactive immune system\cite{Sidiroglou2005} starts from a similar
+conceptual basis, but more explicitly tries to trigger existing error
+handling code, in the hope that this will help the protected program
+reconverge more quickly.  The initial implementation did this by
+forcing functions to return immediately with an error value, obtained
+by type analysis on the source code; this was refined in the ASSURE
+system\cite{Sidiroglou2005} to instead take snapshots at places where
+it is convenient to inject errors and then roll back when an error is
+detected.  Of course, error handling is often rather buggy itself, and
+so recovery to error handling is not always useful.  This issue was
+investigated in detail by S\"{u}\ss{}kraut et al.\cite{Susskraut2006},
+who also propose some techniques for automatically improving its
+robustness.
+
+One potentially interesting approach, proposed by Elkarablieh et
+al.\cite{Elkarablieh2007} in a slightly different context, would be to
+try to mine the program for information about the intended contents of
+data structures.  This would then provide useful information when
+deciding how to synthesise the results of wild reads so as to minimise
+the potential for error propagation, or even, in a somewhat extreme
+form, to proactively fix data structures which have suffered
+corruption.  This potentially increases the effectiveness of error
+hiding, but also potentially increases the potential for the program
+to generate completely nonsense results.  In the original paper, these
+data structure invariants were obtained from \verb|assert()|-like
+statements in the program source, combined with some basic static
+analysis.  A later version, proposed by Malik et al.\cite{Malik}, used
+Daikon\cite{Ernst2007}-like detection of statistically justified
+invariants during normal program operation, which allowed the
+technique to be applied without source code, but is also utterly
+terrifying\editorial{phraseology}.  ClearView\cite{Perkins} refines
+this approach by combining it with an automated testing system to try
+to reduce the risk of introducing new bugs.
+
+DieHard\cite{Berger2006} is another application of the failure
+oblivious concept to heap-related issues.  In this system, however, no
+attempt is made to discover or to enforce data structure invariants;
+instead, the heap is structured so as to minimise the probability of
+certain common types of bugs causing user-visible errors.  The authors
+use two main techniques to achieve this:
+
+\begin{itemize}
+\item First, the heap is expanded, such that there are likely to be
+  large dead zones between any two allocations.  This makes buffer
+  overflows much less dangerous.
+\item Second, they avoid reusing heap locations quickly after they
+  have been \verb|free()|d, which reduces the risk of use-after-free
+  bugs actually causing problems.
+\end{itemize}
+
+Neither of these techniques will eliminate bugs, but they can
+dramatically reduce the probability of their causing user-visible
+problems (at the expense of dramatically increasing memory
+requirements and marginally increasing runtimes).
+Exterminator\cite{Novark2007} further builds on this work by using
+heuristics on the expanded heap to try to identify probably bugs, and
+then modifying the allocator to only apply heap expansion to
+allocations which are likely to benefit from it.  Assuming that all
+such allocations are detected, this retains all of the bug-fixing
+benefits of DieHard while noticeably reducing its overhead (at least
+in the common case where only a small number of allocations actually
+need padding).
+
+The AutoPaG system\cite{Lin2007} tackled a related problem, that of
+overflows of stack-based buffers.  In this work, the authors assume
+that a buffer overflow has already been identified by some mechanism
+(a CCured\cite{Necula2005}-like safe compiler in the paper, but others
+are possible), and then apply static analysis to find its root cause
+at the source code level.  They then generate a source-level patch
+which redirects any out-of-bounds accesses to the array back to a safe
+location, in what is essentially a variant of failure obliviousness.
+This allows them to mask the bug until a true fix can be obtained,
+with very low run-time overhead in both time and space.
+Unfortunately, their static analysis is not complete, and so they
+must occasionally fall back to a dynamic scheme.
+
+Of course, memory errors are only one class of bugs.  Synchronisation
+errors form another important class, and a number of projects have
+investigated remediation strategies for these.  One of the earliest
+was ReEnact\cite{Prvulovic2003a}, which used modified thread-level
+speculation hardware to capture precisely what happened during a data
+race or atomicity violation, and then to control instruction
+scheduling during subsequent re-executions so as to avoid the bug in
+future.  This is rather similar to the currently-proposed work, with a
+few exceptions:
+
+\begin{itemize}
+\item The ReEnact scheme requires unusual hardware support, whereas
+  SLI is purely software-based.
+\item Their fixes are dynamic, in the sense that the program must be
+  constantly monitored to ensure it does not follow a bad schedule,
+  whereas the SLI fixes statically introduce required locking so that
+  bad schedules become impossible.
+\item They require some (quite modest) amount of programmer
+  involvement in order to identify which races are critical to a
+  particular bug and hence to direct the fixing process, except in a
+  few unusual special cases.  SLI will, hopefully, be able to generate
+  fixes entirely automatically.
+\end{itemize}
+
+Despite these limitations, ReEnact was able to fix some bugs, and
+shows reasonably low run-time overhead (mostly on the order of ten
+percent, depending on the benchmark).  This helps to give me
+confidence that the proposed scheme is at least plausible.
+
+Atom-Aid\cite{Lucia2009} is another scheme which tries to use unusual
+hardware features to protect against data race and atomicity violation
+bugs, but Atom-Aid using hardware transactional memory rather than
+thread-level speculation.  This paper grew out of an earlier
+observation that, in some cases, processor performance can be improved
+by bundling sequences of memory accesses into transactions, and hence
+batching interconnect operations and amortising their
+costs\cite{Ceze2007}.  This has the interesting side effect of
+eliminating a large number potential instruction interleavings, and
+hence a large number of potential synchronisation bugs.  Atom-Aid
+attempts to maximise this effect by carefully tweaking transaction
+boundaries in response to the program's observed behaviour.  This
+allows them to hide most atomicity violations with very low
+overhead\footnote{The paper asserts that they have negligible
+  overhead, but does not attempt to quantify or justify that
+  statement, and so the true overhead is rather difficult to
+  evaluate.}.  Unfortunately, the necessary hardware changes are
+unlikely to be widely deployed in the near future, and it is hard to
+see how to adapt the system into a software-only implementation, which
+makes these techniques somewhat less interesting.
+
+ConTest\cite{Krena2007} provides one of the simplest approaches to
+fixing data races using software rather than hardware.  In this work,
+races are detected using the ERASER\cite{Savage1997} algorithm, and an
+implicit assumption is made that all data races are bugs which need to
+be eliminated.  Elimination is performed using a small number of
+pre-defined synchronisation patterns\footnote{In the paper, the only
+  race pattern considered is wrapping a load followed by a store in a
+  lock, but others could be added easily.}.  It is unclear from the
+paper whether this is actually a useful thing to do, because the
+majority of races are benign, and the majority which are not are more
+complicated than their patterns can describe.  Tallam et
+al.\cite{Tallam2008} suggested essentially the same mechanism a year
+later, but restricted themselves to uniprocessor execution (so the
+only parallelism is the coarse-grained variant provided by the
+operating system's thread abstraction).
+
+ToleRace\cite{Kirovski2007}, which attempts to provide toleration for
+asymmetric races, provides another useful point in the design space.
+An asymmetric race is defined by the authors to be a situation where
+some thread correctly follows a locking discipline (which must be
+manually specified by the programmer), but another thread does not,
+and thus causes the correct thread to fail.  This presents a challenge
+when debugging, as most na\"{i}ve approaches to postmortem analysis
+will blame the wrong thread for the crash.  ToleRace ameliorates this
+class of problems by arranging that when a thread acquires a
+particular lock, a local snapshot of all of the values protected by
+the lock is taken, with any accesses to protected variables made while
+holding the lock redirected to the snapshot.  This prevents the
+correct thread from seeing the effects of incorrect threads while it
+is in the critical section, which makes the race much less likely to
+cause serious problems, but does not guarantee to produce a consistent
+snapshot of the protected data.  ISOLATOR\cite{Ramalingam2009} fixes
+this defect by introducing implicit per-page locks, which are enforced
+using virtual memory techniques.  However, it is still necessary for
+the programmer to provide a manually-specified lock discipline, which
+makes these techniques difficult to use in practise.
+
+The final class of bugs considered here is deadlocks.  Techniques for
+healing deadlocks in multithreaded applications have only been
+investigated relatively recently (deadlock avoidance has been studied
+in other contexts for much longer; see e.g. \cite{Viswanadham1990} or
+\cite{Dijkstra2004}).  One of the earliest, proposed by Nir-Buchbinder
+et al.\cite{Nir-Buchbinder2008}, was to build the dynamic lock graph
+as the program runs, discover any strongly-connected components
+(SCCs), and then reducing every SCC to a single lock.  This eliminates
+the potential for any lock order reversal deadlock involving that
+cluster of locks, and would, if a complete lock graph were available,
+it would completely eliminate all LOR deadlocks in the program.
+Unfortunately, dynamically collected lock graphs are inherently
+potentially incomplete, and this means that the healing is incomplete,
+and can in fact introduce new deadlocks in certain situations.  The
+need to potentially combine large sets of locks into a single large
+lock can also lead to excessive serialisation, and hence poor
+performance.
+
+Gadara\cite{Wang2008} tackled both of these problems.  First, they
+used static analysis to build a conservative approximation of the lock
+graph (rather than the optimistic one produced by a dynamic analysis).
+Second, they use discrete control theory to derive a ``controller''
+which inserts delays in the dynamic program execution in some minimal
+set of places so as to avoid deadlocks without introducing unnecessary
+serialisation.  Of course, the use of a conservative approximation
+means that they will occasionally detect a deadlock where none is
+actually possible, and this will lead to additional synchronisation
+operations; it is unclear from the paper whether Gadara-protected
+systems are more or less serialised than Nir-Buchbinder-protected
+ones.
+
+It is also possible to make progress on these problems in a purely
+dynamic system.  For instance, Dimmunix\cite{Jula2008} waits until a
+deadlock is observed at run time, then captures a signature for that
+particular deadlock, and arranges that the signature never reappears
+by delaying lock acquire operations.  The hope is that preventing the
+signature will also prevent the deadlock, and hence that the program
+will, over time, become immune to whatever deadlocks might be lurking
+in it.  Because it only fix deadlocks which have actually been
+observed, serialisation is kept low and the need for complete locking
+information is side-stepped, although at the cost of having to suffer
+every deadlock at least once in order to fix it.
+
+Of course, this approach will only be successful if the deadlock
+signatures accurately capture the cause of the deadlock, without
+capturing too much extraneous information.  The suggestion in the
+paper is to use the set of locks held by every thread, combined with a
+(slightly summarised) backtrace captured when the lock was acquired.
+Earlier versions of the paper (e.g. \cite{Jula2008b}) mentioned
+alternative schemes; I assume the fact that the discussion was dropped
+implies that the alternatives were investigated and found to be
+unhelpful.  That would be consistent with the rest of the evaluation.
+
+\editorial{Maybe mention HEALERS here?}
+
+\editorial{AtomRace?}
+
+\editorial{MUVI}
+
+\editorial{AVIO}
+
+\editorial{RX}
+
+\editorial{Assure}
+
+\input{related_work/summary}
+
+\section{Related techniques}
+
+\subsection{Deterministic replay systems}
+
+Deterministic replay of concurrent shared memory programs has been
+investigated for a long time.  Traditional systems rely on recording
+every nondeterministic event in the program's execution (see, for
+instance, \cite{LeBlanc1987} or \cite{Dunlap2002}), which potentially
+has very high overhead.  This high overhead made the technique
+difficult to apply in production environments.  Some recent work has
+demonstrated that it is not always necessary to record all of this
+information, which allows overheads to be significantly reduced.
+
+ODR, PRES.  Maybe put ESD in here as well?
+
+\subsection{Invariant discovery}
+
+DAIKON, DIDUCE.
+
+\subsection{Detecting and characterising bugs}
+
+\subsection{Automated and statistical debugging}
+
+IGOR and friends
+
