@@ -1,4 +1,7 @@
 \section{Finding candidate bugs}
+
+The first phase of analysis is to locate all of the places in the program which might exhibit a bug of the desired class.
+
 \subsection{Formal definition of the kind of bug which we look for}
 \label{sect:finding_bugs:finding_candidate_bugs:formal_definition}
 For the purposes of this section, we define a bug to be a tuple $(R, W, P)$ such that:
@@ -39,43 +42,27 @@ This can happen if the program relies on a certain minimum level of concurrency 
 
 \begin{figure}
 \begin{tabular}{ll}
-Read thread:
-
-Load $t$ from loc1
-Store $t$ to loc2
-Load $t'$ from loc1
-Load $t''$ from loc2
-Crash if $t' == t''$
-
-&
-
-Write thread:
-
-Load $t'''$ from loc1
-Store $t'''$ to loc2
-Store $t''' + 1$ to loc2
+Read thread:         & Write thread: \\
+\\
+Load $t$ from loc1   & Load $t'''$ from loc1 \\
+Store $t$ to loc2    & Store $t'''$ to loc2 \\
+Load $t'$ from loc1  & Store $t''' + 1$ to loc2 \\
+Load $t''$ from loc2 & \\
+Crash if $t' == t''$ & \\
 \end{tabular}
-\label{fig:mandatory_concurrrency1}
+\label{fig:mandatory_concurrency1}
 \caption{Example of threads with mandatory concurrency.}
 \end{figure}
 
 \begin{figure}
 \begin{tabular}{ll}
-Read thread:
-
-Load $t'$ from loc1
-Load $t''$ from loc2
-Crash if $t' == t''$
-
-&
-
-Write thread:
-
-Load $t'''$ from loc1
-Store $t'''$ to loc2
-Store $t''' + 1$ to loc2
+Read thread:          & Write thread: \\
+\\
+Load $t'$ from loc1   & Load $t'''$ from loc1 \\
+Load $t''$ from loc2  & Store $t'''$ to loc2 \\
+Crash if $t' == t''$  & Store $t''' + 1$ to loc2
 \end{tabular}
-\label{fig:mandatory_concurrrency2}
+\label{fig:mandatory_concurrency2}
 \caption{Truncation of the example in figure~\ref{fig:mandatory_concurrency1}.}
 \end{figure}
 
@@ -551,22 +538,81 @@ This will produce a \StateMachine something like this:
 
 \subsubsection{Performing additional conditional backtracking}
 
-\subsubsection{Cross-function behaviour}
-
-Important complications:
-
-\begin{itemize}
-\item Sometimes end up with multiply-rooted CFGs.
-\item Prefer to backtrack to head-of-function; explain what effect that has on the set of paths considered.
-\item Removing cycles in a way which definitely preserves all the sufficiently-short paths.
-\item What happens when you back into a function call.
-\end{itemize}
-
 \subsubsection{Conversion to SSA}
 \label{sect:ssa}
 
-The conversion to SSA itself is absolutely standard, but it's a slightly unusual form of SSA (because we're going to be doing symbolic execution rather than compiling).
-This isn't obviously the perfect place to describe that, but it's the best place I've been able to come up with so far.
+\StateMachines are maintained in a variant of static single assignment (SSA) form.
+SSA form is a standard compiler intermediate representation in which each variable has at most one static assignment.
+Variables which are assigned to multiple times are converted into families of related variables (usually referred to as ``versions'' of the variable), each of which is assigned to precisely once.
+This has the effect of breaking up the live ranges of long-lived variables, which can expose other useful optimisations.
+Most uses of the original variable will be converted into references to a specific member of one of these families; the only case in which this is not possible is where the correct member to use depends on the program's control flow, and in that case special $\Phi$ nodes are inserted into the program which select an appropriate member depending on the immediately proceeding control flow.
+These $\Phi$ nodes are themselves unrealisable with reasonable overhead on most modern hardware, and so the program must be converted back from SSA form after being optimised and before being lowered to machine code.
+
+Many of the optimising compiler analyses which SSA assists are also useful in the kinds of analyses used by SLI to determine whether a program might crash, and so SLI also converts its \StateMachines (which are analogous to a compiler's intermediate representation) into SSA form.
+The precise semantics of the SSA form are, however, very slightly different to the more conventional one.
+Whereas a compiler-style $\Phi$ node examines the program's preceding control flow and maps from incoming control-flow edges to input variables, an SLI one examines the order in which variables have been assigned to and selects whichever was updated most recently (from a specified set).
+This has several important implications:
+
+\begin{itemize}
+\item
+  It is not always possible (or at least, not always easy) to convert SLI's \StateMachines back from SSA form.
+  This is much less of a problem for SLI than it would be for a compiler, as there is never any need to realise the \StateMachines in actual machine code.
+  \todo{This could benefit from an example.}
+\item
+  A {\StateMachine}'s control flow graphs can be modified without needing to update $\Phi$ nodes.
+  For example, suppose that a \StateMachine is as shown on the left of figure~\ref{fig:ssa_cfg1}, and suppose that further analysis shows that the assignment of $z$ is dead.
+  We would like to remove the assignment and turn the \StateMachine into the one shown on the right.
+  This is correct as-is using SLI's $\Phi$ semantics.
+  If a simple control-flow based definition of $\Phi$ were used instead then we would also need to convert the $\Phi$ node at l1 into $x_3 = \Phi(x_1, x_2, x_2)$, as the l1 state now has three control-flow predecessors.
+  There are, of course, many solutions to this problem in the standard compiler literature\needCite{}, but all add complexity which is unnecessary and unuseful in this context.
+\item
+  \todo{The real reason I did it this way is that it's a bit less of a mind fuck than the usual SSA semantics, but I'm not sure I want to say that.}
+\end{itemize}\editorial{I convinced myself that this makes symbolic execution easier at one point, but I'm now not sure why...}
+
+\todo{I'd be surprised if I'm the first person to come up with this...}
+
+\begin{figure}
+\begin{tikzpicture}
+  \node (start) {};
+  \node (a) {$x_1 = 5$};
+  \node (b) {$x_2 = 6$};
+  \node (c) {if ($\ldots$)};
+  \node (d) {$y_1 = 1$};
+  \node (e) {$y_2 = 2$};
+  \node (f) {$z = 3$};
+  \node (g) {l1: $x_3 = \Phi(x_1, x_2)$}
+  \draw[->] (start) -- (a);
+  \draw[->] (start) -- (b);
+  \draw[->] (a) -- (g);
+  \draw[->] (b) -- (c);
+  \draw[->] (c) -- (d);
+  \draw[->] (c) -- (e);
+  \draw[->] (d) -- (f);
+  \draw[->] (e) -- (f);
+  \draw[->] (f) -- (g);
+\end{tikzpicture}
+\begin{tikzpicture}
+  \node (start) {};
+  \node (a) {$x_1 = 5$};
+  \node (b) {$x_2 = 6$};
+  \node (c) {if ($\ldots$)};
+  \node (d) {$y_1 = 1$};
+  \node (e) {$y_2 = 2$};
+  \node (g) {l1: $x_3 = \Phi(x_1, x_2)$}
+  \draw[->] (start) -- (a);
+  \draw[->] (start) -- (b);
+  \draw[->] (a) -- (g);
+  \draw[->] (b) -- (c);
+  \draw[->] (c) -- (d);
+  \draw[->] (c) -- (e);
+  \draw[->] (d) -- (g);
+  \draw[->] (e) -- (g);
+\end{tikzpicture}
+\caption{Optimising an SSA-form machine}
+\label{fig:ssa_cfg1}
+\end{figure}
+
+\todo{Not actually sure how interesting this is, now that I've written it down.}
 
 \subsection{Building write-side \StateMachines}
 
@@ -577,9 +623,24 @@ The details of the algorithms used are, however, slightly different.
 
 \subsubsection{Finding relevant stores}
 
-Simple: just rip out all the optional bits of the read machine (assertions, start and end function markers) and then simplify the result machine.
-Any loads left over after that are potentially relevant.
-Finding the potentially-relevant stores is then just a matter of reading them out of the dynamic profiling information.
+The first phase of building the write-side \StateMachines is to determine which stores in the program might possibly be relevant.
+These are the ones which might affect the result produced by the read-side \StateMachine.
+Finding these is straightforward:
+
+\begin{itemize}
+\item
+  Remove all of the optional annotations from the read-side \StateMachine.
+  These are the side effects which provide additional information to the analysis but do not themselves affect the semantics of the \StateMachine, such as assert or stack-layout side effects.
+\item
+  Simplify the resulting machine down as far as possible.
+  Removing annotations can sometimes enable further optimisations if, for instance, two path through the \StateMachine are identical except for inserting an additional intermediate function in the call stack and that intermediate function does not itself perform any relevant operations.
+\item
+  Find all of the memory load operations which remain the simplified machine.
+\item
+  Examine the model collected during the dynamic analysis phase to locate all of the stores which might access the same memory location as one of those loads.
+  This effectively assumes both that the dynamic analysis phase has correctly captured the program's internal type system and that the program has a particular memory safety property.
+  \todo{Say more.}
+\end{itemize}
 
 \subsubsection{Build write-side CFGs}
 
@@ -1276,35 +1337,38 @@ This allows us to break cycles once they have been unrolled far enough.
 \end{tikzpicture}
 
 
-\subsection{Converting pairs of machines into verification conditions}
+\subsection{Converting pairs of \StateMachines into verification conditions}
 
-We now convert some of the rules in section~\ref{sect:finding_bugs:finding_candidate_bugs:formal_definition} into simple predicates on the program's state.
-The technique used for each rule is essentially the same: build or select a \StateMachine which describes the rule (in a sense described in subsequent sections) and then symbolically execute it, collecting path conditions as we go, until it reaches a terminal state.
-The analysis then combines the path conditions collected at the terminal states in a way which depends on the rule in question.
+We now convert the pair of \StateMachines into a form of verification condition; that is, a predicate on the program's state which is satisfiable when the program contains a bug of the type being investigated\editorial{That isn't quite the usual definition of a verification condition.}.
+SLI's completeness property is that if every possible \StateMachine pair which could be generated by the above algorithm is generated and each one is successfully converted to a verification condition (i.e. no part of the analysis times out), and none of the verification conditions are satisfiable, and the dynamic analysis is complete, the program will not contain any bugs of the class being investigated.
 
-Complications: non-determinacy of \StateMachines, and the schizophrenic handling of assertions.
+At a high level, the verification conditions are produced by considering each of the clauses of the bug definition in section~\todo{...} in turn, converting each into a \StateMachine, and then using symbolic execution to build a predicate saying when that clause might be satisfied.
+These clause-conditions are then combined to produce the final verification condition for the original \StateMachine pair.
 
-Rules which don't convert:
-
-\begin{itemize}
-\item R valid -- true by construction of read machine.
-\item W valid -- true by construction of write machine.
-\item S valid -- model of program isn't strong enough to say anything useful about it.
-\item W isolation -- used extensively when deriving write machine, to
-  the extent that there's rarely any additional useful information to
-  extract by this stage in the pipeline.
-\item Concurrent -- model of program isn't strong enough to say anything useful about it.
-\end{itemize}
-
-The other rules produce two interesting expressions:
+The rules for building each clause-condition are as follows:
 
 \begin{itemize}
-\item The validity constraint -- this is a predicate on the initial system state which is true for states which satisfy R atomic and W atomic.
-\item The crash constraint -- this is a predicate on the initial system state which is true for states which satisfy the crash possible rule.
+\item P valid -- \editorial{not sure what I'm going to say here -- P doesn't really exist at this stage, so this clause doesn't really make sense here.}
+\item R valid -- true by construction of read machine, so the clause condition is just $1$.
+\item W valid -- true by construction of write machine, so the clause condition is just $1$.
+\item
+  R atomic -- this rule states that the read \StateMachine must predict survival when run atomically.
+  The \StateMachine to symbolically execute is then just the read-side \StateMachine, and the clause constraint is the rule which the symbolic executor derives for when the \StateMachine will survive.
+\item
+  W atomic -- this rule states that running the read \StateMachine after the write one must also predict survival.
+  For this clause, we symbolically execute the concatenation of the two \StateMachines, and again the clause constraint is the rule when the \StateMachine will survive.
+\item
+  Crash possible -- this rule states that running the read and write \StateMachines in parallel must sometimes predict a crash.
+  For this clause, we symbolically execute the cross-product parallel composition of the two \StateMachines.
+  This time, the clause constraint is the rule for when the \StateMachine will crash.
+\item
+  W isolation -- used extensively when deriving write machine, to the extent that there's rarely any additional useful information to extract by this stage in the pipeline.
+\item
+  Concurrent -- model of program isn't strong enough to say anything useful about it.
 \end{itemize}
 
-We need to report a bug if there exists any state which satisfies both the validity constraint and the crash constraint.
-Alternatively, to avoid reporting a bug, we need to prove that $\textrm{validity constraint} \rightarrow \not{}\textrm{crash constraint}$, which means that we report a bug if the predicate $\textrm{validity constraint} \wedge \textrm{crash constraint}$ is satisfiable.
+We therefore produce three clause constraints for each \StateMachine pair, and must report a bug if they are simultaneously satisfiable.
+As a minor optimisation, SLI assumes the R atomic clause is true when deriving the W atomic and crash clauses, and assumes that the W atomic clause is true when deriving the crash possible clause.
 
 \subsubsection{Symbolically executing machines}
 
@@ -1469,6 +1533,7 @@ The aliasing table is converted into a predicate on the addresses accessed by th
 \subsubsection{Splitting SSA variables}
 Two generations of a single SSA variable can be treated as independent variables provided that they're never used in the same $\Phi$ node.
 This has no directly useful effects on any of the analyses which we perform, but it makes it a bit easier to canonicalise things.
+In effect, this converts the machine part-way back out of SSA form.
 
 \subsubsection{Thread ID canonicalisation}
 \todo{Not worth mentioning}
@@ -1564,13 +1629,16 @@ $y_F$ and $y_T$ are then separate variables, and the two $f$ cases can be subjec
 
 \todo{This is in dire need of an example.}
 
+\todo{This is a lot like re-encoding the program's control flow into the verification condition, but in a way which is kind-of minimal and only contains the bits of control flow which are actually relevant.}
+
 \subsection{Phase 4 canonicalisation}
 The compound functions stuff.
+Essentially, this notices if you have a lot of places in the verification condition/\StateMachine where you go $f(x, 5, 7)$, where $f$ is complex and only $x$ changes, and invents a new function to represent $f(..., 5, 7)$ and does a kind of backwards $\eta$ conversion to get rid of them.
 
 \section{Building crash enforcement plans}
 
 The previous phase of the algorithm produces a set of crash summaries, each of which consists of a read \StateMachine, a write \StateMachine, a verification condition, and an unrolled fragment of the program's control-flow graph.
-Each summary is considered in turn and converted into a binary patch which makes the relevant bug more likely to reproduce.
+Each summary is considered in turn and converted into a crash enforcement plan which, when applied to the program, will make the relevant bug more likely to reproduce.
 We now illustrate the basic approach with a simple example before giving details of the algorithms used.
 
 Suppose that the bug to be exhibited involves two threads:
@@ -1635,7 +1703,7 @@ The previous analysis phase will produce \StateMachines something like these:
   \end{scope}
 \end{tikzpicture}
 
-With a verification condition that $idx1 == idx2$.
+With a verification condition that $idx1 == idx2$\editorial{Why does the verification condition not include the HB edges already?}.
 Using symbolic execution it is then easy to show that, for the crash to happen, \verb|l9| must happen in between \verb|l2| and \verb|l5|, and so we can augment the \StateMachines with happens before edges as shown:
 
 \begin{tikzpicture}
@@ -2076,6 +2144,9 @@ It will therefore only bind to write threads which modify the structure which it
 That means that the thread can be delayed a relatively long time at \verb|l5| without fear of apocalyptic performance damage, and so the bug will reproduce relatively easily.
 
 \subsubsection{Discuss the timeout balancing bit}
+
+Selecting the size of the various timeouts is important for determining the likelihood of reproducing a bug and the overheads of enforcing the patch.
+SLI does so primarily dynamically, in response to the program's observed behaviour.
 
 \subsubsection{Implementing non-deterministic choice in the Succ phase}
 

@@ -1,19 +1,56 @@
 \section{Motivation}
 Concurrency bugs are becoming more common, don't always have source (abandonware, libraries), so need something which works on binaries
 
+\todo{Probably need to describe the class of bugs up here somewhere.}
+
 \section{Overview of approach}
-\subsection{Pipeline}
-Overview of the basic pipeline: find bugs with bug finding more, then instantiate them into an enforcement patch, then analyse the core dump/DRS log to better characterise the bug, and then instantiate a fix.
 
-\subsection{Analysis technique}
-Overview of basic analysis technique: building \StateMachines which approximate a fragment of the program and then doing the analysis on that.
-Explain that \StateMachines are derived for some specific behaviour which is currently being investigated, and that the simplifications used depend on that.
-Explain that the specification of the behaviour must be a simple boolean i.e. the interesting thing either happens or does not happen, but that's usually not an issue because the \StateMachines themselves are reasonably computationally powerful (although not Turing complete), so properties like ``X must never be greater than 5'' can be checked without needing to check properties of X.
-Explain that \StateMachines are acyclic and finite, and hence executions are also finite; makes analysis much, much easier.
-Explain that they can cross function boundaries and can include fragments from multiple program threads.
-Explain that each \StateMachine corresponds to some possible point in the program execution (defined by a set of suffixes of stacks, such that at least one thread must match each of the suffixes), and that if you have a snapshot of the program in that state you can interpret the \StateMachine to predict whether the program is going to experience the behaviour which is being investigated.
+\begin{figure}
+\begin{tikzpicture}
+  [block/.style = rectangle,draw,fill=blue!20,
+    line/.style = draw, -latex']
+  \node [block] (dynamic) {Dynamic analysis};
+  \node [block, below right = of dynamic] (model) {Program model};
+  \node [block, below left = of model] (static) {Static analysis};
+  \node [block, right = of model] (candidates) {Candidate bugs};
+  \node [block, right = of candidates] (repro) {Reproductions of bugs};
+  \node [block, right = of repro] (fix) {Generated fixes};
+  \path [line] (dynamic) -- (model);
+  \path [line] (static) -- (model);
+  \path [line] (model) -- (candidates);
+  \path [line] (candidates) -- (repro);
+  \path [line] (repro) -- (fix);
+\end{tikzpicture}
+\caption{Basic pipeline}
+\label{fig:basic_pipeline}
+\end{figure}
 
-This is probably a good place to give some examples and a very informal semantics; the full semantics will wait until later.
+In its simplest mode, SLI uses a multi-stage pipeline to find and fix bugs in arbitrary binary programs, as shown in figure~\ref{fig:basic_pipeline}.
+The pipeline starts by building up a model of the program's behaviour using a combination of static analysis, applied to the program's binary, and dynamic analysis, applied while the program is operating normally.
+A mixture of symbolic execution and static analysis is then used to produce a set of candidate bugs: places in the program which might have a bug of the target class, if the program can be driven into a particular configuration.
+This set will be very large for most realistic programs and will usually contain a large number of false positives, and so is not, of itself, particularly useful.
+The next stage of the analysis is therefore to prune it back to just those bugs which can definitely happen.
+Most existing static analysis and model checking systems will do so by layering on further layers of increasingly more complex analysis algorithms.
+SLI takes a different approach: modifying the program so as to make the bugs more likely to reproduce and then using the program's existing test suite to drive it towards them.
+Since SLI mostly targets concurrency bugs, these modifications mostly consist of inserting additional delays, and hence encouraging the program to follow the desired schedules as far as possible.
+The bugs which survive this winnowing process are then definitely real bugs, and can either be manually reviewed by a programmer or passed to the next phase which produces a fix targeted at that specific bug, completely automatically.
+In addition to this basic mode of operation, SLI can also take as input a core dump or the log from a deterministic replay system and use that to produce a fix for a specific bug.
+
+The basic analysis technique used by SLI, in all of its modes, is to take some small fragment of a binary program and approximate it using a \StateMachine, using a combination of decompilation, program slicing, and static analysis techniques.
+These \StateMachines contain all of the information which is relevant to the bug being investigated but very little irrelevant information, making them far easier to analyse than the raw machine code.
+They can be interpreted, given a snapshot of the program's state, to make a prediction about whether the program might, starting from that state, suffer the bug which is being investigated.
+These \StateMachines can cross function boundaries, and can cross between the program itself and library routines.
+
+One important limitation of the \StateMachine formalism is that individual \StateMachines must complete in a finite, bounded, number of operations; equivalently, \StateMachines are acyclic and finite.
+This makes them far easier to analyse, but at the expense of somewhat limiting their expressive power.
+In the particular case of SLI, we are only interested in bugs related to fairly small fragments of the program (those which should have been critical sections but aren't) and so this is a tolerable limitation; it might be more of a concern in other applications.
+Section~\todo{...} briefly discusses some possible ways of removing this restriction.
+
+\StateMachines can contain information from multiple threads, which is useful when investigating the possible interactions of multiple program threads, and can cross function boundaries.
+They are, however, internally completely deterministic, in the sense that the result of the \StateMachine is completely determined by the initial state against which it is interpreted.
+Any non-deterministic behaviour, such as the detailed interleaving of instructions from different threads or the results of most system calls, is captured in explicit free variables which must be specified before starting to interpret the \StateMachine.
+
+\todo{This is probably a good place to give some examples and a very informal semantics; the full semantics will wait until later.}
 
 \section{Background}
 All the bits you need to understand before reading the rest of the dissertation.
