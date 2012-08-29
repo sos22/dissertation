@@ -541,12 +541,12 @@ This will produce a \StateMachine something like this:
 \subsubsection{Conversion to SSA}
 \label{sect:ssa}
 
-\StateMachines are maintained in a variant of static single assignment (SSA) form.
-SSA form is a standard compiler intermediate representation in which each variable has at most one static assignment.
+\STateMachines are maintained in a variant of static single assignment (SSA) form.
+SSA form is a standard compiler intermediate representation in which each variable has at most one static assignment\needCite{}.
 Variables which are assigned to multiple times are converted into families of related variables (usually referred to as ``versions'' of the variable), each of which is assigned to precisely once.
 This has the effect of breaking up the live ranges of long-lived variables, which can expose other useful optimisations.
 Most uses of the original variable will be converted into references to a specific member of one of these families; the only case in which this is not possible is where the correct member to use depends on the program's control flow, and in that case special $\Phi$ nodes are inserted into the program which select an appropriate member depending on the immediately proceeding control flow.
-These $\Phi$ nodes are themselves unrealisable with reasonable overhead on most modern hardware, and so the program must be converted back from SSA form after being optimised and before being lowered to machine code.
+These $\Phi$ nodes are themselves unrealisable with reasonable overhead on most hardware, and so the program must be converted back from SSA form after being optimised and before being lowered to machine code.
 
 Many of the optimising compiler analyses which SSA assists are also useful in the kinds of analyses used by SLI to determine whether a program might crash, and so SLI also converts its \StateMachines (which are analogous to a compiler's intermediate representation) into SSA form.
 The precise semantics of the SSA form are, however, very slightly different to the more conventional one.
@@ -580,7 +580,7 @@ This has several important implications:
   \node (d) {$y_1 = 1$};
   \node (e) {$y_2 = 2$};
   \node (f) {$z = 3$};
-  \node (g) {l1: $x_3 = \Phi(x_1, x_2)$}
+  \node (g) {l1: $x_3 = \Phi(x_1, x_2)$};
   \draw[->] (start) -- (a);
   \draw[->] (start) -- (b);
   \draw[->] (a) -- (g);
@@ -598,7 +598,7 @@ This has several important implications:
   \node (c) {if ($\ldots$)};
   \node (d) {$y_1 = 1$};
   \node (e) {$y_2 = 2$};
-  \node (g) {l1: $x_3 = \Phi(x_1, x_2)$}
+  \node (g) {l1: $x_3 = \Phi(x_1, x_2)$};
   \draw[->] (start) -- (a);
   \draw[->] (start) -- (b);
   \draw[->] (a) -- (g);
@@ -618,6 +618,8 @@ This has several important implications:
 
 Once SLI has obtained the read-side \StateMachine, it can analyse it to determine which loads affect the ultimate prediction, and then compare this set to the dynamic model to determine which stores might potentially influence it.
 The analysis must then consider all dynamic paths of $N^w$ instructions which contain at least one of those store operations.
+As when building read-side \StateMachines, it would be possible to do this by enumerating all possible such paths and compiling each to an independent \StateMachine, but that would be extremely wasteful.
+SLI uses a somewhat more intelligent approach.
 The basic approach here is essentially the same as that used for read-side \StateMachines: convert the set of dynamic paths into a (hopefully much smaller) set of acyclic control-flow graphs and then compile those CFGs into \StateMachines.
 The details of the algorithms used are, however, slightly different.
 

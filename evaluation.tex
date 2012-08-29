@@ -1,0 +1,86 @@
+\section{Things to evaluate}
+
+What I have:
+
+\begin{itemize}
+\item About a dozen artificial bugs for each mode
+\item The glibc bug kernel --- fixed in DRS mode
+\item The Thunderbird bug -- fixed in DRS mode
+\item The first mysql bug -- fixed in core dump mode
+\item The second mysql bug -- found and fixed in whole-pass mode
+\end{itemize}
+
+And that's about it.
+Where I've said a bug is fixed or found in one mode that indicates that I've tested and confirmed that it works in that mode; it doesn't say anything about whether it would work in one of the other modes.
+
+So I desperately need more real bugs.
+Possible ways of getting them:
+
+\begin{itemize}
+\item
+  enforce\_crash.
+  I need to go and apply this to as many programs as possible, which will hopefully give me something more to work with.
+\item
+  Take an existing program and rip out the synchronisation, then see if we can find the resulting bugs.
+  STAMP would be a reasonable place to look here.
+\item
+  Another bug tracker crawl.
+  This would be bloody tedious but might turn up something.
+\end{itemize}
+
+Other things I can look at and evaluate:
+
+\begin{itemize}
+\item
+  Turn the various simplification passes on and off and see what effect that has.
+\item
+  CDF of how long analysing a given potentially-crashing instruction takes.
+\item
+  Look at different strategies for combining machines.
+\item
+  Look at effect of different analysis window sizes: how many bugs do we find, how many false positives, how much time does the analysis take.
+\item
+  Compare the CFG-based approach to building machines to the old backtracking one.
+\item
+  Direct eval of the effectiveness of the induction rule.
+\item
+  Look at how many bugs are killed off by the different clauses of the crash definition.
+\item
+  Cross-eval of the accuracy of the static analysis passes by doing a dynamic analysis which checks their predictions.
+\item
+  Investigate performance hit of the enforcement mode, and how that depends on the mechanism used to generate the enforcers.
+\item
+  Compare compiled enforcers to interpreted ones.
+\item
+  How much does the W isolation property actually buy us, in terms of analysis cost?
+  How much does it cost us, in terms of lost bugs?
+\item
+  How large are the CFGs and \StateMachines which we actually generate?
+  Also, how large are the intermediate machines generated when we're generating verification conditions?
+\item
+  Do we actually win anything from using the slightly odd form of SSA?
+\item
+  We handle multi-rooted CFGs completely differently between read and write modes.
+  Does that win/lose anything?
+\item
+  There's almost certainly something to say about the dynamic analysis phase, probably to do with how quickly it converges.
+\item
+  Might also be able to say something about how complex the resulting aliasing tables are.
+\item
+  Look at how long the various phases take.
+\item
+  There are a bunch of places where we have to decide between using the simplifier and the sat checker.
+  Eval which works better for each of them.
+\item
+  When you're doing the cross-product machines you have a choice between explicit and implicit happens-before edges.
+  Explicit is basically always better; figure out how much by, and why.
+\item
+  Crash enforcement: timeout strategies.
+\item
+  Crash enforcement: how useful is side-condition checking?
+\item
+  Crash enforcement: how often do we redundantly evaluate side conditions?
+\item
+  Crash enforcement: Is await-bound-exit actually useful?
+  We know it is in silly little artificial test cases, but perhaps not in real programs?
+\end{itemize}

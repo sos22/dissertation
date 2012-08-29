@@ -38,15 +38,15 @@ In addition to this basic mode of operation, SLI can also take as input a core d
 
 The basic analysis technique used by SLI, in all of its modes, is to take some small fragment of a binary program and approximate it using a \StateMachine, using a combination of decompilation, program slicing, and static analysis techniques.
 These \StateMachines contain all of the information which is relevant to the bug being investigated but very little irrelevant information, making them far easier to analyse than the raw machine code.
-They can be interpreted, given a snapshot of the program's state, to make a prediction about whether the program might, starting from that state, suffer the bug which is being investigated.
+They can be interpreted, given a snapshot of the program's state, to make a prediction about whether the program might, starting from that state, suffer the bug which is being investigated, or symbolically executed to determine what initial states might lead to the bug.
 These \StateMachines can cross function boundaries, and can cross between the program itself and library routines.
 
 One important limitation of the \StateMachine formalism is that individual \StateMachines must complete in a finite, bounded, number of operations; equivalently, \StateMachines are acyclic and finite.
 This makes them far easier to analyse, but at the expense of somewhat limiting their expressive power.
-In the particular case of SLI, we are only interested in bugs related to fairly small fragments of the program (those which should have been critical sections but aren't) and so this is a tolerable limitation; it might be more of a concern in other applications.
+In the particular case of SLI, we are only interested in bugs related to fairly small fragments of the program (those which should have been critical sections, but aren't) and so this is a tolerable limitation; it might be more of a concern in other applications.
 Section~\todo{...} briefly discusses some possible ways of removing this restriction.
 
-\StateMachines can contain information from multiple threads, which is useful when investigating the possible interactions of multiple program threads, and can cross function boundaries.
+\STateMachines can contain information from multiple threads, which is useful when investigating the possible interactions of multiple program threads.
 They are, however, internally completely deterministic, in the sense that the result of the \StateMachine is completely determined by the initial state against which it is interpreted.
 Any non-deterministic behaviour, such as the detailed interleaving of instructions from different threads or the results of most system calls, is captured in explicit free variables which must be specified before starting to interpret the \StateMachine.
 
