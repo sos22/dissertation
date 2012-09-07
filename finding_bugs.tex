@@ -456,6 +456,10 @@ Knowing the return address means that SLI can determine the address of the \verb
 This set usually contains a single item, the \verb|call| instruction itself, but can sometimes be larger due to tail-call elimination.
 In that case, as usual, SLI must consider every possible predecessor when building the CFG.
 
+One possibly interesting observation: it's much easier to incorporate other types of bugs, such as assertion failures, in this mode.
+If the program crashed due to a bad \verb|assert| then it'll generate a nice core dump saying what was going on at the time and the call stack then tells you where the \verb|assert| was, so you can use all the normal machinery to find the actual bug.
+That doesn't work in bug-finding mode because we won't necessarily be able to find all the callers of \verb|__assert_failed| in the program to analyse (in normal mode, finding the caller of a function relies in part on dynamic analysis, and so if \verb|__assert_failed| is never called then we won't be able to find its callers, so you can only investigate assertion failures which have actually been observed).
+
 \subsubsection{Compiling the CFG to a \StateMachine}
 
 The result of the previous phases is a control-flow graph containing all of the instructions which might be present in the $R$ trace of the crash tuple.

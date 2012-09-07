@@ -20,6 +20,105 @@ Instead, the read-side \StateMachine is ``slid across'' the log, evaluating it a
 \subsection{Building the read-side \StateMachine}
 \todo{This is gratuitously different from the non-DRS mode in an enormous number of places.  I should fix that.}
 
+Working from a DRS log provides a lot of information which is not available in SLI's normal mode of operation.
+This makes some parts of the algorithm redundant.
+In particular, there is no need to generate large numbers of CFGs of fragments of the program which might be relevant, as we know precisely which instructions were executed leading up to the crash.
+Instead, in this mode, SLI generates the \StateMachine directly from the log.
+It starts with a small stub machine representing just the instruction which crashed and then expands it backwards, incorporating a single instruction from the log at a time.
+For instance, suppose that the fragment of program to be investigated looked like this:
+
+\begin{verbatim}
+l1: mov $5, %rax
+l2: mov (global1), %rbx
+l3: mov (%rax + %rbx), %rcx
+\end{verbatim}
+
+and the program crashed due to dereferencing a bad pointer at \verb|l3|.
+The initial stub \StateMachine will then be just:
+
+\begin{verbatim}
+if (BadPtr(rax + rbx)) crash(); else survive();
+\end{verbatim}
+
+Incorporating \verb|l2| will transform that to
+
+\begin{verbatim}
+LOAD (global1) -> rbx
+if (BadPtr(rax + rbx)) crash(); else survive();
+\end{verbatim}
+
+Incorporating \verb|l1| will then produce the \StateMachine
+
+\begin{verbatim}
+COPY 5 -> rax
+LOAD (global1) -> rbx
+if (BadPtr(rax + rbx)) crash(); else survive();
+\end{verbatim}
+
+Which can be simplified in the usual way to produce
+
+\begin{verbatim}
+LOAD (global1) -> rbx
+if (BadPtr(rbx)) crash(); else survive();
+\end{verbatim}
+
+And this can then be used in the rest of the analysis.
+
+The major subtlety here lies in the handling of control flow, and the parts of the program which are not executed.
+One possible approach would be to simply say that any changes to the control flow cause the bug to be avoided, but this is over-optimistic.
+Consider, for instance, a program like this one:
+
+\begin{verbatim}
+ptr = global;
+if (some_condition)
+    idx = 1;
+else
+    idx = 2;
+local = ptr[idx];
+\end{verbatim}
+
+This program loads a pointer to an array from a global variable and then loads some index in the array, with the index chosen depending on some condition.
+Suppose that the race then causes the pointer in \verb|global1| to sometimes be bad, and that the reproduction of the bug was obtained while \verb|some_condition| holds.
+The bug itself does not depend on \verb|some_condition|, but if one were to assume that any changes to control flow avoid the bug then SLI would not be able to show this.
+This problem can only be avoided by exploring untaken branches, and SLI does so, for some (configurable) number of instructions.
+If the control flow rejoins that which is represented in the DRS log then an appropriate branch is included from one part of the \StateMachine to another, and if it does not rejoin then a branch to the \verb|NoCrash| state is used instead.
+
+One complication here is that a given static instruction might be represented multiple times in the DRS instruction trace, and hence multiple times in the \StateMachine, if the instruction is part of some loop.
+This makes it ambiguous where the branch should branch to.
+SLI solves this problem by taking the earliest instance of the instruction, and hence branching to the place in the \StateMachine nearest the root.
+This helps to keep the loop structure of the program intact, subject to the unrolling implicit in the DRS log.
+
+The example shown above might then turn into a \StateMachine something like this:
+
+\begin{verbatim}
+LOAD global1 -> ptr
+if (some_condition) {
+   COPY 1 -> idx1
+} else {
+   COPY 2 -> idx2
+}
+if (BadPtr(ptr + idx)) {
+   crash();
+} else {
+   survive();
+}
+\end{verbatim}
+
+The standard simplified will then transform that to this:
+
+\begin{verbatim}
+LOAD global1 -> ptr
+if (BadPtr(ptr + (some_condition ? 1 : 2))) {
+   crash();
+} else {
+   survive();
+}
+\end{verbatim}
+
+SLI uses a rule that \verb|BadPtr(x + k)| is equivalent to \verb|BadPtr(x)| whenever \verb|k| is a small constant, and so correctly determines that the bug is independent of \verb|some_condition| in this case.
+
+\todo{Discuss using more powerful bug definitions here e.g. Valgrind, invariant discovery, etc, by applying them to the log and then converting to stub machines, so that you can apply this to races which lead to bugs other than immediate bad pointer dereferences.}
+
 \subsection{Requirements on the DRS}
 
 \subsection{Finding remote critical regions}
