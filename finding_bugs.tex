@@ -423,6 +423,39 @@ At that point, every path of length $N_r$ traverses the cycle at most once, and 
 
 \todo{I think I might need a proof of correctness here.}
 
+\subsubsection{Generating CFGs from core dumps}
+
+Rather than trying to find all of the potential bugs in a program, SLI can instead be used to investigate a specific bug which has been reproduced to produce a core dump.
+The procedure used is identical except for the way in which read-side control-flow graphs are generated, and so it is described here.
+In this targeted mode, SLI does not attempt to generate every possible read-side CFG, but instead just generates those which might lead to the bug exhibited in the core dump.
+The core dump contains two critical pieces of information:
+
+\begin{itemize}
+\item
+  The instruction which crashed.
+\item
+  The processor stack at the time of the crash.
+\end{itemize}
+
+Knowing the instruction which crashed constrains the CFG in an obvious way.
+The processor stack is moderately mode difficult to analyse.
+In principle, it tells us where each currently-active function was called from, which would usefully constrain the set of predecessors, but extracting this information from a program binary without debug information and without a frame pointer is non-trivial.
+SLI has two strategies for solving this problem:
+
+\begin{itemize}
+\item
+  A static analysis, run on the binary before attempting to analyse the core dump, which attempts to map from instruction addresses to the offset between the current stack pointer and the address of the current function's return address.
+  When this analysis succeeds it makes it trivial to determine from the core dump where the function will return to, and hence where it was called from, but it will not always succeed.
+  In particular, the \verb|alloca| function can cause that offset to change at run-time, and so no static analysis will ever succeed.
+\item
+  An abstract interpreter, which attempts to interpret the program's machine code forwards from the point of the crash to determine what it would have done if it hadn't crashed.
+  This proceeds until it reaches a \verb|ret| instruction, at which determining the return address is again trivial.
+\end{itemize}
+
+Knowing the return address means that SLI can determine the address of the \verb|call| instruction which started the function, and comparing this to the pre-built static model of the program can then map this into a set of instructions which might have been executed before the current function started.
+This set usually contains a single item, the \verb|call| instruction itself, but can sometimes be larger due to tail-call elimination.
+In that case, as usual, SLI must consider every possible predecessor when building the CFG.
+
 \subsubsection{Compiling the CFG to a \StateMachine}
 
 The result of the previous phases is a control-flow graph containing all of the instructions which might be present in the $R$ trace of the crash tuple.
@@ -2552,14 +2585,4 @@ Recovery from spurious segfaults in the patch due to e.g. LD operations.
 
 \subsection{Comparison to schedule memoisation}
 \subsection{Comparison to STM block inference stuff}
-
-\section{Fixing bugs}
-
-\subsection{Using global locks}
-\label{sect:fix_global_lock}
-
-\todo{Write me.  This is supposed to be about how you patch in lock-acquire and lock-release operations.}
-
-\subsection{Using a message-passing network}
-\todo{I've come up with an algorithm for doing this, but I really don't have time to implement it.  It is kind of cool, though; I'd like to include it somewhere, even if it's just a future work-type thing.}
 
