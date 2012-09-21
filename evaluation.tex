@@ -89,3 +89,154 @@ Other things I can look at and evaluate:
   Artificially limit number of live assertions to 5.
   Investigate what effect that has.
 \end{itemize}
+
+\subsection{Validation of tool implementation}
+
+\subsubsection{Cross-thread stack accesses}
+
+\subsubsection{Static analyses}
+
+SLI relies on two forms of whole-program static analysis applied to the target binary before the main analysis starts:
+
+\begin{itemize}
+\item
+  The simple points-to analysis.
+\item
+  An analysis to recover the offset between RSP and RBP, where that is a constant.
+\end{itemize}
+
+Both analyses assume in at least some places that the program to be analyses conforms to the system ABI.
+If that assumption does not hold, or if there is simply a bug in one of them, then that might invalidate all of the other results.
+I therefore developed some Valgrind-based dynamic analyses to check that the results of this phase were correct.
+
+\subsubsubsection{Points-to analysis}
+
+The static points-to analysis builds an instruction attribute table for the program which includes, for each instruction:
+
+\begin{itemize}
+\item
+  Whether the current stack frame might include any pointers to itself.
+\item
+  Whether there might be any pointers to the current stack frame in memory which is not part of the current stack frame.
+\item
+  For each register, a flag saying whether that register might point at the current stack frame.
+\end{itemize}
+
+The ``current stack frame'' here is defined to be the region of memory between \verb|RSP-128| and the value of \verb|RSP| at the time of the enclosing \verb|call| instruction\editorial{talk about effects of tail calls}.
+The tool to check this analysis has several parts:
+
+\begin{itemize}
+\item
+  It must track the extent of the current frame; this is straightforward, since the analysis can always see the value of \verb|RSP| and all \verb|call| and \verb|ret| instructions.
+\item
+  It checks, at the start of each instruction, whether any registers currently point into the current frame, and, if so, whether that is allowed by the instruction attribute table.
+\item
+  It attempts to track directly whether there exist any pointers to the current frame, whether in the frame or outside of it.
+  This part of the analysis assumes that there are no pointers into a frame when it is created at the start of a function and then monitors all stores to detect when such pointers are created.
+  This information then allows the analysis to directly check the might-be-pointer-to-frame flags in the instruction attribute table.
+\item
+  That assumption holds for most well-behaved programs, but is not absolutely guaranteed.
+  The dynamic analysis therefore also checks all load operations to confirm that there are no pointers which violate the flags in any memory locations accessed by a function.
+  There might, of course, be pointers into the current stack frame which are never loaded, but (assuming there are no cross-thread stack accesses) they can never be dereferenced, and so don't actually matter.
+\end{itemize}
+
+This flagged a number of minor problems with the analysis:
+
+\begin{itemize}
+\item
+  Pointers to the stack frame can sometimes be left behind in dead registers, and in particular in call-clobbered registers after function calls.
+  Correct programs which conform to the ABI will never make use of the values of these registers, and the static analysis makes use of that fact\editorial{...but doing so doesn't actually buy us anything...}, but it is much less obvious in a dynamic analysis.
+  The solution is simple: have the dynamic analysis overwrite all such registers with poison values when functions return.
+  If the program does conform to the ABI then this will have no effect, but if it makes use of the theoretically-dead values then its behaviour will change.
+  I ran the analysis in three modes, one which used zero as poison, one which used a small value which wasn't a valid pointer, and one which used a large value which wasn't a valid pointer.
+
+  This revealed a single place which did not conform to the ABI in the desired way: glibc's internal pthread locking functions are guaranteed to never clobber \verb|RSI|, and glibc's syscall stubs make use of this in a number of places.
+  This particular static analysis is only applied to the program's main binary, and not any of the libraries which it is dynamically linked against, and so this is not a particular problem.
+
+\item
+  \verb|alloca|
+
+\begin{verbatim}
+>   9e56c7:       48 29 c4                sub    %rax,%rsp
+>   9e56ca:       48 89 e0                mov    %rsp,%rax
+>   9e56cd:       48 83 c0 0f             add    $0xf,%rax
+>   9e56d1:       48 c1 e8 04             shr    $0x4,%rax
+>   9e56d5:       48 c1 e0 04             shl    $0x4,%rax
+>   9e56d9:       48 89 45 a8             mov    %rax,-0x58(%rbp)
+\end{verbatim}
+
+\todo{Crap, my argument for why this doesn't matter doesn't actually work.  Need to rethink that one.}
+\end{itemize}
+
+\subsubsubsection{RBP offset}
+
+The main analysis removes references to the function frame pointer, if present, by replacing them with references to the stack pointer.
+This relies on a static analysis which determines, for each instruction in the program, the offset from the \verb|RBP| register to the stack pointer (assuming that that's a constant).
+This dynamic analysis checks, at the end of every instruction, that the actual offset matches the value in the database.
+This revealed a single problem with the analysis, related to gcc's \verb|noreturn| function attribute.
+Suppose that the function \verb|f| is marked as \verb|noreturn|, that \verb|a| calls \verb|f| as its final action, and the compiler places \verb|b| immediately after \verb|a|.
+This might generate assembly something like this:
+
+\begin{verbatim}
+a:
+1: push rbp
+2: mov %rsp, %rbp
+3: subq $64, %rsp
+4: call f
+
+b:
+5: push %rbp
+6: mov %rsp, %rbp
+...
+\end{verbatim}
+
+Here, there is no well-defined constant offset between registers \verb|RSP| and \verb|RBP| at instruction 5, but the analysis propagates the offset from \verb|4| to \verb|5| because it cannot tell that \verb|f| is no-return.
+There is precisely one place in the debug version of mysqld which suffers from this problem, according to the dynamic analysis, and I have avoided the issue by simply hard-coding that address.
+
+\todo{I should really fix this properly; it's a bit of a waste of space to explain.}
+
+\subsubsection{CFG generation}
+
+For the bug-detecting mode to hope to detect every bug, the CFG generation process must be able to generate CFGs which represent all dynamic fragments of the program of the desired length which either end in a memory-accessing instruction (for probe CFGs) or start and end with a store (for store CFGs).
+This dynamic analysis attempts to validate that by capturing a large pool of dynamic traces from the program and then checking that CFG generator can generate the trace.
+Ideally, it would capture every such trace from an execution, but that has sufficiently high performance overhead to make it difficult to exercise all possible behaviour under it\editorial{blah}.
+Instead, the analysis applies several filters to try to obtain a reasonably representative sample:
+
+\begin{itemize}
+\item
+  Only traces which end in a non-stack memory-accessing instruction are considered.
+\item
+  Amongst those samples, only one in a thousand is used.
+  This is implemented by only sampling if a randomly-generated number is congruent to zero modulo a thousand, rather than taking every thousandth trace, so as to avoid possible aliasing effects with the program's structure.
+\item
+  I attempt to increase the likelihood of rare traces being sampled using a bloom counter.
+  This consists of 131072 saturating 7-bit counters.
+  When the dynamic analysis is determining whether to sample a given trace, it hashes it to select one of these counters, then generates a random number, and only takes the trace if the random number modulo the counter plus one is zero.
+  It then increments the counter.
+  This helps to increase the likelihood of moderately rare traces being included in the final sample.
+\end{itemize}
+
+The end result of this dynamic analysis is a large set of short fragments of the program's execution.
+Each such fragment is considered in isolation, and appropriate instructions from it fed into the CFG generating algorithm.
+The CFG can then be checked to ensure that the trace is actually possible in the CFG.
+This analysis did not find any problems with the algorithm.
+
+\subsection{\StateMachine generation}
+
+Don't really have a plan for this; might just say that it's a trivial wrapper for libVEX.
+
+\subsection{Dynamically-collected aliasing model}
+
+This is pretty much what it is; not sure there's a great deal to say here.
+If I had infinite time I could hack up gcc to try to do a similar analysis at the source level, but I don't, so I can't.
+Only real alternative is to look at the convergence rate.
+
+\subsection{\StateMachine simplification}
+
+The \StateMachine simplification passes are both complicated and critical to SLI's correctness.
+To validate their correctness, I took a random sampling of the pre- and post-optimisation machines from a run of the SLI in its bug-finding mode and interpreted each in a randomly-generated initial environment.
+Any runs which contradicted the dynamic model were discarded, and any others in which the pre- and post-optimisations machines produced different results were flagged as an error.
+All such errors were then fixed.
+
+\todo{I really need to do this.}
+
