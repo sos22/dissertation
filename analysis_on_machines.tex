@@ -1,3 +1,590 @@
+Things which are worth discussing here:
+
+\begin{itemize}
+\item
+  Give a very brief discussion of the actual analysis passes I use.
+  Most of these will just be refs to the standard program slicing/decompilation/compilers literature.
+  Deadcode and avail belong here.
+\item
+  Explicit discussion of the undefinedness analysis, because the argument which shows it to be sound is really rather subtle, and I've not seen anyone else make it.
+\item
+  Probably mention that we sometimes optimise on the assumption that assertion failures correspond to crashes and sometimes on the assumption that correspond to avoiding the crash, and discuss why that's necessary.
+\item
+  Maybe discuss getting rid of local survival constraints?
+\item
+  The function alias analysis and phi elimination analyses are kind of interesting; I haven't seen them anywhere else (and they're inherently cross-function, rather than the usual compilers approach of just inlining everything and then doing intra-function analysis on that, which is kind of fun).
+\item
+  The encoding of multiple fragments of program into a single \StateMachine, which reduces analysis costs quite a bit, is kind of interesting.
+\item
+  The encoding of the static analysis information into the \StateMachines, to expand the context sensitivity horizon, is also kind of interesting.
+\end{itemize}
+
+\section{Alias analysis}
+
+SLI's \StateMachines represent a cross-function slice of the program's
+machine code, including a large number of memory-accessing
+instructions.  This presents a non-trivial alias analysis problem.
+SLI uses several techniques to resolve the resulting aliasing queries:
+
+\begin{itemize}
+\item
+  First, a dynamic analysis is used to build up a model of how the
+  program behaves during normal operation.  This model is generally
+  reasonably effective at determining whether instructions which
+  access the heap or global data might conflict, but does not contain
+  information on accesses to the local stack.
+\item
+  Next, a static analysis pass is used to determine which instructions
+  might access local variables in the current stack frame.  This
+  analysis is almost entirely function-local and is applied to every
+  function in the program before the main analysis pass starts.
+\item
+  The results of this static analysis pass are incorporated into the
+  \StateMachines in a way which automatically extends them to
+  accurately reflect cross-function properties of the program.
+\item
+  The main alias analysis can then be run on the \StateMachines
+  themselves, in conjunction with the other \StateMachine
+  simplification passes, to resolve aliasing queries.
+\end{itemize}
+
+I now describe each of these phases in more detail.
+
+\subsection{Dynamic analysis}
+
+SLI relies on a dynamic analysis pass to build up a model of the
+program's behaviour when it is running normally.  This model mostly
+focuses on the possible aliasing relationships between memory accesses
+outside of the program's stack; in other words, determining whether
+two instructions might access the same piece of non-stack memory.
+This is a full alias analysis, rather than a points-to analysis, and
+so could in principle need to build up a full $O(n^2)$ table showing,
+for each pair of instructions whether those instructions might alias.
+Fortunately, that table is rather sparse for most programs, allowing
+some significant simplifications to be made.
+
+The intuition behind this analysis is that most fields in most data
+structures are accessed by a relatively small number of places in the
+program, and so if it were possible to identify the field being
+accessed by a given instruction then that would make it easy to
+determine whether two instructions might interfere.  Unfortunately,
+that kind of higher-level information is not usually available when
+analysing binary programs.  SLI sidesteps that problem by identifying
+fields by the set of instructions which might access them and then
+assuming that instructions might alias precisely when they are part of
+the same field.  The result is an alias table which can be collected
+in reasonable time using a simple dynamic analysis, which can resolve
+aliasing queries quickly, and which requires a tolerable amount of
+space (tens of megabytes for mysqld, for instance).
+
+Collecting the aliasing table works like this.  Memory is divided
+eight byte chunks, each of which has two set of accessing instructions
+associated with it, one for read instructions and one for write.  Any
+instruction which accesses that memory chunk adds itself to the
+relevant set.  These sets in effect identify the structure field for
+the memory chunk.  When the memory dies, due to the program either
+exiting or calling some \verb|free|-like function, the relevant field
+descriptors are transferred to a global set of fields.  This global
+set then provides the final aliasing table.
+
+\todo{Other bits: skip stack accesses, and try to identify
+  thread-private memory.}
+
+\subsection{Static analysis}
+
+\todo{On the one hand, this is quite important.  On the other hand,
+  it's incredibly tedious.  Not sure what to do about that.}
+
+The most important whole-program analysis used by SLI is a simple
+points-to analysis which determines, for any given combination of
+register and instruction, whether that register at that instruction
+might point into the current stack frame (defined below) or into other
+memory.  This information is then used to improve the accuracy of the
+\StateMachine-level aliasing analyses.  Determining whether a memory
+access is to the current stack frame is important because, in most
+programs, there are a lot of them, and is relatively easy, because,
+again in most programs, there are relatively few pointers into the
+stack frame.  This makes the problem a reasonable choice for solving
+by whole-program static analysis.
+
+The analysis used by SLI makes several important assumptions about the
+program to be analysed:
+
+\begin{itemize}
+\item
+  Most importantly, it assumes that the locations in a function's
+  frame are ``created'' when the function is called, in the sense that
+  any pointers into the stack frame which are actually dereferenced
+  must have been created after the function started.  This does not
+  mean that there cannot be any pointers into the frame at the start
+  of the function; simply that, if there are any, they cannot be
+  dereferenced.  Pointers in dead registers are acceptable, for
+  instance, as are values which are ``semantically'' integers but
+  happen to have the same numerical values as valid pointers.
+
+\item
+  The analysis assumes that the location of the stack was unknown when
+  the program was compiled, and in particular that any statically
+  constant values are not stack pointers.  This is in some sense a
+  special case of the previous assumption, but is both important and
+  non-obvious and so bears additional emphasis.
+
+\item
+  The analysis assumes that all functions take all of their arguments
+  in registers, and that SLI can identify the set of registers which
+  might be arguments.  In the case of AMD64 using a normal ABI this is
+  true for the first six arguments to a function \needRef{}, and,
+  since the vast majority of functions have fewer than six arguments
+  \needRef{}, this is not usually a problem.
+
+\item
+  The analysis assumes that functions will either not return at all or
+  will return to the instruction following the instruction from which
+  it was called.  Note that this does not rule out functions such as
+  \verb|setjmp| and \verb|longjmp|: \verb|longjmp| never returns and
+  \verb|setjmp| always returns to the instruction after the one which
+  called it.
+
+\item
+  The analysis assumes that the stack pointer at the end of a function
+  is always the same as the stack pointer at the start of that
+  function, if the function returns to the same place as it was called
+  from.
+\end{itemize}
+
+Given those assumptions, the first stage of the analysis is to
+identify functions in the program.  For the purposes of this analysis,
+a function is defined to be a (possibly non-contiguous) set of
+instructions with a distinguished element, referred to as the head of
+the function, such that:
+
+\begin{itemize}
+\item
+  For any non-return and non-call type branch from instruction $a$ to
+  $b$ anywhere in the program, either $a$ and $b$ are in the same
+  function or $b$ is the head of some function, and
+\item
+  for any call-type branch instruction from $a$ to $b$ $b$ is the head
+  of a function.
+\end{itemize}
+
+The term ``branch'' here includes the implicit branch
+from one ordinary instruction to the one which immediately follows it.
+Within those constraints, SLI attempts to minimise the number of
+distinct functions\footnote{Or, equivalently, it maximises the size of
+  the individual functions.}\editorial{Well, ``attempts to''.  There's
+  no guarantee that the set is actually minimal, but it usually is.}.
+
+For most functions, invoked using call-type branches, this definition
+is straightforward, and is equivalent to saying the first instruction
+in the function is the head and the function contains all instructions
+reachable from that instruction until the first return-type branch,
+excluding called functions.  Tail-call elimination complicates things
+slightly, though.  If a function is ever called in the usual way
+(i.e. not via tail-call elimination) then the first rule will cause
+its first instruction to be a function head, as desired.  If a
+function is never called via a call-type branch, but is tail-call
+eliminated into multiple calling functions, then the second rule will
+cause the join of the two calling functions' CFGs to be a function
+head, and this is generally correct for simple tail-call elimination.
+If the called function is only called from one place, and that place
+is a tail-call, then this definition will lead to the two functions
+being merged, which will lead the analysis to produce an
+overly-conservative solution but will not cause an actual error.
+
+The only slight complexity involved in discovering functions within
+this definition is the handling of indirect call and branch
+instructions.  SLI solves this using information from the dynamic
+analysis phase: it assumes that all of the possible targets of every
+indirect branch are recorded in the dynamic information, which makes
+the problem trivial.
+
+The analysis itself is then structured as a simple iteration to a
+fixed point.  The iteration's state is a table saying, for each
+instruction, the estimated points-to configuration at the start of the
+instruction and at the end.  The end-of-instruction configuration is a
+simple function of the start-of-instruction configuration and the
+instruction itself, and the start-of-instruction configuration is
+itself simply the union of the end-of-instruction configurations for
+all of the instructions which might possibly execute immediately
+before the one being analysed.  Once those rules are satisfied by each
+instruction in isolation the analysis is complete and the table
+provides accurate information about the program's behaviour (provided
+that the assumptions given above are true).
+
+I now give a little more detail of the various steps.
+
+\begin{itemize}
+\item
+  The initial state reflects the assumptions given above.  At the
+  start of the analysis, most instructions are assigned a special
+  ``unreachable'' state, which says nothing at all about their
+  possible points-to state.  The exceptions are function-head
+  instructions, which are given this initial state:
+
+  \begin{itemize}
+  \item The stack pointer points at the current stack frame.
+  \item Other registers contain either non-pointer values or pointers
+    to memory outside of the current frame.
+  \item There are no pointers in the current stack frame which point
+    back at the current stack frame.
+  \item There are no pointers in main memory which can reach the
+    current stack frame.
+  \end{itemize}
+\item
+  If the instruction sets register $r$ to the expression $x$, the
+  analysis computes the points-to set of the expression $x$ (which
+  will be some combination of points-at-current-frame,
+  points-outside-current-frame, and non-pointer-value) and sets it to
+  $r$.  Calculating the points-to set is straightforward, with a few
+  exceptions:
+
+  \begin{itemize}
+  \item
+    Constant expressions.  Constant values are assumed to never point
+    into the stack, which is probably unsurprising.  SLI will,
+    however, also mark constant expressions as not pointing at
+    anything at all if the constant address is not mapped by the
+    program's main binary, which is perhaps slightly more surprising.
+    One might suspect that this would be confused by, for instance,
+    references to shared libraries, which appear to be constant from
+    the point of view of application programmers but not at the
+    machine code level.  They therefore do not trigger this heuristic.
+
+    The only way that this heuristic could be wrong would be if the
+    program uses a facility such as \verb|mmap| to explicitly map
+    something at a fixed virtual address without reserving that
+    address in its ELF information, and then uses that known address
+    to access the mapped information directly.  This is an extremely
+    unusual thing for a program to do, because it is inherently unsafe
+    in the presence of dynamically loaded libraries.  Not including
+    the address in the ELF phdrs means that dynamically loaded
+    libraries might claim the desired address before the program is
+    able to, in which case the manifestly constant addresses in the
+    program's binaries will necessarily be incorrect (and if the
+    program includes some mechanism to recover from this then there
+    would be no advantages to hard-coding an address in the first
+    place).  I have not found any programs which violate this
+    heuristic.
+
+  \item
+    If the computed value is of the form $x + y$ then points-to sets
+    are computed for $x$ and $y$ and the final points-to set is the
+    union of them.  This, together with the constant rules, means that
+    the analysis implicitly assumes that the program never computes a
+    pointer into one memory region by adding a constant to a pointer
+    into another one.  In particular, this means that functions cannot
+    access memory in the calling function's frame at a fixed offset
+    from the stack pointer.\editorial{That's actually a fairly major
+      assumption; I'm kind of surprised how rarely it's false.}
+
+  \item
+    If the computed value is a load from memory then it might always
+    be a pointer outside of the current stack frame, and might point
+    at the current stack frame if either the address loaded might
+    point at the current stack frame and the current stack frame might
+    include references to itself or the address might point outside of
+    the current frame and memory outside of the current frame might
+    include pointers to the current frame\editorial{Rephrase}.
+  \end{itemize}
+
+\item
+  If the instruction stores to memory then the analysis computes the
+  points-to sets for the address and the value stored and updates the
+  stack-frame-escaped flags as appropriate.
+
+\item
+  Instructions which call other functions require a moderate amount of
+  care.  SLI handles them by checking whether there might be any
+  pointers to the current stack frame in either argument registers or
+  non-stack memory.  If there are then the stack is considered to have
+  escaped into the called function, so the return register is marked
+  as possibly pointing at the stack and both memory regions are marked
+  as possibly containing pointers to the stack.  Argument registers
+  here are the intersection of the argument registers defined by the
+  ABI and those found to be live at the start of the called function
+  by a separate register liveness analysis pass not described here.
+\end{itemize}
+
+\todo{There's a bit of a subtlety to do with instructions which
+  early-exit e.g. setne, but it's not very important and it's a pain
+  to explain, so I probably won't bother.}
+  
+The static analysis iterates these rules until it finds a fixed point.
+
+\subsection{Encoding information into \StateMachines}
+
+The information collected by the static analysis pass is
+function-local, in the sense that it can tell whether a given
+instruction accesses the current function's stack frame but cannot say
+anything about other frames.  SLI's \StateMachines are, however,
+cross-function, and so even the idea of a ``current function'' is not
+entirely well-defined.  Solving this mismatch has two main steps.  The
+first is to recover the function structure of the program, and hence
+to assign identifiers to stack frames which might be relevant.  The
+function-local information can then be extended to say which frames a
+given pointer might refer to, rather than just providing a simple
+does/does-not point at the current frame flag.
+
+\subsubsection{Recovering the function call structure}
+
+\todo{The current version of this algorithm is from the end of August;
+  the first one was from the 14th.}
+
+The initial \StateMachine building process can identify the start and
+end of functions by recognising \verb|call| and \verb|ret|
+instructions.  These are converted into \verb|StartFunction(rsp)| and
+\verb|EndFunction(rsp)| side-effects which can be incorporated into
+the machine in the usual way (where \verb|rsp| is the stack pointer at
+the time of the instruction).  These side-effects have no effects on
+the \StateMachine's actual behaviour, in the sense that removing them
+cannot change the \StateMachine's final result, but provide useful
+hints to the later analysis steps.  The task of this pass is to take
+these \verb|StartFunction| and \verb|EndFunction| side-effects and use
+them to determine the entire stack layout at every point in the
+\StateMachine.
+
+This might, at first, appear to be trivial.  To understand why it is
+not, it is helpful to consider a few simple examples.  First, suppose
+that the behaviour being investigated is in function \verb|f| and that
+it is called from \verb|g|:
+
+\begin{verbatim}
+g() {
+l1:  f();
+l2:  f();
+}
+\end{verbatim}
+
+Where the behaviour to be investigated is in the second call to
+\verb|f| and the \StateMachine generated includes both calls.  The
+analysis should assign different frame IDs to the two calls, and so
+assigning the same frame ID to every instance of a given static
+function would be incorrect.  At the same time, simply assigning a
+different ID to every instance would also be incorrect.  For example:
+
+\begin{verbatim}
+g() {
+    if (cond1)
+       f();
+}
+h() {
+    if (cond2)
+       f();
+}
+\end{verbatim}
+
+Suppose that the \StateMachine being generated has entry points for
+both \verb|g| and \verb|h|.  Ideally, we would like to analyse the two
+instances of \verb|f| only once, to avoid doing redundant work, and
+this will only be possible if they are assigned the same frame ID.
+
+The correct solution to this problem is to realise that stack frames
+are dynamic constructs, allocated by \verb|call| instructions and
+released by \verb|ret| ones, and that, due to the way loop unrolling
+works during CFG generation\needCite{}, the \verb|StartFunction| and
+\verb|EndFunction| themselves correspond to dynamic instances of those
+instructions\editorial{That really isn't very well described.}.
+
+\todo{Hmm.  I'm really not doing a good job of describing how this
+  works.}
+
+Conceptually, this pass is a simple constraint solving problem.  A
+\verb|StartFunction| $x$ side-effect produces a constraint that
+$stack(s1) = stack(s2) + frame$, where $stack(s1)$ is the stack at the
+start of the side-effect, $stack(s2)$ is the stack at the end of it
+and $frame$ is the frame associated with the side-effect, and
+conversely for \verb|EndFunction| side-effects.  Ideally, SLI would
+generate all of these constraints and solve them, and hence directly
+determine the stack layout at every point in the \StateMachine, but
+doing so is problematic because the number of variables which must be
+solved for is not known initially.  The workaround for this is
+fortunately rather simply to split the constraint solver into two
+passes: one which determines the depth of the stack at each point in
+the \StateMachine, and hence how many variables are needed, and
+another which solves to determine the values of those variables.  The
+resulting stack layouts are then encoded into the \StateMachine using
+special \verb|StackLayout| side-effects at every entry point and by
+attaching the relevant frame ID to each \verb|StartFunction| and
+\verb|EndFunction| side effect.
+
+\todo{I could say quite a lot about how this works, and there are some
+  moderately interesting subtle bits to it, but I don't think the
+  interestingness justifies the amount of space needed to describe
+  them properly.}
+
+\todo{What I should really do is figure out precisely what problems it
+  causes when we get this wrong, which'd give me a pretty good handle
+  on (a) how important it is and (b) what the best way of describing
+  it is.}
+
+Once frame IDs have been allocated and assigned to side effects, the
+statically-determined aliasing information must be incorporated into
+the \StateMachine.  This takes the form of special
+\verb|PointerAliasing| side effects, which give points-to set for
+specific registers, and annotations on the \verb|StackLayout| side
+effects which indicate whether there might be any pointers to the
+relevant stack frame in any part of memory at a given entry
+point\editorial{So that flattens the pointed-at-by-memory and
+  pointed-at-by-self flags of the static analysis into one flag; might
+  want to explain what's going on there.}.  Register points-to
+sets here have a small number of fields:
+
+\begin{itemize}
+\item
+  A flag saying whether the register might point outside the stack
+  completely\editorial{Need to think hard about what that means.}.
+\item
+  A set of frames which the register might point into.
+\item
+  A flag saying whether any frames outside of that set might be
+  pointed at.
+\end{itemize}
+
+\todo{Good God I'm making a meal of explaining this.}
+
+\subsection{The actual alias analysis}
+
+\todo{Really need to look at some standard compiler alias analyses to
+  figure out how novel this actually is.  It'll need some description
+  regardless, because it's important and I'm pretty certain nobody
+  else has tried it in this context, but the amount and type might
+  change a bit.}
+
+Two-step process, one of which builds up aliasing and points-to
+tables, the other which actually uses them.  Using them is easy, so
+only go into detail on building them.
+
+Key data structures:
+
+\begin{itemize}
+\item
+  Aliasing table -- for each memory accessing operation a set of other
+  memory accessing operations which occur before it in the machine and
+  which it might interfere with.  Also flags saying whether a given
+  load might load the initial value of memory or something stored
+  by something outside of this \StateMachine.
+\item
+  Points-to table -- a points-to class for each register and temporary.
+\end{itemize}
+
+The two tables have to be generated at the same time, as the PTT is a
+function of the AT and the AT is a function of the PTT.  Iterate to a
+fixed point.
+
+Things to do with these tables:
+
+\begin{itemize}
+\item
+  Forwarding from stores to loads.
+\item
+  If something gets loaded twice replace the second one with a copy
+  c.f. compiler avail expression analysis.
+\item
+  Removing stores which are definitely never loaded.
+\item
+  Removing \verb|StackLayout|, \verb|StartFunction|,
+  \verb|EndFunction| side effects which aren't useful any more.
+\end{itemize}
+
+Probably also want some discussion about when this is safe w.r.t.
+multi-threaded behaviour.
+
+
+
+\section{Other static analysis}
+
+Most of the SLI analyses are applied solely to the \StateMachine
+generated for the specific bug, and so can only consider behaviour
+which is within the analysis window.  In effect, they are insensitive
+to context beyond the bug horizon.  This helps to make them fast, but
+can sometimes limit their effectiveness.  SLI therefore also uses a
+small number of very simple whole-program analyses, still applied to
+the program binary without access to the source code, in order to
+compute a few simple context-sensitive facts about instructions in the
+program before the main analysis process starts.  These facts are then
+included in the generated \StateMachines, and so can be used by the
+local analysis passes to improve their accuracy.  I now describe these
+global analysis passes\editorial{And I sound like I have something
+  unpleasant jammed up my arse.}.
+
+
+\subsection{Frame pointer elimination}
+
+One possibly surprising property of SLI is that it is somewhat more
+effective on programs built with extensive compiler optimisation than
+it is on unoptimised builds, as optimising compilers are generally
+quite good at removing unimportant steps from the program.  The most
+important compiler optimisation, from SLI's perspective, is frame
+pointer elimination.  When frame pointers are in use the program
+maintains two pointers into the current stack frame, the stack pointer
+and the frame pointer, usually with a fixed offset between them, and
+the compiler emits some stack accesses relative to the stack pointer
+and some relative to the frame pointer.  This complicates alias
+analysis for accesses to function-local variables.  SLI therefore uses
+a static analysis to rewrite frame pointer-relative accesses into
+stack pointer-relative ones wherever possible.
+
+The core structure produced by this analysis is a table mapping
+instructions in the program to the offset from the stack pointer to
+the frame pointer when that instruction executes, or a special value
+indicating that the offset is not a constant.  The analysis here is,
+again, an iteration to a fixed point which builds an initial
+approximation to a correct offset table and then refines it by
+considering each instruction in isolation until they are all locally
+correct, at which point the overall table will also be correct.
+
+In more detail:
+
+\begin{itemize}
+\item
+  The initial offset table only contains entries for all instructions
+  which depend on the type of instruction:
+
+  \begin{itemize}
+  \item Function heads start off as having a non-constant offset.
+  \item Instructions which set the offset to a known value have an
+    entry reflecting that.  For x86, the most common such instruction
+    is \verb|mov %rsp, %rbp|, which copies the stack pointer to the
+    frame pointer and hence sets the offset to zero, and which appears in
+    most function prologs.
+  \item Other functions start off having an unknown offset.
+  \end{itemize}
+\item
+  The entry state of an instruction is the join of all of its
+  predecessor instructions' exit states.  The join rule here
+  is:
+
+  \begin{itemize}
+  \item
+    If any input state is not-a-constant then the output state is
+    not-a-constant.
+  \item
+    Otherwise, if there are any known-constant inputs, the output
+    state is known-constant if all of the inputs match and
+    not-a-constant otherwise.
+  \item
+    Otherwise, all of the predecessor instructions have unknown
+    offsets and the result is an unknown offset.
+  \end{itemize}
+\item
+  The exit state is a function of the input state and the type of
+  instruction.  Those which adjust the stack or frame pointers by some
+  constant produce an output offset which is the input offset plus or
+  minus that constant, as appropriate; those which set the offset to a
+  known value produce that value as output (even when the input offset
+  is not-a-constant), as already indicated; and those which update one
+  or other of the pointers in some other way set the output state to
+  not-a-constant.
+\item
+  Once the iteration has converged any instructions which are still in
+  the unknown state have their state set to not-a-constant.
+\end{itemize}
+
+The resulting offset table accurately reflects the properties of the
+program.
+
+
 
 \section{Alias analysis}
 \subsection{Alias analysis and identification of thread-local accesses}
@@ -20,87 +607,6 @@ There are two major complications to optimising memory accesses:
 If a DRS log is available then this is generally trivial, as all of the necessary information will be present in the log\editorial{should really have a ref to the DRS section, which'll have more details.}.
 Otherwise, SLI uses a combination of static and dynamic analyses to solve these problems.
 
-\subsubsection{Dynamic analysis}
-
-The most important technique used by SLI is a dynamic analysis which is used before starting static analysis to build a model of how the program behaves.
-This attempts to classify the memory-accessing instructions in the program according to which other memory accesses they might alias with and whether the memory accesses appears to be private to that thread.
-The result is an aliasing database which consists of a set of aliasing entries.
-Each aliasing entry consists of a pair of sets of instructions, with one set containing loads and the other stores, with each instruction tagged with a bit saying whether the accessed memory was thread-local or possibly-shared.
-The database is generated using a dynamic analysis implemented as a Valgrind skin.
-
-\todo{Should really describe how the skin works.  Mostly just an engineering detail, though.}
-
-\todo{The bit where we figure out whether a dynamic pointer is thread-private is kind of interesting, though.}
-
-Given this database, it is generally possible to eliminate the vast majority of possibly-aliasing pairs quickly, which means that the aliasing problem becomes much simpler.
-Of course, it is only correct if the dynamic execution completely captures every possible behaviour of the program.
-This is a particular concern if the program is misbehaving, as such misbehaviour might lead to wild pointer-type bugs, or uses after free, or a number of other bugs, which would mean that the afflicted instructions could potentially alias with almost any other memory-accessing instruction in the program, and this would not be accurately reflected in the aliasing database.
-
-\todo{Should really say something more about that}
-
-This database does not include accesses to the local stack, in order to keep its size down to something reasonable.
-
-\subsubsection{Accesses to the current stack frame}
-
-The dynamic aliasing database does not include any information on accesses to the current thread's stack, and so SLI needs to employ a different mechanism to determine aliasing relations for those accesses.
-Most such accesses take the form of constant offsets from \verb|RSP| (or \verb|RBP|, which is converted to a \verb|RSP| offset as discussed in \S\ref{sect:rbp_canonicalisation}), and these can be handled trivially.
-More interesting are cases where pointers to stack-allocated objects are stored into other registers.
-These are moderately rare\editorial{Numbers?}, but, when they do occur, tend to cause significant complications for the other analysis passes, as stores to those objects cannot be easily shown to be independent of independent accesses.
-For instance, suppose that SLI had derived a machine fragment like so:
-
-\begin{verbatim}
-STORE t1 -> RSP + 8 @ A
-STORE t2 -> RBX     @ B
-LOAD  t3 <- RSP + 8 @ C
-\end{verbatim}
-
-and that \verb|RBX| in this cases points at the local stack.
-Neither the dynamic aliasing database nor simple peephole alias checking will be able to show that \verb|A| and \verb|B| do not alias, and so it will not be possible to forward the store at \verb|A| to the load at \verb|C|.
-In larger examples this can cause significant problems.
-
-Most such non-\verb|RSP| stack pointers point outside of the current stack frame (usually because the calling function has allocated a local variable and then passed in a pointer to it), as the compiler will generally emit \verb|RSP|- or \verb|RBP|-relative accesses for most local variables.
-SLI therefore uses a static points-to analysis to classify registers according to where they point:
-
-\begin{itemize}
-\item
-  The current function's stack frame.
-\item
-  Outside the current function's stack frame.
-  This could be a calling function's frame, the heap, statically allocated data, or somewhere else entirely.
-\item
-  Nowhere at all.
-  The register is not a valid pointer.
-  Strictly speaking, this could be treated as a pointer outside of the current frame, but splitting the state out like this does not complicate the analysis and can provide marginally better results in some corner cases.
-\end{itemize}
-
-Each combination of register and static instruction is assigned some subset of those classifications representing the possible dynamic values of the register.
-Static instructions are also assigned a flag indicating whether any pointers to the current stack frame have escaped i.e. been stored to memory outside of the stack frame.
-If the stack has not escaped then loads can be assumed to return something which does not point to the current frame; otherwise, any loaded pointer might be a stack pointer.
-\editorial{Could do better than this with a more complete analysis, but I really don't care all that much.}
-
-The static analysis is, at its core, an iteration to a fixed point applied independently to each function.
-In the initial state, the entrypoint instruction of the function is assigned a configuration in which \verb|RSP| is definitely a pointer to the current frame and every other register is either not a pointer or a pointer outside of the current frame.
-Other instructions start with a bottom configuration: no registers are assigned any classification, and the stack pointer is considered not to have escaped.
-
-\todo{The update step is pretty damn obvious, but I should probably describe it explicitly for completeness.}
-
-\todo{Once the iteration has converged, any un-visited instructions have their bottom configuration replaced by a top configuration, in which any aliasing relationships are possible.  Not entirely convinced that's a good idea; I suspect it's just going to hide bugs.}
-
-As usual, called functions are assumed to be pure, in the sense that they compute some function of their arguments and return it in a well-known register, with no other side-effects.
-The return register is considered to possibly contain a stack pointer if any of the arguments to the function possibly contain a stack pointer.
-If the call has multiple possible targets then each is considered in turn, and the result is the join of all of the results of the individual callable functions.
-\todo{Explain how I determine the possible targets.}
-\todo{Explain how I determine what arguments a function has.}
-\todo{This is unsound only because of the way we handle escaped stack pointers.  Doing it properly would be trivial, but would make the analysis less effective.  Should collect numbers on how bad it would be.}
-
-The underlying assumption here is essentially that the program to be analysed follows a broadly normal calling convention where local variables cannot be accessed until the relevant function is invoked, and must not be accessed after the function returns.
-There is also an assumption that the analysis can correctly determine the entry points of functions, and that every instruction is part of precisely one function\editorial{Really need to explain how we define functions in the presence of tail calls.}.
-That ensures that, at the start of a function, no pointers to function-local variables can exist anywhere in the program's address space or register state, except for the stack pointer itself.
-Assuming that that assumption is correct, this analysis is sound, except for the handling of called functions.
-
-The result of this analysis is a map which classifies every combination of static instruction and register name according to what type of memory (current stack frame, other memory, or invalid memory) it points to.
-This allows the alias analysis to rapidly eliminate the vast majority of aliasing checks comparing accesses to local variables to accesses to other types of memory, which is a significant win\editorial{blah}.
-
 \subsubsection{Fallback resolution}
 When neither the dynamic nor local-frame static analyses can answer an aliasing question, SLI attempts to resolve it using a peephole resolver.
 To check whether \verb|A| and \verb|B| might possibly refer to the same memory location, SLI generates the expression \verb|A == B| and then passes it to the expression simplifier (see \S\ref{sect:peephole_simplification_expressions}).
@@ -108,289 +614,32 @@ If the result is the constant \verb|1| then \verb|A| and \verb|B| definitely ali
 In the last case alias analysis, finally, fails.
 Depending on the intended use of the alias result, SLI will then either choose a safe default or use a case split to consider both possibilities.
 
-\section{Static analysis-based simplifications}
 \section{Discussion of the SSA form used}
 Because it's very subtly different from the form most commonly used in optimising compilers.
 Also worth talking about the use of SDA form here as well.
 
 \section{Other simplifications}
-\subsection{Dead register elimination}
-\todo{I suspect I'm being a bit condescending describing this at all, much less giving it this many words.}
-
-SLI is generally only interested in a small part of the program's behaviour.
-This means that many of the values computed by the program will be completely irrelevant and can be safely eliminated.
-Dead register elimination is one of the simplest ways of doing so.
-In this pass, SLI examines the generated machine to discover temporary variables whose values are never used, and then eliminates them completely.
-It is analogous to the dead code elimination pass of an optimising compiler.
-
-As an example, suppose that the original program looked like this:
-
-\begin{verbatim}
-*ptr = global_variable1->field1->field2 + global_variable2;
-\end{verbatim}
-
-This might generate machine code like this:
-
-\begin{verbatim}
-A:  load ptr -> rsi
-B:  load global_variable1 -> rax
-C:  load (rax + offsetof(field1)) -> rax
-D:  load (rax + offsetof(field2)) -> rax
-E:  load global_variable2 -> rdx
-F:  add rdx + rax -> rax
-G:  load rax -> (rsi)
-\end{verbatim}
-
-and SLI is attempting to investigate a possible crash caused by \verb|rsi| being a bad pointer at \verb|G|.
-The first approximation machine generated might be (after conversion to SSA):
-
-\begin{verbatim}
-@A:
-l1: LOAD ptr -> rsi:0
-    LOAD global_variable1 -> rax:0
-    LOAD (rax:0 + offsetof(field1)) -> rax:1
-    LOAD (rax:1 + offsetof(field2)) -> rax:2
-    LOAD global_variable2 -> rdx:0
-    COPY rax:3 <- rax:2 + rdx:0
-    l2
-l2: if (BadPtr(rsi))
-    then l3
-    else l4
-l3: <crash>
-l4: <survive>
-\end{verbatim}
-
-Most of the loads can have no possible effect on the outcome of the machine, as the value loaded can never reach the condition of the \verb|l2| state\footnote{Assuming that they do not themselves dereference bad memory, of course.  However, if they do, the crash of interest will not occur, and so that case can be at some level ignored.}.
-In that sense, they are dead, and should be removed.
-
-The algorithm used for doing so has two parts.
-In the first, the machine is examined to determine where each variable is live using a straightforward Tarski-style fixed-point iteration.
-In the second, any definitions of variables which are never used are eliminated.
-
-The Tarski iteration works by building up a mapping from machine states to sets of variables which are valid at the start of that state.
-In the initial state, anything referenced by the free variables table is considered to be valid everywhere (see~\ref{sect:freevars}), and anything else is considered to be dead everywhere.
-The update rule proceeds by propagating liveness information backwards through machine edges until it reaches the start of the edge, marking variables live when they are used and dead when they are assigned to.
-Meets in the state graph are handled by taking the union of the liveness information at the starts of all of the successor edges.
-This process iterates until it converges.
-At that point, the analysis has a mapping from locations in the state machine to the set registers which are live at those locations, and given that it is trivial to determine which side effects are dead and to eliminate them.
-
-This optimisation has a pleasant cascading property: when a side-effect is eliminated, it will no longer keep its inputs live, which can cause them to become dead.
-That often causes further side effects to become dead, and so allow more of the machine to be eliminated.
-This allows this very simple optimisation to sometimes eliminate\editorial{si} large amounts of the machine.
-
-\subsection{Register copy propagation}
-\todo{I'm basically restating how Cifuentes' register copy propagation algorithm works here, which might be a bit of a waste of time.  Expand on it later on, though, so having the details here helps a bit.}
-
-Compiling a high-level language into machine code requires complex expressions to be broken down into a series of smaller operations.
-SLI then examines the resulting sequence of small operations, and this tends to lead to approximation machines with a large number of intermediate temporary values each of which stores the result of a very simple calculation.
-Later analysis phases are generally more straightforward if these simple expressions are re-combined into one larger one.
-For instance, a C program like this:
-
-\begin{verbatim}
-x = (y * 32 + z / 8) % (y + 2);
-\end{verbatim}
-
-might compile into machine code\footnote{This is intended to be a representation of x86 machine code.  It is somewhat more explicit than the usual Intel or AT\&{}T syntaxes, in the hope that it will be easily understood by readers unfamiliar with the details of the x86 architecture.} like this:
-
-\begin{verbatim}
-A: mov y -> rax
-   shl rax << 5 -> rax
-   mov z -> rdx
-   shr rdx >> 3 -> rdx
-   add rdx + rax -> rax
-   mov y -> rdx
-   add 2 + rdx -> rdx
-   div rax/rdx -> rax ; rax%rdx -> rdx
-\end{verbatim}
-
-This might translate to an approximation machine like so:
-
-\begin{verbatim}
-@A: COPY y -> rax:0
-    COPY rax:1 <- rax:0 << 5
-    COPY z -> rdx:0
-    COPY rdx:1 <- rdx:0 >> 3
-    COPY rax:2 <- rax:1 + rdx:1
-    COPY y -> rdx:2
-    COPY rdx:3 <- 2 + rdx:2
-    COPY rax:3 <- rax:2/rdx:3
-    COPY rdx:4 <- rax:3%rdx:3
-\end{verbatim}
-
-after the SSA transformation\footnote{This assumes that y and z are not in memory; the effects of loads are explained later.}.
-SLI's register copy analysis will transform this to
-
-\begin{verbatim}
-@A: COPY y -> rax:0
-    COPY rax:1 <- y << 5
-    COPY z -> rdx:0
-    COPY rdx:1 <- z >> 3
-    COPY rax:2 <- (y << 5) + (z >> 3)
-    COPY y -> rdx:2
-    COPY rdx:3 <- 2 + y
-    COPY rax:3 <- ((y << 5) + (z >> 3))/(2+y)
-    COPY rdx:4 <- ((y << 5) + (z >> 3))%(2+y)
-\end{verbatim}
-
-A simple dead code elimination pass can then reduce this to:
-
-\begin{verbatim}
-@A: COPY rdx:4 <- ((y << 5) + (z >> 3))%(2+y)
-\end{verbatim}
-
-which is a reasonable representation of the original code.
-
-The algorithm here is essentially Cifuentes' register copy propagation algorithm\needCite{}.
-It is explained in some detail here, as later sections will extend it to work in a wider variety of circumstances, and so it is useful to understand all of the details.
-The first phase is to determine which expressions are available at the start and end of each edge.
-At a high-level, this is a simple Tarski-style fixed point iteration, starting by assuming that every possible side-effect is available at every location, except for the start location at which nothing is available.
-We then check whether the available sets are consistent with the structure of the approximation machine, and, if not, remove some set of possibly-available side-effects, iterating until the available sets are consistent.
-There are two main subtleties here:
 
 \begin{itemize}
 \item
-  The join of two control flow paths: just take the intersection of what's available on the two paths.
+  Standard dead code elimination.  Very modest trickiness to do with
+  handling dead stores, but really not very hard.
 \item
-  Updating the available set across a side-effect: introduce the new side-effect, then kill anything which depends on the register which is being modified.
+  Fairly standard copy propagation thing.  There are some moderate
+  subtleties in here to do with handling accesses through memory, and
+  whether it's safe to forward from a store to a load when there might
+  be interesting races going on, but nothing very exciting.  Ref
+  cifuentes here.
+\item
+  Phi elimination pass.
+\item
+  Undefinedness optimisation?
 \end{itemize}
 
-\todo{Expand and make sane.}
+\section{Bisimilarity analysis}
+First thing to do: come up with a less deceptive name.
 
-Once the available expression map has been built, it can be used to simplify the approximation machine.
-This is straightforward: if a side-effect \verb|COPY t1 <- e1| is available at a side-effect \verb|S|, and \verb|S| makes some reference to \verb|t1|, \verb|S| can be rewritten so that all of the references to \verb|t1| are replaced with references to \verb|e1|.
-This is likely to make \verb|S| itself larger, in many cases exponentially so, but eliminates the dependency on the earlier side-effect, which makes the resulting expressions easier to analyse and can also lead to the earlier side-effect becoming dead.
-
-\subsection{RBP canonicalisation}
-\label{sect:rbp_canonicalisation}
-
-Many of the optimisations and simplifications used in SLI depend on having a reasonably effective oracle for resolving pointer aliasing questions, and in particular for resolving pointer aliasing questions when the pointers refer to local variables in the current function's stack frame.
-For some functions, all of the local variable references will be expressed as simple static references to the \verb|RSP| register, and in those cases this is straightforward.
-Other functions will establish a frame pointer, almost always \verb|RBP|, and refer to local variables exclusively via that pointer, and those cases are also straightforward.
-More complicated are those which use a mixture of both styles of reference\editorial{Really need a better handle on why the compiler does this}.
-In those cases the alias resolution algorithm must be able to compare \verb|RBP|-relative pointers to \verb|RSP|-relative ones, and determine whether they refer to the same memory location, and this is difficult without knowing the relationship between the two registers.
-This can mean that, for instance, available expression analysis is unable to identify local variables, and this then inhibits most other simplifications\editorial{problem is that one wild pointer can kill off an enormous number of stores, so they're then not available for forwarding to loads and it all goes a bit wrong.}.
-
-Fortunately, when a function uses a frame pointer, its prologue will almost always initialise \verb|RBP| to be a constant offset from \verb|RSP| at the start of the function.
-Once the machine building process has backtracked far enough to reach this initialisation the usual register copy propagation simplifications will rewrite all of the \verb|RBP|-based references into equivalent \verb|RSP|-based ones, and the various other simplifications become viable again.
-Unfortunately, the intermediate machines generated during backtracking can become extremely complex and this can lead to very poor performance in large functions (remember that many of these simplifications have greater than $O(n)$ cost).
-SLI ameliorates this issue by using static analysis to determine, for each instruction, whether \verb|RBP| at that instruction can be expressed as \verb|RSP| plus a constant, and, if so, what that constant is.
-This will be possible for the vast majority of instructions in functions which use a frame pointer, due to the way in which frame pointers are implemented by most compilers.
-When there is such a constant offset it is trivial to rewrite \verb|RBP| references into equivalent \verb|RSP| ones as soon as they are encountered, and this is what SLI does.
-This ensures that alias analysis is effective throughout the life of the machine, and so the complexity of intermediate machines is kept to an acceptably low level\footnote{It would also have been possible to use this analysis directly in the alias resolution engine.  Rewriting the references in the machines is preferred because it makes the information easily available elsewhere in the analysis, e.g. if the program itself checks for aliasing between two stack pointers.  This is a rare operation, however, and the two approaches are equivalent for most practical purposes.}.
-
-The static analysis is run before the main machine building process starts.
-It is, as usual, structured as a fixed point iteration.
-We use the results of a prior analysis to find the entry points of every function, defined here as non-overlapping blocks of instructions with a defined head instruction, such that there are no branches of any sort from outside the function into it and such that every instruction which can be targeted by a call instruction is the head of a function\editorial{explain the algorithm for doing this somewhere, and also why this definition is correct in the presence of tail calls.}.
-We perform a fixed point iteration for each function independently.
-The structure to be iterated is a map from instructions to offset states, where a state is one of $unknown$, $valid(k)$, or $impossible$, and the map starts off mapping every instruction to $unknown$.
-A value of $valid(k)$ indicates that at the end of the instruction the offset is guaranteed to be precisely $k$, while a value of $impossible$ indicates that no constant offset is possible.
-$unknown$ indicates simply that the algorithm has been unable to assign a state to that instruction so far.
-The monotonicity constraint is that $unknown$ can be transformed into $valid(k)$ or $impossible$, and $valid(k)$ can be transformed into $impossible$, but no other transitions are possible.
-There is a join rule for these states, where $unknown \vee k = k$, for any k; $impossible \vee k = impossible$, for any k; $valid(k) \vee valid(k) = valid(k)$ and $valid(k) \vee valid(k') = impossible$ if $k \neq k'$;
-Recalculating the state of an instruction is then straightforward:
-
-\begin{itemize}
-\item
-  If the instruction does not modify either \verb|RBP| or \verb|RSP| then its state is simply the join of all of its predecessor states.
-\item
-  If it simply sets \verb|RBP| to be \verb|RSP| plus a constant $k$ then its state is $valid(k)$.
-\item
-  If it increments \verb|RBP| by a constant $k$, and the join of its predecessor states is $valid(k')$ then its state is $valid(k'+k)$.
-\item
-  If it increments \verb|RSP| by a constant $k$, and the join of its predecessor states is $valid(k')$ then its state is $valid(k'-k)$.
-\item
-  Otherwise, its state is $impossible$.
-\end{itemize}
-
-This fixed point iteration is guaranteed to converge by the existence of $\vee$, the monotonicity of the update process, and Tarski's theorem.
-When it does, the instructions whose state is $valid(k)$ will be (with one exception) those where the \verb|RBP| to \verb|RSP| offset is $k$.
-
-There is a slightly subtlety here, which is that when building the join of an instruction's predecessors' states instructions which currently have state $unknown$ are ignored, and this can sometimes lead to $valid(k)$ being set for those instructions even if they do not have a fixed \verb|RBP| to \verb|RSP| offset.
-In the final, converged, state space, these\editorial{the ones which use $unknown$ predecessors, not the bad ones} correspond to instructions which the function's initial value of \verb|RBP| and \verb|RSP| can reach with only a constant offset.
-Under the standard AMD64 calling convention, \verb|RBP| is undefined on entry to a function, and so, assuming that the compiler honours the convention and has not produced a dependency on an uninitialised value, these instructions cannot themselves make any use of \verb|RBP|.
-This means that, even if the result is sometimes inaccurate, the inaccurate value will never be used, and so is unimportant.
-
-\todo{I had a note in the first draft of this to explain why it's not
-  a good idea to do this every time, but I don't remember why that
-  would be the case, and looking at the source I in fact do do it
-  every time.  Hmm.}
-
-\todo{Should really eval how often the static analysis works, and explain the situations in which it doesn't.}
-
-\todo{This isn't really how I do it any more.}
-
-\todo{Should also discuss RSP canonicalisation around here.}
-
-\subsection{Extended copy propagation}
-\todo{It'd be a really good idea to do another literature trawl and make sure I'm not repeating someone else's work here.}
-
-\todo{This isn't really how I do this any more, anyway.}
-
-The register copy propagation algorithm described in \S\ref{sect:register_copy_propagation} acts to remove temporary registers from the approximation machine.
-The extended copy propagation algorithm extends this algorithm to also remove temporary memory locations.
-This has two components:
-
-\begin{itemize}
-\item
-  First, \verb|LOAD| and \verb|STORE| side effects must be introduced to the set of available side-effects when appropriate.
-  If a memory access is definitely to thread-local memory (which can be determined either by the aliasing database or by determining that the pointer is to the current thread's stack) then the access can be made available as soon as it is encountered.
-  Otherwise, it can only be introduced if the analysis has some reason to believe that there are no interfering stores.
-  This is generally decided when the approximation machine is derived, and is set for the entire approximation machine.
-\item
-  Second, they must be updated to remain consistent with the structure of the approximation machine.
-  The rules for \verb|LOAD|s are essentially the same as those for stores: they are introduced to the available set as soon as they are encountered, and then any available side effects which refer to the temporary overwritten by the \verb|LOAD| are removed from the available set.
-
-  \verb|STORE|s are conceptually similar, except that instead of removing side-effects which refer to a targeted temporary the analysis must remove and memory access which potentially aliases with the \verb|STORE|.
-  This is checked by calling into the alias analysis engine.
-  If the alias analysis engine fails then the analysis must assume that the side-effects possibly alias, and hence remove the earlier one from the available set.
-\end{itemize}
-
-This algorithm ensures that:
-
-\begin{itemize}
-\item
-  If the available set for a side-effect includes the side-effect \verb|LOAD t <- addr| then the memory location referred to by \verb|addr| is definitely equal to the temporary \verb|t| when the original side-effect executes.
-  Therefore, if \verb|LOAD t1 <- addr1| is available at \verb|LOAD t2 <- addr2|, and \verb|addr1| and \verb|addr2| can be shown to definitely alias, the second side-effect can be replaced by \verb|COPY t2 <- t1|.
-\item
-  If the available set instead contains \verb|STORE val -> addr| then the location \verb|addr| instead contains the value of the expression \verb|val|.
-  Therefore, if \verb|STORE val -> addr1| is available at \verb|LOAD t <- addr2|, and \verb|addr1| and \verb|addr2| can be shown to definitely alias, the second side-effect can be replaced by \verb|COPY t <- val|.
-\end{itemize}
-
-These simplifications are sufficient to remove the vast majority of loads from function-local variables, and can also eliminate a useful number of accesses to thread-local data outside of the current stack frame\editorial{Numbers?}.
-
-\todo{Not sure whether I want to try to prove this is correct wrt the
-  semantics.  On the one hand, it is, but on the other, proving it is
-  tedious and uninformative.  Probably best to just state it.}
-
-\todo{Maybe mention that this can be used to convert acyclic machines
-  into DSA without going through SSA?  Interesting, but not very
-  important, since by the time I run this I use SSA anyway.}
-
-\subsection{Dead store elimination}
-Many \verb|STORE| side-effects in an approximation machine will never be \verb|LOAD|ed by that machine (in particular, the extended copy propagation algorithm can often generate these by eliminating \verb|LOAD| side-effects).
-If these can be shown to never by \verb|LOAD|ed by a concurrently-executing machine then they can be eliminated completely, which may in turn cause the computation of the address and value to be stored to themselves become dead, potentially allowing extensive further simplifications.
-The dead store elimination pass identifies and eliminates most of these redundant stores.
-
-\todo{I'm pretty confident that there's a fundamental reason not to do
-  this as a Tarski iteration, but I can't quite remember what it is.
-  Should probably try to recover that a bit.}
-
-The algorithm used by SLI is the simplest possible: for each \verb|STORE| side effect which does not appear to be thread-local\editorial{Need ref to the section on identifying thread-local stores}, explore the approximation machine forwards from that point looking for subsequent \verb|LOAD| side effects.
-For each one found, test whether that load might alias with the store of interest.
-If, after exploring the entire machine, no potentially-aliasing loads have been found, the store is considered to be dead and is eliminated.
-In this way stores to thread-local memory which are never loaded will be eliminated.
-
-This algorithm is arguably somewhat less efficient than a fixed point iteration-based one, but profiling showed that it does not account for a large proportion of the total run time of the system under any of the test workloads evaluated\editorial{Need to dig out numbers for this.}, and so this is not a major concern.
-
-\todo{Again, we don't actually remove the stores, but instead replace them with assertion side effects.}
-
-\todo{I'm using a somewhat odd definition of thread-local memory here (which includes, for instance, all stores issued by a load machine).}
-
-\todo{There's a variant of this which optimises two machines which are going to be executed together, by eliminating some non-thread-local stores which definitely aren't used by the other machine.  Should probably explain that one here as well.}
-
-\todo{Making this sound wrt bad pointers requires a bit of fancy footwork, but should be doable with a bit of effort.}
-
-\subsection{CFG trimming}
+\section{CFG trimming}
 
 Many of the instructions examined in the analysis will ultimately prove to be irrelevant to the final result, and so will be eliminated by the analysis
 They will, however, continue to be represented in the \StateMachine CFG.
@@ -399,6 +648,7 @@ This pass eliminates these wherever possible.
 \todo{Write me.}
 
 \section{Unsound simplifications}
+
 \section{The satisfiability checker}
 This doesn't really belong here.  I should figure out where to put it.  I should also figure out whether I'd be better off using someone else's checker.
 
