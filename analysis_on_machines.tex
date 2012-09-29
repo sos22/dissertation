@@ -636,8 +636,160 @@ Also worth talking about the use of SDA form here as well.
   Undefinedness optimisation?
 \end{itemize}
 
-\section{Bisimilarity analysis}
-First thing to do: come up with a less deceptive name.
+\section{Variable unification}
+
+The analysis can sometimes lead to there being multiple fragment in a
+single \StateMachine which differ only in variable and register names.
+The variable unification pass attempts to unify these fragments
+together by renaming variables.  This is conceptually rather simple:
+find all of the places in the \StateMachine where two states are
+identical except for variable names, build a new fragment of
+\StateMachine which is equivalent to both input fragments, and then
+replace the old fragments with the new one.  The details are, however,
+moderately subtle, and I now discuss them briefly.
+
+First, the definition of ``identical except for variable names''
+includes the successor pointers of the state but not the predecessor
+pointers, so states do not have to be reachable from the same place
+but must reach the same place after completing\editorial{This is kind
+  of arbitrary; an almost identical analysis could use the converse
+  constraint, but I've not bothered to implement that.}.
+
+Building the unifying \StateMachine fragments requires a moderate
+amount of care.  There are in general three components to building the
+unifier:
+
+\begin{itemize}
+\item
+  Unifying any inputs which the state might require.
+\item
+  Unifying any memory accesses issued by the state.
+\item
+  Unifying any output registers which the state might produce.
+\end{itemize}
+
+Unifying output registers is the simplest of these.  Suppose we have
+two side effects which we wish to unify:
+\verb|A: Copy reg1 = 5 then C| and \verb|B: Copy reg2 = 5 then C|.
+The obvious unifier here is like this:
+
+\begin{verbatim}
+A': Copy reg1 = 5 then B'
+B': Copy reg2 = reg1 then C
+\end{verbatim}
+
+And this is the one used by SLI.  While it is correct in almost all
+cases, it is perhaps not obvious why it is correct.  In particular,
+the \verb|A| state has gained an assignment to \verb|reg2| and the
+\verb|B| state one to \verb|reg1|, and one might be concerned that
+this might affect the \StateMachine's behaviour.  To see why, first
+notice that there can be no assignments to \verb|reg2| before
+\verb|A|: the \StateMachine is in static single assignment form, and
+so there can be no assignments to \verb|reg2| except for \verb|B|, and
+the \StateMachine is acyclic, so there can be no path from \verb|C| to
+\verb|A| and hence none from \verb|B| to \verb|A|.  Likewise,
+\verb|reg1| is uninitialised at \verb|B|.  Therefore, ignoring
+\verb|Phi| nodes, any path through \verb|C| starting at \verb|A|
+cannot depend on the value of \verb|reg2|, and likewise any path
+starting at \verb|B| cannot depend on the value of \verb|reg1|, and so
+modifying their values is safe.
+
+\verb|Phi| side effects complicate the situation somewhat, as they can
+take uninitialised variables as input\footnote{Recall that Phi side
+  effects select the most recently assigned input variable, and so
+  will ignore any uninitialised variables in their inputs.}.
+\verb|Phi| side effects which do not take either of the registers as
+inputs are obviously unaffected by this transformation, as are those
+which take both\footnote{The only possible effect of the
+  transformation is that such a side-effect might take reg1 as input
+  rather than reg2, or vice versa, but since their values will
+  necessarily be equal that is not a problem.}, but any which take
+only one of the registers as input will potentially produce a
+different value.  Consider, for instance, this example program:
+
+\begin{verbatim}
+l1: a = 5;
+l2: if (x)
+l3:   b = 7;
+l4: else
+l5:   c = 7;
+l6: d = Phi(a, b);
+\end{verbatim}
+
+The final value of \verb|d| will be \verb|7| if \verb|x| is true and
+\verb|5| otherwise.  Attempting to unify \verb|l3| and \verb|l5| will,
+however, produce a program fragment like this:
+
+\begin{verbatim}
+l1 : a = 5;
+l2 : if (x)
+l3 :   goto l3';
+l4 : else
+l5 :   goto l3';
+l3': b = 7;
+l5': c = 7;
+l6 : d = Phi(a, b);
+\end{verbatim}
+
+In this case, the final value of \verb|d| is always \verb|7|.  SLI
+therefore detects this case and will not perform the optimisation when
+it happens.
+
+Unifying inputs is more complicated.  The approach used by SLI is to
+insert additional \verb|Phi| side-effects which select appropriate
+register inputs into new freshly-allocated output registers and to
+then use those new registers in the expression to be unified.  For
+example, consider a program like this:
+
+\begin{verbatim}
+l1: if (x) {
+l2:    a = 73;
+l3:    b = a + 7;
+l4: } else {
+l5:    c = 92;
+l6:    b = c + 7;
+l7: }
+\end{verbatim}
+
+This example is not in SSA form, as there are multiple assignments to
+\verb|b|, but output variables have already been discussed and so
+ignore that\editorial{Find a better example}.  We would now like to
+unify the \verb|l3| and \verb|l6| statements.  One possible solution
+would be this:
+
+\begin{verbatim}
+l1: if (x) {
+l2:    a = 73;
+l4: } else {
+l5:    c = 92;
+l7: }
+l8: d = Phi(a, c)
+l9: b = d + 7
+\end{verbatim}
+
+Building the unifier is simple when it is possible to do so: compare
+the two expressions which are to be unified, building up a unifier
+over registers as we do so, then iterate over all of the registers in
+the unifier and comparing them to the \StateMachine's control flow to
+determine whether a \verb|Phi| can select the right one (failing if
+not), and then generate the unifier itself in the obvious way.
+
+\todo{I'm a little worried here that this is really very similar to
+  the unification algorithm, and the terminology is also very similar,
+  but they're not *quite* the same, which might be a bit confusing.}
+
+\todo{Should probably have a more realistic example, really; this one
+  makes it look like this is something which won't happen very often,
+  whereas actually it's quite useful.}
+
+The final step of unifying side effects is unifying their memory
+accesses, if they have any.  At this point, the extra level of
+indirection between memory access identifiers and CFG nodes, discussed
+in \S\todo{...}, becomes useful, as unifying two memory accesses
+becomes simply a matter of allocating a new memory access identifier
+whose CFG set is the union of the two input identifier's CFG
+sets\editorial{Need to either say more or move this to some place a
+  bit less obvious.}.
 
 \section{CFG trimming}
 
