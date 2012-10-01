@@ -90,11 +90,11 @@ Other things I can look at and evaluate:
   Investigate what effect that has.
 \end{itemize}
 
-\subsection{Validation of tool implementation}
+\section{Validation of tool implementation}
 
-\subsubsection{Cross-thread stack accesses}
+\subsection{Cross-thread stack accesses}
 
-\subsubsection{Static analyses}
+\subsection{Static analyses}
 
 SLI relies on two forms of whole-program static analysis applied to the target binary before the main analysis starts:
 
@@ -109,10 +109,17 @@ Both analyses assume in at least some places that the program to be analyses con
 If that assumption does not hold, or if there is simply a bug in one of them, then that might invalidate all of the other results.
 I therefore developed some Valgrind-based dynamic analyses to check that the results of this phase were correct.
 
-\subsubsubsection{Points-to analysis}
-\label{sect:eval:validate:pta}
+\todo{The tool also implements a register liveness analysis, but
+  that's only used to build the points-to table, so validating the
+  points-to table also implicitly validates the liveness one.}
 
-The static points-to analysis builds an instruction attribute table for the program which includes, for each instruction:
+\subsubsection{Points-to analysis}
+\label{sect:eval:validate:pta}
+\todo{I kind of end up describing this twice, once in the analysis
+  chapter and then again here.  Rationalise that down a bit.}
+
+The static points-to analysis builds an instruction attribute table
+for the program which includes, for each instruction:
 
 \begin{itemize}
 \item
@@ -171,73 +178,254 @@ This flagged a number of minor problems with the analysis:
 
 \subsubsubsection{RBP offset}
 
-The main analysis removes references to the function frame pointer, if present, by replacing them with references to the stack pointer.
-This relies on a static analysis which determines, for each instruction in the program, the offset from the \verb|RBP| register to the stack pointer (assuming that that's a constant).
-This dynamic analysis checks, at the end of every instruction, that the actual offset matches the value in the database.
-This revealed a single problem with the analysis, related to gcc's \verb|noreturn| function attribute.
-Suppose that the function \verb|f| is marked as \verb|noreturn|, that \verb|a| calls \verb|f| as its final action, and the compiler places \verb|b| immediately after \verb|a|.
-This might generate assembly something like this:
+The main analysis removes references to the function frame pointer, if
+present, by replacing them with references to the stack pointer.  This
+relies on a static analysis which determines, for each instruction in
+the program, the offset from the \verb|RBP| register to the stack
+pointer (assuming that that's a constant).  This dynamic analysis
+checks, at the end of every instruction, that the actual offset
+matches the value in the database.  This analysis did not reveal any
+important bugs in the algorithm\footnote{Beyond a few implementation
+  errors which are fixed in the code used for this evaluation.}.
 
-\begin{verbatim}
-a:
-1: push rbp
-2: mov %rsp, %rbp
-3: subq $64, %rsp
-4: call f
-
-b:
-5: push %rbp
-6: mov %rsp, %rbp
-...
-\end{verbatim}
-
-Here, there is no well-defined constant offset between registers \verb|RSP| and \verb|RBP| at instruction 5, but the analysis propagates the offset from \verb|4| to \verb|5| because it cannot tell that \verb|f| is no-return.
-There is precisely one place in the debug version of mysqld which suffers from this problem, according to the dynamic analysis, and I have avoided the issue by simply hard-coding that address.
-
-\todo{I should really fix this properly; it's a bit of a waste of space to explain.}
+\todo{Bit of a white lie: there is still one bug left, related to the
+  handling of \verb|noreturn| functions which appear to fall through
+  to the next function, but it will be fixed by the time I run the
+  final experiments.}
 
 \subsubsection{CFG generation}
 
-For the bug-detecting mode to hope to detect every bug, the CFG generation process must be able to generate CFGs which represent all dynamic fragments of the program of the desired length which either end in a memory-accessing instruction (for probe CFGs) or start and end with a store (for store CFGs).
-This dynamic analysis attempts to validate that by capturing a large pool of dynamic traces from the program and then checking that CFG generator can generate the trace.
-Ideally, it would capture every such trace from an execution, but that has sufficiently high performance overhead to make it difficult to exercise all possible behaviour under it\editorial{blah}.
-Instead, the analysis applies several filters to try to obtain a reasonably representative sample:
+For the bug-detecting mode to hope to detect every bug, the CFG
+generation process must be able to generate CFGs which represent all
+dynamic fragments of the program of the desired length which either
+end in a memory-accessing instruction (for probe CFGs) or start and
+end with a store (for store CFGs).  This dynamic analysis attempts to
+validate that by capturing a large pool of dynamic traces from the
+program and then checking that CFG generator can generate the trace.
+Ideally, it would capture every such trace from an execution, but that
+has sufficiently high performance overhead to make it difficult to
+exercise all possible behaviour under it\editorial{blah}.  Instead,
+the analysis applies several filters to try to obtain a reasonably
+representative sample:
 
 \begin{itemize}
 \item
-  Only traces which end in a non-stack memory-accessing instruction are considered.
+  Only traces which end in a non-stack memory-accessing instruction
+  are considered.
 \item
-  Amongst those samples, only one in a thousand is used.
-  This is implemented by only sampling if a randomly-generated number is congruent to zero modulo a thousand, rather than taking every thousandth trace, so as to avoid possible aliasing effects with the program's structure.
+  Amongst those samples, only one in a thousand is used.  This is
+  implemented by only sampling if a randomly-generated number is
+  congruent to zero modulo a thousand, rather than taking every
+  thousandth trace, so as to avoid possible aliasing effects with the
+  program's structure.
 \item
-  I attempt to increase the likelihood of rare traces being sampled using a bloom counter.
-  This consists of 131072 saturating 7-bit counters.
-  When the dynamic analysis is determining whether to sample a given trace, it hashes it to select one of these counters, then generates a random number, and only takes the trace if the random number modulo the counter plus one is zero.
-  It then increments the counter.
-  This helps to increase the likelihood of moderately rare traces being included in the final sample.
+  I attempt to increase the likelihood of rare traces being sampled
+  using a bloom counter table.  This consists of 131072 saturating
+  7-bit counters.  When the dynamic analysis is determining whether to
+  sample a given trace, it hashes it to select one of these counters,
+  then generates a random number, and only takes the trace if the
+  random number modulo the counter plus one is zero.  It then
+  increments the counter.  This helps to increase the likelihood of
+  moderately rare traces being included in the final sample.
 \end{itemize}
 
-The end result of this dynamic analysis is a large set of short fragments of the program's execution.
-Each such fragment is considered in isolation, and appropriate instructions from it fed into the CFG generating algorithm.
-The CFG can then be checked to ensure that the trace is actually possible in the CFG.
-This analysis did not find any problems with the algorithm.
+The end result of this dynamic analysis is a large set of short
+fragments of the program's execution.  Each such fragment is
+considered in isolation, and appropriate instructions from it fed into
+the CFG generating algorithm.  The CFG can then be checked to ensure
+that the trace is actually possible in the CFG.  This analysis did not
+find any problems with the algorithm.
+
+\todo{Should really try to do something to convince myself that the
+  sanity checker works.  Collecting more stats on the trace pool
+  generated would be good, as would some sensitisation on those
+  parameters.}
 
 \subsection{\StateMachine generation}
 
-Don't really have a plan for this; might just say that it's a trivial wrapper for libVEX.
+Don't really have a plan for this; might just say that it's a trivial
+wrapper for libVEX.
 
 \subsection{Dynamically-collected aliasing model}
 
-This is pretty much what it is; not sure there's a great deal to say here.
-If I had infinite time I could hack up gcc to try to do a similar analysis at the source level, but I don't, so I can't.
-Only real alternative is to look at the convergence rate.
+This is pretty much what it is; not sure there's a great deal to say
+here.  If I had infinite time I could hack up gcc to try to do a
+similar analysis at the source level, but I don't, so I can't.  Only
+real alternative is to look at the convergence rate.
 
 \subsection{\StateMachine simplification}
 
-The \StateMachine simplification passes are both complicated and critical to SLI's correctness.
-To validate their correctness, I took a random sampling of the pre- and post-optimisation machines from a run of the SLI in its bug-finding mode and interpreted each in a randomly-generated initial environment.
-Any runs which contradicted the dynamic model were discarded, and any others in which the pre- and post-optimisations machines produced different results were flagged as an error.
-All such errors were then fixed.
+The \StateMachine simplification passes are both complicated and
+critical to SLI's correctness; validating that they are correct is
+therefore important.  To do so, I collected a selection of pre- and
+post-optimisation machines from a number of runs, evaluated them in
+identical initial configurations, and confirmed that they produced
+identical results.  Generating the initial conditions is non-trivial.
+At first I simply generated them completely at random, but found that
+it required an unreasonably large number of such random configurations
+to achieve good coverage of the \StateMachines' behaviour.  This is
+because the vast majority of paths through most machines ultimately
+report that the machine does not crash, and so a uniform random
+sampling of initial configurations will overwhelmingly sample
+configurations in which the bug of interest does not reproduce.  This
+is unfortunate, as the situations in which the bug does reproduce tend
+to be more interesting.
 
-\todo{I really need to do this.}
+It is worth considering this is slightly more detail.  A reasonably
+typical \StateMachine might look like this:
+
+\begin{verbatim}
+if (rax == 0) survive();
+if (!BadPtr(rax)) survive();
+crash();
+\end{verbatim}
+
+Here, \verb|rax| is a 64-bit value, and so if its value is randomly
+chosen then the \StateMachine is highly unlikely to make it past the
+first state, which would not constitute a good test.  Of course, it
+would be possible to bias the distribution to produce zeroes more
+often than other values, and hence avoid this issue.  This works, in
+the sense that it makes it easy to generate an effective test suite
+for this \StateMachine, but is lacking in two important respects.
+First, it is unclear what other special cases might be needed;
+generating zero is an obvious thing to test, as is generating one or
+minus one, but what if there were a bug in the optimiser when
+\verb|rax| is near to the top of its range?  or has only bits in the
+top byte set?  or is a large prime number?  These questions would make
+it difficult to have faith that such an approach had generated a
+reasonably complete set of initial configurations for testing.
+Second, considering each register independently is inherently
+inefficient, due to the common structure of \StateMachines.  Consider
+this machine, for example:
+
+\begin{verbatim}
+if (rax % 2 == 0) survive();
+if (rbx % 2 == 0) survive();
+if (rcx % 2 == 0) survive();
+if (rdx % 2 == 0) survive();
+crash();
+\end{verbatim}
+
+This reflects the common structure of \StateMachines, in which a long
+prefix of initial tests capture ways in which the program might avoid
+running the code which is suspected of having a bug before the
+interesting part of the \StateMachine starts.  One reasonable set of
+initial configurations might be:
+
+\begin{itemize}
+\item $rax = 0$
+\item $rax = 1$, $rbx = 0$
+\item $rax = 1$, $rbx = 1$, $rcx = 0$
+\item $rax = 1$, $rbx = 1$, $rcx = 1$, $rdx = 0$
+\item $rax = 1$, $rbx = 1$, $rcx = 1$, $rdx = 1$
+\end{itemize}
+
+A total of five initial configurations; one for each possible final
+state.  A randomly-generated configuration, by contrast, will have a
+one in sixteen chance of generating each final state, and will require
+an average of a little over twenty-five input states in order to cover
+every final state, a factor of five worse than the desired
+set\editorial{25 from some Python simulations; not sure it's worth
+  trying to justify it further.}.  The difference will be larger in
+more complex machines, and so coverage will be worse for them, but
+those are precisely the ones which are most likely to reveal optimiser
+bugs.
+
+I therefore used a slightly more complicated scheme for generating the
+initial configurations:
+
+\begin{itemize}
+\item[1] First, execute the unoptimised machine in the symbolic
+  execution engine, collecting all of the path constraints generated.
+  There will be one such constraint for each path (loosely defined)
+  which the symbolic execution engine finds through the machine,
+  whether that path ultimately crashes, survives, or escapes (due to
+  e.g. dereferencing a bad pointer).
+\item[2] Pick a constraints which is not satisfied by any
+  configuration currently present in the initial configuration set.
+  Attempt to generate a configuration which satisfies it and add it to
+  the set.  If there are no constraints which are never satisfied,
+  pick one which is satisfied in every initial configuration and try
+  to generate a configuration which does not satisfy it.
+\item[3] Repeat 2 until every constraint is satisfied in at least one
+  initial configuration and not satisfied in at least one other
+  configuration.
+\item[4] Execute the optimised machine in the symbolic execution
+  engine, generating another set of path constraints, and then try to
+  generate satisfying and unsatisfying initial configurations for them
+  in precisely the same way.
+\end{itemize}
+
+Generating a configuration which satisfies a particular constraint is
+itself non-trivial.  The approach I adopted there was as follows:
+
+\begin{itemize}
+\item First, treat the constraint as an expression over boolean
+  variables.  For instance, the constraint $x < 5 || x > 73$ would be
+  treated as $a || b$, with a note that $a = x < 5$ and $b = x > 73$.
+\item Generate a satisfier for this boolean expression using a simple
+  brute-force satisfiability checker.  This will produce a
+  configuration of the boolean variables, assigning each to one of
+  true, false, or doesn't-matter, which causes the original constraint
+  to be true.
+\item Attempt to generate concrete values for all of the original
+  constraint's variables such that all of the boolean variables have
+  appropriate values.  Some of these values will be provided by simple
+  heuristics (e.g. to make $x > k$ be true, where $k$ has a known
+  value, try setting $x$ to $k+1$), but most will be randomly
+  generated with a retry if the results do not make the boolean value
+  have the desired results.  Even when values have to be randomly
+  generated, being able to treat most boolean variables independently
+  most of the time reduces the number of attempts necessary by a
+  useful amount.
+\item If no concrete values have been found which satisfy the boolean
+  variable configuration after a certain number of random attempts,
+  look for another configuration of boolean variables which satisfies
+  the path constraint.
+\item If there are no more such configurations give up and report an
+  error.
+\end{itemize}
+
+The result is a set of initial configurations which will, with
+reasonably high probability, exercise a useful selection of
+\StateMachine behaviour.  The configurations can contain the following
+items:
+
+\begin{itemize}
+\item Initial values of some registers\footnote{For SSA \StateMachines
+  these will be the only values those registers ever have, but for
+  non-SSA \StateMachines the value might change during
+  interpretation.}.
+\item Partial contents of memory, in the form of a partial mapping
+  from concrete addresses to concrete values.
+\item A list of bad addresses.  These are locations for which
+  $BadPtr(x)$ must return true.  Any location not in this list is
+  assumed to be valid memory, even if it isn't assigned a value.
+\item A set of $EntryPoint$ and $ControlFlow$ expressions which
+  are to be treated as true.
+\end{itemize}
+
+The configurations (hopefully) contain all of the parts of
+\StateMachine state which might affect the final result, but do not
+necessarily contain enough information to actually interpret the
+\StateMachines to completion.  For example, many \StateMachines will
+access locations on the stack, and so interpreting them will require
+the value of the stack pointer, but it is very rare for their final
+result to depend on the precise value of that pointer, and so the
+symbolic execution engine will not generate any constraints on that
+value and the initial configurations will not contain any value for
+it.  If the validator encounters any such unspecified values during
+\StateMachine interpretation it simply generates new random values for
+the relevant variables.  It then runs each initial state 100 times,
+with different random values each time, and checks that the
+\StateMachines match for each one.
+
+One final subtlety is what to do with what to do with \StateMachines
+which escape by, for instance, failing an assertion.  This indicates
+that some part of the analysis has determined that the configuration
+is not interesting, for some reason, 
+
+\todo{There's some special handling here to do with retrying escaping
+  machines, but I don't remember why I did it that way any more.
+  Think harder.}
 
