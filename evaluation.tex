@@ -429,3 +429,313 @@ is not interesting, for some reason,
   machines, but I don't remember why I did it that way any more.
   Think harder.}
 
+\section{Artificial bugs}
+
+I now present the results of running the tool on a number of
+artificial bugs and some discussion of what happens.
+
+Lookup between bug numbers and names:
+
+\begin{itemize}
+\item 1 -- Simple TOCTOU
+\item 2 -- Indexed TOCTOU
+\item 3 -- Indexed TOCTOU with rare writes
+\item 4 -- Indexed TOCTOU with rare reads
+\item 5 -- Multi-variable consistency constraint
+\item 6 -- Context-dependent TOCTOU; multiple calls to \verb|f|, but
+  only one has the bug of interest.
+\item 7 -- Cross-function TOCTOU; check in one function, use in the
+  function it returns to.
+\item 8 -- Write to read hazard on the read side races with a wild
+  store.
+\item 9 -- Multiple possible bugs in one program, requiring combined
+  enforcement plans.
+\item 10 -- Lots of threads on the read side.
+\item 11 -- ??? come up with something.
+\item 12 -- ??? come up with something.
+\end{itemize}
+
+\subsection{The bugs}
+
+\subsubsection{Simple time-of-check, time-of-use (TOCTOU) bug (simple\_toctou)}
+
+\todo{The discussion here is painfully detailed.  I think that's
+  reasonable for the first bug discussed, but later ones are going to
+  have to be much more high-level.  To be honest, I'm not entirely
+  convinced that this bit is all that interesting, but I think I
+  should probably copy-and-paste the complete tool output into the
+  dissertation at least once.}
+
+This is the simplest possible kind of concurrency bug.  One thread
+loops forever executing this pseudocode:
+
+\begin{verbatim}
+if (global_ptr != NULL)
+    *global_ptr = 5;
+\end{verbatim}
+
+Meanwhile, another thread loops executing code like this:
+
+\begin{verbatim}
+while (1) {
+    global_ptr = &t;
+    sleep(1 second);
+
+    STOP_ANALYSIS();
+    global_ptr = NULL;
+    STOP_ANALYSIS();
+}
+\end{verbatim}
+
+This is intended to model a very simple structure which is accessed
+frequently but updated rarely.  The bug is, of course, that the
+updating thread might set \verb|global_ptr| to \verb|NULL| in between
+the two reads of it in the reading thread, causing the reading thread
+to crash when it dereferences the pointer it loaded.
+
+The disassembly for the read side looks like this:
+
+\begin{verbatim}
+  400624:       48 8b 05 15 0a 20 00    mov    0x200a15(%rip),%rax        # 601040 <global_ptr>
+  40062b:       48 85 c0                test   %rax,%rax
+  40062e:       74 0d                   je     40063d <thr_main+0x19>
+  400630:       48 8b 05 09 0a 20 00    mov    0x200a09(%rip),%rax        # 601040 <global_ptr>
+  400637:       c7 00 05 00 00 00       movl   $0x5,(%rax)
+\end{verbatim}
+
+And that for the write side like this:
+
+\begin{verbatim}
+  400815:       48 c7 05 20 08 20 00    movq   $0x0,0x200820(%rip)        # 601040 <global_ptr>
+  40081c:       00 00 00 00 
+\end{verbatim}
+
+SLI produces a single candidate bug for this program:
+
+\begin{verbatim}
+Load Machine:
+CFG:
+-1-------->cfg6: {0x400624} -> cfg5:branch
+.          cfg5: {0x40062b} -> cfg4:branch
+.          cfg4: {0x40062e} -> cfg3:default
+.          cfg3: {0x400630}
+l1: {{0x400624}:LOAD tmp1:1:1:I64 <- *(0x601040:I64):normal@mai1:1 then l2}
+l2: {0x40062e}: if ((0x0:I64 == GET:I64(tmp1:1:1))) then l3 else l4
+l3: <survive>
+l4: {{0x400630}:LOAD tmp1:1:2:I64 <- *(0x601040:I64):normal@mai1:2 then l5}
+l5: {0x400637}: if (BadPtr(GET:I64(tmp1:1:2))) then l8 else l3
+l8: <crash>
+Root: l1
+Store Machine:
+CFG:
+-98------->cfg52: {0x400815}
+l7: {{0x400815}:*(0x601040:I64):normal <- 0x0:I64 @ mai98:4 then l8}
+l8: <crash>
+Root: l7
+Memory access identifiers:
+        mai1:1 -> {cfg6}
+        mai1:2 -> {cfg3}
+        mai98:4 -> {cfg52}
+Aliasing:
+        mai1:1 <-> mai98:4
+        mai1:2 <-> mai98:4
+Verification condition: (!((mai1:2 <-< mai98:4)) && (mai1:1 <-< mai98:4))
+\end{verbatim}
+
+This is hopefully reasonably easy to understand at this point.  The
+candidate bug consists of several parts:
+
+\begin{itemize}
+\item The \StateMachines for the read and write sides of the race.  In
+  this case, the load machine has been assigned thread identifier 1
+  and the store machine has been assigned thread identifier 98.  These
+  identifiers are completely arbitrary.
+\item Control flow graph fragments for the two sides.  The read side
+  here contains CFG nodes three through 6, while the store machine has
+  CFG node 52; these identifiers are arbitrary.  In this case the CFGs
+  are largely uninteresting, but in a more complex example these
+  fragments would include details of which nodes were created by loop
+  unrolling and some information on the function call structure of the
+  program.
+
+  Note that the instruction which actually crashes, \verb|400637| is
+  not included in the CFGs.  This is because it is completely
+  irrelevant to the behaviour which is actually being investigated: by
+  the time that instruction executes, the program has either avoided
+  the purported bug or is doomed to crash, and so it cannot tell us
+  anything useful about the nature of the bug.
+\item A memory access identifier table, showing how memory access
+  identifiers map into CFG nodes, or, in other words, how the accesses
+  analysed by SLI's main analysis passes correspond to accesses made
+  by the program itself.  In this case, that mapping is trivial, and
+  each memory access identifier corresponds to a single CFG node, but
+  in more complex cases SLI might merge several similar program
+  accesses into a single \StateMachine-level accesses, and in that case
+  a single memory access identifier might map to multiple CFG nodes.
+\item An aliasing table, showing which memory accesses might
+  potentially access the same memory, according to the
+  dynamically-collected aliasing table.
+\item The verification condition.  This is the condition which must
+  hold for the bug being investigated to reproduce when the two
+  \StateMachines are run in parallel.  In this case, it consists of
+  just two happens-before edges, \verb|mai1:1 <-< mai98:4| and
+  \verb|!((mai1:2 <-< mai98:4))|, which between them indicate that the
+  bug will reproduce precisely when memory access 4 in thread 98
+  intervenes between memory accesses 1 and 2 in thread 1.  In other
+  words, the program will crash when the store thread sets
+  \verb|global_ptr| to \verb|NULL| in between the two loads of
+  \verb|global_ptr| in the load thread, precisely as desired.
+\end{itemize}
+
+The next step of the pipeline is to take that crash summary and
+convert it into a crash enforcement plan (CEP).  The CEP generated
+by SLI for this bug is:
+
+\begin{verbatim}
+Crash enforcement plan:
+        Threads: T1:1 = {t1}; T1:98 = {t2}
+        Roots: t1 = {cfg6}; t2 = {cfg52}
+        CFG:
+                cfg3:t1: successors = {}
+                cfg4:t1: successors = {cfg3}
+                cfg5:t1: successors = {cfg4}
+                cfg6:t1: successors = {cfg5}
+                cfg52:t2: successors = {}
+        Label to RIP table:
+                1:cfg3 -> {0x400630}
+                1:cfg4 -> {0x40062e}
+                1:cfg5 -> {0x40062b}
+                1:cfg6 -> {0x400624}
+                1:cfg52 -> {0x400815}
+        Happens before map:
+                cfg3:t1 -> {43708: cfg52:t2 <-< cfg3:t1, }
+                cfg6:t1 -> {43707: cfg6:t1 <-< cfg52:t2, }
+                cfg52:t2 -> {43707: cfg6:t1 <-< cfg52:t2, 43708: cfg52:t2 <-< cfg3:t1, }
+Patch points = [0x400624, 0x400815]
+\end{verbatim}
+
+\todo{Hmm.  A lot of the features of the plan only really make sense
+  when you're combining multiple candidate bugs into a single
+  enforcement plan, which means they're hard to describe in this
+  single-candidate example.}
+
+\todo{Also, I should come up with a less ugly way of displaying the
+  damn things.}
+
+This plan is quite simple, reflecting the simple nature of the bug.
+It contains a number of components:
+
+\begin{itemize}
+\item A mapping from thread identifiers in the bug candidates into
+  thread identifiers in the crash enforcement plan.  This is trivial
+  in this example, but it can be more complex if either multiple
+  candidate bugs are to be combined into a single enforcement plan or
+  if a single candidate bug requires multiple plan-level threads to
+  handle multiple possible ways of reproducing a bug.
+\item CFG fragments covering all of the necessary instructions, and
+  mappings from nodes in those fragments back to instruction
+  addresses.  Again, this is trivial in this example, but it can be
+  more complex if, for instance, the plan is to enforce multiple
+  candidate bugs at once and the candidates unroll the same loop in a
+  different way.
+\item A set of happens-before edges which are to be enforced, along
+  with the message identifier for the edge and the data which is to
+  included in the message payload.
+\item A set of instructions in the original program which must be
+  patched so that they branch into the CEP interpreter.
+\end{itemize}
+
+This plan can then be loaded into the buggy program in order to make
+the bug reproduce more easily.  In this particular case the results
+are somewhat unimpressive, as this bug already reproduces quite
+easily, but still show a small improvement in reproduction time.
+
+The time to reproduce a bug of this kind follows a roughly exponential
+distribution, as each iteration of the write loop has a roughly
+independent chance of causing the read loop to crash.  I ran each
+configuration (with enforcer, without enforcer) ten times on an
+otherwise idle machine and timed how long it took for them to crash.
+As might be expected, the version without the enforcer always took a
+roughly whole number of seconds to crash, as the write side runs after
+a whole number of seconds has passed.  The mean time before the
+program crashed was 3.3 seconds, so each iteration of the write side
+has a roughly 30\% chance of causing the read side to crash.
+
+With the enforcer loaded, the program always crashed after almost
+precisely 1.3 seconds.  This delay consists of two components:
+
+\begin{itemize}
+\item One second, which is bloody obvious.
+\item \todo{.3 seconds, whose origin is mysterious to me.  I had
+  thought that it was caused by the delays we're inserting, but
+  thinking about it some more I don't think that's correct.}
+\end{itemize}
+
+The result is that, with the enforcer applied, the bug reproduces
+essentially every time the write side runs.
+
+Resampling the time taken without an enforcer gave me that the lambda
+parameter is 0.38 with an sd of 0.008, but I'm not entirely convinced
+that's normally distributed.  In fact I'm pretty certain that it's
+not.
+
+\todo{Time taken to do analysis?}
+
+\subsubsection{Indexed TOCTOU bug (indexed\_toctou)}
+
+In this variant of a TOCTOU bug, there are multiple instances of the
+structure which is being raced on and the bug will only manifest if
+the reading and writing threads happen to coincide.  This bug
+exercises the side-condition-checking part of SLI.  The reading thread
+is:
+
+\begin{verbatim}
+idx = random() % NR_PTRS;
+STOP_ANALYSIS();
+if (global_ptrs[idx] != NULL)
+     *(global_ptrs[idx]) = 5;
+\end{verbatim}
+
+Here \verb|STOP_ANALYSIS| is a special marker which causes SLI to
+truncate the \StateMachine at that point.  The effect is that SLI will
+only analyse the final two lines of the above fragment, and will not
+attempt to explore the \verb|random()| function.  This makes the test
+much easier to understand.
+
+\todo{I should really try without that, just to see what happens.}
+
+The writing thread simply loops constantly repeating this:
+
+\begin{verbatim}
+idx = random() % NR_PTRS;
+STOP_ANALYSIS();
+global_ptrs[idx] = NULL;
+STOP_ANALYSIS();
+global_ptrs[idx] = &t;
+\end{verbatim}
+
+Here the \verb|STOP_ANALYSIS()| markers cause SLI to treat this as two
+independent store operations, one of which sets
+\verb|global_ptrs[idx]| to a valid value and the other which sets it
+to \verb|NULL|.
+
+\subsubsection{Biassed indexed TOCTOU bugs (read\_indexed\_toctou, write\_indexed\_toctou)}
+
+These bugs are essentially similar to the indexed\_toctou, except with
+additional delays such that either the write operation (for
+write\_indexed\_toctou) or the read operation (for
+read\_indexed\_toctou) is far more common than the other.  This test
+illustrates the importance of rebalancing delays between the various
+happens-before edges in the crash enforcement plans.
+
+\subsubsection{Multi-variable consistency constraint (multi\_variable)}
+
+\subsubsection{Context-dependent races (context)}
+
+\subsubsection{Write-to-read hazard (write\_to\_read)}
+
+\subsubsection{Multiple bugs (multi\_bugs)}
+
+\subsubsection{Multiple read threads (multi\_threads)}
+
+
