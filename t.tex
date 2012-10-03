@@ -7,6 +7,23 @@
 \usepackage{tikz}
 \usepackage{tabularx}
 \usepackage{rotating}
+\usepackage{subfigure}
+
+\newbox\subfigbox             % Create a box to hold the subfigure.
+\makeatletter
+  \newenvironment{subfloat}% % Create the new environment.
+    {\def\caption##1{\gdef\subcapsave{\relax##1}}%
+     \let\subcapsave=\@empty % Save the subcaption text.
+     \let\sf@oldlabel=\label
+     \def\label##1{\xdef\sublabsave{\noexpand\label{##1}}}%
+     \let\sublabsave\relax    % Save the label key.
+     \setbox\subfigbox\hbox
+       \bgroup}%              % Open the box...
+      {\egroup                % ... close the box and call \subfigure.
+     \let\label=\sf@oldlabel
+     \subfigure[\subcapsave]{\box\subfigbox}}%
+\makeatother
+
 \usetikzlibrary{arrows,decorations.pathmorphing,backgrounds,positioning,fit,petri,automata,shapes,petri}
 
 \pgfdeclarelayer{bg}
