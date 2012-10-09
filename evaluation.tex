@@ -248,6 +248,26 @@ here.  If I had infinite time I could hack up gcc to try to do a
 similar analysis at the source level, but I don't, so I can't.  Only
 real alternative is to look at the convergence rate.
 
+Things to look at:
+
+\begin{itemize}
+\item How fast we add new edges to the aliasing table while running
+  the analysis, as a function of time.  You'd hope that this will fall
+  very quickly as the analysis runs.
+\item mysqld has a reasonably good test harness.  It'd be interesting
+  to try running each of the tests in that in some suitable order and
+  see how many of them you need in order to get good coverage.
+  Probably want to try to normalise that against the actual number of
+  distinct instructions run to make it fair.
+\item Two things are worth looking at here: the rate at which we add
+  edges in toto, and the rate at which we add edges between
+  already-known instructions.  The latter is much more important than
+  the former, because the first one includes discovering new code for
+  the first time, and it's pretty forgivable to not include
+  instructions which are never run, whereas the latter is new
+  interactions between code which we already know about.
+\end{itemize}
+
 \subsection{\StateMachine simplification}
 
 The \StateMachine simplification passes are both complicated and
@@ -451,6 +471,10 @@ Lookup between bug numbers and names:
 \item 13 -- A false positive -- something where the main analysis
   thinks there might be a bug, but there isn't, and so the enforcer
   can't enforce it.
+\item 14 -- Something which nicely illustrates the cross-function
+  alias analysis stuff.
+\item 15 -- Something which illustrates the importance of the Phi
+  elimination pass.
 \end{itemize}
 
 \subsection{The bugs}
@@ -817,6 +841,15 @@ run the two sections far less frequently, and so might require
 hundreds of years of CPU time to reproduce the bug.  The SLI-generated
 enforcer patch, by contrast, can reliably reproduce this bug in a few
 hundred milliseconds.
+
+\todo{I think it might be interesting to investigate this a bit more.
+  I have a sneaking suspicion that it won't reproduce at all if you
+  run on bare metal without any interrupts, and that it pretty much
+  only reproes if you get a timer interrupt at precisely the right (or
+  wrong) place.  Could maybe get a paragraph or so of useful
+  discussion out of that if I had some evidence.  Plus, it's the kind
+  of experiment which looks impressive but is actually really easy,
+  so, you know, win.}
 
 \subsubsection{Multiple bugs (multi\_bugs)}
 
