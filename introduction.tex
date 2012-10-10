@@ -36,6 +36,15 @@ Since SLI mostly targets concurrency bugs, these modifications mostly consist of
 The bugs which survive this winnowing process are then definitely real bugs, and can either be manually reviewed by a programmer or passed to the next phase which produces a fix targeted at that specific bug, completely automatically.
 In addition to this basic mode of operation, SLI can also take as input a core dump or the log from a deterministic replay system and use that to produce a fix for a specific bug.
 
+I give a detailed description of this analysis and the fixes generated
+for a selection of bugs, both artificial ones and some from real
+programs, and show that the analysis scales to realistically large
+programs with acceptable computational cost.  I also show that the
+fixes generated usually have sufficiently low overhead to be useful;
+usually a few percent in more realistic tests.  Finally, I give the
+results of a small set of experiments intended to show that my
+implementation of these techniques is itself correct.
+
 The basic analysis technique used by SLI, in all of its modes, is to take some small fragment of a binary program and approximate it using a \StateMachine, using a combination of decompilation, program slicing, and static analysis techniques.
 These \StateMachines contain all of the information which is relevant to the bug being investigated but very little irrelevant information, making them far easier to analyse than the raw machine code.
 They can be interpreted, given a snapshot of the program's state, to make a prediction about whether the program might, starting from that state, suffer the bug which is being investigated, or symbolically executed to determine what initial states might lead to the bug.
@@ -49,6 +58,13 @@ Section~\todo{...} briefly discusses some possible ways of removing this restric
 \STateMachines can contain information from multiple threads, which is useful when investigating the possible interactions of multiple program threads.
 They are, however, internally completely deterministic, in the sense that the result of the \StateMachine is completely determined by the initial state against which it is interpreted.
 Any non-deterministic behaviour, such as the detailed interleaving of instructions from different threads or the results of most system calls, is captured in explicit free variables which must be specified before starting to interpret the \StateMachine.
+
+\STateMachines do not necessarily closely reflect the structure of the
+program itself (and are in fact explicitly designed to allow
+transformations which change such structure, if that makes them
+simpler to analyse), but retain enough information that it is easy to
+translate \StateMachine-level properties back into properties of
+the underlying program easily and efficiently.
 
 \todo{This is probably a good place to give some examples and a very informal semantics; the full semantics will wait until later.}
 

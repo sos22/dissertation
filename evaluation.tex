@@ -46,8 +46,6 @@ Other things I can look at and evaluate:
 \item
   Look at how many bugs are killed off by the different clauses of the crash definition.
 \item
-  Cross-eval of the accuracy of the static analysis passes by doing a dynamic analysis which checks their predictions.
-\item
   Investigate performance hit of the enforcement mode, and how that depends on the mechanism used to generate the enforcers.
 \item
   Compare compiled enforcers to interpreted ones.
@@ -71,11 +69,15 @@ Other things I can look at and evaluate:
 \item
   Look at how long the various phases take.
 \item
-  There are a bunch of places where we have to decide between using the simplifier and the sat checker.
-  Eval which works better for each of them.
+  There are a bunch of places where we have to decide between using
+  the simplifier and the sat checker.  Eval which works better for
+  each of them.  Downside of evalling this is that it means
+  *explaining* the difference between the simplifier and the sat
+  checker, which I'd really rather avoid if I can get away with it.
 \item
-  When you're doing the cross-product machines you have a choice between explicit and implicit happens-before edges.
-  Explicit is basically always better; figure out how much by, and why.
+  When you're doing the cross-product machines you have a choice
+  between explicit and implicit happens-before edges.  Explicit is
+  basically always better; figure out how much by, and why.
 \item
   Crash enforcement: timeout strategies.
 \item
@@ -86,8 +88,23 @@ Other things I can look at and evaluate:
   Crash enforcement: Is await-bound-exit actually useful?
   We know it is in silly little artificial test cases, but perhaps not in real programs?
 \item
-  Artificially limit number of live assertions to 5.
+  Currently artificially limit number of live assertions to 5.
   Investigate what effect that has.
+\item
+  Want something which can evaluate the effectiveness of the
+  cross-function alias analysis pass.
+\item
+  Want something which can evaluate the effectiveness of the phi
+  elimination pass.
+\item
+  Want something which can evaluate the effectiveness of the state
+  unification optimisation.
+\item
+  In order to make the theory behind the crash enforcers work you
+  always have to wait for a fixed amount of time when doing unbound
+  message operations, even if someone arrives before the time has
+  passed.  Most of the time, that extra delay is wasted.  Look at how
+  much time is wasted, and how bad it would be to just not do that.
 \end{itemize}
 
 \section{Validation of tool implementation}
@@ -687,10 +704,17 @@ With the enforcer loaded, the program always crashed after almost
 precisely 1.3 seconds.  This delay consists of two components:
 
 \begin{itemize}
-\item One second, which is bloody obvious.
-\item \todo{.3 seconds, whose origin is mysterious to me.  I had
-  thought that it was caused by the delays we're inserting, but
-  thinking about it some more I don't think that's correct.}
+\item One second, which is caused by the call to \verb|sleep| in the
+  test harness.
+\item .3 seconds, which is caused by the RX message delay.  The write
+  thread starts its critical section at one second in and must
+  immediately wait for a read thread to arrive.  In this case the
+  pseudo-random number generator selects a 0.3 second delay here.
+  Note that the thread will then always wait for at least 0.3 seconds,
+  even though, in this case, a read thread will arrive almost
+  instantly.  This is in case additional real threads arrive later, in
+  which case the write thread will attempt to synchronise with all of
+  them using the power set construction discussed earlier.
 \end{itemize}
 
 The result is that, with the enforcer applied, the bug reproduces
@@ -706,6 +730,25 @@ standard deviation 0.03.  Not sure whether that's normally
 distributed, though.
 
 \todo{Time taken to do analysis?}
+
+The fix generated in this case is very simple and contains two
+critical sections, one covering \verb|400624| to \verb|400630| and the
+other covering the single instruction \verb|400815|.  Notice that, as
+in the enforcer, the instruction which crashes, \verb|400637|, is
+\emph{not} included in any critical section.  There are entry point
+jumps from \verb|400624| and \verb|400815|.  The patch itself is, in
+this case, rather large relative to the original program code (200
+bytes rather than 36), mostly because the machine code to be protected
+is itself quite small and so the function call sequence used to
+acquire or release the patch lock completely dominates the total size
+of the patch.
+
+Performance: with patch applied, get 9493234 read events per second,
+compared to 35197332 per second without (both single repro; need to
+run more experiments) i.e. a factor of nearly four overhead, but the
+without case crashed after four seconds, so, you know, not that
+unreasonable.  Also, this is the micro-est of micro tests, so most of
+the time the overhead will be far lower.
 
 \subsubsection{Indexed TOCTOU bug (indexed\_toctou)}
 
@@ -744,6 +787,34 @@ Here the \verb|STOP_ANALYSIS()| markers cause SLI to treat this as two
 independent store operations, one of which sets
 \verb|global_ptrs[idx]| to a valid value and the other which sets it
 to \verb|NULL|.
+
+Without any enforcer loaded: no repro in ten seconds, repro after 7.5
+seconds, no repro in ten seconds.
+
+With a full enforcer loaded: repro in 103ms, repro in 485ms, repro in
+240ms.
+
+With a partial enforcer loaded, which does delays but no
+side-condition checking: no repro in ten seconds, no repro in ten
+seconds, no repro in ten seconds.
+
+Performance:
+
+Partial enforcer: 548, 2; 571, 2; 806, 2 (read, write events, per second)
+Full enforcer: 434, 4; 320, 1; 1627, 3
+No enforcer: 161k, 106k; 161k, 106k; 161k, 106k
+
+Not sure how useful those numbers are, to be honest.
+
+Automatic fix generation:
+
+With fix applied, 151k read events per second, 101k write.  Without
+fix, 161k read, 106k write.  So that's ~7\% overhead, which I
+personally think is Pretty Damn Good.  The fix itself is roughly what
+you'd expect: one critical section to cover the two critical loads on
+the read side and another one to cover the critical store on the write
+side.  As usual, the actual crashing instruction is not included in
+any critical section.
 
 \subsubsection{Biassed indexed TOCTOU bugs (read\_indexed\_toctou, write\_indexed\_toctou)}
 

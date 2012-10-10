@@ -183,9 +183,64 @@ patch (and possibly also a small number of clobbered instructions, if
 necessary) and executes them from the patch before returning, without
 holding the patch lock.\editorial{Rewrite the whole damn paragraph.}
 
+An alternative approach would be to take control of the program using
+debug breakpoints rather than jump instructions.  These are either a
+single byte (for the \verb|int3| instruction) or no bytes at all (for
+debug registers), and so avoid the instruction clobbering problem.
+This would work, but would have a couple of important disadvantages:
 
-\subsection{Using a message-passing network}
-\todo{I've come up with an algorithm for doing this, but I really don't have time to implement it.  It is kind of cool, though; I'd like to include it somewhere, even if it's just a future work-type thing.}
+\begin{itemize}
+\item
+  Debug breakpoints are far slower than branches.  This might be
+  important if the critical section is to be inserted on a
+  particularly hot code path.
+\item
+  Using debug breakpoints in this way would interfere with any other
+  debugger which the developer might want to use.  With a branch-style
+  patch, standard debuggers work without modification for any part of
+  the program which has not been patched, whereas a breakpoint-style
+  patch requires extensive coordination between the debugger and the
+  patch mechanism for either to work at all.
+\item
+  Breakpoint registers are of strictly limited number on most
+  architectures (four, on x86).  This means that they can never
+  provide a complete solution by themselves.
+\item
+  On most UNIX-type operating systems, including Linux and FreeBSD,
+  catching debug breakpoints requires modifying the program's signal
+  handling configuration, which requires some level of coordination
+  with the program to be modified.  It would be possible to use an
+  alternative API, but this would require kernel modifications,
+  complicating the use of the generated patches\footnote{Branch-style
+    patches also require modifying signal handling configurations in
+    order to, for instance, provide a correct faulting instruction
+    address in SIGSEGV register configurations.  However, very few
+    programs actually require that information for correctness, and so
+    it is not usually a major issue if the patch loses control of the
+    signal handler to the main program.  In a breakpoint-style patch,
+    losing control of the signal handler means, first, that the patch
+    is never run, and so cannot hope to fix the bug, and, second, that
+    the program receives spurious breakpoint events, which will often
+    introduce additional erroneous behaviour.}.
+\end{itemize}
+
+SLI therefore generates predominantly branch-style patches.
+
+\todo{I did implement a breakpoint-based scheme, so it might be
+  interesting to actually include some numbers on their relative
+  effectiveness.}
+
+\subsection{Other ways of fixing the bugs}
+\todo{I've come up with an algorithm for doing this using a message
+  passing network, like we do for crash enforcement but with the
+  delays in slightly different places, but I really don't have time to
+  implement it.  It is kind of cool, though; I'd like to include it
+  somewhere, even if it's just a future work-type thing.}
+
+\todo{Might also be worth saying a few words about possibly fixing the
+  bugs by using STM-like techniques?  I've not implemented any of
+  them, either, but they are kind of interesting.  Probably worth a
+  paragraph or two.}
 
 \section{Fixing bugs from DRS logs}
 \label{sect:fix_from_drs}
