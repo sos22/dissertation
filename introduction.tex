@@ -1,7 +1,53 @@
 \section{Motivation}
-Concurrency bugs are becoming more common, don't always have source (abandonware, libraries), so need something which works on binaries
 
-\todo{Probably need to describe the class of bugs up here somewhere.}
+Commodity hardware is becoming increasingly concurrent, whether due to
+more packages per machine, per cores per package, or more threads per
+core, and software is adapting to make use of this greater
+concurrency.  This promises greater performance, but at the same time
+introduces a greater risk of serious concurrency bugs.  Even worse,
+the nature of concurrency bugs means that they often reproduce only
+intermittently, or only on particular classes of physical hardware,
+and so they are more likely than non-concurrency bugs to survive
+testing, and hence to cause problems for end users.  There is
+therefore a need for tools to help discover and fix such bugs.  At the
+same time, much software is ``abandonware'': no longer supported by
+its original authors, or supported in only a derisory fashion.  It
+would therefore be useful to have tools which can provide some help in
+fixing such bugs without access to the source or help from the
+original developers.  This dissertation presents one possible approach
+to doing so: a set of techniques which can, first, slice a binary
+program to find parts which are relevant to a specific bug; second,
+analyse those slices to produce a dynamic analysis specifically
+targeted at that specific bug; and, third, automatically generate a
+fix for the bug.  The same analysis can also be used to find all
+possible bugs of a specific class in the program.  The algorithms
+involved have several modes of operation, most of which require
+minimal programmer involvement; the rest require none at all, beyond
+reproducing the bug which is to be fixed.
+
+One the other hand, the class of bugs to be targeted is somewhat
+limited: two threads interacting, with one modifying a shared
+structure while a second reads it, causing the reading thread to crash
+quickly in a recognisable way.  The precise definition of ``quickly''
+depends on the mode of operation and the program to be analyses, but
+will usually be dozens to hundreds of instructions.  This is a serious
+limitation, but still allows some realistic bugs to be analysed.
+
+\todo{I did have a reference saying that some reasonable proportion of
+  real bugs falls into that category (like 30\% or so), but (a) I've
+  lost the reference, and (b) having actually played with this a bit,
+  I \emph{really} don't believe that any more.}
+
+\todo{To be honest, I'm not really convinced by the abandonware story
+  any more, which complicates things a bit.  A lot of the
+  \emph{actual} motivation for this was having to reverse-engineer
+  chunks of Windows while I was at Citrix, but I'm not sure that's
+  something I really want to emphasise.}
+
+\todo{I'm possibly quite unusual in having actually fixed concurrency
+  bugs in real programs by hacking up the machine code?  ``A tool to
+  help you do X'' isn't very useful if there only a couple of dozen
+  people who would have even considered doing X in the first place.}
 
 \section{Overview of approach}
 
@@ -25,49 +71,150 @@ Concurrency bugs are becoming more common, don't always have source (abandonware
 \label{fig:basic_pipeline}
 \end{figure}
 
-In its simplest mode, SLI uses a multi-stage pipeline to find and fix bugs in arbitrary binary programs, as shown in figure~\ref{fig:basic_pipeline}.
-The pipeline starts by building up a model of the program's behaviour using a combination of static analysis, applied to the program's binary, and dynamic analysis, applied while the program is operating normally.
-A mixture of symbolic execution and static analysis is then used to produce a set of candidate bugs: places in the program which might have a bug of the target class, if the program can be driven into a particular configuration.
-This set will be very large for most realistic programs and will usually contain a large number of false positives, and so is not, of itself, particularly useful.
-The next stage of the analysis is therefore to prune it back to just those bugs which can definitely happen.
-Most existing static analysis and model checking systems will do so by layering on further layers of increasingly more complex analysis algorithms.
-SLI takes a different approach: modifying the program so as to make the bugs more likely to reproduce and then using the program's existing test suite to drive it towards them.
-Since SLI mostly targets concurrency bugs, these modifications mostly consist of inserting additional delays, and hence encouraging the program to follow the desired schedules as far as possible.
-The bugs which survive this winnowing process are then definitely real bugs, and can either be manually reviewed by a programmer or passed to the next phase which produces a fix targeted at that specific bug, completely automatically.
-In addition to this basic mode of operation, SLI can also take as input a core dump or the log from a deterministic replay system and use that to produce a fix for a specific bug.
+In its simplest mode, SLI uses a multi-stage pipeline to find and fix
+bugs in arbitrary binary programs, as shown in
+figure~\ref{fig:basic_pipeline}.  The pipeline starts by building up a
+model of the program's behaviour using a combination of static
+analysis, applied to the program's binary, and dynamic analysis,
+applied while the program is operating normally.  A mixture of
+symbolic execution and static analysis is then used to produce a set
+of candidate bugs: places in the program which might have a bug of the
+target class, if the program can be driven into a particular
+configuration.  This set will be very large for most realistic
+programs and will usually contain a large number of false positives,
+and so is not, of itself, particularly useful.  The next stage of the
+analysis is therefore to prune it back to just those bugs which can
+definitely happen.  Most existing static analysis and model checking
+systems will do so by layering on further layers of increasingly more
+complex analysis algorithms.  SLI takes a different approach:
+modifying the program so as to make the bugs more likely to reproduce
+and then using the program's existing test suite to drive it towards
+them.  In effect, SLI turns its bug description into a new dynamic
+analysis which specifically attempts to reproduce that bug.  Since SLI
+mostly targets concurrency bugs, these modifications mostly consist of
+inserting additional delays, and hence encouraging the program to
+follow the desired schedules as far as possible.  The bugs which
+survive this winnowing process are then definitely real bugs, and can
+either be manually reviewed by a programmer or passed to the next
+phase which produces a fix targeted at that specific bug, completely
+automatically.  In addition to this basic mode of operation, SLI can
+also take as input a core dump or the log from a deterministic replay
+system and use that to produce a fix for a specific bug.
 
 I give a detailed description of this analysis and the fixes generated
 for a selection of bugs, both artificial ones and some from real
 programs, and show that the analysis scales to realistically large
-programs with acceptable computational cost.  I also show that the
-fixes generated usually have sufficiently low overhead to be useful;
-usually a few percent in more realistic tests.  Finally, I give the
-results of a small set of experiments intended to show that my
-implementation of these techniques is itself correct.
+programs with acceptable computational cost.  This includes bugs which
+were unknown to the author before writing the tool\editorial{Or, more
+  precisely, one bug which was unknown to me before writing the tool
+  but which was known to the program's original developers, and which
+  is a trivial variation of a bug which I did know about.  But, you
+  know, take your victories where you can get them.}.  I also show
+that the fixes generated usually have sufficiently low overhead to be
+useful; usually a few percent in more realistic tests.  Finally, I
+give the results of a small set of experiments intended to show that
+my implementation of these techniques is itself correct.
 
-The basic analysis technique used by SLI, in all of its modes, is to take some small fragment of a binary program and approximate it using a \StateMachine, using a combination of decompilation, program slicing, and static analysis techniques.
-These \StateMachines contain all of the information which is relevant to the bug being investigated but very little irrelevant information, making them far easier to analyse than the raw machine code.
-They can be interpreted, given a snapshot of the program's state, to make a prediction about whether the program might, starting from that state, suffer the bug which is being investigated, or symbolically executed to determine what initial states might lead to the bug.
-These \StateMachines can cross function boundaries, and can cross between the program itself and library routines.
+The basic analysis technique used by SLI, in all of its modes, is to
+take some small fragment of a binary program and approximate it using
+a \StateMachine\editorial{Desperately need a better name for these.},
+using a combination of decompilation, program slicing, and static
+analysis techniques.  These \StateMachines contain all of the
+information which is relevant to the bug being investigated but very
+little irrelevant information, making them far easier to analyse than
+the raw machine code.  They have a number of important properties:
 
-One important limitation of the \StateMachine formalism is that individual \StateMachines must complete in a finite, bounded, number of operations; equivalently, \StateMachines are acyclic and finite.
-This makes them far easier to analyse, but at the expense of somewhat limiting their expressive power.
-In the particular case of SLI, we are only interested in bugs related to fairly small fragments of the program (those which should have been critical sections, but aren't) and so this is a tolerable limitation; it might be more of a concern in other applications.
-Section~\todo{...} briefly discusses some possible ways of removing this restriction.
+\begin{itemize}
+\item
+  They can cross function boundaries, including between the program
+  itself and library functions.
+\item
+  They can contain information from multiple program threads, and so
+  can accurately capture all of the threads relevant to a particular
+  race, but are themselves completely deterministic, aiding simple
+  analysis.  In particular, the \StateMachine for a particular bug can
+  be used to build the happens-before graph necessary for that bug to
+  reproduce, even when that happens-before graph is data-dependent.
+\item
+  \STateMachines can incorporate information obtained by the initial
+  static and dynamic analysis passes in a reasonably straightforward
+  way.
+\item
+  Control-flow within a \StateMachine is not necessarily the same as
+  control flow within the original program, and memory accesses within
+  a \StateMachine do not necessarily correspond to specific memory
+  accesses in the original program, but can be related back when
+  necessary.  This means that intermediate analysis steps have a great
+  deal of flexibility to rewrite \StateMachines to remove unnecessary
+  information without unduly complicating actually using the results
+  of the analysis.
+\item
+  They can be interpreted, given a snapshot of the program's state, to
+  make a prediction about whether the program might, starting from
+  that state, suffer the bug which is being investigated.
+  Alternatively, they can be symbolically executed to determine what
+  initial states might lead to the bug.
+\item
+  Individual \StateMachines must complete in a finite, bounded, number
+  of operations; equivalently, \StateMachines are acyclic and finite.
+  This makes them far easier to analyse, but at the expense of
+  somewhat limiting their expressive power.  In the particular case of
+  SLI, we are only interested in bugs related to fairly small
+  fragments of the program (those which should have been critical
+  sections, but aren't) and so this is a tolerable limitation; it
+  might be more of a concern in other applications.
+  Section~\todo{...} briefly discusses some possible ways of removing
+  this restriction.
+\end{itemize}
 
-\STateMachines can contain information from multiple threads, which is useful when investigating the possible interactions of multiple program threads.
-They are, however, internally completely deterministic, in the sense that the result of the \StateMachine is completely determined by the initial state against which it is interpreted.
-Any non-deterministic behaviour, such as the detailed interleaving of instructions from different threads or the results of most system calls, is captured in explicit free variables which must be specified before starting to interpret the \StateMachine.
+\STateMachines are in many respects similar to executable program
+slices of the original program, with the key difference that, unlike a
+program slice, a \StateMachine is not expressed in the same language
+as the original program.  This is to some extent a forced decision
+(SLI is intended to operate primarily on compiled binaries without
+access to debug information, and machine code is not a convenient
+intermediate representation), but the extra flexibility can sometimes
+make this more convenient than more conventional source-level program
+slices\editorial{Should maybe have a forward ref here?}.
 
-\STateMachines do not necessarily closely reflect the structure of the
-program itself (and are in fact explicitly designed to allow
-transformations which change such structure, if that makes them
-simpler to analyse), but retain enough information that it is easy to
-translate \StateMachine-level properties back into properties of
-the underlying program easily and efficiently.
+They are also similar to the intermediate forms used by model checkers
+such as SAL\editorial{Cite Park 2000; the Stanford Java
+  checker.}\editorial{Cite JPF and their arguments for not using
+  standard MC intermediate forms; they all apply here as well, and it
+  saves me having to argue it myself.}\editorial{Need to come up with
+  an argument for not just using SAL.}.
 
-\todo{This is probably a good place to give some examples and a very informal semantics; the full semantics will wait until later.}
+The \StateMachines themselves consist of three components:
 
-\section{Background}
-All the bits you need to understand before reading the rest of the dissertation.
-Fairly dumb summary of a little bit of related work.
+\begin{itemize}
+\item
+  A slice of the program in a simple analysis language.  Programs in
+  this language consist of a directed acyclic graph of analysis
+  states.  The states fall into one of three classes: terminals, with
+  no successors; side-effects, with a single successor; or choices,
+  with two successors.  The side-effects can express obvious
+  program-level effects such as accessing memory or setting a
+  particular register, but also less-obvious ones such as register
+  aliasing configurations or restrictions on the set of program states
+  which must be considered by later analysis steps.  Similarly, the
+  expression language used for the conditions in choice states or the
+  addresses for memory accessing side-effects can refer to simple
+  things like the values of processor registers or the initial
+  contents of memory, and can also express queries about the program's
+  control flow or the happens-before graph.
+\item
+  A fragment of the original program's control-flow graph, covering
+  all of the instructions from which the \StateMachine was generated.
+  This fragment is unrolled so that each dynamic instruction in the
+  analysis window is represented by precisely on node in the
+  CFG\editorial{I should really try to explain what that means in a
+    bit more detail.}.  Functions are inlined.  This graph fragment
+  will not always be completely weakly connected if, for instance, the
+  \StateMachine represents activity in multiple concurrent threads.
+\item
+  A table mapping memory access identifiers to sets of nodes in the
+  control flow graph. \todo{Screw it; these are a pain to describe and
+    they're not all that important; drop them.}
+\end{itemize}
+
+\todo{Really need an example here.}
