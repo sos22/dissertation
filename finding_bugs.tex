@@ -19,9 +19,16 @@ For the purposes of this section, we define a bug to be a tuple $(R, W, P)$ such
 
 We assume that programs execute an infinite sequence of no-op operations before the start of the program itself.
 
-The intuition for this is that R is an operation which reads from some shared structure and W is an operation which updates it, and the bugs which we're looking for are those where inadequate synchronisation causes the read operation to crash.
-The R atomic and W atomic rules ensure that we only need to consider concurrency-related bugs (if some behaviour is possible when the machines are run atomically then it clearly isn't a concurrency bug).
-W isolation is a somewhat unfortunate property, and restricts the set of bugs which we can consider in an important way, but is necessary for the analysis to be tractable~\needCite{}.
+The intuition for this is that R is an operation which reads from some
+shared structure and W is an operation which updates it, and the bugs
+which we're looking for are those where inadequate synchronisation
+causes the read operation to crash.  The R atomic and W atomic rules
+ensure that we only need to consider concurrency-related bugs (if some
+behaviour is possible when the machines are run atomically then it
+clearly isn't a concurrency bug).  W isolation is a somewhat
+unfortunate property, and restricts the set of bugs which we can
+consider in an important way, but is necessary for the analysis to be
+tractable~\needCite{}.
 
 \subsubsection{Assumptions about the program}
 
@@ -29,16 +36,27 @@ Big ones:
 
 \begin{itemize}
 \item
-  Only need to consider two threads at a time.
-  This is stronger than just assuming that each bug only involves two threads, because a third thread can sometimes make a race either possible or not possible, and that can lead to bug hiding as $N_r$ increases.
+  Only need to consider two threads at a time.  This is stronger than
+  just assuming that each bug only involves two threads, because a
+  third thread can sometimes make a race either possible or not
+  possible, and that can lead to bug hiding as $N_r$ increases.
 \item
   The no-mandatory-concurrency assumption.
 \end{itemize}
 
 \subsubsection{Effect of setting the $N_r$ and $N_w$}
 
-Effect of setting $N_r$ and $N_w$: obviously setting it too small will miss bugs, but it's also possible to miss things by setting it too big.
-This can happen if the program relies on a certain minimum level of concurrency for correctness, such that running two threads in isolation is guaranteed to crash but running them in parallel can allow the program to complete successfully.
+The set of bugs detected by SLI depends on the size of the two
+analysis windows, $N_r$ and $N_w$.  Setting these to two small a value
+will of course lead to bugs being missed; more subtly, increasing the
+size of the window can also sometimes lead to the set of bugs which is
+reported shrinking.  This happens when the program depends on a
+certain minimum level of concurrency in order to achieve correctness:
+SLI assumes that the program does not crash if all of the instructions
+in the analysis window are run atomically; if the program requires
+some minimum level of interleaving this assumption can be violated for
+some interesting executions, and enlarging the analysis window will
+make the problem worse.
 
 \begin{figure}
 \begin{tabular}{ll}
@@ -66,9 +84,13 @@ Crash if $t' == t''$  & Store $t''' + 1$ to loc2
 \caption{Truncation of the example in figure~\ref{fig:mandatory_concurrency1}.}
 \end{figure}
 
-For example, consider the threads show in figure~\ref{fig:mandatory_concurrency1}.
-Running the read thread atomically is guaranteed to crash, from any starting thread, and so there will be no valid bug tuples based on the complete definition of these threads.
-On the other hand, if the read thread is truncated as shown in figure~\ref{fig:mandatory_concurrency2} then there may be such a tuple:
+As a concrete example, consider the threads show in
+figure~\ref{fig:mandatory_concurrency1}.  Running the read thread
+atomically is guaranteed to crash, from any starting state, and so
+there will be no valid bug tuples based on the complete definition of
+these threads.  On the other hand, if the read thread is truncated as
+shown in figure~\ref{fig:mandatory_concurrency2} then there may be
+such a tuple:
 
 \begin{itemize}
 \item The R atomic rule is satisfied provided that the initial value of loc1 is not equal to loc2.
@@ -83,37 +105,73 @@ On the other hand, if the read thread is truncated as shown in figure~\ref{fig:m
   \end{itemize}
 \end{itemize}
 
-Within the definition used by SLI, the larger program fragment is correct even though the smaller one is incorrect, and so using a larger window size can lead to bugs not being reported.
+In this particular case, the crashing execution is far more likely
+than the non-crashing one even when the threads are being run in
+parallel and so it is highly unlikely that this precise behaviour
+would be found in a real program.  On the other hand, if there were a
+large amount of code between the final two load operations in the
+final thread then it might make the surviving interleaving unlikely.
+This is not generally an issue for SLI, as introducing enough extra
+instructions to ensure that behaviour would generally push the first
+load out of the analysis window so that SLI never sees the confusing
+behaviour.  This means that, for most practical purposes, the set of
+bugs found by increases monotonically with the size of the analysis
+window, which in turn means that a very simple heuristic suffices for
+setting the size of the window: use the largest window which allows
+the analysis to complete in an acceptable amount of time.
 
-The fundamental problem here is one of mandatory concurrency: in the larger program, running the read thread in isolation is guaranteed to crash, but it can be ``rescued'' by being interleaved with the write thread.
-The bug here is caused by insufficient concurrency, but SLI is only capable of handling bugs caused by excessive concurrency.
-Excess-concurrency bugs are far more common than insufficient-concurrency bugs, for several reasons:
+\todo{It'd be nice to have some evidence of that.}
+
+A more powerful analysis framework might be able to increase the
+window size sufficiently that the first part of the read thread would
+not ``fall out''.  Even in that case, the monotonicity property would
+probably still hold for most realistic programs.  The fundamental
+problem here is one of mandatory concurrency: in the larger program,
+running the read thread in isolation is guaranteed to crash, but it
+can be ``rescued'' by being interleaved with the write thread.  The
+bug here is caused by insufficient concurrency, but SLI is only
+capable of handling bugs caused by excessive concurrency.
+Excess-concurrency bugs are far more common than
+insufficient-concurrency bugs, for several reasons:
 
 \begin{itemize}
 \item
-  An insufficient-concurrency bug indicates that the programmer got the sequential case wrong but the concurrent case correct.
-  The concurrent case is usually far more difficult to design and reason about than the sequential one, and so this is an unusual outcome\needCite{}.
+  An insufficient-concurrency bug indicates that the programmer got
+  the sequential case wrong but the concurrent case correct.  The
+  concurrent case is usually far more difficult to design and reason
+  about than the sequential one, and so this is an unusual
+  outcome\needCite{}.
 \item
-  The sequential case generally receives more testing than the concurrent one, simply as an artifact of the way most test cases are constructed\needCite{}.
+  The sequential case generally receives more testing than the
+  concurrent one, simply as an artifact of the way most test cases are
+  constructed\needCite{}.
 \item
-  For most programs, there are far more concurrent executions than sequential ones, and so it is more likely that there are errors on an untested concurrent path than that there are errors on an untested sequential one.
+  For most programs, there are far more concurrent executions than
+  sequential ones, and so it is more likely that there are errors on
+  an untested concurrent path than that there are errors on an
+  untested sequential one.
 \end{itemize}
 
 SLI therefore completely ignores these insufficient-concurrency bugs.
 
-\todo{Mention something about finding a bunch of insufficient-concurrency bugs related to malloc() failure.}
+\todo{Mention something about finding a bunch of
+  insufficient-concurrency bugs related to malloc() failure?}
 
 \begin{figure}
 Illustration of a bug tuple.  We have a prefix P, write section W, and read section R.
 \label{fig:mandatory_concurrency3}
 \end{figure}
 
-Fortunately, an insufficient-concurrency bug is the only case in which increasing the sizes of the analysis windows $N_r$ and $N_w$ can lead to bugs being masked.
-To see this, consider execution shown in figure~\ref{fig:mandatory_concurrency3}.
-Suppose that this execution does not generate a bug tuple.
-Then moving an instruction from $R$ or $W$ into $P$ also cannot generate a bug tuple, and so by induction no smaller analysis windows can generate bug tuples.
+I now show that insufficient-concurrency bugs are the only case in
+which the monotonicity property might be violated.  To see this,
+consider execution shown in figure~\ref{fig:mandatory_concurrency3}.
+Suppose that this execution does not generate a bug tuple.  Then
+moving an instruction from $R$ or $W$ into $P$ also cannot generate a
+bug tuple, and so by induction no smaller analysis windows can
+generate bug tuples.
 
-From the fact that larger windows do not generate bug tuples, we know that:
+From the fact that larger windows do not generate bug tuples, we know
+that:
 
 \begin{itemize}
 \item $P \concatDynTraces R \not= \survive$, from the R atomic rule, or
@@ -121,9 +179,13 @@ From the fact that larger windows do not generate bug tuples, we know that:
 \item $\crash \notin P \concatDynTraces (R \interleaveDynTraces W)$, from the concurrent rule.
 \end{itemize}
 
-Define $W = w \concatDynTraces W'$ and $R = r \concatDynTraces R'$, so that $w$ is the first instruction of $W$ and $W'$ all the others, and likewise for $r$, $R$, and $R'$.
-Shrinking the analysis window then corresponds to replacing $R$ with $R'$ and $P$ with $P \concatDynTraces r$, or replacing $W$ with $W'$ and $P$ with $P \concatDynTraces w$.
-We therefore generate a bug tuple with the reduced window if:
+Define $W = w \concatDynTraces W'$ and $R = r \concatDynTraces R'$, so
+that $w$ is the first instruction of $W$ and $W'$ all the others, and
+likewise for $r$, $R$, and $R'$.  Shrinking the analysis window then
+corresponds to replacing $R$ with $R'$ and $P$ with $P
+\concatDynTraces r$, or replacing $W$ with $W'$ and $P$ with $P
+\concatDynTraces w$.  We therefore generate a bug tuple with the
+reduced window if:
 
 \begin{align*}
 ( & (P \concatDynTraces w \concatDynTraces R & = & \survive) & \wedge \\
@@ -686,6 +748,8 @@ Finding these is straightforward:
 \end{itemize}
 
 \subsubsection{Build write-side CFGs}
+\todo{This has far more pages than it really deserves, although most
+  of them are diagrams, so I guess it's not too bad.}
 
 The input to this phase of the analysis is a set of potentially relevant static store instructions, and the analysis must build a collection of acyclic CFGs which cover all possible paths through the program which use at least one of those static instructions and which contain at most $N_w$ instructions.
 \editorial{That's not quite the problem definition I used earlier, but it's a bit easier to describe.}
@@ -1415,10 +1479,17 @@ As a minor optimisation, SLI assumes the R atomic clause is true when deriving t
 
 \subsubsection{Symbolically executing machines}
 
-SLI uses a simple symbolic execution engine to evaluate machines and determine when \StateMachines will crash.
-The details of this are fairly standard, and I only give a brief overview here.
-The core data structure used by the execution engine is a queue of (mostly) symbolic configurations which the \StateMachine might occupy, and the main operation is to take a state out of this queue, determine what the \StateMachine might do next, and possibly add some additional configurations to the queue to explore further.
-Each configuration contains:
+SLI uses a simple symbolic execution engine to evaluate machines and
+determine when \StateMachines will crash.  The details of this are
+fairly standard, and I only give a brief overview
+here\editorial{\emph{Should} only give a brief overview; this ended up
+  much more detailed than I'd expected.}.  The core data structure
+used by the execution engine is a queue of (mostly) symbolic
+configurations which the \StateMachine might occupy, and the main
+operation is to take a state out of this queue, determine what the
+\StateMachine might do next, and possibly add some additional
+configurations to the queue to explore further.  Each configuration
+contains:
 
 \begin{itemize}
 \item
@@ -1946,7 +2017,9 @@ Defer register stash, strip redundant CFG prefix.
 \subsubsection{Allocate simulation slots for variables}
 
 \subsubsection{Determining patch entry points}
-Might kill this section; it's pretty damn simple.
+This ends up being far, far more complicated than it has any right to
+be (and in fact the first three schemes I came up with didn't work,
+for one reason or another).
 
 \subsubsection{Enforcing the plan}
 
@@ -2374,6 +2447,9 @@ The send algorithm is very similar:
 
 One further optimisation, not shown here, avoids redundantly duplicating low-level interpreter contexts in the common case that a message operation is discharged precisely once.
 
+\todo{This is probably not the best way of presenting those
+  algorithms.}
+
 \todo{Discuss setting minimum delays here}
 
 \subsubsection{The await-bound-thread-exit state}
@@ -2428,6 +2504,10 @@ This ensures that activity beyond the analysis horizon cannot prevent bug reprod
 
 
 \subsubsection{Compiling the plan}
+
+\todo{Implementation of this is currently massively broken; need to
+  decide whether I'm going to fix it or just use a slightly older
+  version.}
 
 In addition to a plan interpreter, SLI also includes a plan compiler, which combines the plan with the program's original machine code to produce a modified version of the program which performs the necessary enforcement actions without needing an interpreter.
 The intent here is to reduce the overhead of the interpreter in the case where SLI is investigating many bugs most of which do not exist.
