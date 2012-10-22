@@ -1,12 +1,53 @@
 \section{Things to evaluate}
 
+Things I want to show in the eval:
+
+\begin{itemize}
+\item That it works for some simple test cases.  This'll include a
+  reasonable amount of discussion about what it actually does.
+  This'll include showing that the generated fixes work, and some bits
+  about their relative performance.  I'd also like to discuss
+  whole-program vs. core dump vs. DRS mode here.
+\item That it could feasibly scale up to something of realistic size.
+  Obvious approach here is just to show that we can run the full
+  analysis on mysql, apache, thunderbird, and pbzip2.  It's currently
+  looking like this will find at most one or two new bugs, which makes
+  it all a bit less convincing.  This'll be mostly just showing that
+  the analysis does actually complete in a sensible amount of time.
+\item I'm going to pick one of those big programs and do a few more
+  experiments on it:
+
+  \begin{itemize}
+  \item Show that the monotonicity property holds: run a full analysis
+    with window size = 20 instructions, then re-analyse all of the
+    resulting bugs at window size = 10, and show that anything which
+    generates a candidate bug at 20 generates at least one at 10 as
+    well.
+  \item Display a CDF of how long it takes to analyse each instruction.
+  \item Try turning the various machine simplification passes on and off
+    and see what effect that has on the CDF.
+  \end{itemize}
+
+\item Ideally, some slightly more realistic artificial bugs, probably
+  from ripping sync blocks out of STAMP.  i.e. real-size programs with
+  artificial bugs.
+\item Something about the effects of compiler optimisations?  Probably
+  just a couple of paragraphs comparing optimised mysql to debug
+  mysql.  Explain why compiler optimisations make some things easier
+  and some things harder.
+\item I need to show that the tool is actually correctly implemented
+  itself.  The small number of bugs found in real programs means that
+  this has more than a little bit of negative-results flavour, so this
+  isn't completely trivial.
+\end{itemize}
+
 What I have:
 
 \begin{itemize}
 \item About a dozen artificial bugs for each mode
 \item The glibc bug kernel --- fixed in DRS mode
 \item The Thunderbird bug -- fixed in DRS mode
-\item The first mysql bug -- fixed in core dump mode
+\item The first mysql bug -- fixed in core dump mode.
 \item The second mysql bug -- found and fixed in whole-pass mode.
   This one's kind of interesting, because there are two different
   variants of it present in mysql, and the tool finds both, but I only
@@ -507,6 +548,7 @@ Lookup between bug numbers and names:
 \subsection{The bugs}
 
 \subsubsection{Simple time-of-check, time-of-use (TOCTOU) bug (simple\_toctou)}
+\label{sect:eval:art:simple_toctou}
 
 \todo{The discussion here is painfully detailed.  I think that's
   reasonable for the first bug discussed, but later ones are going to
@@ -993,6 +1035,33 @@ never runs.
 
 \todo{Write me.}
 
+\begin{table}
+\begin{tabular}{llllllll}
+Test name       & Time to reproduce & Time to reproduce & Performance without & Performance with & Time to produce & Time to produce & Time to produce \\
+                & without enforcer  & with enforcer     & fix                 & fix              & summary         & enforcer        & fix             \\
+\hline
+simple\_toctou  & 7s                & 1s                & 35Mloops/second     & 9.5Mloops/second & 1.7s            & 110ms           & 100ms           \\
+indexed\_toctou & 4.5s              & 640ms             & 1.6Mloops/second    & 0.9Mloops/second & 23s             & 230ms           & 110ms           \\
+read\_indexed\_toctou &             & 1.2s              & 15.6Mloops/second   & 7Mloops/second   & 3.2s            & 180ms           & 120ms           \\
+write\_indexed\_toctou &            & 1.3s              & 6.7Mloops/second (write) & 4.2Mloops/second (write) & 23.3s & 130ms        & 100ms           \\
+multi\_variable \\
+context \\
+write\_to\_read \\
+multi\_bugs \\
+multi\_threads
+\end{tabular}
+\caption{Summary of results for artificial bugs.  All times are
+  excluding the time taken for dynamic analysis.}
+
+\todo{I should really redo this so that I have multiple samples and
+  can do some sensible stats.}
+
+\todo{There's a lot of inexplicable variation in there...}
+
+\todo{Extend with indexed\_toctou results when side-condition checking
+  is turned off.}
+\end{table}
+
 \section{Bugs from real programs}
 
 \subsection{glibc}
@@ -1173,5 +1242,7 @@ And the race is then on \verb|PSI_server|.  This one actually works;
 woo.
 
 \section{Comparison of DRS-based and non-DRS-based modes}
+
+\includegraphics{eval/mysql-timings.eps}
 
 \section{Actually fixing bugs}

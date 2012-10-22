@@ -277,6 +277,303 @@ A crash summary represents a bug tuple $(R, W, S)$ if the summary's read \StateM
 The set of summaries produced by the analysis is defined to be complete if every possible bug tuple is represented by at least one crash summary, and sound if the crash summaries only represent valid bug tuples.
 The analysis presented here is, in that sense, complete, subject to some caveats discussed in later sections, but not sound.
 
+\section{\STateMachines}
+
+The \StateMachines themselves consist of three components:
+
+\begin{itemize}
+\item
+  A slice of the program in a simple analysis language.  Programs in
+  this language consist of a directed acyclic graph of analysis
+  states.  The states fall into one of three classes: terminals, with
+  no successors; side-effects, with a single successor; or choices,
+  with two successors.  The side-effects can express obvious
+  program-level effects such as accessing memory or setting a
+  particular register, but also less-obvious ones such as register
+  aliasing configurations or restrictions on the set of program states
+  which must be considered by later analysis steps.  Similarly, the
+  expression language used for the conditions in choice states or the
+  addresses for memory accessing side-effects can refer to simple
+  things like the values of processor registers or the initial
+  contents of memory, and can also express queries about the program's
+  control flow or the happens-before graph.
+\item
+  A fragment of the original program's control-flow graph, covering
+  all of the instructions from which the \StateMachine was generated.
+  This fragment is unrolled so that each dynamic instruction in the
+  analysis window is represented by precisely on node in the
+  CFG\editorial{I should really try to explain what that means in a
+    bit more detail.}.  Functions are inlined.  This graph fragment
+  will not always be completely weakly connected if, for instance, the
+  \StateMachine represents activity in multiple concurrent threads.
+\item
+  A table mapping memory access identifiers to sets of nodes in the
+  control flow graph. \todo{Screw it; these are a pain to describe and
+    they're not all that important; drop them.}
+\end{itemize}
+
+\begin{figure}
+  \begin{minipage}{50mm}
+    \begin{subfloat}
+      \begin{minipage}{50mm}
+\begin{verbatim}
+400694: mov    global_ptr,%rax
+40069b: test   %rax,%rax
+40069e: je     4006ad
+4006a0: mov    global_ptr,%rax
+4006a7: movl   $0x5,(%rax)
+\end{verbatim}
+      \end{minipage}
+      \caption{Program code}
+    \end{subfloat}
+    \vspace{50pt}
+    \begin{subfloat}
+      \hspace{20mm}
+      \begin{tikzpicture}
+        \node (cfg6) at (0,2) [CfgInstr] {cfg6:400694};
+        \node (cfg5) [CfgInstr, below=of cfg6] {cfg5:40069b};
+        \node (cfg4) [CfgInstr, below=of cfg5] {cfg4:40069e};
+        \node (cfg3) [CfgInstr, below=of cfg4] {cfg3:4006a0};
+        \draw[->] (cfg6) -- (cfg5);
+        \draw[->] (cfg5) -- (cfg4);
+        \draw[->] (cfg4) -- (cfg3);
+      \end{tikzpicture}
+      \caption{Control-flow graph fragment}
+    \end{subfloat}
+  \end{minipage}
+  \begin{subfloat}
+    \begin{minipage}{30mm}
+      \begin{tikzpicture}
+        \node (l1) at (0,2) [stateSideEffect] {l1: LOAD tmp1 $\leftarrow$ global\_ptr AT cfg6 };
+        \node (l2) [stateIf, below=of l1] {l2: if (0 == tmp1)};
+        \node (l4) [stateSideEffect, below=of l2] {l4: LOAD tmp2 $\leftarrow$ global\_ptr AT cfg3 };
+        \node (l3) [stateTerminal, right=of l4] {l3: survive};
+        \node (l5) [stateIf, below=of l4] {l5: if (BadPtr(tmp2))};
+        \node (l6) [stateTerminal, below=of l5] {l6: crash};
+        \draw[->] (l1) -- (l2);
+        \draw[->] (l2) -- node [above] { true } (l3);
+        \draw[->] (l2) -- node [left] { false } (l4);
+        \draw[->] (l4) -- (l5);
+        \draw[->] (l5) -- node [below] { false } (l3);
+        \draw[->] (l5) -- node [left] { true } (l6);
+      \end{tikzpicture}
+    \end{minipage}
+    \caption{\STateMachine}
+  \end{subfloat}
+  \label{fig:intro:single_threaded_machine}
+  \caption{A fragment of machine code, and the \StateMachine generated
+    for a bug which leads to a crash at 4006a7.}
+\end{figure}
+
+Figure~\ref{fig:intro:single_threaded_machine} shows an example of a
+simple single-threaded \StateMachine\footnote{This is the read-side of
+  the simple\_toctou test in \S\ref{sect:eval:art:simple_toctou}.}.
+It illustrates a simple time-of-check, time-of-use race: the program
+loads from \verb|global_ptr| twice in quick succession, validating the
+result of the first and using the result of the second.  The
+translation to a \StateMachine is hopefully reasonably clear: the
+control-flow graph covers on the left all of the relevant instructions
+and the flow chart on the right expresses the relevant part of their
+behaviour.  It is trivial to read off from these diagrams that the
+program might crash if some other thread modifies \verb|global_ptr| in
+between the two loads and will otherwise survive.
+
+\begin{figure}
+  \begin{minipage}{50mm}
+    \begin{subfloat}
+      \begin{minipage}{50mm}
+\begin{verbatim}
+4008fb: movq   $0x0,global_ptr
+\end{verbatim}
+      \end{minipage}
+      \caption{Program code}
+    \end{subfloat}
+    \vspace{50pt}
+    \begin{subfloat}
+      \hspace{20mm}
+      \begin{tikzpicture}
+        \node (cfg8) at (0,2) [CfgInstr] {cfg8:4008fb};
+      \end{tikzpicture}
+      \caption{Control-flow graph fragment}
+    \end{subfloat}
+  \end{minipage}
+  \begin{subfloat}
+    \begin{minipage}{30mm}
+      \begin{tikzpicture}
+        \node (l7) at (0,2) [stateSideEffect] {l7: STORE 0 $\rightarrow$ global\_ptr AT cfg8 };
+      \end{tikzpicture}
+    \end{minipage}
+    \caption{\STateMachine}
+  \end{subfloat}
+  \label{fig:intro:single_threaded_machine_write}
+  \caption{The other side of the race in figure~\ref{fig:intro:single_threaded_machine}.}
+\end{figure}
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node (lA) [stateIf] { lA: if (cfg6:thread1 \happensBefore cfg7:thread2) };
+    \node (l1) [stateSideEffect, below left = of lA] { l1: LOAD tmp1 $\leftarrow$ global\_ptr AT cfg6:thread1 };
+    \node (l2) [stateIf, below = of l1] { l2: if (0 == tmp1) };
+    \node (lD) [stateTerminal, below left = of l2] { lD: survive};
+    \node (lC) [stateIf, below right = of l2] {lC:  if (cfg3:thread1 \happensBefore cfg7:thread2) };
+    \node (lE) [stateSideEffect, below left = of lC] {lE: Assert $global\_ptr = global\_ptr$ };
+    \node (l7a) [stateSideEffect, below = of lE] {l7a: STORE 0 $\rightarrow$ global\_ptr AT cfg8:thread2 };
+    \node (l4a) [stateSideEffect, below = of l7a] {l4a: LOAD tmp2 $\leftarrow$ global\_ptr AT cfg3:thread1 };
+    \node (l5a) [stateIf, below = of l4a] { l5a: if (BadPtr(tmp2)) };
+    \node (lG) [stateTerminal, below = of l5b] { lG: crash };
+    \node (l4b) [stateSideEffect, below right = of lC] {l4b: LOAD tmp3 $\leftarrow$ global\_ptr AT cfg3:thread1 };
+    \node (l5b) [stateIf, below = of l4b] { l5: if (BadPtr(tmp3))};
+    \node (lF) [stateTerminal, below right = of l5b] { lF: unreached };
+    \node (lB) [stateSideEffect, below right = of lA] { lB: Assert $global\_ptr = global\_ptr$ };
+    \node (l7b) [stateSideEffect, below = of lB] { l7b: STORE 0 $\rightarrow$ global\_ptr AT cfg8:thread2 };
+    \draw [->] (lA) -- (l1);
+    \draw [->] (lA) -- (lB);
+    \draw [->] (l1) -- (l2);
+    \draw [->] (l2) -- (lD);
+    \draw [->] (lC) -- (lE);
+    \draw [->] (lC) -- (l4b);
+    \draw [->] (lE) -- (l7a);
+    \draw [->] (l7a) -- (l4a);
+    \draw [->] (l4a) -- (l5a);
+    \draw [->] (l5a) -- (lD);
+    \draw [->] (l5a) -- (lG);
+    \draw [->] (l4b) -- (l5b);
+    \draw [->] (l5b) -- (lD);
+    \draw [->] (l5b) -- (l8);
+    \draw [->] (lB) -- (l7a);
+    \draw [->] (l7a) -- (l8);
+  \end{tikzpicture}
+  \label{fig:intro:cross_thread}
+  \caption{Cross-product of the \StateMachine shown in
+    figures~\ref{fig:intro:single_threaded_machine} and
+    \ref{fig:intro:single_threaded_machine_write}.}
+\end{figure}
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node (lA) [stateSideEffect] {lA: Assert $0 \not= InitMemory(global\_ptr)$ and $cfg6:thread1 \happensBefore cfg7:thread2$}
+    \node (lB) [stateIf, below = of lA] {lB: if $cfg3:thread1 \happensBefore cfg7:thread2$ };
+    \node (lC) [stateTerminal, below left = of lB] {lC: survive};
+    \node (lD) [stateTerminal, below right = of lB] {lD: crash};
+    \draw [->] (lA) -- (lB);
+    \draw [->] (lB) -- (lC);
+    \draw [->] (lB) -- (lD);
+  \end{tikzpicture}
+  \label{fig:intro:cross_thread_opt}
+  \caption{\STateMachine from figure~\ref{fig:intro:cross_thread}
+    after \StateMachine simplification.}
+\end{figure}
+
+\STateMachines become somewhat more interesting when they capture the
+results of multiple threads.  Figure~\ref{fig:intro:cross_thread}
+shows an example of a cross-thread \StateMachine.  There are a couple
+of interesting features here:
+
+\begin{itemize}
+\item Several new states have been created and existing ones
+  duplicated.  In particular, some memory accesses have now been
+  duplicated to multiple places in the \StateMachine
+\item
+  $\happensBefore$ expressions.  These allow the \StateMachine to
+  query the program's happens-before graph.  $cfgA:threadB
+  \happensBefore cfgC:threadD$ is true precisely when instruction $A$
+  in thread $B$ happens before instruction $C$ in thread $D$.
+  \todo{Whoops: the semantics of these depends on the memory access
+    identifier indirection, so I guess I will have to describe that
+    after all.}
+
+  These expressions imply something important about the semantics of
+  the \StateMachines.  In particular, a \StateMachine with a
+  $\happensBefore$ edge cannot be interpreted as an approximation to a
+  fragment of the program, but must instead be treated as a query over
+  program executions.  \todo{Not convinced that's terribly clear, and
+    it ought to be somewhere else.}
+\item
+  Assertion side-effects and the unreached state.  These are used to
+  give later stages of the analysis hints about which paths through
+  the combined \StateMachine are likely to be interesting.  Assertion
+  side-effects specify indicate that if some condition is false then
+  the \StateMachine is not worth analysing; later analysis phases make
+  heavy use of these hints.  Likewise, any path which reaches an
+  unreached state is not considered to be uninteresting.  These two
+  mechanisms are of precisely equivalent power; SLI uses one or the
+  other depending on which is more convenient at the time.
+\item
+  Paths in which either the store or load machine end without the
+  other starting will end in an unreached state, so they will not be
+  considered by the later analysis phases.  While not apparent in this
+  simple example, the algorithm used by SLI also uses partial-order
+  reduction\needCite{} to further reduce the number of interleavings
+  to be considered.
+\end{itemize}
+
+The \StateMachine shown in figure~\ref{fig:intro:cross_thread}
+correctly captures the interaction of the two input \StateMachines but
+is more complicated than it needs to be.  SLI therefore performs a few
+simplifications on the \StateMachine, detailed later, before passing
+the \StateMachine to the symbolic execution engine; the results are
+shown in figure~\ref{fig:intro:cross_thread_opt}\footnote{Similar
+  simplifications are also applied to the single-threaded
+  \StateMachines, but those are uninteresting in this case.}.
+
+\STateMachines have a couple of other features not shown in this
+example:
+
+\begin{itemize}
+\item
+  Control-flow expressions.  Much as \StateMachines can query the
+  happens-before graph of a program using $\happensBefore$
+  expressions, they can also query the control flow within a given
+  thread using $Entry$ and $ControlFlow$ expressions.  An
+  $Entry(threadA:cfgB)$ expression is true if thread $A$ entered the
+  CFG at CFG node $cfgB$, while $ControlFlow(threadA:cfgB->cfgC)$ is
+  true if thread $A$ transitions from CFG node $B$ to node $C$.  Note
+  that the value of $ControlFlow$ expression does not depend on where
+  in the \StateMachine it is evaluated: the control flow within a
+  \StateMachine is (conceptually) independent of that of the original
+  program.
+\item
+  Static analysis side effects.  These are used to import the results
+  of the initial whole-program static analysis into the \StateMachine.
+  The most important of these is the Alias side-effect, which gives a
+  points-to set of a given \StateMachine-level variable.  These
+  points-to sets are expressed over stack frames, plus a flag saying
+  whether the variable might point at a non-stack location.
+\item
+  $\Phi$ side-effects.  These are described later when discussing the
+  SSA form used; they have a somewhat different semantic from the
+  $\Phi$ nodes used in optimising compilers.
+\item
+  Start and end atomic side-effects.  These indicate that a given
+  fragment of the \StateMachine should execute atomically, and hence
+  restrict the cross-product \StateMachine.  They are used both to
+  represent instructions with the \verb|LOCK| prefix (which execute
+  atomically) and some library-level functions such as
+  \verb|pthread_mutex_lock|\editorial{Should probably have a forwards
+    ref to discussion of handling library functions.}.
+\end{itemize}
+
+%% They are also similar to the intermediate forms used by model
+%% checkers such as SAL\editorial{Cite Park 2000; the Stanford Java
+%% checker.}\editorial{Cite JPF and their arguments for not using
+%% standard MC intermediate forms; they all apply here as well, and it
+%% saves me having to argue it myself.}\editorial{Need to come up with
+%% an argument for not just using SAL.}.  The key difference here is
+%% less the nature of the intermediate form and more the way in which
+%% it is used: SLI \StateMachines only model the part of a program
+%% which might conceivably be relevant to some (real or hypothesised)
+%% bug, whereas a model checker's intermediate form will usually
+%% represent at least some aspect of the entire program component
+%% which is to be analysed\editorial{Clumsy.  What I'm trying to say
+%% here is that we slice on a different axis: model checkers build up
+%% a model of the entire program which is relevant to the predicate
+%% which they're checking, whereas SLI builds up a series of models
+%% each of which is constrained on both the property (implicit) and
+%% the place which we think might have a bug.  Also, describing it as
+%% the key difference is kind of misleading: it's the key difference
+%% here, but not really the most important one, which is what we use
+%% the results for.}.
+
 \subsection{Building read-side \StateMachines}
 
 The aim of this phase of the algorithm is to find every fragment of the program which might act as the first ($R$) element of the bug tuple.
