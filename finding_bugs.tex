@@ -411,18 +411,18 @@ between the two loads and will otherwise survive.
 
 \begin{figure}
   \begin{tikzpicture}
-    \node (lA) [stateIf] { lA: if (cfg6:thread1 \happensBefore cfg7:thread2) };
+    \node (lA) [stateIf] { lA: if $cfg6:thread1 \happensBefore cfg7:thread2$ };
     \node (l1) [stateSideEffect, below left = of lA] { l1: LOAD tmp1 $\leftarrow$ global\_ptr AT cfg6:thread1 };
     \node (l2) [stateIf, below = of l1] { l2: if (0 == tmp1) };
     \node (lD) [stateTerminal, below left = of l2] { lD: survive};
-    \node (lC) [stateIf, below right = of l2] {lC:  if (cfg3:thread1 \happensBefore cfg7:thread2) };
+    \node (lC) [stateIf, below right = of l2] {lC:  if $cfg3:thread1 \happensBefore cfg7:thread2$ };
     \node (lE) [stateSideEffect, below left = of lC] {lE: Assert $global\_ptr = global\_ptr$ };
     \node (l7a) [stateSideEffect, below = of lE] {l7a: STORE 0 $\rightarrow$ global\_ptr AT cfg8:thread2 };
     \node (l4a) [stateSideEffect, below = of l7a] {l4a: LOAD tmp2 $\leftarrow$ global\_ptr AT cfg3:thread1 };
-    \node (l5a) [stateIf, below = of l4a] { l5a: if (BadPtr(tmp2)) };
-    \node (lG) [stateTerminal, below = of l5b] { lG: crash };
+    \node (l5a) [stateIf, below = of l4a] { l5a: if $BadPtr(tmp2)$ };
+    \node (lG) [stateTerminal, below = of l5a] { lG: crash };
     \node (l4b) [stateSideEffect, below right = of lC] {l4b: LOAD tmp3 $\leftarrow$ global\_ptr AT cfg3:thread1 };
-    \node (l5b) [stateIf, below = of l4b] { l5: if (BadPtr(tmp3))};
+    \node (l5b) [stateIf, below = of l4b] { l5: if $BadPtr(tmp3)$ };
     \node (lF) [stateTerminal, below right = of l5b] { lF: unreached };
     \node (lB) [stateSideEffect, below right = of lA] { lB: Assert $global\_ptr = global\_ptr$ };
     \node (l7b) [stateSideEffect, below = of lB] { l7b: STORE 0 $\rightarrow$ global\_ptr AT cfg8:thread2 };
@@ -439,9 +439,9 @@ between the two loads and will otherwise survive.
     \draw [->] (l5a) -- (lG);
     \draw [->] (l4b) -- (l5b);
     \draw [->] (l5b) -- (lD);
-    \draw [->] (l5b) -- (l8);
+    \draw [->] (l5b) -- (lF);
     \draw [->] (lB) -- (l7a);
-    \draw [->] (l7a) -- (l8);
+    \draw [->] (l7a) -- (lF);
   \end{tikzpicture}
   \label{fig:intro:cross_thread}
   \caption{Cross-product of the \StateMachine shown in
@@ -451,7 +451,7 @@ between the two loads and will otherwise survive.
 
 \begin{figure}
   \begin{tikzpicture}
-    \node (lA) [stateSideEffect] {lA: Assert $0 \not= InitMemory(global\_ptr)$ and $cfg6:thread1 \happensBefore cfg7:thread2$}
+    \node (lA) [stateSideEffect] {lA: Assert $0 \not= InitMemory(global\_ptr)$ and $cfg6:thread1 \happensBefore cfg7:thread2$};
     \node (lB) [stateIf, below = of lA] {lB: if $cfg3:thread1 \happensBefore cfg7:thread2$ };
     \node (lC) [stateTerminal, below left = of lB] {lC: survive};
     \node (lD) [stateTerminal, below right = of lB] {lD: crash};
