@@ -28,8 +28,8 @@ while [ -s "$body" ]
 do
     this_time=$(mktemp)
     rest=$(mktemp)
-    head -n 8 "$body" > $this_time
-    tail -n +9 "$body" > $rest
+    head -n 5 "$body" > $this_time
+    tail -n +6 "$body" > $rest
     mk_header
     cat "$this_time"
     mk_footer
