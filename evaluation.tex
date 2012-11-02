@@ -27,6 +27,8 @@ Things I want to show in the eval:
   \item Display a CDF of how long it takes to analyse each instruction.
   \item Try turning the various machine simplification passes on and off
     and see what effect that has on the CDF.
+  \item Alias analysis: try turning off the static analysis bit and
+    see how much effect that has.
   \end{itemize}
 
 \item Ideally, some slightly more realistic artificial bugs, probably
@@ -44,23 +46,7 @@ Things I want to show in the eval:
   isn't completely trivial.
 \end{itemize}
 
-What I have:
-
-\begin{itemize}
-\item About a dozen artificial bugs for each mode
-\item The glibc bug kernel --- fixed in DRS mode
-\item The Thunderbird bug -- fixed in DRS mode
-\item The first mysql bug -- fixed in core dump mode.
-\item The second mysql bug -- found and fixed in whole-pass mode.
-  This one's kind of interesting, because there are two different
-  variants of it present in mysql, and the tool finds both, but I only
-  knew about one of them when I started.
-\end{itemize}
-
-And that's about it.
-Where I've said a bug is fixed or found in one mode that indicates that I've tested and confirmed that it works in that mode; it doesn't say anything about whether it would work in one of the other modes.
-
-So I desperately need more real bugs.
+I desperately need more real bugs.
 Possible ways of getting them:
 
 \begin{itemize}
@@ -513,7 +499,9 @@ is not interesting, for some reason,
 
 \todo{There's some special handling here to do with retrying escaping
   machines, but I don't remember why I did it that way any more.
-  Think harder.}
+  Think harder.  Also need to grab a whole bunch of statistics on what
+  this actually does so as to convince people that it actually gets
+  decent test coverage.}
 
 \section{Artificial bugs}
 
@@ -886,7 +874,46 @@ happens-before edges in the crash enforcement plans.
 
 \subsubsection{Multi-variable consistency constraint (multi\_variable)}
 
-\todo{I want to rewrite this test, so describe it later.}
+This bug is intended to illustrate that {\technique} is able to
+correctly analyse multi-variable atomicity violations.  The read side
+is simply:
+
+\begin{verbatim}
+while (1) {
+   STOP_ANALYSIS();
+   v1 = global1;
+   v2 = global2;
+   assert(v1 == v2);
+   STOP_ANALYSIS();
+   usleep(10000);
+}
+\end{verbatim}
+
+The write side is:
+
+\begin{verbatim}
+while (1) {
+  usleep(100000);
+  STOP_ANALYSIS();
+  global1 = 5;
+  global2 = 5;
+  STOP_ANALYSIS();
+  usleep(100000);
+  STOP_ANALYSIS();
+  global1 = 7;
+  global2 = 7;
+  STOP_ANALYSIS();
+}
+\end{verbatim}
+
+Note that this also illustrates {\technique}'s ability to handle
+\verb|__assert_fail|-type crashes, in addition to bad pointer
+dereference ones.
+
+This bug could not be handled by tools such as Kivati\needCite{}, as
+it involves multiple variables, but can be handled by {\technique}:
+the bug is reproduced quickly by the enforcer, and a correct and
+low-overhead fix is generated automatically.
 
 \subsubsection{Context-dependent races (context)}
 
@@ -1039,6 +1066,90 @@ never runs.
 \subsubsection{Multiple read threads (multi\_threads)}
 
 \todo{Write me.}
+
+\subsubsection{Complicated happens-before graphs (complex\_hb)}
+
+This test is intended to illustrate {\technique}'s ability to handle
+more complicated happens-before graphs which require more than two
+context switches.  This kind of bug defeats some existing tools such
+as Chess\needCite{} or DataCollider\needCite{}.  The test is
+structured like so:
+
+\begin{verbatim}
+while (1) {
+   STOP_ANALYSIS();
+   x' = x;
+   x'' = x;
+   x''' = x;
+   assert(!((x' == 0) && (x'' == 1) && (x''' == 2) ));
+   STOP_ANALYSIS();
+}
+\end{verbatim}
+
+And the write side is:
+
+\begin{verbatim}
+while (1) {
+  STOP_ANALYSIS();
+  x = 0;
+  x = 1;
+  x = 2;
+  STOP_ANALYSIS();
+  delay();
+}
+\end{verbatim}
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node[draw] (x0) {x = 0};
+    \node[draw, below right = of x0] (xp) {x' = x};
+    \node[draw, below left = of xp] (x1) {x = 1};
+    \node[draw, below right = of x1] (xpp) {x'' = x};
+    \node[draw, below left = of xpp] (x2) {x = 2};
+    \node[draw, below right = of x2] (xppp) {x''' = x};
+    \draw[->, happensBeforeEdge] (x0) -- (xp);
+    \draw[->, happensBeforeEdge] (xp) -- (x1);
+    \draw[->, happensBeforeEdge] (x1) -- (xpp);
+    \draw[->, happensBeforeEdge] (xpp) -- (x2);
+    \draw[->, happensBeforeEdge] (x2) -- (xppp);
+    \draw[->] (x0) -- (x1);
+    \draw[->] (x1) -- (x2);
+    \draw[->] (xp) -- (xpp);
+    \draw[->] (xpp) -- (xppp);
+  \end{tikzpicture}
+  \caption{Happens-before graph necessary to reproduce the complex\_hb
+    bug.}
+  \label{fig:eval:complex_hb}
+\end{figure}
+
+In this case, the bug will only reproduce if the happens-before graph
+is as shown in figure~\ref{fig:eval:complex_hb}.  This is a difficult
+bug for Chess and DataCollider to handle, for somewhat different
+reasons.
+
+For Chess, whether the bug can be correctly handled will depend on how
+many context switches the analysis is configured to explore, and any
+setting of three or more should be able to trigger it.  The value used
+in the Chess paper is two, and so in that configuration this bug would
+not be correctly handled by Chess.  Note that a similar construction
+can require arbitrarily many context switches, and so even if Chess
+were configured to use a higher threshold it would still be possible
+to defeat it using bugs of this type.
+
+For DataCollider, the behaviour is somewhat less clear.  The obvious
+implementation of DataCollider would pick one of the memory accesses
+and delay it by a small amount, and this is insufficient to reproduce
+this bug.  A more advanced DataCollider implementation might instead
+pick some subset of instructions and insert delays at all of them.  If
+the delays were correctly chosen then this would reproduce the bug.
+The DataCollider paper suggests placing delays randomly, and so the
+probability of correctly placing them would fall off exponentially
+with the size of the program and for even moderately large programs
+would be effectively zero.  A more cunning approach would be to apply
+some form of analysis to the program to place delays more effectively;
+such a scheme would rapidly turn into something similar to
+{\technique}.
+
 
 \begin{table}
 \begin{tabular}{llllllll}

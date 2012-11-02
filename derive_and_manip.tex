@@ -576,6 +576,20 @@ example:
   atomically) and some library-level functions such as
   \verb|pthread_mutex_lock|\editorial{Should probably have a forwards
     ref to discussion of handling library functions.}.
+\item
+  Initial-memory expressions, written $LD(addr)$.  {\STateMachines}
+  can always access the contents of memory as it was when the
+  {\StateMachine} started, ignoring any subsequent updates.  It is
+  often easier to analyse conditions expressed in terms of these
+  expressions than equivalent conditions expressed in terms of
+  explicit memory-accessing operations, and the results are usually
+  easier to understand.
+
+  Note that the address part of the expression is evaluated against
+  the \emph{current} state of the {\StateMachine}, and can therefore
+  reference {\StateMachine} variables and so forth, even though the
+  load itself is evaluated against a snapshot of the program's initial
+  memory.
 \end{itemize}
 
 %% They are also similar to the intermediate forms used by model
@@ -1014,6 +1028,10 @@ viewpoint of the inlining context, which is all that matters here.
 \subsubsection{Proximal causes}
 
 \subsubsection{Compiling the CFG to a \StateMachine}
+
+\todo{Should mention that I use libVEX to convert instructions to a
+  slightly saner intermediate format before converting to
+  \StateMachine fragments, rather than doing it directly.}
 
 The result of the previous phases is a control-flow graph containing
 all of the instructions which might be present in the $R$ trace of the
@@ -1792,8 +1810,8 @@ mul (%rax * $11) -> %rax
   optimisation, described in section~\ref{sect:unification} attempts
   to unify these.
 \item
-  \todo{Undefinedness.  I'd like to have a better understanding of
-    when this is actually useful first, though.}
+  \todo{Undefinedness, maybe?  It's kind of neat, but I'd like to have
+    a better understanding of when this is actually useful first.}
 \item
   Probably mention that we sometimes optimise on the assumption that
   assertion failures correspond to crashes and sometimes on the
@@ -1806,7 +1824,7 @@ There are also a number of other minor simplifications:
 \begin{itemize}
 \item
   Various basic arithmetic simplifications, such as rewriting $x + 0$
-  to just $x$ or $(x \happensBefore y) \or (y \happensBefore x)$ to
+  to just $x$ or $(x \happensBefore y) \vee (y \happensBefore x)$ to
   $true$, and constant-folding for most common operators.
 \item
   A write-side {\StateMachine} which terminates without issuing any
@@ -1879,14 +1897,68 @@ $\Phi$.  In this way the dependency of the $\Phi$ on the rest of the
 {\StateMachine}'s data is made explicit, and can hence be more easily
 used to simplify the expression down.
 
-Basic approach: enumerate all paths to the $\Phi$ and then try to find
-patterns which we can use to build the MTBDD in a sensible way.  One
-oddity here is that these are \emph{unordered} BDDs, but I'm really
-not convinced that was a good idea and if I get a chance I'm going to
-change it to ordered mode.  I'd also like to tweak the way we build
-the path set to be a bit less stupid: current one is very much
-brute-force, which isn't really ideal.
+\todo{Having written this down, I think is a really stupid approach,
+  and experimentally it's also one of the big bottlenecks in the
+  analysis.  Might end up reworking this into something a bit less
+  crazy.  I'm also pretty confident that I'd have gotten better
+  results if I'd used BDD a bit more consistently, and if I end up
+  switching the rest of the analysis over to them then that'll also
+  require some re-working of this section.}
 
+\todo{Also, the only reason this can ever fail is the
+  {\StateMachine}-internal typesystem, which I've (deliberately)
+  avoided discussing so far, which makes the presentation a little bit
+  awkward.}
+
+The approach used is simple: enumerate every path to the $\Phi$ side
+effect, collecting control-flow constraints as we do so, classify each
+path according to which input to the $\Phi$ will be selected if that
+path is followed, and then encode this path set into a a
+multi-terminal binary decision diagram (MTBDD)\needCite{} which
+selects an appropriate input.
+
+Simplifications on path sets:
+
+\begin{itemize}
+\item
+  Use the results of copy propagation to determine when two possible
+  inputs are guaranteed to have the same value and merge all of the
+  paths which select that input.
+\item
+  Remove all constant terms i.e. those which are either always true
+  or always false.
+\item
+  Remove all terms which are only present for a single possible result.
+\item
+  If two paths have the same result and the only difference is
+  flipping the sense of one term then that term can be eliminated
+  and the paths merged.
+\end{itemize}
+
+Build the MTBDD:
+
+\begin{itemize}
+\item
+  If there's only one possible result then we're done.
+\item
+  Otherwise, pick a term to perform a case split on.  The ordering
+  heuristic is entropy-based: for each possible splitting variable,
+  calculate the conditional entropy of the final result, conditioned
+  on the splitting variable being either true or false, add the true
+  and false entropies together, and then pick the splitter with the
+  lowest final entropy.  \todo{I really don't have much reason to
+    believe that that's a good heuristic.}  Note that this implies
+  that these are \emph{unordered} MTBDDs, as variables might be
+  considered in different orders along the different branches, and
+  that different $\Phi$ side-effects might select completely different
+  orders.  This helps to keep the MTBDDs shallow, but reduces the
+  opportunities for sharing sub-graphs.
+
+  This is pretty much just a generalisation of the heuristic used in
+  Fujita, Matsunaga et al 1991 from BDDs to MTBDDs, so maybe I can
+  just cite them rather than trying to justify it myself?
+\end{itemize}
+  
 \subsection{Alias analysis}
 \label{sect:alias_analysis}
 
@@ -1922,7 +1994,7 @@ SLI uses several techniques to resolve the resulting aliasing queries:
 
 I now describe each of these phases in more detail.
 
-\subsection{Dynamic analysis}
+\subsubsection{Dynamic analysis}
 
 SLI relies on a dynamic analysis pass to build up a model of the
 program's behaviour when it is running normally.  This model mostly
@@ -2009,7 +2081,7 @@ investigated doing so at this time.
   back up the call stack in addition to the current RIP), but I don't
   think it's all that interesting.}
 
-\subsection{Static analysis}
+\subsubsection{Static analysis}
 
 \todo{On the one hand, this is quite important.  On the other hand,
   it's incredibly tedious.  Not sure what to do about that.}
@@ -2030,32 +2102,75 @@ run on the thus augmented {\StateMachines} to determine whether a
 given memory accessing side effect might access the stack, and, if so,
 which stack frames it might access.
 
-The initial static analysis makes several important assumptions about
-the program to be analysed:
+The initial static analysis examines one function at a time in the
+program and determines how it manages its own stack frame, in terms of
+whether any pointers to the frame are ever stored into non-stack
+memory and which registers contain pointers to the frame.  This then
+provides the main analysis with additional context beyond the normal
+analysis window.  It would, of course, be possible to obtain the same
+information by extending the analysis window, but this is often
+expensive, and the use of a cheaper static analysis allows a far
+larger context to be plausibly considered.  As an added bonus, the
+results of the static analysis can be easily shared between multiple
+{\StateMachines}, which is problematic for properties derived from the
+{\StateMachines} themselves.
+
+The information needed by the main analysis consists of meta-data
+about stack frames:
 
 \begin{itemize}
 \item
-  Most importantly, it assumes that the locations in a function's
-  frame are ``created'' when the function is called, in the sense that
-  any pointers into the stack frame which are actually dereferenced
-  must have been created after the function started.  This does not
-  mean that there cannot be any pointers into the frame at the start
-  of the function; simply that, if there are any, they cannot be
-  dereferenced.  Pointers in dead registers are acceptable, for
-  instance, as are values which are ``semantically'' integers but
-  happen to have the same numerical values as valid pointers.
-
+  Which frames are active when the {\StateMachine} starts;
 \item
-  The analysis assumes that the location of the stack was unknown when
-  the program was compiled, and in particular that any statically
-  constant values are not stack pointers.  This is in some sense a
-  special case of the previous assumption, but is both important and
-  non-obvious and so bears additional emphasis.
-
+  Where stack frames are created and destroyed;
 \item
-  The analysis assumes that all functions take all of their arguments
-  in registers, and that SLI can identify the set of registers which
-  might be arguments.  In the case of AMD64 using a normal ABI this is
+  Whether non-stack memory might contain pointers to stack frames,
+  and, if so, which;
+\item
+  Which stack frames might contain pointers to themselves; and
+\item
+  Which registers might contain pointers to which stack frame.
+\end{itemize}
+
+It should be emphasised that the stack frames referred to here are
+\emph{dynamic} constructs, created by \verb|call| instructions and
+destroyed by \verb|ret| ones.  The way in which CFGs are unrolled
+ensures that if a function can be called in two places then it will
+have two nodes in the CFG; this makes it meaningful to say that a
+\verb|call| CFG node creates a specific stack frame\editorial{not all
+  that clear.}.
+
+Note that the static analysis itself is entirely function-local.  The
+only information it provides is a label saying, for each instruction
+in a function, which registers might point into the current stack
+frame and whether any pointers to the current frame have been stored
+in either memory or the frame itself.  The cross-function stack
+information is then synthesised from this by the main analysis when
+needed.
+
+All phases of this analysis algorithm make one key assumption: that
+the locations in a function's frame are ``created'' when the function
+is called, so that there are no pointers into the frame before the
+function starts.  It is further assumed that all functions have a
+single entry point instruction and that the only way of activating a
+function is by calling its entry point.  For this purpose, a pointer
+is defined to be something which is dereferenced to refer to memory in
+the stack frame, rather than something which just has a numerical
+value which happens to match that of some location in the stack, so
+that, for instance, pointers in dead registers are acceptable.  An
+important corollary of this is that the address of the stack must have
+been unknown when the program was compiled, and so statically constant
+values cannot be stack pointers.
+
+The static analysis phase also makes some assumptions about called
+functions\footnote{The main analysis has no need of these assumptions
+  as called functions are effectively inlined, and hence available for
+  direct analysis.}:
+
+\begin{itemize}
+\item
+  The analysis assumes that all of the input arguments to functions
+  are in registers.  In the case of AMD64 using a normal ABI this is
   true for the first six arguments to a function \needCite{}, and,
   since the vast majority of functions have fewer than six arguments
   \needCite{}, this is not usually a problem.  \todo{But it can be
@@ -2063,92 +2178,129 @@ the program to be analysed:
     it does happen.}
 
 \item
-  The analysis assumes that functions will either not return at all or
-  will return to the instruction following the instruction from which
-  it was called.  Note that this does not rule out functions such as
-  \verb|setjmp| and \verb|longjmp|\editorial{cite?}: \verb|longjmp|
-  never returns and \verb|setjmp| always returns to the instruction
-  after the one which called it.
+  The analysis assumes that it can determine which registers, out of
+  all of the possible argument registers, are used to pass parameters
+  to a particular function.  {\Implementation} uses a separate
+  register liveness analysis to do so: a register \verb|r| is
+  considered to be a parameter to a function \verb|f| if \verb|r| is
+  live at instruction \verb|f|.  This liveness analysis is entirely
+  conventional and is not described here, beyond noting that it
+  analyses the entire program at once, across function boundaries.
 
 \item
-  The analysis assumes that the stack pointer at the end of a function
-  is always the same as the stack pointer at the start of that
-  function, if the function returns to the same place as it was called
-  from.
+  The analysis assumes that the program does not contain any
+  statically-constant pointers which point at something outside of the
+  main program.  This is a reasonable assumption to make because, on
+  most modern systems, virtual addresses are assigned by the operating
+  system rather than by the program, and so cannot possibly be known
+  when the program is compiled and hence cannot be present as static
+  constants.
+
+  Alternatively, consider what sort of program might violate this
+  assumption.  Assume the program is an ELF binary running on Linux,
+  for the sake of exposition; other operating systems are similar.
+  Such a program would have to have hard-coded certain virtual
+  addresses without marking them as reserved in the ELF metadata.
+  Since the dynamic linker runs before any part of the program, there
+  is no way for the program to express its preference, and so no way
+  for the dynamic linker to know that it must avoid mapping libraries
+  into a particular address.  As such, any correct program with such
+  hard-coded but unreserved addresses must have some fallback scheme
+  for then the addresses are unavailable, in which case hard-coding
+  the addresses would be pointless.  Of course, the program might
+  simply be buggy and hard-code an address without a fallback, but
+  this seems like a sufficiently unlikely sort of bug that I feel no
+  particular guilt about ignoring it.  \todo{Not sure I needed that
+    much detail there, really.}
+
+\item
+  The analysis assumes that functions roughly follow the usual ABI:
+
+  \begin{itemize}
+  \item They must not modify registers marked as call-preserved in the
+    ABI, or if they do modify the registers must restore their values
+    before returning.  This includes the stack pointer.
+  \item They must either never return to the calling function at all
+    or return to the instruction immediately after the \verb|call|
+    which invoked them.  This is effectively another facet of the
+    single-entry assumption which has already been discussed: if the
+    called function were to return to the called function at some
+    other instruction then that other instruction would constitute
+    another entry point into the calling function.  Note that this
+    does not rule out functions such as \verb|setjmp| and
+    \verb|longjmp|\editorial{cite?}: \verb|longjmp| never returns and
+    \verb|setjmp| always returns to the instruction after the one
+    which called it.  The analysis might, however, produce an
+    overly-conservative result if a called function never returns.
+  \item They must not attempt to calculate pointers into the calling
+    function's stack frame by reference to their own stack frame.
+    Accessing the calling function's frame via references in one of
+    the argument registers, or via pointers which were previously
+    stored to main memory, is allowed.
+
+    In other words, called functions must be written such that moving
+    fields around in or adding padding to the calling function's frame
+    does not affect their behaviour.
+  \end{itemize}
+
+  The vast majority of functions conform to these assumptions.
+  Indeed, most languages higher level than assembly make it difficult
+  to violate them even deliberately.
 \end{itemize}
 
-The analysis itself is a reasonably conventional points-to analysis.
-Memory is divided into two regions, one containing the current stack
-frame and one containing everything else.  The analysis maintains
-locations for each register, plus a single location for the current
-frame and another for the rest of memory.  Each instruction is
-assigned a label which is either a mapping from locations to subsets
-of \{points-at-frame, points-at-memory\}, or a special value
-indicating that the instruction is unreachable.  The label on an
-instruction gives the points-to configuration of the locations at the
-start of the instruction.
-
-This analysis is inherently function-local, and so the first stage is
-to identify the functions in the program.  For the purposes of this
-analysis, a function is defined to be a (possibly non-contiguous) set
-of instructions with a distinguished element referred to as the head
-of the function, such that:
+The first stage of the static analysis is to identify all of the
+functions in the program and their entry point instructions.  For the
+purposes of this analysis, a function is defined to be a (possibly
+non-contiguous) set of instructions with a distinguished entry point
+instruction, such that:
 
 \begin{itemize}
 \item
   For any non-return and non-call type branch from instruction $a$ to
   $b$ anywhere in the program, either $a$ and $b$ are in the same
-  function or $b$ is the head of some function.  This includes the
-  implicit branch from one ordinary instruction to the one which
-  immediately follows it.
+  function or $b$ is the entry point instruction of some function.
+  This includes the implicit branch from one ordinary instruction to
+  the one which immediately follows it.
 \item
   For any call-type branch instruction from $a$ to $b$, $b$ is the
-  head of a function.
+  entry point of a function.
 \end{itemize}
 
 Within these constraints, SLI attempts to minimise the number of
-distinct functions\footnote{Or, equivalently, it maximises the size of
-  the individual functions.}\editorial{Well, ``attempts to''.  There's
-  no guarantee that the set is actually minimal, but it usually is.}.
-Indirect branch instructions are handled using information from the
-dynamic analysis: an indirect branch or call is treated as a multi-way
-branch which could target any of the instructions which that
-instruction branched to during dynamic analysis.
-
-This definition amounts to assuming that all functions are
-single-entry, so that there is a single entry point instruction.  The
-first assumption given above, that a function's frame is ``created''
-when it is called, then significantly restricts the possible points-to
-configuration at this entry point instruction, and the rest of the
-analysis then essentially amounts to propagating this information
-throughout the rest of the function.  As such, missing some function
-heads is safe but introducing additional ones is not.
+distinct entry point instructions\footnote{Or, equivalently, it
+  maximises the size of the individual functions.}\editorial{Well,
+  ``attempts to''.  There's no guarantee that the set is actually
+  minimal, but it usually is.}.  Indirect branch instructions are
+handled using information from the dynamic analysis: an indirect
+branch or call is treated as a multi-way branch which could target any
+of the instructions which that instruction branched to during dynamic
+analysis.
 
 It is worthwhile discussing briefly how this definition interacts with
-the compiler tail-call elimination optimisation.  There are three
+compiler tail-call elimination optimisations.  There are three
 interesting cases:
 
 \begin{itemize}
 \item
   If a function is ever called normally, using a call-type branch, the
-  second rule will ensure that its first instruction is a head,
-  which is as desired.
+  second rule will ensure that its first instruction is an entry
+  point, which is as desired.
 \item
   If a function is tail-called from multiple different locations then
-  the first rule will ensure that the join of the caller's CFGs is a
-  function head.  This is correct for simple tail-call elimination, in
-  which a call instruction followed by a return one is replaced with a
-  simple jump.  This is the only form of tail call supported by gcc,
-  the compiler used in the evaluation of this dissertation, and by
-  LLVM\editorial{Might be worth a cite for that?}.  Optimisations such
-  as function epilogue sharing\needCite{} might cause the join to be
-  further through the function, though, and hence cause a function
-  head to be placed in the wrong place.  I am not aware of any
-  production compiler implementing such an optimisation and so this is
-  a largely theoretical concern.
+  the first rule will ensure that the join of the caller's CFGs is the
+  entry point of a function.  This is correct for simple tail-call
+  elimination, in which a call instruction followed by a return one is
+  replaced with a simple jump.  This is the only form of tail call
+  supported by gcc and by LLVM\editorial{Might be worth a cite for
+    that?}.  Optimisations such as function epilogue
+  sharing\needCite{} might cause the join to be further through the
+  function, though, and hence cause the function entry point to be
+  incorrectly place.  I am not aware of any production compiler
+  implementing such an optimisation and so this is a largely
+  theoretical concern.
 \item
   If a function is tail-called from precisely one place, and is never
-  invoked with a normal call instruction, no function head will be
+  invoked with a normal call instruction, no entry point will be
   created for it and it will be merged into its calling function.
   This leads to a somewhat less precise points-to table, as the
   analysis cannot make any a-priori assumptions about the points-to
@@ -2156,9 +2308,26 @@ interesting cases:
   unsoundness.
 \end{itemize}
 
-The analysis itself is then quite conventional, and amounts to finding
-a least upper bound solution to a set of data flow equations using a
-standard iteration to a fixed point.  Define the following symbols:
+In other words, the function heads assigned by these rules will match
+up with the actual first instructions of functions in the higher-level
+language, for most common compilers, which makes it more likely that
+the key assumption that function frames are created at entry points
+actually holds.
+
+The static analysis itself is a reasonably conventional points-to
+analysis.  Memory is divided into two regions, one containing the
+current stack frame and one containing everything else.  The analysis
+maintains locations for each register, plus a single location for the
+current frame and another for the rest of memory.  Each instruction is
+assigned a label which is either a mapping from locations to subsets
+of \{points-at-frame, points-at-memory\}, or a special value
+indicating that the instruction is unreachable; this label gives the
+points-to configuration of the locations at the start of the
+instruction.  Instructions are converted into a set of data flow rules
+and the analysis then simply finds the least fixed point of those
+rules.
+
+Define the following symbols:
 
 \begin{itemize}
 \item $before(i)$ is the start-of-instruction label for instruction
@@ -2172,27 +2341,31 @@ standard iteration to a fixed point.  Define the following symbols:
   labels, defined as:
 
   \begin{itemize}
-  \item $unreached {\sqcup} l = l$, for any $l$, including unreached.
-  \item $l {\sqcup} unreached = l$, for any $l$.
+  \item $unreached {\sqcup} l = l$ and $l {\sqcup} unreached = l$, for
+    any instruction label $l$, including unreached.
   \item $l {\sqcup} l' = l \cup l'$, where $\cup$ is the element-wise
     union of all of the locations in $l$.
   \end{itemize}
 \end{itemize}
 
-The key data flow consistency property is then that $before(i) =
-\sqcup_{i' \in pred(i)}after(i')$.  
-
-The way in which $after(i)$ is calculated from $before(i)$ depends on
-the type of instruction at $i$.  I explain only the important cases;
-generalising to the full AMD64 instruction set is straightforwards but
-tedious.
+Defining $before(i)$ in terms of $after(i)$ is then easy: $before(i) =
+\sqcup_{i' \in pred(i)}after(i')$, so that the points-to configuration
+at the start of an instruction is a conservative combination of the
+points-to configurations of all of its predecessor instructions.
+Defining $after(i)$ in terms of $before(i)$ is no more difficult but
+requires more special cases; one for each possible instruction type in
+the relevant instruction set.  I give only a few interesting cases
+here; generalising to the full AMD64 instruction set is
+straightforwards but tedious and unenlightening.
 
 \begin{itemize}
 \item
-  LOAD $reg \rightarrow reg'$ loads from the memory pointed to by
-  $reg$ and stores the result in $reg'$.  The new points-to set
-  for the register $reg'$ will depend on the points-to set
-  of $reg$ as follows:
+  If $before(i)$ is unreached then $after(i)$ is also unreached.
+\item
+  Load instructions: LOAD ${\ast}reg \rightarrow reg'$ loads from the
+  memory pointed to by register $reg$ into register $reg'$.
+  $after(i)$ is will be unchanged except for the entry for $reg'$,
+  which is set based on $before(i)(reg)$ as follows:
 
   \begin{itemize}
   \item $stack \rightarrow before(i)(stack)$
@@ -2205,54 +2378,28 @@ tedious.
   \todo{That's kind of a clunky way of describing this, but it should
     at least be obvious what's going on.}
 \item
-  STORE $reg' \rightarrow reg$ stores the value of register $reg'$
-  into the memory location pointed to by register $reg$.  The
-  points-to set for $reg$ and $reg'$ will be unchanged, but the
-  points-to sets for the stack and non-stack pseudo locations may be
-  updated.  If $before(i)(reg)$ includes $stack$ then $after(i)(stack)
-  = before(i)(stack) \cup before(i)(reg')$; otherwise $after(i)(stack)
-  = before(i)(stack)$.  Likewise, if $before(i)(reg)$ includes
-  $non-stack$ then $after(i)(non-stack) = before(i)(non-stack) \cup
-  before(i)(reg')$, and otherwise $after(i)(non-stack) =
-  before(i)(non-stack)$.
+  Store instructions: STORE $reg' \rightarrow reg$ stores the value of
+  register $reg'$ into the memory location pointed to by register
+  $reg$.  The points-to set for $reg$ and $reg'$ will be unchanged,
+  but the points-to sets for the stack and non-stack pseudo locations
+  may be updated.  If $before(i)(reg)$ includes $stack$ then
+  $after(i)(stack) = before(i)(stack) \cup before(i)(reg')$; otherwise
+  $after(i)(stack) = before(i)(stack)$.  Likewise, if $before(i)(reg)$
+  includes $non-stack$ then $after(i)(non-stack) =
+  before(i)(non-stack) \cup before(i)(reg')$, and otherwise
+  $after(i)(non-stack) = before(i)(non-stack)$.
 \item
-  SET $k \rightarrow reg$ sets the register $reg$ to constant value
-  $k$.  The new points-to set for $reg$ will depend on the value of
-  $k$, and in particular whether it corresponds to a location in the
-  program's main binary.  If it does, $after(i)(reg) = non-stack$;
-  otherwise $after(i)(reg) = \varnothing$.  It is hopefully
-  unsurprising that neither set includes $stack$, as that was
-  essentially the second assumption discussed
-  above\editorial{confusing anaphora}.  The possibility of excluding
-  $non-stack$ is perhaps less expected.  The key insight here is that
-  in most modern operating systems virtual addresses outside of the
-  main binary are assigned by the operating system and so are never
-  constant when the program is compiled and linked, and so anything
-  which is a constant and does not point at something in the main
-  binary cannot point at anything.
-
-  The only way that this heuristic could be wrong would be if the
-  program uses a facility such as \verb|mmap| to explicitly map
-  something at a fixed virtual address without reserving that address
-  in its ELF information, and then uses that known address to access
-  the mapped information directly.  This is an extremely unusual thing
-  for a program to do, because it is inherently unsafe in the presence
-  of dynamically loaded libraries.  Not including the address in the
-  ELF phdrs means that dynamically loaded libraries might claim the
-  desired address before the program is able to, in which case the
-  manifestly constant addresses in the program's binaries will
-  necessarily be incorrect (and if the program includes some mechanism
-  to recover from this then there would be no advantages to
-  hard-coding an address in the first place).  I have not found any
-  programs which violate this heuristic\editorial{Although it's not
-    like I've made any particular systematic attempt to look for them,
-    and we did talk about doing precisely that sort of thing in Mirage
-    at one point.}.
-
+  Set register to constant: SET $k \rightarrow reg$ sets the register
+  $reg$ to constant value $k$.  This has already been discussed: if
+  the constant refers to a location in the program's main binary then
+  the points-to set for $reg$ will be set to $non-stack$; otherwise,
+  it is set to $\varnothing$.
 \item
-  SET $reg \circplus reg' \rightarrow reg''$ sets $reg''$ to some
-  binary function of $reg$ and $reg'$.  $after(i)(reg'') =
-  before(i)(reg) \cup before(i)(reg')$.
+  Register-register computation: SET $reg \oplus reg' \rightarrow
+  reg''$ sets $reg''$ to some binary function of $reg$ and $reg'$.
+  Conservatively, {\technique} sets $after(i)(reg'') = before(i)(reg)
+  \cup before(i)(reg')$ in this case.  It might be possible to improve
+  on this for some specific $\oplus$.
 
 \item
   CALL $expr$ calls some function given by the expression $expr$.
@@ -2276,12 +2423,12 @@ tedious.
   might possibly be called.
 \end{itemize}
 
-It now only remains to define the initial state from which the fixed
-point iteration starts.  This is simple:
+It now only remains to define the initial state for the fixed point
+iteration.  This is simple:
 
 \begin{itemize}
 \item
-  The label on a function head is as follows:
+  The label on a function entry point is as follows:
 
   \begin{itemize}
   \item The stack pointer points at the current stack frame.
@@ -2296,54 +2443,39 @@ point iteration starts.  This is simple:
   The initial label for every other instruction is just $unreached$.
 \end{itemize}
 
-The static analysis iterates these rules until it finds a fixed point
-in the usual way.  The resulting points-to table then accurately
-models the points-to properties of the program.
+The static analysis iterates until it finds a fixed point of these
+rules.  The resulting labelling of instructions accurately models the
+program's actual points-to behaviour, provided that the assumptions
+discussed above all hold.
 
-\todo{Blah.  This needs reworking.}
-
-\subsection{Encoding information into \StateMachines}
+\subsubsection{Encoding information into \StateMachines}
 
 The information collected by the static analysis pass is
 function-local, in the sense that it can tell whether a given
 instruction accesses the current function's stack frame but cannot say
-anything about other frames.  SLI's \StateMachines are, however,
-cross-function, and so even the idea of a ``current function'' is not
-entirely well-defined.  Solving this mismatch has two main steps.  The
-first is to recover the function structure of the program, and hence
-to assign identifiers to stack frames which might be relevant.  The
-function-local information can then be extended to say which frames a
-given pointer might refer to, rather than just providing a simple
-does/does-not point at the current frame flag.  Both of these phases
-are performed early, as part of the process of compiling CFGs to
-{\StateMachines}.
-
-\subsubsection{Recovering the function call structure}
+anything about other frames.  {\Technique}'s {\StateMachines} are,
+however, cross-function, and so even the idea of a ``current
+function'' is not entirely well-defined.  Solving this mismatch has
+two main steps.  The first is to recover the function structure of the
+program, and hence to assign identifiers to stack frames which might
+be relevant.  The function-local information can then be extended to
+say which frames a given pointer might refer to, rather than just
+providing a simple does/does-not point at the current frame flag.
+Both of these phases are performed as part of the process of compiling
+CFGs to {\StateMachines}.
 
 \todo{Frame ID assignment is done over the entire {\StateMachine},
   whereas static analysis incorporation is done independently for each
   entry point.  Not sure I make that terribly clear at the moment.}
 
-The initial \StateMachine building process can identify the start and
-end of functions by recognising \verb|call| and \verb|ret|
-instructions.  These are converted into placeholder
-\state{StartFunction($frame$, $rsp$)} and \state{EndFunction($frame$,
-  $rsp$)} side-effects, where $rsp$ is the stack pointer at the
-\verb|call| or \verb|ret| instruction and $frame$ is a placeholder for
-a frame identifier which will be assigned later.  These side-effects
-are similar to \state{Assert} ones in that they have no direct effect
-on the execution of the machine, but instead serve to provide hints to
-the analysis and to rule out certain uninteresting executions.  The
-task of this pass is to take these \state{StartFunction} and
-\state{EndFunction} side-effects and use them to determine the entire
-stack layout at every point in the \StateMachine, in terms of the
-sequence of frames which is on the stack and the boundaries between
-them.
-
-This might, at first, appear to be trivial.  To understand why it is
-not, it is helpful to consider a few simple examples.  First, suppose
-that the behaviour being investigated is in function \verb|f| and that
-it is called from \verb|g|:
+The first step in the encoding is to assign identifiers to all of the
+(dynamic) frames referenced by the program fragment being investigated
+and to establish the stack layout at every point in the
+{\StateMachine}, in terms of which frames are on the stack and where
+the boundaries between them are.  This might, at first, appear to be
+trivial.  To understand why it is not, it is helpful to consider a few
+simple examples.  First, suppose that the behaviour being investigated
+is in the second call to \verb|f| in \verb|g|:
 
 \begin{verbatim}
 g() {
@@ -2352,10 +2484,8 @@ l2:  f();
 }
 \end{verbatim}
 
-Where the behaviour to be investigated is in the second call to
-\verb|f| and the {\StateMachine} generated includes both calls.  The
-analysis should assign different frame IDs to the two calls, and so
-assigning the same frame ID to every instance of a given static
+The analysis should assign different frame IDs to the two calls, and
+so assigning the same frame ID to every instance of a given static
 function would be incorrect.  At the same time, simply assigning a
 different ID to every instance would also be incorrect.  For example:
 
@@ -2374,6 +2504,22 @@ Suppose that the \StateMachine being generated has entry points for
 both \verb|g| and \verb|h|.  Ideally, we would like to analyse the two
 instances of \verb|f| only once, to avoid doing redundant work, and
 this will only be possible if they are assigned the same frame ID.
+
+The initial \StateMachine building process can identify the start and
+end of functions by recognising \verb|call| and \verb|ret|
+instructions.  These are initially represented by placeholder
+\state{StartFunction($frame$, $rsp$)} and \state{EndFunction($frame$,
+  $rsp$)} side-effects, where $rsp$ is the stack pointer at the
+\verb|call| or \verb|ret| instruction and $frame$ is a placeholder for
+a frame identifier which will be assigned later.  These side-effects
+are similar to \state{Assert} ones in that they have no direct effect
+on the execution of the machine, but instead serve to provide hints to
+the analysis and to rule out certain uninteresting executions.  The
+task of this pass is to take these \state{StartFunction} and
+\state{EndFunction} side-effects and use them to determine the entire
+stack layout at every point in the \StateMachine, in terms of the
+sequence of frames which is on the stack and the boundaries between
+them.
 
 {\Technique} solves this problem by recasting it as a simple
 constraint solving one.  A \state{StartFunction(frame)} side-effect
@@ -2408,71 +2554,64 @@ of the side effects once the {\StateMachine} is converted to SSA form.
   interestingness justifies the amount of space needed to describe
   them properly.}
 
-Once frame IDs have been allocated and assigned to side effects, the
-statically-determined aliasing information must be incorporated into
-the \StateMachine.  This has two components.  First, the
-\state{StackLayout} side-effects are extended with a set of flags
-saying which frames might be pointed at by some memory location when
-the {\StateMachine} starts.  Next, a special \state{PointerAliasing}
-side effect is added for each register specifying whether that
-register might point at non-stack memory and the set of stack frames
-which the register might point at when the {\StateMachine} starts.
-This information can be derived easily from the results of the static
-alias analysis:
-
-\todo{Good God I'm making a meal of explaining this.}
+The next step, once frame IDs have been allocated and the stack layout
+determined, is to incorporate the information from the static analysis
+into the {\StateMachine}.  As discussed above, the necessary
+information is, for each frame, when the {\StateMachine} starts:
 
 \begin{itemize}
 \item
-  Set privateFrames to the set of all possible frames.
+  Whether the frame might contain a pointer back to itself;
 \item
-  Walk over all of the things in the entry stack i.e. the set of
-  return addresses on the stack i.e. the inlining context at the start
-  of the {\StateMachine}.
+  Whether there might be any pointers to the frame from somewhere
+  other than the frame itself; and
 \item
-  For each call in the stack, check the static analysis to see whether
-  the stack leaks into that function call.  If it does, erase the
-  calling from the privateFrames set.
-\item
-  Anything not in privateFrames is marked as leaked in the initial
-  stack layout side effect.  This means that the initial memory layout
-  might contain pointers to those frames.  Note that some frames will
-  not be in the initial layout, and these will never be marked as
-  leaked, which makes sense, because they don't exist when the
-  {\StateMachine} starts.
-\item
-  The \state{PointerAliasingSet} for RSP can point at any frame at
-  all.  This is necessary because we consider $r+k$, where $k$ is a
-  small constant, to point at the same place as $r$, and we do
-  cross-function register value propagation, which means that it's
-  common for all stack accesses to be expressed relative to the
-  initial value of RSP.
-\item
-  For other \state{PointerAliasingSet} side-effects:
-
-  \begin{itemize}
-  \item The register is marked as potentially pointing at any frame
-    which is in the entry stack and which isn't a private frame and
-    which isn't the innermost frame.
-  \item The register is marked as potentially pointing at non-stack
-    memory if the stack analysis said it might point at non-stack
-    memory.  There's a subtlety here: the static analysis' idea of
-    non-stack memory includes other stack frames, whereas the
-    side-effect's idea doesn't.  Need to explain quite carefully why
-    that's sound.
-  \item For the innermost frame, a register is marked as pointing at
-    the frame if the static analysis says that it might.
-  \end{itemize}
+  Which registers might contain pointers to the frame.
 \end{itemize}
 
-The point here is to allow the analysis to look beyond the analysis
-window, increasing the amount of information to which it has access
-without needing to pay the whole cost of symbolically analysing every
-function in the inlining context.
+Suppose the call stack consists of functions $f$, $g$, and $h$, where
+$h$ is the function executing when the {\StateMachine} starts.  The
+static analysis then makes determining this information for $h$'s
+frame trivial, as this is precisely the contents of $h$'s instruction
+label\editorial{\emph{Almost} precisely, anyway}, but $f$ and $g$'s
+frames present somewhat more difficulty.  One obvious approach would
+be to determine the disposition of $g$'s frame directly from the
+static analysis instruction label for the \verb|call| from $g$ to $h$
+but this is not sound because the prefix part of $h$ which is not
+included in the {\StateMachine} might store $g$'s frame to somewhere
+unexpected.  Instead, {\technique} conservatively assumes that if
+$g$'s frame ever reaches the start of $h$, either by being stored to
+memory or by being placed in one of $h$'s argument registers, the
+prefix of $h$ might copy the frame into anything which it can reach:
+every register, non-stack memory, and every stack frame which it can
+reach.  Likewise, $f$'s frame is assumed to have escaped to everywhere
+if it can reach any of $g$'s arguments.  This, in effect, flattens the
+static analysis instruction label for all functions except the current
+one into a single stack-has-escaped flag, which is in many cases
+overly conservative but is in all cases safe\editorial{Or at least,
+  it's safe whenever the static analysis itself is safe, which is as
+  close as you're going to get here.}
 
-\todo{This has interesting interactions with cross-thread \StateMachines.}
+Finally, the information obtained can be incorporated into the
+{\StateMachine}.  It takes the form of a couple of special
+side-effects.  The \state{StackLayout} side-effect is augmented with
+additional flags saying, for each frame, whether that frame might
+point at itself and whether anything else might point at it.  In
+addition, a \state{PointsTo} side-effect is added for every register,
+saying which initial frames the initial value of that register might
+point at.
 
-\subsection{The actual alias analysis}
+\todo{Mention that RSP's \state{PointsTo} says that it can point at
+  any frame, not just the current one, because of the way
+  cross-function constant propagation works.}
+
+\todo{Good God I'm making a meal of explaining this.}
+
+\todo{Maybe talk about interactions with cross-thread \StateMachines?
+  They're not actually very interesting, but it's kind of an obvious
+  omission.}
+
+\subsubsection{The actual alias analysis}
 
 \todo{Really need to look at some standard compiler alias analyses to
   figure out how novel this actually is.  It'll need some description
@@ -2483,107 +2622,214 @@ function in the inlining context.
 \todo{I should probably describe the use-initial-memory pass as an
   important special case here.}
 
-The main aliasing analysis used in {\technique} is a hybrid points-to
-and aliasing analysis, in the sense that it inductively builds both
-the points-to and aliasing tables using another fixed point iteration.
+\todo{Hmm.  The more I write this out, the less convinced I am that
+  it's actually correct.  Whoops.}
 
-Key data structures:
+\todo{Should probably define what I mean by ``satisfying'' a load
+  about here.}
+
+There is some standard terminology for describing compiler alias
+analyses\editorial{Cite Hind 2001.}.  It does not apply perfectly in
+this context, but here's an attempt to do so anyway:
 
 \begin{itemize}
 \item
-  Aliasing table -- for each memory accessing operation a set of other
-  memory accessing operations which occur before it in the machine and
-  which it might interfere with.  Also flags saying whether a given
-  load might load the initial value of memory or something stored
-  by something outside of this \StateMachine.
+  The analysis is partly flow-sensitive.  Two accesses are only
+  considered to alias if the control flow of the {\StateMachine}
+  allows them to occur in an appropriate order, but higher-order
+  control flow dependencies are not tracked.
 \item
-  Points-to table -- a points-to class for each register and temporary.
+  The analysis is not context-sensitive in the usual optimising
+  compiler sense of examining a function's calling context.  On the
+  other hand, the {\StateMachine}-level analysis does use context
+  information from the static analysis phase.
+\item
+  The heap is not modelled at all.  Instead, the objects which are
+  pointed at are frames on the stack, or a special value indicating
+  that a value points at something other than a stack frame.
+\item
+  Aggregates, as such, do not really exist, and so aggregate modelling
+  is not entirely meaningful.  To the extent that it does mean
+  something, the analysis distinguishes aggregate fields.
+\item
+  The analysis operates on whole {\StateMachines}, and hence on small
+  fragments of the original program.
+\item
+  The alias representation is a hybrid, including both an explicit
+  alias table and a points-to table. \todo{Could actually build the
+    aliasing table lazily, which might be a bit faster but would make
+    everything much more confusing.}
 \end{itemize}
 
-Points-to table is a mapping from {\StateMachine}-level variables to
-pointer aliasing set, where a pointer aliasing set is a flag saying
-whether the location might point outside the stack plus a set of stack
-frames which it might point at, or a special value saying that it
-might point at any stack frame\editorial{XXX should really restrict
-  that to a particular thread's stack.}.  The alias table is a mapping
-from memory-accessing {\StateMachine} states to a set of
-memory-accessing {\StateMachine} states which occur before the first
-state and with which it might alias, plus flags saying whether the
-access might alias with accesses outside of the current
-{\StateMachine} and, for loads, a flag saying whether the load might
-load the initial contents of memory.
+The two key data structures here are the points-to table, which
+specifies which stack frames each frame or {\StateMachine}-level
+variable might point at, and the aliasing table, which maps from
+memory-accessing side effects to a set of side-effects with which they
+might alias.  They are built inductively, starting with
+conservative\editorial{Why?  Should be able to use aggressive tables
+  safely, and the results would probably be better.} initial values
+and then iteratively refining them until a fixed point is reached.
+This fixed point then allows aliasing queries between accesses to the
+stack to be resolved reasonably accurately\footnote{Remember that the
+  dynamic analysis already provides a way of resolving queries between
+  non-stack accesses.}, enabling a number of other useful
+simplifications such as store-load forwarding and the elimination of
+redundant store operations.
 
-The analysis starts by building the initial points-to table.  This has
-an entry for every variable which just says that that variable might
-point at anything\editorial{Why anything?  Surely points-at-nothing
-  would be valid here?  Or use the pointer aliasing set side
-  effects?}.  It then builds the initial aliasing table.  This is a
-simple mapping from \state{Load} side-effects to all of the stores
-which might reach it from a control-flow perspective, allowing for
-stores to the same location killing each other and restricted
-according to the dynamic aliasing model where that says anything at
-all.  Also restrict it to be compatible with \state{PointerAliasing}
-side effects.  Also restrict it using definitelyEqual() and friends.
-We then go and iteratively refine the points-to table and the aliasing
-table together.
+I now present the analysis in slightly more detail.
 
-Refining the points-to table: for each register, find the side-effect
-which defines it (which must be unique, because we're in SSA form) and
-calculate a new points-to set for the value computed by that
-side-effect.  For Loads this will involve consulting the aliasing
-table to find out what stores might satisfy the load and then
-effectively taking the union over all of them (if it's satisfied by a
-load then we use the points-to entry for the target of the load).
-This is further restricted to only consider loads which return
-pointers to frames which are live at the time of the load; that might
-need a little bit of effort to justify.  For Phi effects we just take
-the union of the points-to set of all input registers.
+The points-to table contains an entry for every {\StateMachine}-level
+variable which is ever modified by the {\StateMachine} giving the
+points-to set of the value assigned to that variable.  A points-to set
+in this context is roughly what you'd expect: a flag saying whether
+the variable might point at something other than the stack plus a set
+of stack frames which it might point at.  The initial table contains
+conservative sets which allow any variable to point at any location.
 
-Refining the alias table: basically walk over all of the entries and
-check that they're compatible with the current PTT, removing any which
-aren't.  That should eventually converge on something safe.
+It is possibly slightly surprising that the points-to table does not
+contain any entries for variables which are referenced but never
+modified.  These correspond to the initial values of program
+registers.  They are instead handled in a flow-sensitive way using the
+{\StateMachine}'s internal control flow and the \state{PointsTo}
+side-effects introduced earlier: whenever the points-to set of such a
+register is needed, the analysis examines all paths from the start of
+the {\StateMachine} to the point at which the set is needed, finds the
+\state{PointsTo} for the register along the path, and then takes the
+union of the sets over all paths.  If any path does not have such a
+set then the result is a safe points-to set which can point at
+anything.  This allows the analysis to correctly incorporate the
+results of the static analysis even for {\StateMachines} with multiple
+entry points with different initial points-to configurations.
+\todo{The actual approach is a bit less stupid than this and avoids a
+  lot of redundant work, but this is complicated enough already
+  without need to drag in all that stuff.}
 
-Things to do with these tables:
+The alias table is a mapping from \state{Load} side-effects in the
+{\StateMachine} to other memory-accessing side-effects in the
+{\StateMachine}, plus flags indicating whether a given might load from
+the initial state of memory or load the result of a store in another
+{\StateMachine}\footnote{The latter is useful when simplifying
+  single-threaded {\StateMachines} prior to considering their
+  interactions with other threads.}.  Building the initial aliasing
+table is somewhat more complex than the initial points-to table, as it
+incorporates some control-flow information from the structure of the
+{\StateMachine} and information from the dynamic analysis.
+
+The first stage of building the initial aliasing table is an $O(n^2)$
+possibly-reaching analysis.  This builds up a complete table saying,
+for each state of the {\StateMachine}, which memory accesses might
+occur before that state which aren't killed before reaching the state.
+The definition of killed is moderately interesting: an access is
+killed by another access which definitely accesses the same location,
+according to some simple arithmetic rules on the address expression,
+regardless of whether the killing access is a store or a load.  The
+point is that if you have a store followed by two loads to the same
+location then it's safe to only consider forwarding from the first
+load to the second, and not from the store to the second load, and
+doing so gives you a smaller possibly-reaching set, which makes the
+rest of the analysis a bit easier.
+
+Once the possibly-reaching analysis is complete, we winnow it back
+down to an actual aliasing table by removing the entries for things
+other than loads and eliminating anything where the dynamic analysis
+suggests that aliasing is impossible.  \todo{Need a two-step process
+  because otherwise the data flow doesn't work.}  Slight oddity: we
+keep any store which might possibly alias, but loads only if they
+definitely do; need to explain why that's sound wrt to the
+loads-kill-accesses thing in the initial possibly-reaching analysis.
+
+\todo{Also need to talk about how you set the might-load-initial flag.
+  The might-load-external is a bit more obvious, but might still need
+  a sentence or two.}
+
+Once the initial tables have been built, the analysis proceeds to
+refine them until they accurately reflect the {\StateMachine}'s actual
+behaviour.  Refining the alias table is straightforward: simply
+iterate over every entry and compute the points-to set for the two
+accesses.  If they do not overlap, remove the entry from the table.
+
+Refining the points-to table is likewise simple: for each variable,
+the analysis finds the side-effect which defines it (which must be
+unique, because the {\StateMachine} is in SSA form) and calculate a
+new points-to set for the value computed by that side-effect, and this
+is used to update the entry in the table.  In the case of \state{Load}
+side-effects this will involve examining the alias table and computing
+points-to sets for every possibly-aliasing memory access and taking
+the union.
+
+Possibly slightly surprising: a load $l$ can never return a pointer to
+a stack frame $s$ if $s$ is not on any thread's stack when $l$
+executes, even if $l$ is satisfied by a store which might have stored
+$s$.  This is because of the call-allocates-stack-frames rule: if $s$
+is dead when $l$ executes then any access to $s$ after being loaded by
+$l$ would be a use of freed stack memory, and we assume that that
+never happens. \todo{Need to argue this a bit more carefully.}
+
+Also need to talk about what happens wrt initial memory loads.  I
+should probably have mentioned initial memory load expressions some
+time before this, to be honest.
+
+\subsubsection{Using the results of the analysis}
+
+The result of this analysis is an aliasing table which says, for each
+load, which other stores or loads might possibly satisfy it.  This
+information can be used to simplify the {\StateMachine} in a number of
+useful ways:
 
 \begin{itemize}
 \item
-  Forwarding from stores to loads.  If the load can only be satisfied
-  by a single store, and there are no possible interfering external
-  stores and no possibility of loading the initial contents of memory,
-  the store can be forwarded to the load.
+  Forwarding values from stores to loads.  If the load can only be
+  satisfied by a single store, and there are no possible interfering
+  external stores and no possibility of loading the initial contents
+  of memory, the load can be replaced by a copy of the value written
+  by the store.  Note that this is safe because the {\StateMachine} is
+  in SSA form, and so this cannot involve moving an expression which
+  references a value across a definition of that value, and because of
+  the initial control-flow dependent aliasing table, which ensures
+  that this cannot introduce any additional uses of uninitialised
+  variables.
 \item
   Likewise, if there are no satisfying stores and no external stores
-  then we can replace the load with a copy from an initial memory
+  then the load can be replaced by a copy from an initial-memory
   expression.
 \item
-  If there are multiple satisfying stores we use the control
-  dependence graph\needCite{} to try to build an MTBDD which selects
-  an appropriate store to forward from.
+  If a \state{Load} has multiple potentially-satisfying stores, and no
+  external stores, the load can sometimes be replaced with an MTBDD
+  which selects amongst the various possible \state{Store}s and
+  forwards from an appropriate one, using an algorithm essentially
+  identical to that used when eliminating \state{$\Phi$} states.
 \item
-  If something gets loaded twice replace the second one with a copy
-  c.f. compiler avail expression analysis.
+  If the same location is definitely loaded twice, with no intervening
+  stores and not potential external stores, the second load can be
+  replaced with a simple copy from the result of the first one.  This
+  is essentially the same idea as the standard compiler available
+  expression\needCite{} optimisation.
 \item
-  Removing stores which are definitely never loaded.
+  Stores which are definitely never loaded can also sometimes be
+  eliminated.  This is, of course, only safe if the {\StateMachine}
+  being optimised is not the write-side {\StateMachine}, or if the
+  dynamic analysis can show that the store is definitely
+  thread-private.
 \item
-  Removing \verb|StackLayout|, \verb|StartFunction|,
-  \verb|EndFunction| side effects which aren't useful any more.
+  Finally, \state{StackLayout}, \state{StartFunction}, and
+  \state{EndFunction} side-effects can be removed if it can be shown
+  that no memory access ever accesses the relevant stack frames.
 \end{itemize}
-
-Probably also want some discussion about when this is safe w.r.t.
-multi-threaded behaviour.
 
 \subsection{Variable unification}
 \label{sect:unification}
 
-The analysis can sometimes lead to there being multiple fragment in a
-single \StateMachine which differ only in variable and register names.
-The variable unification pass attempts to unify these fragments
-together by renaming variables.  This is conceptually rather simple:
-find all of the places in the \StateMachine where two states are
-identical except for variable names, build a new fragment of
-\StateMachine which is equivalent to both input fragments, and then
-replace the old fragments with the new one.  The details are, however,
-moderately subtle, and I now discuss them briefly.
+The various {\StateMachine} simplifications can sometimes lead to
+there being multiple fragments in a single \StateMachine which differ
+only in variable and register names.  The variable unification pass
+attempts to unify these fragments together by renaming variables and
+introducing additional copies, while maintaining SSA form.  This is
+conceptually rather simple: find all of the places in the
+\StateMachine where two states are identical except for variable
+names, build a new fragment of \StateMachine which is equivalent to
+both input fragments, and then replace the old fragments with the new
+one.  The details are, however, moderately subtle, and I now discuss
+them briefly.
 
 First, the definition of ``identical except for variable names''
 includes the successor pointers of the state but not the predecessor
@@ -2711,8 +2957,9 @@ determine whether a \verb|Phi| can select the right one (failing if
 not), and then generate the unifier itself in the obvious way.
 
 \todo{I'm a little worried here that this is really very similar to
-  the unification algorithm, and the terminology is also very similar,
-  but they're not *quite* the same, which might be a bit confusing.}
+  the theorem-prover or Prolog style unification algorithms, and the
+  terminology is also very similar, but they're not *quite* the same,
+  which might be a bit confusing.}
 
 \todo{Should probably have a more realistic example, really; this one
   makes it look like this is something which won't happen very often,
@@ -2732,19 +2979,19 @@ sets\editorial{Need to either say more or move this to some place a
 
 \subsubsection{Frame pointer elimination}
 
-One possibly surprising property of SLI is that it is somewhat more
+One possibly surprising property of SLI is that it is sometimes more
 effective on programs built with compiler optimisations enabled than
 it is on unoptimised builds, as optimising compilers are generally
 quite good at removing unimportant steps from the program.  The most
 important compiler optimisation, from SLI's perspective, is frame
 pointer elimination.  When frame pointers are in use the program
 maintains two pointers into the current stack frame, the stack pointer
-and the frame pointer, usually with a fixed offset between them, and
-the compiler emits some stack accesses relative to the stack pointer
-and some relative to the frame pointer.  This complicates alias
-analysis for accesses to function-local variables.  SLI therefore uses
-a static analysis to rewrite frame pointer-relative accesses into
-stack pointer-relative ones wherever possible.
+and the frame pointer and the compiler emits some stack accesses
+relative to the stack pointer and some relative to the frame pointer.
+This complicates alias analysis for accesses to function-local
+variables.  SLI therefore uses a static analysis to rewrite frame
+pointer-relative accesses into stack pointer-relative ones wherever
+possible.
 
 The core structure produced by this analysis is a table mapping
 instructions in the program to the offset from the stack pointer to
@@ -2805,114 +3052,4 @@ In more detail:
 The resulting offset table accurately reflects the properties of the
 program.
 
-
-
-\subsection{Canonicalising machines}
-
-The crash summaries generated by this analysis often contain a lot of redundant information, and this complicates later analysis, and also makes manually reviewing the generated summaries quite difficult.
-SLI therefore implements some canonicalisation passes which remove some of this redundancy.
-
-\todo{Caution, brain dump ahead}
-
-\subsection{Phase 2 canonicalisation}
-The \StateMachines generated by the analysis can include some
-information which is helpful to the analysis but not usually directly
-relevant to understanding the bug which is being described.  The main
-examples are start and end of function markers and assertions.  For
-instance, suppose that the program looks like this:
-
-\begin{verbatim}
-f1() {
-    if (complicated_condition1)
-        return;
-    g()
-}
-f2() {
-    if (complicated_condition2)
-        return;
-    g()
-}
-\end{verbatim}
-
-And that the \StateMachine for \verb|g| is \verb|g'|.
-The state machines for $f1$ and $f2$ might then be:
-
-\begin{verbatim}
-f1: Assert (!complicated_condition1)
-    g'
-f2: Assert (!complicated_condition2)
-    g'
-\end{verbatim}
-
-It is useful to retain \verb|complicated_condition1| and \verb|complicated_condition2| while generating the summaries, because they may contain information important to the bug, but once the summaries have been generated they become much less useful.
-At this point, the only effect of the assertions is to make summaries which would otherwise be identical look like they are different.
-Assertions are therefore removed completely during summary canonicalisation.
-
-Likewise, function start and end markers are only used to determine when on-stack variables become live and dead, which is useful during analysis but becomes redundant once the full aliasing table is available.
-They are therefore removed at this stage.
-
-\subsection{Phase 3 canonicalisation}
-
-Something about load canonicalisation, and why it has to be reversed later?
-
-Important thing to worry about here is satisfiability of verification condition.
-
-\subsubsection{Equality substitution}
-Find equality constraints in the verification condition and use them to eliminate register from the summary.
-This is done even when the result is more ``complex'' than the original input summary.
-Approach is to find all of the registers which we can eliminate, then pick the one which occurs most often and eliminate it, then repeat until we can't eliminate anything else.
-
-\todo{Need to come up with a coherent explanation of why doing this during analysis is bad.  Experimentally, it is, but it's not entirely obvious why that should be so.}
-
-\subsubsection{Assume that the machines survive when run in isolation}
-The verification condition includes the R atomic and W atomic assumptions.
-These are necessary for the analysis to be valid, but tend not to provide a great deal of useful information.
-This canonicalisation phase removes those components of the condition.
-It re-derives the R atomic and W atomic assumptions as conditions, and then simplifies the verification condition and the \StateMachines under the assumption that they hold.
-
-\subsubsection{Removal of redundant clauses}
-The verification condition can sometimes include constraints on registers and memory locations which do not occur anywhere in any of the \StateMachines, usually because the \StateMachines have been simplified after the relevant part of the condition was derived.
-In the simplest case, these variables are completely independent of the interesting variables.
-\todo{Interesting variables are those which appear, or might appear (e.g. LD aliasing), in the \StateMachines.}
-To find these, convert the verification condition to conjunctive normal form and then draw a graph whose nodes are variables and which has an edge between A and B if there is any clause in the verification condition which mentions both A and B.
-Now find the connected components in this graph, $C_i$.
-The verification condition can then be written as $f_1(C_1) \wedge f_2(C_2) \ldots$.
-If any of the $C_i$ don't mention any variables in the interesting set then $f_i(C_i)$ can be set to true and hence discarded.
-
-This is safe if $f_i(C_i)$ is satisfiable, which is the common case anyway.
-
-\subsubsection{Removal of underspecified clauses}
-
-If a free variable (i.e. one which isn't mentioned in the \StateMachines) occurs in precisely one place in the verification condition then it is referred to as being underspecified.
-This means that, from the point of view of satisfiability checking, it can be set to anything at all, without reference to the rest of verification condition, which in turn means that certain clauses can become trivially satisfiable.
-For instance, if $x$ is underspecified in this sense, and the verification condition includes the clause $x == y$, then a satisfiability checker would be able to select an $x$ to make that either true or false, and so our simplifications can assume that $x == y$ is either true or false according to whatever happens to be most convenient in context.
-
-\subsubsection{Functionalisation/conditional independence}
-
-This is analogous to the SSA transformation, but for boolean expressions rather than for programs.
-The idea is that if you have a function of two free variables $f(x, y)$, you can treat $y$ as a function of $x$ to get $f(x, y_x)$
-If $x$ and $y$ are boolean variables then you can then do a case split on $x$ to get $(x \wedge f(T, y_T)) \vee (\not{}x \wedge f(F, y_F))$.
-$y_F$ and $y_T$ are then separate variables, and the two $f$ cases can be subjected to redundant clause removal and underspecified clause removal independently.
-
-\todo{This is in dire need of an example.}
-
-\todo{This is a lot like re-encoding the program's control flow into
-  the verification condition, but in a way which is kind-of minimal
-  and only contains the bits of control flow which are actually
-  relevant.}
-
-\todo{There are some interesting parallels with Skolemization here.
-  In fact, this is almost the precise opposite of conversion to Skolem
-  normal form.}
-
-
-\section{Comparison to decompilation techniques}
-Not sure what I'm going to put in here, but it seems kind of necessary.
-Generally need to spend some more time looking at the decompilation literature.
-
-\todo{One obvious decompilation technique which I'm \emph{not} using is local variable recovery.  Should really explain why I didn't use it.}
-
-\section{Comparison to reverse slicing techniques}
-Surprisingly few, but probably worth discussing here anyway.
-Pretty much all of the existing slicing literature is on source-level stuff, rather than binary-level, but there are still a few parallels.
 
