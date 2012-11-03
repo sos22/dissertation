@@ -2464,6 +2464,8 @@ place\footnote{One obvious exception would be functions whose stack
   discovery algorithm and so no patch can be generated for them
   anyway.}.
 
+\todo{I'm going to need an example here.}
+
 A further minor consideration is performance.  If we have to validate
 several similar contexts then we generally want to avoid testing the
 same memory locations more times than is necessary.  The validation
@@ -2503,90 +2505,462 @@ avoid the branch-to-corrupt-instruction problem.
 
 The result is that the code in the duplicated patch fragment is not
 quite an exact match for that in the original program, even ignoring
-the additional lock acquire and release operations.  The approach used
-is similar to that used in building cross-product {\StateMachines}, as
-discussed in section~\ref{sect:using:build_cross_product}.  Here, the
-configurations used are drawn from the set:
+the additional lock acquire and release operations.  The simplest way
+of thinking about this is to first augment the machine code semantics
+so as to include the necessary additional information and then to
+define a partial evaluation from the augmented semantics back to the
+original one.
 
-\begin{displaymath}
-  checkForEntry \times locked \times (rip \dot{\cup} (2^{\textrm{CFG node}} \times restoreRedzone \times finishCallSequence))
-\end{displaymath}
-
-Where $\times$ indicates cross-product, $\dot{\cup}$ indicates disjoint
-union, and $2^{\textrm{CFG node}}$ indicates the power set of CFG
-nodes.  It is worth explaining this in slightly more detail before
-explaining the actual algorithm:
+The state of a thread in the augmented semantics consists of all of
+the state of a thread in the original semantics, including things like
+the per-thread processor registers and instruction pointer, plus a
+little bit of additional state:
 
 \begin{itemize}
-\item $checkForEntry$ is a boolean flag indicating whether the
-  labelled fragment of machine code must check for any additional
-  CFGs entering the critical section.
-\item $locked$ is a boolean flag saying whether the lock is
-  held when the labelled machine code is entered.
-\item $rip$ is the raw instruction pointer of an instruction in the
-  program.  This field is present if the labelled machine code is
-  implementing an instruction which is not supposed to be protected
-  but was included by the patch strategy to avoid branches to corrupt
-  instructions.  The labels are referred to later as ``simple''
-  labels; other labels are referred to as ``compound''.
-\item The set of CFG nodes indicates where abouts in the fragments
-  to be protected the program is currently executing.
-\item $redzone$ is a boolean flag indicating whether the AMD64
-  red zone is currently present on the stack.  The red zone must be
-  present whenever running any stack-accessing instructions from the
-  original program but must be cleared at various points in the
-  protection framework.
-\item $finishCallSequence$ is either a 64 bit value which contains the
-  return address of an indirect function which the patched program
-  just executed.  Handling of indirect function calls is difficult
-  here and is discussed in more detail later on.
+\item $checkForEntry$ -- a flag indicating whether the thread needs to
+  check whether it has entered any additional CFG fragments.
+\item $locked$ -- a flag indicating whether the thread currently holds
+  the patch lock.
+\item $cfgNodes$ -- a set of nodes taken from the CFG fragments
+  indicating which instructions the thread might currently be
+  executing.  This might be empty if the thread is currently executing
+  one of the instructions added to the $Cont$ set by the patch
+  strategy to avoid the branch-to-corrupt-instruction problem.
 \end{itemize}
 
-The stack validation code generates an a branch to an initial label
-from every leaf of its validation tree.  This initial label will be
-a compound label:
+The idea is that the context validation logic transfers from the
+original semantics to the augmented semantics when it discovers that
+the thread has reached the entry point of one the CFG fragments.  The
+initial augmented state is then the state of the original program at
+the entry point, plus:
 
 \begin{itemize}
-\item $checkForEntry$, $locked$, $finishCallSequence$, and $redzone$
-  are all clear.
+\item $checkForEntry$ and $locked$ are clear.
 \item The set of CFG nodes is precisely the set which match the
   current call context.
 \end{itemize}
 
-I now give details of the machine code and successor labels generated
-for the various relevant combinations of label and underlying
-instruction.
+Conceptually, the patch then takes control of the program and
+interprets it using the augmented semantics.  Such an interpreter
+would be quite simple:
 
 \begin{itemize}
-\item $finishCallSequence$ is the first flag checked; handling of this
-  is deferred until the call sequence logic has been explained.
-\item
-  If the $checkForEntry$ flag is set then we generate a call context
-  validation tree which checks whether any additional CFGs need to be
-  started and, if so, branches to an appropriately-extended label.  In
-  any case, the new label will have the $checkForEntry$ flag clear.
-\item
-  If the $locked$ flag is set in a simple label then code is emitted
-  to drop the lock.  Likewise, if the flag is clear in a compound
-  label then code is emitted to acquire it.  Acquiring or releasing
-  the lock is only possible when the red zone is clear.  As a minor
-  optimisation, clearing the red zone is skipped if the $redzone$ flag
-  is set.  The successor label will have an appropriately-updated
-  value for the $locked$ flag and the $redzone$ flag set.
-\item
-  If the current label is compound, but the set of CFG nodes is empty,
-  the critical section has finished and the result is a branch to a
-  simple label with an appropriate $rip$.
-\item
-  If the current label is simple, and the $rip$ is not in the $Cont$
-  set of the patch strategy, the result is a simple branch back to the
-  matching instruction in the original program.
-\item
-  If none of those tests fire then the original instruction is
-  decoded.
+\item[\textbf{Unlock}] The interpreter would first check whether it
+  needs to release the lock.  It should do so whenever $locked$ is set
+  and $cfgNodes$ is empty, clearing $locked$ as it does so.
+\item[\textbf{CheckForEntry}] If the $checkForEntry$ flag is set then the
+  interpreter would examine the current call stack and the possible
+  set of CFG fragment entry points to determine whether any new CFG
+  fragments have started.  If so, the relevant CFG nodes added to
+  $cfgNodes$.  In either case, $checkForEntry$ is cleared.
+\item[\textbf{Return}] The interpreter would then consider returning
+  to the program's normal semantics.  If $cfgNodes$ is empty and the
+  instruction pointer is not part of the patch strategy's $Cont$ set
+  then it is safe to exit the interpreter and return to the program's
+  normal semantics.
+\item[\textbf{Lock}] The interpreter now acquires the lock, provided
+  that $cfgNodes$ is non-empty and $locked$ is currently clear, set
+  $locked$ as it does so.
+\item[\textbf{Issue}] Finally, the interpreter emulates the program's
+  original instruction, using the un-augmented semantics.  This will
+  update the thread's instruction pointer, and the interpreter can
+  easily use this to determine which CFG nodes the thread might
+  execute next and hence the new value of $cfgNodes$.
 \end{itemize}
   
-\todo{There is almost certainly a better way of describing this.}
+Such an interpreter would correctly enforce the desired lock
+discipline, in the sense that the lock would always be held whenever
+the program executes one of the CFG fragments which are to be
+protected, but would have two major disadvantages:
+
+\begin{itemize}
+\item Emulating machine code instructions is usually quite slow, which
+  could lead to unnecessarily high performance overhead.
+\item Instruction emulators are extremely complex pieces of code, and
+  so it is difficult to have complete confidence that the fix does not
+  change the program's behaviour in unintended ways.
+\end{itemize}
+
+Both of these disadvantages are shared with the use of an interpreter
+in crash enforcers, but are far more serious here, as crash enforcers
+are intended as temporary debug aids whereas the generated fixes might
+be deployed in production environments for significant amounts of time
+before a real fix becomes available.  {\Technique} therefore refines
+on this interpreter scheme by partially evaluating the
+interpreter\needCite{} back into machine code in the unaugmented
+semantics, and it is the result of this partial evaluation which forms
+the body of the patch.  In effect, the augmented state is encoded into
+the instruction pointer, allowing the patch to emulate the interpreter
+without it ever needing to be present.  Updating part of the augmented
+state then becomes a simple branch instruction.  None of the augmented
+interpreter state is ever stored in memory or processor registers,
+minimising the unnecessary perturbation of the program.
+
+In a little more detail:
+
+\begin{itemize}
+\item The \textbf{CheckForEntry} state partially evaluates to a stack
+  context validation tree, as discussed earlier.  The leaves of this
+  validation tree will contain branches to augmented instructions in
+  the \textbf{Return} state with an appropriately-augmented $cfgNodes$
+  set\editorial{The \textbf{Return} state will then immediately
+    discover that $cfgNodes$ is non-empty and move to \textbf{Lock},
+    but actually saying that makes the parallels with the interpreter
+    a bit less obvious.}.
+
+  The current (unaugmented) instruction pointer and current $cfgNodes$
+  set usually place significant constraints on the set of entry points
+  which the thread might currently be executing, and so the validation
+  tree can often itself be partially evaluated to determine precisely
+  which CFG nodes must be executed next.  In that case, the tree is
+  replaced with a simple branch instruction.
+\item \textbf{Lock} and \textbf{Unlock} states partially evaluate to a
+  possible call to a lock acquire or release function, as appropriate,
+  followed by a simple branch to the next state.
+\item \textbf{Return} states partially evaluate to either a branch
+  back to the original program code, if $cfgNodes$ is empty and the
+  address to return to is not in the patch strategy's $Cont$ set, or a
+  branch to the \textbf{Issue} state otherwise.
+\item Most of the time, the \textbf{Issue} state partially evaluates
+  to the relevant instruction of the original program which can
+  execute in the augmented semantics without modification.  The main
+  exceptions are instruction pointer-relative data addressing modes,
+  which must be re-encoded to reference the correct data relative to
+  the new instruction pointer, and control flow instructions, which
+  are more complex.  Assuming that this is not a control flow
+  operations, the state updates $cfgNodes$ to contain all of the CFG
+  nodes which are successors of current members of $cfgNodes$ and
+  whose instruction pointer matches that if the desired successor
+  instruction and then returns to state \textbf{CheckForEntry}.
+\end{itemize}
+
+Partially evaluating one augmented state then produces a small
+fragment of machine code and a set of successor augmented states.
+Building the patch then amounts to initialising a queue of states with
+the initial state and then iteratively selecting a state from the
+queue, partially evaluating it, placing the new states in the queue,
+and continuing until no further states need to be generated.  The
+machine code fragments can then be stitched together to produce the
+final patch.
+
+As a minor optimisation, {\implementation} eliminates branch
+instructions which target the immediately following instruction.
+
+One non-obvious complication here is that calling the lock acquire and
+release functions is not completely trivial, due to the presence of a
+stack red zone in the AMD64 ABI\needCite{}.  This is a 128 byte region
+immediately below the stack pointer which is available for program
+use.  It is important that the generated patch not corrupt values in
+this region, which means that the patch cannot save clobbered
+registers by simply pushing them on the stack as a patch to an i386
+program might.  It must instead first clear the red zone from the
+stack by adjusting the RSP register and then restore it later before
+executing any instructions from the original program which depend on
+it.  At the same time, we would like to avoid redundant clearing and
+restoring the red zone more often than is strictly necessary.
+{\Implementation} therefore extends the augmented state with an
+additional field, $redzone$, indicating whether the red zone has been
+cleared, allowing red zone clearing to be performed precisely when
+necessary.
+
+One concern here might be that modifying the program's stack in this
+way might confuse another thread which is simultaneously examining the
+stack.  Such cross-stack accesses are rare in most programs anyway,
+and in any case are handled correctly for correct programs here
+because the modified stack pointer never escapes into any of the
+original program's code.  This means that the modifying thread will
+not be able to determine that additional stack space has been
+allocated, and so will only be able to tell that the stack has been
+modified if it is accessing what is, as far as it can tell, memory
+past the end of the stack.  This is not allowed by the ABI, and so
+correct programs will not do it.  You might suspect that operating
+system introspection services such as \verb|ptrace| would allow the
+remote thread to tell that the stack pointer register has been
+modified, but this is highly unlikely, at least on modern versions of
+Linux, which prohibit one thread in a program from calling
+\verb|ptrace| on another\needCite{}.  The remote thread would
+therefore need to coordinate the \verb|ptrace| operation with another
+process, and such an unlikely configuration is ignored here.
+{\Technique} does not claim to be able to protect programs which are
+actively trying to avoid its protection, and so the fact that the
+generated patches misbehave on some actively malicious program is not
+a problem such behaviour is sufficiently rare in real programs.
+
+\todo{Signal handlers can also leak the fact that we've extended the
+  stack.  Also need to talk about why there's no realistic risk of
+  running out of stack space here.}
+
+Control flow operations are not completely trivial to represent in
+this model.  Direct control flow, where the target of the control flow
+transfer is immediately apparent from the instruction itself, is
+relatively easy and can be handled by comparing the target address to
+the possible successors of all of the CFG nodes in $cfgNodes$ and
+generating a new successor state with $cfgNodes$ appropriately
+updated.  Indirect control flow is more difficult and requires run
+time validation of the target address.  There are three main cases to
+consider.
+
+\paragraph{Indirect jump instructions,} which simply set the instruction pointer
+to a calculated value.  In order to partially evaluate these states
+{\technique} must examine all of the successors of nodes in the
+$cfgNodes$ set and segregate them by their instruction pointer.  The
+code generated for the state will compare the target of the branch
+instruction to each such instruction pointer in turn and, when one
+matches, jump to an augmented instruction with an appropriate
+$cfgNodes$ set.  If none match then the patch moves on to consider
+instructions in the patch strategy's $Cont$ set, comparing the
+generated branch target to each in turn and branching to an
+appropriate augmented instruction if any match.  Finally, if none of
+those match, the patch can exit the augmented semantics by directly
+branching to the computed branch target, dropping the lock first if
+necessary.
+
+A further complication is that computing the branch target might
+itself involve reading from memory, and this access might itself race.
+It would be unfortunate if this led to the patch branching to the
+wrong place, and so the patch must first capture the computed branch
+target to a register.  This means that the register must first be
+saved somewhere, so that it can be restored later, which in turn means
+that the red zone must be cleared.  Both of these operations must be
+undone later.  This is recorded by setting the $redzone$ field of the
+augmented state to the special $popreg$ value.
+
+Of course, setting $redzone$ does not actually help if the patch is
+about to return to the unaugmented program, as in that case $redzone$
+will never be examined.  In that case it is necessary to restore the
+register used to capture the computed branch target, restore the red
+zone, and then branch to the computed target, without using any
+additional registers.  The scheme used by {\implementation} uses a
+machine code fragment like this:
+
+\begin{verbatim}
+xchgq %rdi, (%rsp)
+ret $0x80
+\end{verbatim}
+
+Here, \verb|rdi| is the register used to store the computed branch
+target, the old value of \verb|rdi| was stored to the top of the stack
+before the branch was computed, and \verb|0x80| is the size of the red
+zone.  In this sequence, the \verb|xchgq| instruction swaps the top of
+the stack with \verb|rdi|, restoring the old value of \verb|rdi| and
+setting the top of the stack to the target of the branch and the
+\verb|ret| instruction then branches to this location and removes the
+top \verb|0x80| bytes from the stack, restoring the red zone.  The
+sequence therefore correctly implements the desired behaviour.  It
+does, however, have some unpleasant performance implications.  In
+particular, the \verb|ret| instruction does not match with any
+\verb|call| instruction, which can be extremely difficult for
+processor branch prediction units to handle\needCite{}, and if this
+leads to a branch misprediction then performance will be quite poor.
+
+Unfortunately, there is no other way of achieving the desired
+behaviour with the x86 instruction set without using additional
+registers, because the instruction and stack pointers must be modified
+simultaneously and \verb|ret| is the only instruction capable of doing
+so.  Modifying the instruction pointer before the stack pointer is
+obviously unprofitable, as modifying the instruction pointer means
+that we lose control of program execution and therefore never get the
+chance to perform the stack pointer modification.  Modifying the stack
+pointer first, though, sounds like it might be an effective strategy.
+The resulting fragment of code might look like this:
+
+\begin{verbatim}
+lea 0x80(%rsp), %rsp   ; Restore the red zone
+xchgq %rdi,-0x88(%rsp) ; Save the branch target and restore rdi
+jmp -0x88(%rsp)        ; Perform the branch
+\end{verbatim}
+
+Executed in isolation, this code correctly sets all three registers
+(\verb|rdi|, the stack pointer, and the instruction pointer), and
+avoids damage to the branch prediction units.  In a program running on
+most Unix-like operating systems, however, it contains a dangerous
+race with signals.  The target of the branch instruction is stored
+\verb|0x88| bytes below the stack pointer, just outside of the red
+zone.  If the program receives a signal immediately before executing
+the \verb|jmp| instruction then this is precisely the location at
+which the signal handling stack frame will be constructed, clobbering
+the branch target.  When the signal handler returns the program will
+almost certainly crash.  Avoiding this issue is impossible without
+forcing the program to use a dedicated signal stack, which is
+extremely fragile without cooperation from the program\footnote{An
+  alternative scheme would be to just disable signals during the
+  critical section.  This does not work, as the signal disposition
+  must be restored when the program resumes, which requires a system
+  call and hence the use of registers, which brings us back to the
+  original problem.}.
+
+\todo{Maybe explain why I'm happy to use the GS trick in the enforcers
+  but don't want to do so here?}
+
+\paragraph{Indirect call instructions,} which are similar to indirect jumps
+except that they also store the current instruction pointer to the
+stack.  The issues involved here are similar, except that the patch
+must store the return address in addition to maintaining the stack
+pointer and branching to an appropriate location.  If the interpreter
+is to continue then this can be accomplished by setting $redzone$ to
+another special value, $finishCall(return\_address)$.  Otherwise,
+the exit sequence can be modified slightly:
+
+\begin{verbatim}
+mov %rdi, 0x80(%rsp)
+mov 0(%rsp), %rdi
+lea 0x80(%rsp), %rsp
+call *0(%rsp)
+jmp return_address
+\end{verbatim}
+
+\todo{At the moment the implementation just uses the silly ret thing.
+  I should switch it over to that sequence, because it's awesome.}
+
+This perhaps requires some additional explanation:
+
+\begin{itemize}
+\item \verb|mov %rdi, 0x80(%rsp)|.  This stores the address which we
+  need to call into \verb|0x80(%rsp)|.  \verb|0x80| is the size of the
+  red zone, and so once the red zone has been cleared this will be
+  \verb|0(%rsp)|.
+\item \verb|mov 0(%rsp), %rdi|.  This restores the value of
+  \verb|%rdi| from the top of the stack.
+\item \verb|lea 0x80(%rsp), %rsp|.  This restores the program's
+  original red zone.  The address which is to be called is now at
+  \verb|0(%rsp)|.
+\item \verb|call *0(%rsp)|.  The effect of this instruction is
+  somewhat complicated: it sets the instruction pointer to the initial
+  contents of \verb|0(%rsp)|, then sets \verb|0(%rsp)| to the address
+  of the next instruction, and then decrements \verb|%rsp| by eight
+  bytes.  This means that the target function will be invoked with the
+  desired stack pointer and its return address set to the \verb|jmp|
+  instruction.
+\item \verb|jmp return_address|.  This runs once the called function
+  returns and immediately branches to the instruction after the
+  indirect call instruction.
+\end{itemize}
+
+This means that the indirect branch is correctly emulated, provided
+that the program never explicitly examines return address addresses on
+its stack, and the processor's branch predictor state is correctly
+maintained.  The potential race with signals is avoided completely
+because the address which is to be branched to is stored within the
+program's red zone.  Modifying the red zone is safe because we know
+that the \verb|call| instruction is itself about to overwrite the
+modified location\footnote{The exception is if another thread is
+  simultaneously examining this thread's call stack, in which case we
+  have potentially introduced an additional race condition.  Such a
+  race condition is implausible given common programming practices and
+  I ignore the possibility here.}.
+
+\paragraph{Return instructions,} which pop an address off of the stack
+and return to it.  If the $cfgNode$ set is currently non-empty then
+this is very simple because, by construction, when the $cfgNode$ set
+is non-empty the program's call stack must match the call stack in the
+CFG nodes.  That means that the return instruction can be partially
+evaluated without needing to examine the actual contents of the stack,
+and the only instruction which actually needs to be emitted is
+\verb|lea 8(%rsp), %rsp|, which pops the top value off the stack and
+discards the result.  \todo{Actually need a couple more
+  side-conditions on that, but they're not terribly interesting and
+  would just confuse things a bit.}
+
+An empty $cfgNode$ set is slightly more difficult to handle, but only
+slightly.  In this case, the generated code must examine the stack to
+determine the actual return address and compare it to the $Cont$ set,
+with any matches branching to an appropriate augmented state in the
+usual way.  These states will have $redzone$ set to $ret$, to cause
+appropriate handling of the return address.
+
+If the return address does not match in $Cont$ then the patch returns
+to the unaugmented program.  The exit fragment is very simple:
+
+\begin{verbatim}
+pop %rdi
+lea 0x80(%rsp), %rsp)
+ret
+\end{verbatim}
+
+This restores \verb|rdi|, used to store the return address, then
+restores the red zone, and finally issues a normal return instruction
+to return to the original program.  No particular special handling is
+required.
+
+
+The result of all of these manipulations is that {\technique} is able
+to maintain control of the program when necessary, and transfer back
+to the original program seamlessly when control is no longer
+necessary, and avoids excessive damage to the processor's branch
+predictor in most cases.  Unfortunately, this approach does not avoid
+branch predictor damage in every case.  In particular, branches within
+the patch are always emitted as simple branch instructions, even when
+the original program instruction was a \verb|call| or \verb|ret|.
+This means that the branch predictor call stack is correctly
+maintained if either the \verb|call| and \verb|ret| instructions are
+both contained in the patch or if they are both not part of the patch,
+but not when one is in the patch and the other is not.  \todo{I've not
+  found any way of avoiding that, and I'm half convinced it's
+  impossible, but I should really go and prove that.  Or at least come
+  up with an argument which is at least vaguely convincing.}
+
+\todo{Also get the call stack wrong for certain function-internal
+  indirect jumps.}
+
+These control-flow considerations somewhat complicate the partial
+evaluator.  The complete thing looks like this:
+
+\begin{itemize}
+\item Certain kinds of \textbf{Redzone} handling are performed early
+  in the partial evaluation process.  In particular:
+  
+  \begin{itemize}
+  \item If $redzone = popreg$, the partial evaluator emits the
+    instruction \verb|pop %rdi| and sets $redzone$ to $simple$.  The
+    value of \verb|rdi| is restored and the patch is left outside the
+    red zone.
+  \item If $redzone = finishCall(ra)$, the partial evaluator emits the
+    sequence \verb|pop %rdi; lea 0x80(%rsp), %rsp; pushq $ra| and sets
+    $redzone$ to $none$.  \verb|rdi| is restored, the red zone is
+    restored, and the return address is pushed.  The patch is now in
+    the red zone.  An alternative design would have been to leave the
+    patch outside of the red zone and track that eight bytes of the
+    zone have been consumed by the return address, which might
+    simplify some patches; {\implementation} does not do so purely to
+    keep the implementation reasonably simple.
+  \item If $redzone = ret$, the partial evaluator emits the sequence
+    \verb|lea 0x88(%rsp), %rsp| and sets $redzone$ to $none$.  The red
+    zone is restored and the return address popped.  As with the
+    $finishCall$ case, it would be possible to keep the patch out of
+    the red zone here at the expense of slightly greater complexity,
+    but {\implementation} does not attempt to do so.
+  \item $redzone = simple$ is left unchanged.
+  \end{itemize}
+\item \textbf{CheckForEntry}, \textbf{Lock}, \textbf{Unlock} and
+  \textbf{Return} are unchanged, beyond avoiding clearing the red zone
+  if $redzone = simple$ and setting $redzone$ to $simple$ when it does
+  need to clear the zone.
+\item \textbf{Issue} has to be extended with the final component of
+  red zone handling.  In particular, if $redzone \not= none$ and the
+  instruction to be issued might access the stack then the red zone
+  must be restored before the instruction executes.  At this stage,
+  the only possible values of $redzone$ are $none$ and $simple$, so
+  this can be accomplished with a simple \verb|lea 0x80(%rsp), %rsp|
+  instruction.  Also, the state now branches to \textbf{Redzone}
+  rather than \textbf{CheckForEntry}.  Apart from that, the handling
+  of the \textbf{Issue} state is unchanged.
+\end{itemize}
+
+Once all of the necessary augmented states have been partially
+evaluated the resulting machine code fragments can be stitched back
+together to form the final patch body.  The original program is then
+modified to branch to this patch body at all of instructions given in
+the patch strategy's $Patch$ set.  The ultimate result is that the CFG
+fragments never execute in parallel, completely fixing the bug with,
+usually, acceptably low overhead.
+
+
+\todo{Might want another example here.}
+
+\todo{I've avoided talking about the flags register here, because that
+  makes everything much more complicated and this is pretty fiddly as
+  it is.  Not sure if I can get away with that.}
+
 \subsection{Other ways of fixing the bugs}
 \todo{I've come up with an algorithm for doing this using a message
   passing network, like we do for crash enforcement but with the
