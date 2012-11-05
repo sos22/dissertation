@@ -1883,81 +1883,221 @@ f(x) {
 
 The use of SSA form simplifies many parts of the analysis by breaking
 up variables into their different live ranges, but complicates some
-parts by introducing $\Phi$ side effects, and these side effects are
-themselves quite difficult to analyse.  The state unification
-simplification described in section~\ref{sect:unification} can also
-introduce further $\Phi$ effects.  The fundamental problem here is
-that $\Phi$ effects depend on the control flow of the {\StateMachine},
-which is not explicitly reified and is hence unavailable to the usual
-simplification machinery.  This simplification pass attempts to
+parts by introducing $\Phi$ side effects, which are themselves quite
+difficult to analyse.  The state unification simplification described
+in section~\ref{sect:unification} can also introduce further $\Phi$
+effects.  The reason that $\Phi$ side effects are hard to analyse is
+that their behaviour depends on the {\StateMachine}'s control flow,
+and this is not explicitly reified and so is unavailable to the usual
+simplification machinery.  The $\Phi$ elimination pass attempts to
 rectify this problem by converting the $\Phi$ effects into
-MTBDD\needCite{} expressions over the {\StateMachine}'s existing
-control-flow predicates which select an appropriate input to the
-$\Phi$.  In this way the dependency of the $\Phi$ on the rest of the
-{\StateMachine}'s data is made explicit, and can hence be more easily
-used to simplify the expression down.
+multi-terminal binary decision diagrams\needCite{} (MTBDDs) which take
+as input the {\StateMachine}'s existing control-flow predicates which
+produce as their output the input which will be selected by the
+$\Phi$.  The $\Phi$ itself can then be replaced with this MTBDD,
+making the control dependence explicit and simplifying later analyses.
 
-\todo{Having written this down, I think is a really stupid approach,
-  and experimentally it's also one of the big bottlenecks in the
-  analysis.  Might end up reworking this into something a bit less
-  crazy.  I'm also pretty confident that I'd have gotten better
-  results if I'd used BDD a bit more consistently, and if I end up
-  switching the rest of the analysis over to them then that'll also
-  require some re-working of this section.}
+\todo{Having played around a bit, I'm now absolutely convinced that
+  using BDDs in a few other places would massively improve
+  performance.  Might end up having to do that.  Actually, pulling the
+  BDD discussion out a bit earlier might make this a bit clearer,
+  anyway. Alternative: just assert that the algorithms exist here and
+  put the actual definitions in an appendix.}
 
-\todo{Also, the only reason this can ever fail is the
+\todo{Also need to say that, for the purposes of this analysis, we
+  assume that any expressions which aren't physically identical are
+  completely independent.  That's definitely safe, but can sometimes
+  lead to moderate conservativeness.  Later passes try to tidy things
+  up a bit.}
+
+\todo{The only reason this can ever fail is the
   {\StateMachine}-internal typesystem, which I've (deliberately)
   avoided discussing so far, which makes the presentation a little bit
   awkward.}
 
-The approach used is simple: enumerate every path to the $\Phi$ side
-effect, collecting control-flow constraints as we do so, classify each
-path according to which input to the $\Phi$ will be selected if that
-path is followed, and then encode this path set into a a
-multi-terminal binary decision diagram (MTBDD)\needCite{} which
-selects an appropriate input.
+The approach used is simple: build a mapping from {\StateMachine}
+states to boolean BDDs\footnote{For clarity, I refer to BDDs which
+  evaluate to either true or false as boolean BDDs or just BBDDs, by
+  contrast with MTBDDs which can evaluate to a more complex value set.
+  Most existing literature refers to BBDDs as just BDDs.}  which are
+true for precisely those executions in which the state will be
+executed, extend this into a mapping from states to MTBDDs which show
+which input to the $\Phi$ would be selected if the $\Phi$ were issued
+immediately after that state, and then simply read off the MTBDD for
+the actual $\Phi$ state.  This allows all $\Phi$ states to be
+eliminated\editorial{Modulo typing issues, which I'm really going to
+  need to come up with a better story for.}, significantly simplifying
+later analysis phases.
 
-Simplifications on path sets:
+\subsubsection{Building the control dependence graph}
 
-\begin{itemize}
-\item
-  Use the results of copy propagation to determine when two possible
-  inputs are guaranteed to have the same value and merge all of the
-  paths which select that input.
-\item
-  Remove all constant terms i.e. those which are either always true
-  or always false.
-\item
-  Remove all terms which are only present for a single possible result.
-\item
-  If two paths have the same result and the only difference is
-  flipping the sense of one term then that term can be eliminated
-  and the paths merged.
-\end{itemize}
+The control dependence graph (CDG) is a standard compiler data
+structure\needCite{} showing which nodes in a control flow graph are
+control-dependent on which branch nodes.  In other words, it shows,
+for each statement, which control-flow conditions must be true for
+that statement to execute, which must be false, and which do not
+matter.  The control dependence graph used by {\technique} is a slight
+extension of this concept: rather than simply listing the expressions
+on which the node depends, it gives a BBDD which will evaluate to true
+in precisely those executions in which the node executes.  This is
+possible because {\technique}'s {\StateMachines} are acyclic.
 
-Build the MTBDD:
+The algorithm for building the graph is simple:
 
-\begin{itemize}
-\item
-  If there's only one possible result then we're done.
-\item
-  Otherwise, pick a term to perform a case split on.  The ordering
-  heuristic is entropy-based: for each possible splitting variable,
-  calculate the conditional entropy of the final result, conditioned
-  on the splitting variable being either true or false, add the true
-  and false entropies together, and then pick the splitter with the
-  lowest final entropy.  \todo{I really don't have much reason to
-    believe that that's a good heuristic.}  Note that this implies
-  that these are \emph{unordered} MTBDDs, as variables might be
-  considered in different orders along the different branches, and
-  that different $\Phi$ side-effects might select completely different
-  orders.  This helps to keep the MTBDDs shallow, but reduces the
-  opportunities for sharing sub-graphs.
+\begin{algorithmic}[1]
+\State $cdg[root] = const(true)$
+\While {Some state has no entry in $cdg$}
+  \State {$n \gets $ select a state which has no label but whose predecessors are all labelled}
+  \State {$s \gets \{cdg[p, n] \mid p \in \textrm{$n$'s predecessors}\}$}
+  \State {$cdg[n] \gets \bigvee (s)$}\Comment{Take union of all reaching paths}
+\EndWhile
+\end{algorithmic}
 
-  This is pretty much just a generalisation of the heuristic used in
-  Fujita, Matsunaga et al 1991 from BDDs to MTBDDs, so maybe I can
-  just cite them rather than trying to justify it myself?
-\end{itemize}
+Here, $cdg[x]$ is the condition for state $x$ to run.  $cdg[x, y]$ is
+the condition necessary for the edge from state $x$ to $y$ to be
+traversed, defined by:
+
+\begin{displaymath}
+cdg[x, y] = \begin{cases}
+  \bot                            & \text{if there is no edge from $x$ to $y$} \\
+  cdg[x] \wedge x.condition       & \text{if $x$ is a control-flow node and $y = x.trueTarget$} \\
+  cdg[x] \wedge {\neg}x.condition & \text{if $x$ is a control-flow node and $y = x.falseTarget$} \\
+  cdg[x]                          & \text{otherwise}
+\end{cases}
+\end{displaymath}
+
+Note that the selection on line 3 is only guaranteed to be possible
+because the {\StateMachine} is acyclic.  This assumption is also the
+reason that {\technique}'s CDG is precise, whereas CDGs for full
+programs usually contain some approximations.  Apart from that, this
+algorithm is obvious: to find the conditions under which a state might
+execute, find the conditions under which all of its incoming edges
+might execute and take the union.  Once all states are labelled the
+CDG is complete.
+
+\subsubsection{Building the $\Phi$ map}
+
+Once the CDG is complete, the next step is to build the $\Phi$ map.
+This is a map from states of the {\StateMachine} to MTBDDs which
+select which input of the $\Phi$ would be selected if the $\Phi$ were
+to be issued immediately after that state.  That then makes
+eliminating the $\Phi$ side-effect trivial.  The algorithm for
+building the $\Phi$ map is shown in
+figure~\ref{fig:derive:phi:phi_map}
+
+\begin{figure}
+\begin{algorithmic}[1]
+\For {$i$ in inputs to the $\Phi$}\Comment {Build the initial map}
+  \State {$s \gets $ state defining input $i$}
+  \State {$pm[s] \gets const(i)$}
+\EndFor
+\While {The $\Phi$ state is unlabelled}
+  \State {$n \gets $ select a state which has no label but whose predecessors are all labelled}
+  \State {$g \gets \{ (cdg[p, n], pm[p]) \mid p \in \textrm{$n$'s predecessors}\}$}
+  \State {$pm[n] \gets simplify(flatten(g), cdg[n])$}
+\EndWhile
+\end{algorithmic}
+\caption{Building the $\Phi$ map}
+\label{fig:derive:phi:phi_map}
+\end{figure}
+
+The core idea used when building the map is that of a gated MTBDD
+(GMTBDD).  This is a set of (BBDD, MTBDD) pairs where each BBDD is
+treated as a gate for the matching MTBDD.  If all of the MTBDDs whose
+gate evaluates to $true$ evaluate to the same terminal then the GMTBDD
+evaluates to the same terminal; otherwise, or if none of the gates
+evaluate to $true$, the result of the GMTBDD is undefined.  These
+GMTBDDs can then be easily flattened back into MTBDDs using the usual
+BDD zipping algorithm\editorial{Kind of.  The point is that the
+  algorithm is (a) really easy, (b) a trivial variant of standard
+  algorithms, and (c) a pain in the backside to describe because it
+  has lots of nasty edge cases.  I've not been able to find any actual
+  cites for it, though.}. For each state, the algorithm builds a
+GMTBDD with an entry for each edge to the state, setting the gate to
+the CDG condition for that edge and the MTBDD to the $\Phi$ map entry
+for the predecessor state.  The resulting GMTBDD selects the correct
+$\Phi$ input for the state.  Note that the construction of the CDG
+ensures that precisely one gate will be enabled in any configuration
+of the input boolean variables, so that the GMTBDD is always defined.
+
+As a minor optimisation, the algorithm shown as simplifies the MTBDD
+for state $n$ under the assumption that the CDG condition for $n$ is
+true; in other words, under the assumption that $n$ is actually run.
+This simplify function is shown in
+figure~\ref{fig:derive:phi_elimination:simplify}.  The basic idea is
+to define a $implies(a, b)$ operation which evaluates to $a$ when $b$
+is true or the special $\bot$ value when $b$ is false and to then use
+this to zip the original MTBDD with the assumption BDD.  This lifts
+the original MTBDD $a$ to a new MTBDD which evaluates to $a(k)$ for
+any configuration $k$ where the assumption is true or to $\bot$ where
+the assumption is false.  We then define an $unlift$ operation which
+removes all paths through the MTBDD to these $\bot$ values, returning
+the MTBDD to its original domain.  The net effect is to produce a new
+MTBDD which evaluates to the same thing as the original whenever the
+assumption is true, but potentially tests fewer input variables while
+it does so.
+
+As a further minor optimisation, not shown in the figure,
+{\implementation} performs an initial reachability test to determine
+which states in the {\StateMachine} might eventually reach the $\Phi$
+state which is to be eliminated and does not attempt to calculate
+labels for any which do not.  The result of the analysis is unchanged.
+
+\begin{figure}
+\begin{algorithmic}
+\Function{simplify}{$thing:MTBDD(k)$, $assumption:BDD$ $\rightarrow \bot + MTBDD(k)$}
+  \State \Return $\textsc{unlift}(\textsc{zip}(thing, assumption, \textsc{implies}))$
+\EndFunction
+\Function{implies}{$a:k$, $b:bool$ $\rightarrow k + \bot$}
+  \If{$b$}
+    \State \Return $a$
+  \Else
+    \State \Return $\bot$
+  \EndIf
+\EndFunction
+\Function{unlift}{$inp:MTBDD(k + \bot) \rightarrow \bot + MTBDD(k)$}
+  \If{$inp = const(\bot)$}
+    \State \Return $\bot$
+  \ElsIf{$inp = const(k)$}
+    \State \Return $inp$
+  \Else
+    \State $if(cond, t, f) \gets inp$
+    \State $t' \gets unlift(t)$
+    \If{$t' = \bot$}
+      \State \Return $unlift(f)$
+    \Else
+      \State $f' \gets unlift(f)$
+      \If{$f' = \bot$}
+        \State \Return $t'$
+      \Else
+        \State \Return $if(cond, t', f')$
+      \EndIf
+    \EndIf
+  \EndIf
+\EndFunction
+\end{algorithmic}
+\caption{The MTBDD $simplify$ algorithm.  The notation $k:t$ indicates
+  a variable $k$ of type $t$, $a \rightarrow b$ indicates a function
+  from arguments $a$ to a return value of type $t$, $\bot + k$
+  indicates type $k$ augmented with the value $\bot$, and $MTBDD(k)$
+  is the type of MTBDDs whose terminals are constants of type $k$.}
+\label{fig:derive:phi_elimination:simplify}
+\end{figure}
+
+\todo{I really don't want to have to define $zip$, because it's fiddly
+  and not very interesting, but I can't find a cite for it.}
+
+\todo{Do I need to give the $flatten$ algorithm as well?  It's even
+  more tedious and annoying than these ones.}
+
+\todo{Need to think much harder about variable ordering within the
+  BDDs.  Currently using pointer order, which is rather silly.  Also
+  need to mention that the ordering is consistent within any run of
+  the pass, but not necessarily between multiple runs.}
+
+%%  This is pretty much just a generalisation of the heuristic used in
+%%  Fujita, Matsunaga et al 1991 from BDDs to MTBDDs, so maybe I can
+%%  just cite them rather than trying to justify it myself?
   
 \subsection{Alias analysis}
 \label{sect:alias_analysis}
