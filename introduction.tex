@@ -5,6 +5,9 @@
   used \technique{} and \implementation{} in a few places as
   placeholders.}
 
+\todo{The main thing missing here is a well-defined thesis.  Need to come
+  up with one pretty damn quickly.}
+
 \section{Motivation}
 
 Commodity hardware is becoming increasingly concurrent, whether due to
@@ -64,16 +67,16 @@ limitation, but still allows some realistic bugs to be analysed.
   [block/.style = rectangle,draw,fill=blue!20,
     line/.style = draw, -latex']
   \node [block] (dynamic) {Dynamic analysis};
-  \node [block, below right = of dynamic] (model) {Program model};
-  \node [block, below left = of model] (static) {Static analysis};
+  \node [block, below = of dynamic] (model) {Program model};
+  \node [block, below = of model] (static) {Static analysis};
   \node [block, right = of model] (candidates) {Candidate bugs};
   \node [block, right = of candidates] (repro) {Reproductions of bugs};
   \node [block, right = of repro] (fix) {Generated fixes};
-  \path [line] (dynamic) -- (model);
-  \path [line] (static) -- (model);
-  \path [line] (model) -- (candidates);
-  \path [line] (candidates) -- (repro);
-  \path [line] (repro) -- (fix);
+  \path [line,->] (dynamic) -- (model);
+  \path [line,->] (static) -- (model);
+  \path [line,->] (model) -- (candidates);
+  \path [line,->] (candidates) -- (repro);
+  \path [line,->] (repro) -- (fix);
 \end{tikzpicture}
 \caption{Basic pipeline}
 \label{fig:basic_pipeline}
@@ -218,9 +221,9 @@ is available.  While it would be possible in principle to extract such
 information and hence build a SAL or Promela model, doing so would
 itself be somewhat time-consuming.
 
-Once a \StateMachine for a bug has been obtained, the analysis moves
-on to attempting to reproduce it.  \technique{} does so by first
-examining the \StateMachine to determine the happens-before graph
+Once a {\StateMachine} for a bug has been obtained, the analysis moves
+on to attempting to reproduce it.  {\Technique} does so by first
+examining the {\StateMachine} to determine the happens-before graph
 necessary for the target bug to reproduce, along with any appropriate
 side-conditions, and then building a custom dynamic analysis for the
 original program which makes that happens-before graph more likely to
@@ -231,14 +234,14 @@ program at any one time, which can significantly reduce the time taken
 for this verification step.
 
 Finally, the now-confirmed bug can be converted into a fix.  In this
-mode, \technique{} again examines the happens-before graph implicit in
-the \StateMachine and uses it to extract a set of critical sections of
-the original program.  With these in hand, \technique{} can produce a
-modified version of the original program which ensures that no
+mode, {\technique} again examines the happens-before graph implicit in
+the {\StateMachine} and uses it to extract a set of critical sections
+of the original program.  With these in hand, {\technique} can produce
+a modified version of the original program which ensures that no
 critical sections ever execute in parallel with each other, hence
 eliminating the original bug.
 
-\editorial{Cite Holzmann and Smith, 2001}.
+\todo{Cite Holzmann and Smith, 2001.}
 
 \section{Contributions}
 
@@ -303,13 +306,13 @@ quickly.  In slightly more detail:
   such that running those sections atomically with respect to each
   other is guaranteed to avoid the crash but interleaving them might
   not\footnote{In fact, SLI makes the slightly stronger assumption
-    that running all of the instructions represented in the read or
-    write thread \StateMachines atomically avoids the bug; see
-    section~\ref{sect:mandatory_concurrency} for a discussion of why
-    this might be unsound.}.  \todo{I want to say something about
-    still being able to enforce arbitrary HB-graphs, rather than the
-    very simple ones you get with critical sections, but can't quite
-    get the phrasing right.}
+  that running all of the instructions represented in the read or
+  write thread {\StateMachines} atomically avoids the bug; see
+  section~\ref{sect:mandatory_concurrency} for a discussion of why
+  this might be unsound.}.  \todo{I want to say something about still
+  being able to enforce arbitrary HB-graphs, rather than the very
+  simple ones you get with critical sections, but can't quite get the
+  phrasing right.}
 \item The only communication allowed is from the \emph{write} thread
   to the \emph{read} one.  The analysis assumes that the write
   thread's behaviour will never depend on the actions of the read

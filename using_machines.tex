@@ -583,6 +583,231 @@ so I do not expect this to be a problem in practice.  \todo{Might want
 
 \todo{Forward ref eval to say how useful this is.}
 
+\subsubsection{Mandatory concurrency}
+\label{sect:mandatory_concurrency}
+
+\todo{Making a bit of a meal of this.}
+
+The set of bugs detected by SLI depends on the size of the two
+analysis windows.  Setting this to too small a value will of course
+lead to bugs being missed; more subtly, increasing the size of the
+window can also sometimes lead to the set of bugs which is reported
+shrinking.  Most of the lost bugs will be false positives eliminated
+by providing the analysis with more context, but there may also be a
+small number of real bugs lost.  This happens when the program depends
+on a certain minimum level of concurrency in order to achieve
+correctness: {\technique} assumes that the program does not crash if
+all of the instructions in the analysis window are run atomically, and
+if the program requires some minimum level of interleaving this
+assumption can be violated for some interesting executions.  Enlarging
+the analysis window will make the problem worse.
+
+\begin{figure}
+\begin{tabular}{ll}
+Read thread:         & Write thread: \\
+\\
+Load $t$ from loc1   & Load $t'''$ from loc1 \\
+Store $t$ to loc2    & Store $t'''$ to loc2 \\
+Load $t'$ from loc1  & Store $t''' + 1$ to loc2 \\
+Load $t''$ from loc2 & \\
+Crash if $t' == t''$ & \\
+\end{tabular}
+\label{fig:mandatory_concurrency1}
+\caption{Example of threads with mandatory concurrency.}
+\end{figure}
+
+\begin{figure}
+\begin{tabular}{ll}
+Read thread:          & Write thread: \\
+\\
+Load $t'$ from loc1   & Load $t'''$ from loc1 \\
+Load $t''$ from loc2  & Store $t'''$ to loc2 \\
+Crash if $t' == t''$  & Store $t''' + 1$ to loc2
+\end{tabular}
+\label{fig:mandatory_concurrency2}
+\caption{Truncation of the example in figure~\ref{fig:mandatory_concurrency1}.}
+\end{figure}
+
+As a concrete example, consider the threads shown in
+figure~\ref{fig:mandatory_concurrency1}.  Running the read thread
+atomically is guaranteed to crash, from any starting state, and so
+there will be no valid bug tuples based on the complete definition of
+these threads.  On the other hand, if the read thread is truncated as
+shown in figure~\ref{fig:mandatory_concurrency2} then there may be
+such a tuple:
+
+\begin{itemize}
+\item
+  The R atomic rule is satisfied provided that the initial value of
+  loc1 is not equal to loc2.
+\item
+  The W atomic rule is satisfied by any initial state.
+\item
+  The concurrent rule is satisfied by this crashing interleaving:
+  \begin{itemize}
+  \item Load $t'$ from loc1
+  \item Load $t'''$ from loc1
+  \item Store $t'''$ to loc2
+  \item Load $t''$ from loc2
+  \item Crash if $t' == t''$
+  \end{itemize}
+\end{itemize}
+
+In this particular case, the crashing execution is far more likely
+than the non-crashing one even when the threads are being run in
+parallel and so it is highly unlikely that this precise behaviour
+would be found in a real program.  On the other hand, if there were a
+large amount of code between the final two load operations in the
+final thread then it might make the surviving interleaving unlikely.
+This is not generally an issue for SLI, as introducing enough extra
+instructions to ensure that behaviour would generally push the first
+load out of the analysis window so that SLI never sees the confusing
+behaviour.  This means that, for most practical purposes, the set of
+bugs found by increases monotonically with the size of the analysis
+window, which in turn means that a very simple heuristic suffices for
+setting the size of the window: use the largest window which allows
+the analysis to complete in an acceptable amount of time.
+
+\todo{It'd be nice to have some evidence of that.}
+
+A more powerful analysis framework might be able to increase the
+window size sufficiently that the first part of the read thread would
+not ``fall out''.  Even in that case, the monotonicity property would
+probably still hold for most realistic programs.  The fundamental
+problem here is one of mandatory concurrency: in the larger program,
+running the read thread in isolation is guaranteed to crash, but it
+can be ``rescued'' by being interleaved with the write thread.  The
+bug here is caused by insufficient concurrency, but SLI is only
+capable of handling bugs caused by excessive concurrency.
+Excess-concurrency bugs are far more common than
+insufficient-concurrency bugs, for several reasons:
+
+\begin{itemize}
+\item
+  An insufficient-concurrency bug indicates that the programmer got
+  the sequential case wrong but the concurrent case correct.  The
+  concurrent case is usually far more difficult to design and reason
+  about than the sequential one, and so this is an unusual
+  outcome\needCite{}.
+\item
+  The sequential case generally receives more testing than the
+  concurrent one, simply as an artifact of the way most test cases are
+  constructed\needCite{}.
+\item
+  For most programs, there are far more concurrent executions than
+  sequential ones, and so it is more likely that there are errors on
+  an untested concurrent path than that there are errors on an
+  untested sequential one.
+\end{itemize}
+
+SLI therefore completely ignores these insufficient-concurrency bugs.
+
+\todo{Mention something about finding a bunch of
+  insufficient-concurrency bugs related to malloc() failure?}
+
+\begin{figure}
+Illustration of a bug tuple.  We have a prefix P, write section W, and read section R.
+\label{fig:mandatory_concurrency3}
+\end{figure}
+
+I now show that insufficient-concurrency bugs are the only case in
+which the monotonicity property might be violated.  To see this,
+consider execution shown in figure~\ref{fig:mandatory_concurrency3}.
+Suppose that this execution does not generate a bug tuple.  Then
+moving an instruction from $R$ or $W$ into $P$ also cannot generate a
+bug tuple, and so by induction no smaller analysis windows can
+generate bug tuples.
+
+From the fact that larger windows do not generate bug tuples, we know
+that:
+
+\begin{itemize}
+\item $P \concatDynTraces R \not= \survive$, from the R atomic rule, or
+\item $P \concatDynTraces W \concatDynTraces R \not= \survive$, from the W atomic rule, or
+\item $\crash \notin P \concatDynTraces (R \interleaveDynTraces W)$, from the concurrent rule.
+\end{itemize}
+
+Define $W = w \concatDynTraces W'$ and $R = r \concatDynTraces R'$, so
+that $w$ is the first instruction of $W$ and $W'$ all the others, and
+likewise for $r$, $R$, and $R'$.  Shrinking the analysis window then
+corresponds to replacing $R$ with $R'$ and $P$ with $P
+\concatDynTraces r$, or replacing $W$ with $W'$ and $P$ with $P
+\concatDynTraces w$.  We therefore generate a bug tuple with the
+reduced window if:
+
+\begin{align*}
+( & (P \concatDynTraces w \concatDynTraces R & = & \survive) & \wedge \\
+  & (P \concatDynTraces W \concatDynTraces R & = & \survive) & \wedge \\
+  & ((P \concatDynTraces w \concatDynTraces (R \interleaveDynTraces W')) & \ni & \crash)) & \vee \\
+( & (P \concatDynTraces R & = & \survive) & \wedge \\
+  & (P \concatDynTraces r \concatDynTraces W \concatDynTraces R' & = & \survive) & \wedge \\
+  & ((P \concatDynTraces r \concatDynTraces (R' \interleaveDynTraces W)) & \ni & \crash))
+\end{align*}
+
+Combining those together, we find that reducing the analysis window can introduce a new bug if:
+
+\begin{align*}
+( & (P \concatDynTraces R & \not= & \survive) & \wedge \\
+  & (P \concatDynTraces W \concatDynTraces R & \not= & \survive) & \wedge \\
+  & ((P \concatDynTraces (R \interleaveDynTraces W)) & \not{}\ni & \crash)) & \vee \\
+( & (P \concatDynTraces w \concatDynTraces R & = & \survive) & \wedge \\
+  & (P \concatDynTraces W \concatDynTraces R & = & \survive) & \wedge \\
+  & ((P \concatDynTraces w \concatDynTraces (R \interleaveDynTraces W')) & \ni & \crash)) & \vee \\
+( & (P \concatDynTraces R & = & \survive) & \wedge \\
+  & (P \concatDynTraces r \concatDynTraces W \concatDynTraces R' & = & \survive) & \wedge \\
+  & ((P \concatDynTraces r \concatDynTraces (R' \interleaveDynTraces W)) & \ni & \crash))
+\end{align*}
+
+Simple boolean algebra, plus the obvious rule that $P \concatDynTraces (R \interleaveDynTraces W) = (P \concatDynTraces r \concatDynTraces (R' \interleaveDynTraces W) ) \cup (P \concatDynTraces w \concatDynTraces (R \interleaveDynTraces W') ) $, reduces that to this:
+
+\begin{align*}
+( & (P \concatDynTraces r \concatDynTraces R' & = & \crash) & \wedge \\
+  & (P \concatDynTraces w \concatDynTraces r \concatDynTraces R' & = & \survive) & \wedge \\
+  & (P \concatDynTraces w \concatDynTraces W' \concatDynTraces r \concatDynTraces R' & = & \survive) & \wedge \\
+  & ((P \concatDynTraces w \concatDynTraces (W' \interleaveDynTraces R)) & \ni & \crash)) & \vee \\
+( & (P \concatDynTraces r \concatDynTraces R' & = & \survive) & \wedge \\
+  & (P \concatDynTraces w \concatDynTraces W' \concatDynTraces r \concatDynTraces R' & = & \crash) & \wedge \\
+  & (P \concatDynTraces w \concatDynTraces r \concatDynTraces R' & = & \survive) & \wedge \\
+  & (P \concatDynTraces r \concatDynTraces w \concatDynTraces W' \concatDynTraces R' & = & \survive) & \wedge \\
+  & ((P \concatDynTraces r \concatDynTraces (W \interleaveDynTraces R')) & \ni & \crash))
+\end{align*}
+
+Consider the first clause of the disjunction first, and in particular consider these two terms:
+
+\begin{align*}
+ & (P \concatDynTraces r \concatDynTraces R' & = & \crash) & \wedge \\
+ & (P \concatDynTraces w \concatDynTraces r \concatDynTraces R' & = & \survive)
+\end{align*}
+
+The definition of crash used in SLI is that the final instruction of $R'$ crashes, and so adding further instructions after that point cannot possible change the result.
+Those terms are therefore equivalent to these:
+
+\begin{align*}
+ & (P \concatDynTraces r \concatDynTraces R' \concatDynTraces w \concatDynTraces W' & = & \crash) & \wedge \\
+ & (P \concatDynTraces w \concatDynTraces r \concatDynTraces R' \concatDynTraces W' & = & \survive)
+\end{align*}
+
+In other words, $R$ is doomed when run in isolation, but running it in parallel with $W$ can save it.
+That is precisely the definition of mandatory concurrency used above.
+
+Consider the second clause now.
+That contains these two terms:
+
+\begin{align*}
+  & (P \concatDynTraces w \concatDynTraces W' \concatDynTraces r \concatDynTraces R' & = & \crash) & \wedge \\
+  & (P \concatDynTraces r \concatDynTraces w \concatDynTraces W' \concatDynTraces R' & = & \survive)
+\end{align*}
+
+This is even more clear: running $W$ and then $R$ atomically leads to a crash, but allowing $W$ to interrupt $R$ saves the execution.
+Once again, this clause is only satisfiable in the presence of mandatory concurrency.
+
+Therefore, it is only possible for shrinking the analysis window to reveal more bugs in the presence of mandatory concurrency, and, conversely, when the program does not use mandatory concurrency, enlarging the analysis window cannot disguise bugs.
+This monotonicity property is useful because it provides a simple rule for setting the size of the analysis window: use the largest such that the analysis completes in a reasonable amount of time.
+There is no need for the user to carefully select a window size for their program, or to try multiple window sizes in order to reveal additional bugs.
+
+
+
+
 \subsection{Completeness}
 \todo{I've kind of already covered this, but it might be worth pulling
   all of the completeness discussion together into one place.}
@@ -1507,6 +1732,10 @@ Otherwise, the program continues unmolested in the hope that there
 will be another opportunity to reproduce the bug later on.
 
 \todo{Should mention that I pulled the interpreter out of Xen.}
+
+\todo{Need to talk somewhere about what happens if you try to enforce
+  contradictory HB graphs at the same time.  The results really aren't
+  very pretty.}
 
 The enforcement plan can be thought of as a program in a very simple
 language with very simple semantics.  Unfortunately, those semantics

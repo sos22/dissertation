@@ -173,15 +173,19 @@ Lookup between bug numbers and names:
 \item 11 -- Something which couldn't be found by Chess or
   DataCollider.  That really means something with at least three
   mandatory preemptions.
-\item 12 -- Something which demonstrates data-dependent happens-before
+\item 12 -- Like 11, but with more preemptions.
+\item 13 -- Something which demonstrates data-dependent happens-before
   graphs.
-\item 13 -- A false positive -- something where the main analysis
+\item 14 -- Something with relevant synchronisation which means that
+  it has no data races but still has a synch bug which we can handle
+  correctly.
+\item 15 -- A false positive -- something where the main analysis
   thinks there might be a bug, but there isn't, and so the enforcer
   can't enforce it.
-\item 14 -- Something which nicely illustrates the cross-function
+\item 16 -- Something which nicely illustrates the cross-function
   alias analysis stuff.  Tricky part of this is that programs need to
   be fairly complex before this kicks in.
-\item 15 -- Something which illustrates the importance of the Phi
+\item 17 -- Something which illustrates the importance of the Phi
   elimination pass.  Likewise.
 \end{itemize}
 
@@ -516,24 +520,24 @@ seconds.  It would be useful to have some indication of the
 uncertainty in the former number.  Characterising the time taken
 without an enforcer is, however, somewhat problematic, as the
 distribution of times taken is leptokurtic: the mean and standard
-deviation here was $5.0 \pm 5.1$\editorial{only ten runs; redo
-  stats}, even though the time taken is always positive, indicating
-that the standard deviation is pretty much meaningless.  As such, the
+deviation here was $5.0 \pm 5.1$\editorial{only ten runs; redo stats},
+even though the time taken is always positive, indicating that the
+standard deviation is pretty much meaningless.  As such, the
 distribution must be characterised in some other way.  From
 theoretical arguments, I expected the distribution to be a
 geometrically distributed integer multiplied by roughly one second,
 and so one obvious approach would be to characterise it by the $p$
 value of the geometric distribution, obtained using the method of
-moments.  I used a resampling method to obtain the uncertainty of this
-value: I ran the test 10,000 times, used that data to generate 10,000
-random samples selections of 100 samples, with replacement, and then
-re-estimated the $p$ value for each of those samples.  The resulting
-distribution had a mean of $0.20$ and a population standard deviation
-of $0.02$.  It passed both the Anderson-Darling and Jarque-Bera
-normality tests at the 90\% level, and so I am reasonably confident
-that this is a reasonable characterisation of that distribution.
-\todo{Actually, that resampling was only done from a pool of 300 runs,
-  so I need to re-do it with a bit more data.}
+moments.  This is roughly the approach I took: I ran the test 1,024
+times and partitioned the results into 32 sets of 32 results each,
+calculated an estimate $p$ value for each set, and then report the
+mean and standard deviation of those estimates.  These estimates do
+appear to be normally distributed (checked with the Anderson-Darling
+and Jarque-Bera tests at the the 90\% level), and so the mean and
+standard deviation provide a reasonable characterisation.
+
+\todo{Numbers in the big table are actually from a moronic
+  distribution resampler; need to do this properly.}
 
 \todo{This is a bit unnecessary, in the sense that nobody else ever
   bothers, but also completely necessary, in the sense that without
@@ -579,6 +583,11 @@ not become a factor.  Even in this case, a factor of four overhead is
 not completely unreasonable when the alternative is a program which
 crashes frequently.
 
+\todo{I currently just call into libpthread to actually acquire and
+  release the lock.  Just doing inline futex operations in the patch
+  might be a bit faster than that, at least some of the time, which'd
+  help to get the overhead numbers down.}
+
 \todo{I should probably re-run those experiments now that I've decided
   on a statistical protocol.}
 
@@ -588,7 +597,10 @@ crashes frequently.
   strongly suspect that it's almost all down to the cost of acquiring
   and releasing the lock; it'd be nice to confirm that.}
 
-\todo{Time taken to do analysis?}
+\todo{Say something about how I set the analysis window.  It doesn't
+  really matter for these tests, because it's entirely constrained by
+  the STOP\_ANALYSIS markers anyway, but it'd still be an idea to have
+  a sentence or two somewhere to say that.}
 
 \subsubsection{Indexed TOCTOU bug (indexed\_toctou)}
 
@@ -645,14 +657,22 @@ With no enforcer loaded, this bug reproduces in $6 \pm 8$ seconds, in
 a test with 100 samples, which again strongly suggests it to be
 non-Gaussian.  In this case, the distribution appears to be
 exponential, and so I characterise it by the $\lambda$ parameter of
-the exponential distribution and use a resampling approach to estimate
-the variance of that parameter.  Taking one hundred samples of size
-one hundred from a pool of 158 results\editorial{Re-do now with more
-  data.} gave an estimated $\lambda$ of $0.16 \pm 0.02$, and that
-result passes the Anderson-Darling and Jarque-Bera normality tests at
-the 90\% level.
+the exponential distribution.  As for simple\_toctou, I ran the test
+1024 times and divided the results in 32 sets of 32 results and
+calculated a separate $\lambda$ parameter for each set, and the
+parameter once again was normally distributed according to the
+Anderson-Darling and Jarque-Bera tests at the 90\% level.  In this
+case, $\lambda = 0.16 \pm 0.02$.
 
-\todo{Proper goodness-of-fit test on the exponential distribution?}
+\todo{Like the simple\_toctou tests, the actual statistics were a bit
+  different to that.}  \todo{Proper goodness-of-fit test on the
+  exponential distribution?}
+
+\todo{Thinking about it some more, I'm half convinced that the right
+  thing to do here is just to take the reciprocal of the time taken.
+  Although that's still not Gaussian, so I'd need to do some further
+  massaging, and it definitely wouldn't be the right thing to do for
+  simple\_toctou, so maybe best not to bother.}
 
 With the enforcer loaded, the time taken to reproduce the bug was
 roughly uniformly distributed between 100 and 200ms, which is as
@@ -663,10 +683,10 @@ I also investigated the behaviour of this test with an enforcer loaded
 but no side condition checking performed.  In that case, the bug
 reproduced after $1.72 \pm 2.81$ seconds (mean and standard deviation
 of one hundred runs).  Resampling and fitting an exponential
-distribution gave a $lambda$ parameter here of $0.62 \pm 0.06$, and so
-the enforcer without side condition checking produces does cause the
-bug to be reproduced significantly more often than simply running the
-program without side-condition checking, but not nearly as quickly
+distribution gave a $\lambda$ parameter here of $0.62 \pm 0.06$, and
+so the enforcer without side condition checking produces does cause
+the bug to be reproduced significantly more often than simply running
+the program without side-condition checking, but not nearly as quickly
 as with the checking.
 
 As a further test, I investigated what happens when the length of the
@@ -738,8 +758,6 @@ additional synchronisation.
 
 \todo{I don't believe for a minute that those are Gaussian.}
 
-
-
 \subsubsection{Biassed indexed TOCTOU bugs (read\_indexed\_toctou, write\_indexed\_toctou)}
 
 These bugs are essentially similar to the indexed\_toctou, except with
@@ -748,6 +766,15 @@ write\_indexed\_toctou) or the read operation (for
 read\_indexed\_toctou) is far more common than the other.  This test
 illustrates the importance of rebalancing delays between the various
 happens-before edges in the crash enforcement plans.
+
+With rebalancing: both take 1.16 seconds to repro.
+
+With delay always on the send: bug3 takes 83 seconds, bug4 takes 1.15.
+
+With delay always on the receive: bug3 takes 0.147s, bug4 takes more
+than a minute and then I got bored.
+
+\todo{Repeat experiments.}
 
 \subsubsection{Multi-variable consistency constraint (multi\_variable)}
 
@@ -942,7 +969,10 @@ never runs.
 
 \subsubsection{Multiple read threads (multi\_threads)}
 
-\todo{Write me.}
+This test is a variant of the indexed\_toctou test in which there are
+32 read-side threads and 32 write-side ones, all operating
+independently.  This test is intended to show that {\technique}
+correctly handles
 
 \subsubsection{Complicated happens-before graphs (complex\_hb)}
 
@@ -1027,33 +1057,136 @@ some form of analysis to the program to place delays more effectively;
 such a scheme would rapidly turn into something similar to
 {\technique}.
 
+The evaluation includes two variants of this bug; the one illustrated
+above, which requires four happens-before edges, and an extended
+version which requires 10 edges.
 
-\begin{table}
-\begin{tabular}{llllllll}
-Test name       & Time to reproduce & Time to reproduce & Performance without & Performance with & Time to produce & Time to produce & Time to produce \\
-                & without enforcer  & with enforcer     & fix                 & fix              & summary         & enforcer        & fix             \\
+\subsection{DataCollider-like implementation}
+
+\todo{This needs to be earlier.}
+
+As a point of comparison, I also implemented a
+DataCollider\needCite{}-like tool for exploring alternative schedules,
+and I include some results obtained with that tool.  These show that,
+at least for simple artificial bugs, {\technique} is able to reproduce
+a wider variety of bugs, and that it is usually able to do so more
+quickly.
+
+The important properties of my DataCollider-like tool are:
+
+\begin{itemize}
+\item
+  At any given point, it will have breakpoints on half of the
+  memory-accessing instructions in the program, selected at random.
+\item
+  When a breakpoint is hit, the tool will wait for up to 10ms for a
+  matching read or write to arrive.  When a thread does arrive, it
+  will select which to resume first at random, with equal probability.
+\item
+  The set of instructions covered by breakpoints is changed every
+  second.
+\end{itemize}
+
+These parameters were selected because they appear to give the best
+results (i.e. shortest time to reproduce the bug) of all of the
+parameters which I tried.  \todo{Should be more systematic about the
+  parameter search there.}
+
+\todo{Reading the DC paper again, this isn't actually all that
+  similar: DC is only really a way of finding races, and not a
+  particularly effective way of tweaking the schedule.  Not sure what
+  I make of that.}
+
+It could be argued that smaller tests are inherently unfair to
+DataCollider-like techniques, as they work best in large programs with
+a large pool of concurrent memory accessing instructions so that the
+statistical sampling behaves well\editorial{Make that more clear.}.
+On the other hand, the density of breakpoints could also make this
+test unrealistically favourable to DC.  The original DataCollider
+paper dynamically adjusts the number of breakpoints to achieve a
+particular breakpoint rate, and so is hard to directly compare.  Their
+evaluation shows a highest breakpoint rate of roughly 1500 breakpoints
+per second in a virtual machine with two processors running at 2.4GHz,
+so assuming one memory access every hundred instructions that
+indicates that they sample roughly 0.003\% of memory accesses; even
+allowing for their implementation's preference to sample
+rarely-executed instructions, that suggests that they sample less than
+1\% of instructions.
+
+More fundamentally, using DataCollider to explore alternative
+schedules is itself somewhat unfair, as DataCollider was originally
+intended to discover races rather than to permute schedules, and,
+while it is trivial to extend it to perform schedule exploration, it
+is not entirely surprising that the results are somewhat poor.
+Nevertheless, it represents the approach which is conceptually closest
+to {\technique}'s in the existing literature, and so I consider it to
+be an interesting reference point.
+
+\todo{I'd really like to do a comparison with CHESS, as well, but
+  that's only implemented for 32-bit Windows programs, and
+  {\technique} is only implemented for 64-bit Linux ones, so that
+  doesn't really work so well.}
+
+\subsection{Summary tables}
+
+Time taken for the analysis phases:
+
+\begin{tabular}{llllll}
+Test name              & Static analysis & \multicolumn{2}{l}{Generating candidate bugs} & Building enforcer & Building fix \\
+                       &                 & From core dump & Ab initio                    &                   &              \\
 \hline
-simple\_toctou  & 7s                & 1s                & 35Mloops/second     & 9.5Mloops/second & 1.7s            & 110ms           & 100ms           \\
-indexed\_toctou & 4.5s              & 640ms             & 1.6Mloops/second    & 0.9Mloops/second & 23s             & 230ms           & 110ms           \\
-read\_indexed\_toctou &             & 1.2s              & 15.6Mloops/second   & 7Mloops/second   & 3.2s            & 180ms           & 120ms           \\
-write\_indexed\_toctou &            & 1.3s              & 6.7Mloops/second (write) & 4.2Mloops/second (write) & 23.3s & 130ms        & 100ms           \\
-multi\_variable \\
-context \\
-write\_to\_read \\
-multi\_bugs \\
-multi\_threads
+simple\_toctou         &                 &                & 1.4s \\
+indexed\_toctou        &                 &                & 2.2s \\
+read\_indexed\_toctou  &                 &                & 2.3s \\
+write\_indexed\_toctou &                 &                & 2.3s \\
+multi\_variable        & &\\
+context                & & \\
+write\_to\_read        & &\\
+multi\_bugs            & &\\
+multi\_threads         & & \\
+complex\_hb\\
+\hspace{20pt}3 edges   & & \\
+\hspace{20pt}10 edges  & & \\
 \end{tabular}
-\caption{Summary of results for artificial bugs.  All times are
-  excluding the time taken for dynamic analysis.}
 
-\todo{I should really redo this so that I have multiple samples and
-  can do some sensible stats.}
+Time taken to reproduce bugs:
 
-\todo{There's a lot of inexplicable variation in there...}
+\begin{tabular}{lllll}
+Test name              & No enforcer & No side-condition checking & Full enforcer & DataCollider \\
+\hline
+simple\_toctou         & & \\
+indexed\_toctou        & & \\
+read\_indexed\_toctou  & &\\
+write\_indexed\_toctou & &\\
+multi\_variable        & &\\
+context                & & \\
+write\_to\_read        & &\\
+multi\_bugs            & &\\
+multi\_threads         & & \\
+complex\_hb\\
+\hspace{20pt}3 edges    & & \\
+\hspace{20pt}10 edges   & & \\
+\end{tabular}
 
-\todo{Extend with indexed\_toctou results when side-condition checking
-  is turned off.}
-\end{table}
+Overhead of fixes:
+
+\begin{tabular}{lllllll}
+Test name              & \multicolumn{2}{l}{Performance without fix} & \multicolumn{2}{l}{Performance with fix} & \multicolumn{2}{l} Overhead\\
+                       & Read & Write                                & Read & Write                             & Read & Write \\
+\hline
+simple\_toctou         & & \\
+indexed\_toctou        & & \\
+read\_indexed\_toctou  & &\\
+write\_indexed\_toctou & &\\
+multi\_variable        & &\\
+context                & & \\
+write\_to\_read        & &\\
+multi\_bugs            & &\\
+multi\_threads         & & \\
+complex\_hb\\
+\hspace{20pt}3 edges    & & \\
+\hspace{20pt}10 edges   & & \\
+\end{tabular}
 
 \section{Bugs from real programs}
 
@@ -1161,14 +1294,7 @@ sections, one containing the two accesses in \verb|ProcessCurrentURL|
 and one containing the assignment in \verb|CloseStreams|.  This fixes
 the bug.
 
-\subsection{mysql1}
-
-Mysql 14747.  Looking at this some more I think it only works on
-call-eliding mode, which I really don't want to have to describe on
-top of everything else, which is going to make this really quite
-tricky.
-
-\subsection{mysql2}
+\subsection{mysql}
 
 Mysql 56324.  Read side:
 
@@ -1234,12 +1360,32 @@ int mysqld_main(int argc, char **argv)
 And the race is then on \verb|PSI_server|.  This one actually works;
 woo.
 
-\section{Comparison of DRS-based and non-DRS-based modes}
+Possibly more interesting: there are multiple very similar bugs
+scattered throughout the program, and it found all of the ones I knew
+about before I started and a couple which I didn't know about.
 
+Complication: this bug is only present in builds of mysql which don't
+have compiler optimisations, because otherwise the compiler caches
+\verb|PSI_server| in a register and avoids the crash.
+
+\todo{Need to finish running this on the optimised build.}
+
+\subsubsection{Effect of the induction rule}
+
+Without the induction rule, the tool produced 7935 candidate bugs.
+With the induction rule enabled, the tool produced 7783 bugs, or about
+a 2\% reduction.  That's not great, especially not given how expensive
+it is, but it's not completely terrible either.
+
+\begin{figure}
 \includegraphics{eval/mysql-timings.eps}
-
-\section{Actually fixing bugs}
-
+\caption{CDF of time taken to analyse instructions in an optimised
+  build of mysql, with and without the induction rule, with an
+  analysis window of twenty instructions.}  \todo{Include some other
+  analysis window sizes.}
+\label{fig:eval:mysql:analysis_cdf}
+\end{figure}
+  
 \section{Validation of tool implementation}
 
 \subsection{Cross-thread stack accesses}
