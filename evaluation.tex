@@ -68,6 +68,9 @@ Things I want to show in the eval:
   just a couple of paragraphs comparing optimised mysql to debug
   mysql.  Explain why compiler optimisations make some things easier
   and some things harder.
+\item I really want something to show how much the W isolation
+  property costs us, in terms of bugs detected, and how much it buys
+  us, in terms of simpler analysis.
 \item I need to show that the dynamic analysis is reasonable.  Ideally
   that'd be by using a static analysis to get an upper bound and then
   showing that they're reasonably close, but implementing that'd be a
@@ -1188,6 +1191,102 @@ complex\_hb\\
 \hspace{20pt}10 edges   & & \\
 \end{tabular}
 
+\section{Semi-artificial bugs}
+
+These are real programs which I've modified to introduce new bugs.  So
+far, there's only one in this category, and it's really not terribly
+convincing.
+
+\subsubsection{Bayes}
+
+This is the Bayes test from the STAMP benchmark suite, modified to
+remove one if its critical sections.  The critical section looks like
+this:
+
+\begin{verbatim}
+        acquire_global_lock();
+        taskPtr = TMpopTask(TM_ARG  taskListPtr);
+        release_global_lock();
+
+learner_task_t*
+TMpopTask (TM_ARGDECL  list_t* taskListPtr)
+{
+    learner_task_t* taskPtr = NULL;
+
+    list_iter_t it;
+
+    TMLIST_ITER_RESET(&it, taskListPtr);
+
+    if (TMLIST_ITER_HASNEXT(&it, taskListPtr)) {
+        taskPtr = (learner_task_t*)TMLIST_ITER_NEXT(&it, taskListPtr);
+        bool_t status = TMLIST_REMOVE(taskListPtr, (void*)taskPtr);
+        assert(status);
+    }
+
+    return taskPtr;
+}
+static bool_t TMLIST_REMOVE(list_t* listPtr, void* dataPtr)
+{
+    list_node_t* prevPtr;
+    list_node_t* nodePtr;
+
+    prevPtr = TMfindPrevious(TM_ARG  listPtr, dataPtr);
+
+    nodePtr = prevPtr->nextPtr;
+    if ((nodePtr != NULL) &&
+        (listPtr->compare(nodePtr->dataPtr, dataPtr) == 0))
+    {
+        prevPtr->nextPtr = nodePtr->nextPtr;
+        nodePtr->nextPtr = NULL;
+        free(nodePtr);
+        listPtr->size -= 1;
+        assert(listPtr->size >= 0);
+        return TRUE;
+    }
+
+    return FALSE;
+}
+\end{verbatim}
+
+I have simplified the code presented slightly by removing parts
+related to transactional memory, as these are not relevant for this
+test.  I made this program buggy by removing the global lock around
+\verb|TMpopTask|.  The resulting program crashed in one of a number of
+ways, depending on how the various races played out:
+
+\begin{itemize}
+\item The \verb|assert| in \verb|TMpopTask| sometimes fired.
+\item The \verb|assert| in \verb|TMLIST_REMOVE| sometimes fired.
+\item The \verb|free| in \verb|TMLIST_REMOVE| sometimes caused a
+  double-free error in the C library.
+\item Other assertions later in the program also occasionally fired
+  due to running the same task twice.
+\end{itemize}
+
+The first two bugs are of the correct form to be investigated by
+{\technique}; the other two are not.  I therefore generated enforcers
+for the first two bugs which, as expected, caused those bugs to
+reproduce rapidly and reliably (i.e. when one of those enforcers was
+applied the target bug consistently reproduced before any of the other
+bugs had a chance to).  I also generated fixes for the two bugs.
+These both worked in the sense that they were able to prevent the
+target bug from reproducing.  Unfortunately, the fix for the first bug
+also made the double-free bug reproduce far more frequently, and so
+the overall effect was that the program crashed more quickly.  On the
+other hand, the fix for the second bug fixed all four bugs, as the
+critical sections introduced by the fix were large enough to
+completely cover the actual critical sections in the program.
+
+\todo{More discussion of how the fixes work should go here.}
+
+\todo{Somewhat surprisingly, given that it was taken from what's
+  nominally a benchmark suite, unmodified bayes shows multiple order
+  of magnitude performance differences from run to run in the default
+  configuration, which makes it quite hard to talk about the
+  performance cost of the fix.  I could just average enough runs that
+  the SD drops to something sane, but I don't think that would be
+  terribly meaningful.}
+
 \section{Bugs from real programs}
 
 \subsection{glibc}
@@ -1374,15 +1473,24 @@ have compiler optimisations, because otherwise the compiler caches
 
 Without the induction rule, the tool produced 7935 candidate bugs.
 With the induction rule enabled, the tool produced 7783 bugs, or about
-a 2\% reduction.  That's not great, especially not given how expensive
-it is, but it's not completely terrible either.
+a 2\% reduction.  That's not great, but it's not completely terrible
+either.
+
+Figure~\ref{fig:eval:mysql:analysis_cdf} shows a CDF of the time taken
+to analyse each instruction in an optimised build of mysql, with and
+without the induction rule.  As can be seen, the two lines are very
+close together, indicating that the induction rule is not usually very
+expensive.  It is thus justifiable to use it in spite of the
+relatively minor improvement in the final results.
 
 \begin{figure}
-\includegraphics{eval/mysql-timings.eps}
+\include{eval/mysql-opt}
 \caption{CDF of time taken to analyse instructions in an optimised
   build of mysql, with and without the induction rule, with an
-  analysis window of twenty instructions.}  \todo{Include some other
-  analysis window sizes.}
+  analysis window of twenty instructions.  The analysis window was
+  twenty instructions and the per-instruction timeout was 180 seconds.
+  Note logarithmic x scale.} \todo{Include some other analysis window
+  sizes.}
 \label{fig:eval:mysql:analysis_cdf}
 \end{figure}
   

@@ -1,0 +1,423 @@
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [NewCfgInstr, below=of B3] {C1};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C);
+  \draw[->,killEdge] (B3) -- (C);
+  \draw[->] (B3) to [bend left=45] (B1);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) to [bend right=90] (A1);
+  \draw[->,swungEdge] (B3) -- (C1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (B) (B1) (B2) (B3) (C) (C1) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & 3\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+    \end{tabular}
+    (dupe C for B3 to C edge)
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [NewCfgInstr, right=of B3] {B4};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C);
+  \draw[->,swungEdge] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) to [bend right=45] (A1);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C);
+  \draw[->] (B4) -- (B2);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (B) (B1) (B2) (B3) (C) (C1) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+      B4 & 2 & 5 & 1 & 3\\
+    \end{tabular}
+    (dupe B3 for B3 to B1 edge)
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [NewCfgInstr, left=of C1] {A2};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->,swungEdge] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C);
+  \draw[->] (B4) -- (B2);
+  \draw[->] (A2) -- (B3);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+    \end{tabular}
+    (dupe A1 for C1 to A1 edge)
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [NewCfgInstr, below=of B4] {C2};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->,swungEdge] (B4) -- (C2);
+  \draw[->] (B4) -- (B2);
+  \draw[->] (A2) -- (B3);
+  \draw[->] (C2) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+      C2 & 1 & 6 & 0 & 4\\
+    \end{tabular}
+    (dupe C for B4 to A edge)
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [DupeCfgInstr, below=of B4] {C2};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C2);
+  \draw[->] (B4) -- (B2);
+  \draw[->] (A2) -- (B3);
+  \draw[->,killEdge] (A2) -- (B3);
+  \draw[->] (C2) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+      C2 & 1 & 6 & 0 & 4\\
+      New label & 2 & 7 & 1 & 5\\
+    \end{tabular}\\
+    (attempt to dupe B3 for A2 to B3 edge, but stopped by the label, so erase the edge instead)
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [DupeCfgInstr, below=of B4] {C2};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C2);
+  \draw[->] (B4) -- (B2);
+  \draw[->] (C2) -- (A1);
+  \draw[->,killEdge] (C2) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+      C2 & 1 & 6 & 0 & 4\\
+      New label & 0 & 7 & 2 & 5\\
+    \end{tabular}\\
+    (attempt to dupe A1 for C2 to A1 edge, but stopped by the label, so erase the edge instead)
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [DupeCfgInstr, below=of B4] {C2};
+  \node (C3) [NewCfgInstr, right=of A1] {C3};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->,swungEdge] (B2) -- (C3);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C2);
+  \draw[->] (B4) to [bend left=45] (B2);
+  \draw[->] (C3) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (C3) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & 4\\
+      C3 & 1 & 4 & 0 & 3\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+      C2 & 1 & 6 & 0 & 4\\
+      C3 & 1 & 4 & 0 & 5\\
+    \end{tabular}
+    (dupe C for B2 to C edge)
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [DupeCfgInstr, below=of B4] {C2};
+  \node (C3) [DupeCfgInstr, right=of A1] {C3};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C3);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C2);
+  \draw[->] (B4) to [bend left=45] (B2);
+  \draw[->,killEdge] (B4) to [bend left=45] (B2);
+  \draw[->] (C3) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (C3) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & $\infty$\\
+      C3 & 1 & 4 & 0 & $\infty$\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+      C2 & 1 & 6 & 0 & 4\\
+      C3 & 1 & 4 & 0 & 5\\
+      New label & 2 & 6 & 1 & 4\\
+    \end{tabular}
+    (attempt to dupe B2 for B4 to B2 edge, but stopped by the label, so erase the edge instead)
+  };
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [DupeCfgInstr, below=of B4] {C2};
+  \node (C3) [DupeCfgInstr, right=of A1] {C3};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C3);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C2);
+  \draw[->] (C3) -- (A1);
+  \draw[->,killEdge] (C3) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (C3) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lcccc}
+      labels & min to A & min from A & min to C & min from C\\
+      A  & 0 & 0 & 2 & $\infty$\\
+      A1 & 0 & 3 & 2 & 1\\
+      B  & 2 & 1 & 1 & $\infty$\\
+      C  & 1 & 2 & 0 & 0\\
+      B1 & 2 & 2 & 1 & $\infty$\\
+      B2 & 2 & 3 & 1 & $\infty$\\
+      C3 & 1 & 4 & 0 & $\infty$\\
+      B4 & 2 & 5 & 1 & 3\\
+      A2 & 0 & 6 & 2 & 4\\
+      C2 & 1 & 6 & 0 & 4\\
+      C3 & 1 & 4 & 0 & 5\\
+      New label & 0 & 5 & 2 & 6\\
+    \end{tabular}
+    (attempt to dupe A1 for C3 to A1 edge, but stopped by the label, so erase the edge instead)
+  };
+\end{tikzpicture}
+
