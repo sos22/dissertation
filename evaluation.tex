@@ -39,11 +39,6 @@ Things I want to show in the eval:
   useful for a human trying to fix the bug, but that's likely to be a
   rather hard argument to make.
 
-\item At some point I'm going to need to do a sensitivity analysis to
-  show that the timeouts don't need to be tuned particularly finely to
-  get bugs to repro.  Not sure how to do that.  All of the artificial
-  bugs work fine for timeouts between 10ms and 1 second, but that
-  isn't particularly convincing by itself.
 \item Show that it works for some slightly more realistic artificial
   bugs, probably from ripping sync blocks out of STAMP.
   i.e. real-size programs with artificial bugs.  I currently have one
@@ -85,6 +80,11 @@ Things I want to show in the eval:
   us, in terms of simpler analysis.  The implementation is such that
   turning it on and off is fairly feasible, although I haven't tried
   it in a while.
+\item At some point I'm going to need to do a sensitivity analysis to
+  show that the timeouts don't need to be tuned particularly finely to
+  get bugs to repro.  Not sure how to do that.  All of the artificial
+  bugs work fine for timeouts between 10ms and 1 second, but that
+  isn't particularly convincing by itself.
 \item I need to show that the dynamic analysis is reasonable.  Ideally
   that'd be by using a static analysis to get an upper bound and then
   showing that they're reasonably close, but implementing that'd be a
@@ -217,7 +217,11 @@ evaluation are generally sufficiently different that formal
 significance tests would be redundant and so I consider this to be a
 reasonable trade-off.
 
+\todo{Alternative is just to tell the reader to look at the CDFs,
+  but I quite like having a table of simple summary statistics.}
+
 \subsection{DataCollider-like implementation}
+\label{sect:eval:datacollider}
 
 As a point of comparison, I also implemented a tool which explores
 alternative thread schedules without first analysing the program to
@@ -628,14 +632,15 @@ crash\editorial{Need to re-do that stat with more data}.
       \node[label,draw] at (loadSt.south west) {$\rightarrow$ Program crashes};
     \end{scope}
 
-    \draw[->] (storeDelay.east) to node {Load arrives during store interval} (loadLdA2.west);
-    \draw[->] (loadLdA2.west) to node {Load discharges message with store} (storeSt2.east);
-    \draw[->] (storeSt2.east) to node {Discharge second message} (loadLdB.west);
-  \end{tikzpicture}
-  \caption{Enforcing the simple\_toctou bug.  Dotted lines indicate
-    the program thread running some uninteresting code, wavey lines
-    indicate the program thread sleeping.  The program crashes after
-    roughly 1.14 seconds.}
+    \draw[->] (storeDelay.east) to node {Load arrives during store
+    interval} (loadLdA2.west); \draw[->] (loadLdA2.west) to node {Load
+    discharges message with store} (storeSt2.east); \draw[->]
+    (storeSt2.east) to node {Discharge second message}
+    (loadLdB.west); \end{tikzpicture} \caption{Enforcing the
+    simple\_toctou bug.  Dotted lines indicate the program thread
+    running some uninteresting code, wavey lines indicate the program
+    thread sleeping.  The program crashes after roughly 1.14
+    seconds.}\todo{Not sure this one adds all that much.}
 \end{figure}
 
 With the enforcer loaded and delays set to be between 100ms and 200ms,
@@ -673,7 +678,7 @@ protected is itself quite small and so the function call sequence used
 to acquire or release the patch lock completely dominates the total
 size of the patch.
 
-\textbf{Performance} It is not completely straightforwards to
+\textbf{Performance} \todo{Think harder about stats.} It is not completely straightforwards to
 characterise the performance of this program without the enforcer
 applied as it very rarely runs long enough for to obtain a meaningful
 number.  The approach I have taken is to run the test program
@@ -699,15 +704,12 @@ not become a factor.  Even in this case, a factor of four overhead is
 not completely unreasonable when the alternative is a program which
 crashes frequently.
 
-\todo{Worst case ignoring loss of concurrency, of course.}
+\todo{Worst case ignoring the loss of concurrency, of course.}
 
 \todo{I currently just call into libpthread to actually acquire and
   release the lock.  Just doing inline futex operations in the patch
   might be a bit faster than that, at least some of the time, which'd
   help to get the overhead numbers down.}
-
-\todo{I should probably re-run those experiments now that I've decided
-  on a statistical protocol.}
 
 \todo{Give details of the machine the test is running on.}
 
@@ -765,44 +767,29 @@ while (1) {
 
 The summary, fix, and enforcer produced here are essentially the same
 as for indexed\_toctou except for the addition of a side-condition
-requiring the two indices to match up, and so is not discussed in
+requiring the two indices to match up, and so are not discussed in
 detail here.
 
-With no enforcer loaded, this bug reproduces in $6 \pm 8$ seconds, in
-a test with 100 samples, which again strongly suggests it to be
-non-Gaussian.  In this case, the distribution appears to be
-exponential, and so I characterise it by the $\lambda$ parameter of
-the exponential distribution.  As for simple\_toctou, I ran the test
-1024 times and divided the results in 32 sets of 32 results and
-calculated a separate $\lambda$ parameter for each set, and the
-parameter once again was normally distributed according to the
-Anderson-Darling and Jarque-Bera tests at the 90\% level.  In this
-case, $\lambda = 0.16 \pm 0.02$.
-
-\todo{Like the simple\_toctou tests, the actual statistics were a bit
-  different to that.}  \todo{Proper goodness-of-fit test on the
-  exponential distribution?}
-
-\todo{Thinking about it some more, I'm half convinced that the right
-  thing to do here is just to take the reciprocal of the time taken.
-  Although that's still not Gaussian, so I'd need to do some further
-  massaging, and it definitely wouldn't be the right thing to do for
-  simple\_toctou, so maybe best not to bother.}
-
-With the enforcer loaded, the time taken to reproduce the bug was
-roughly uniformly distributed between 100 and 200ms, which is as
-expected if the enforcer is able to trigger the crash after a single
-delay. \todo{Again, goodness of fit test on that uniform dist.}
+With no enforcer loaded, the bug reproduction time was exponentially
+distributed with $\lambda = 0.6 \pm 0.2$ per second.  With an enforcer
+loaded, the reproduction time was exponentially distributed with
+$\lambda = 6.87 \pm 0.01$ per second, a more than ten-fold improvement
+in the reproduction rate.
 
 I also investigated the behaviour of this test with an enforcer loaded
 but no side condition checking performed.  In that case, the bug
-reproduced after $1.72 \pm 2.81$ seconds (mean and standard deviation
-of one hundred runs).  Resampling and fitting an exponential
-distribution gave a $\lambda$ parameter here of $0.62 \pm 0.06$, and
-so the enforcer without side condition checking produces does cause
-the bug to be reproduced significantly more often than simply running
-the program without side-condition checking, but not nearly as quickly
-as with the checking.
+reproduction time was again exponentially distributed, but this time
+$\lambda = 0.054 \pm 0.004$ per second.  This reduced enforcer not
+only fails to make the bug reproduce more quickly; it actually makes
+it \emph{less} likely to be triggered, per unit time!  This is because
+an enforcer without side-condition checking will often slow the
+program down in order to impose the happens-before graph even in
+situations where doing so is unlikely to trigger the bug, and this
+causes the buggy code to run far less frequently than it otherwise
+would.
+
+\todo{I seem to get completely different results out of this test
+  depending on the phase of the moon.  Not sure what to make of that.}
 
 As a further test, I investigated what happens when the length of the
 delays is modified, first by reducing it to between 10 and 20
@@ -850,7 +837,6 @@ NR\_PTRS & Full enforcer             & No side conditions          & No enforcer
 1000     & $t = 110 - 201ms$         & $t = 33.1 \pm 8.8$          & $\lambda = 0.24 \pm 0.02$ \\
 \end{tabular}
 \caption{Time taken to reproduce indexed\_toctou as NR\_PTRs changes.}
-\todo{Stats slightly dubious here, especially the }
 \label{table:eval:indexedtoctou:nrptrs}
 \end{table}
 
@@ -862,16 +848,19 @@ the performance overheads of the fix I again counted the number of
 times the read and write loops execute per second with and without the
 fix applied, running the test for ten seconds and discarding any runs
 in which the test program crashed.  Without a fix applied, the test
-completed the read loop $9.8 * 10^5 \pm 0.7 * 10^5$ times per second
-and the write loop $8.5 \pm 0.5 * 10^5$ times per second; with a fix,
-it completed $9.5 * 10^5 \pm 0.6 * 10^5$ read loops and $8.5 * 10^5
-\pm 0.4 * 10^5$ write loops (mean and standard deviation of ten runs).
-The overhead is therefore not statistically significant in this test.
-This is largely because both loops include calls to \verb|random|,
-which is rather expensive and completely swamps the cost of the
+completed the read loop $9.6 * 10^5 \pm 0.5 * 10^5$ times per second
+and the write loop $9.0 \pm 0.2 * 10^5$ times per second; with a fix,
+it completed $8.3 * 10^5 \pm 0.3 * 10^5$ read loops and $7.8 * 10^5
+\pm 0.2 * 10^5$ write loops (mean and standard deviation of ten runs).
+The overhead was therefore roughly 15\% on both the read and write
+sides of the test\editorial{Should really put some error bars on
+that.}.  This is far smaller than the factor of four reported in the
+simple\_toctou case, largely because the test loop in this case
+includes a call to \verb|random|, which is rather expensive relative
+to simple lock operations and helps to amortise the cost of the
 additional synchronisation.
 
-\todo{I don't believe for a minute that those are Gaussian.}
+\todo{I don't believe for a minute that those distributions are Gaussian.}
 
 \subsubsection{Biassed indexed TOCTOU bugs (read\_indexed\_toctou, write\_indexed\_toctou)}
 
@@ -882,21 +871,30 @@ read\_indexed\_toctou) is far more common than the other.  This test
 illustrates the importance of rebalancing delays between the various
 happens-before edges in the crash enforcement plans.
 
-With rebalancing: both take 1.16 seconds to repro.
-
-With delay always on the send: bug3 takes 83 seconds, bug4 takes 1.15.
+Without an enforcer, these bugs failed to reproduce within the three
+minute timeout in any of twenty runs.  With a full enforcer,
+write\_indexed\_toctou reproduced consistently in roughly 1.16 seconds
+while read\_indexed\_toctou's reproduction time was bimodally
+distributed between 0.14 seconds ($p = 0.55$) and 1.16 seconds ($p =
+0.45$).  With an enforcer modified to always impose delays on the send
+side, read\_indexed\_toctou reproduced after 83 seconds and
+write\_indexed\_toctou after 1.15.
 
 With delay always on the receive: bug3 takes 0.147s, bug4 takes more
 than a minute and then I got bored.
 
 \todo{Repeat experiments.}
 
+\todo{Integrate these into the main summary table.}
+
 \subsubsection{Multi-variable consistency constraint (multi\_variable)}
 
-This bug is intended to illustrate that {\technique} is able to
-correctly analyse multi-variable atomicity violations.  The read side
-is simply:
+\todo{I'm tempted to re-work this so that it only generates a single
+  bug, just to make things a bit clearer, and also to avoid overlap
+  with the multi\_bugs test.}
 
+\begin{figure}
+  \begin{minipage}{70mm}
 \begin{verbatim}
 while (1) {
    STOP_ANALYSIS();
@@ -904,35 +902,67 @@ while (1) {
    v2 = global2;
    assert(v1 == v2);
    STOP_ANALYSIS();
-   usleep(10000);
+   usleep(10ms);
 }
-\end{verbatim}
-
-The write side is:
-
+\end{verbatim}  
+    \caption{Read side}
+  \end{minipage}
+  \begin{minipage}{70mm}
 \begin{verbatim}
 while (1) {
-  usleep(100000);
+  usleep(100ms);
   STOP_ANALYSIS();
   global1 = 5;
   global2 = 5;
   STOP_ANALYSIS();
-  usleep(100000);
+  usleep(100ms);
   STOP_ANALYSIS();
   global1 = 7;
   global2 = 7;
   STOP_ANALYSIS();
 }
 \end{verbatim}
+    \caption{Write side}
+  \end{minipage}
+  \caption{The two sides of the multi\_variable bug.}
+  \todo{How were those delays chosen?}
+  \label{fig:eval:multi_variable}
+\end{figure}
 
-Note that this also illustrates {\technique}'s ability to handle
-\verb|__assert_fail|-type crashes, in addition to bad pointer
-dereference ones.
+This bug is intended to illustrate that {\technique} is able to
+correctly analyse multi-variable atomicity violations.  The code for
+the two sides of the bug is shown in
+figure~\ref{fig:eval:multi_variable}.  Note that in this case the race
+leads to an assertion failure, whereas previous bugs lead to a bad
+pointer dereference.
+
+In this case, {\technique} reports two bugs in the program: one which
+corresponds to interleaving the read side of the test with the two
+stores which set the global variables to 5 and another which
+corresponds to interleaving it with the stores which set the global
+variables to 7.  These are both real bugs.  Both are successfully
+converted into enforcers and both enforcers cause their matching bugs
+to reproduce quickly.
+
+It is also possible to build a single combined enforcer which attempts
+to enforce both bugs.  The combined enforcer consistently caused the
+first bug to reproduce, as the enforcer for that bug consistently
+reproduces its bug on the first attempt, causing the program to crash
+before the second enforcer has the opportunity to run.
+
+These bugs can also be converted into fixes.  In the case of the
+individual bugs this is unhelpful: one of the bugs is successfully
+fixed, but the other bug remains, and the program still crashes very
+quickly.  The combined fix, on the other hand, does successfully
+prevent both bugs.
 
 This bug could not be handled by tools such as Kivati\needCite{}, as
 it involves multiple variables, but can be handled by {\technique}:
 the bug is reproduced quickly by the enforcer, and a correct and
 low-overhead fix is generated automatically.
+
+\todo{I really need to set those delays to something less crazy so as to
+  make this eval less completely bloody pointless.}
 
 \subsubsection{Context-dependent races (context)}
 
@@ -976,10 +1006,18 @@ other one.  Reproducing the bug quickly is therefore only possible if
 the crash enforcer checks the calling context before inserting any
 large additional delays.
 
-\todo{It'd be worthwhile trying this test again with a STOP\_ANALYSIS
-  at the top of f, just to confirm that we correctly generate a
-  side-condition on ptr with the same effect as checking context even
-  when we don't backtrack far enough to know what the context is.}
+Without an enforcer, this test program crashes reasonably
+infrequently, reaching the three minute timeout six times out of
+twenty runs and taking an average of 80 seconds in the remaining
+cases\editorial{Maybe fit a truncated exponential on those so as to
+get $\lambda$ parameter out?  Probably not worth it.}.  With a full
+enforcer loaded, the time taken to obtain a reproduction is uniformly
+distributed between 100 and 200 milliseconds.  With an enforcer
+modified to nor perform stack context checking, the bug did not
+reproduce within three minutes.
+
+\todo{Run this experiment properly, with a sensible number of repeats
+  and the full statistical thing.}
 
 \subsubsection{Write-to-read hazard (write\_to\_read)}
 
@@ -1017,6 +1055,11 @@ run the two sections far less frequently, and so might require
 hundreds of years of CPU time to reproduce the bug.  The SLI-generated
 enforcer patch, by contrast, can reliably reproduce this bug in a few
 hundred milliseconds.
+
+{\Technique} can also generate a fix for this bug, although given the
+difficultly of reproducing it that is perhaps less than useful.
+Manual inspection nevertheless suggested that the generated fix was
+correct and reasonable.
 
 \todo{I think it might be interesting to investigate this a bit more.
   I have a sneaking suspicion that it won't reproduce at all if you
@@ -1076,26 +1119,40 @@ enforcers (which have the expected behaviour of making one bug
 reproduce quickly while having no effect on the other) or combined
 into a single enforcer.  If the test is configured to always use one
 bug or the other then the combined enforcer consistently reproduces
-that, as desired.  More surprisingly, if the test is configured to
-select a sub-test randomly then the enforcer always reproduces the
-write\_to\_read bug, simply because the enforcer reproduces the bug
-quickly enough that the write side of the simple\_toctou write side
-never runs.
+that, as desired.  Perhaps more surprisingly, if the test is
+configured to select a sub-test randomly then the enforcer always
+reproduces the write\_to\_read bug, simply because the enforcer
+reproduces the bug quickly enough that the write side of the
+simple\_toctou write side never runs.
+
+Likewise, both candidate bugs can be instantiated into individual
+fixes, and both fixes correctly fix their own bug while leaving the
+other bug in place.  Alternatively, a combined fix can be generated,
+and this successfully fixes both bugs.
 
 \subsubsection{Multiple read threads (multi\_threads)}
 
 This test is a variant of the indexed\_toctou test in which there are
 32 read-side threads and 32 write-side ones, all operating
 independently.  This test is intended to show that {\implementation}
-correctly handles programs with more than two threads.
+correctly handles programs with more than two threads.  Without an
+enforcer, the bug reproduces at a rate of roughly $\lambda = 0.15$ per
+second.  The behaviour with an enforcer loaded is more complex.  With
+high probability (95\%), the bug is reproduced in under a second, but
+there is a long tail in which the bug might take several minutes to
+occur.  \todo{Need to figure out what the hell is going on there.}
+
+{\Technique} can successfully generate a fix for this bug.
+
+\todo{Currently running all of these tests on a four-processor machine,
+  which might have an interesting effects on the results of a
+  64-thread test.}
 
 \subsubsection{Complicated happens-before graphs (complex\_hb)}
 
 This test is intended to illustrate {\technique}'s ability to handle
 more complicated happens-before graphs which require more than two
-context switches.  This kind of bug defeats some existing tools such
-as Chess\needCite{} or DataCollider\needCite{}.  The test is
-structured like so:
+context switches.  The test is structured like so:
 
 \begin{verbatim}
 while (1) {
@@ -1145,38 +1202,30 @@ while (1) {
 \end{figure}
 
 In this case, the bug will only reproduce if the happens-before graph
-is as shown in figure~\ref{fig:eval:complex_hb}.  This is a difficult
-bug for Chess and DataCollider to handle, for somewhat different
-reasons.
-
-For Chess, whether the bug can be correctly handled will depend on how
-many context switches the analysis is configured to explore, and any
-setting of three or more should be able to trigger it.  The value used
-in the Chess paper is two, and so in that configuration this bug would
-not be correctly handled by Chess.  Note that a similar construction
-can require arbitrarily many context switches, and so even if Chess
-were configured to use a higher threshold it would still be possible
-to defeat it using bugs of this type.
-
-For DataCollider, the behaviour is somewhat less clear.  The obvious
-implementation of DataCollider would pick one of the memory accesses
-and delay it by a small amount, and this is insufficient to reproduce
-this bug.  A more advanced DataCollider implementation might instead
-pick some subset of instructions and insert delays at all of them.  If
-the delays were correctly chosen then this would reproduce the bug.
-The DataCollider paper suggests placing delays randomly, and so the
-probability of correctly placing them would fall off exponentially
-with the size of the program and for even moderately large programs
-would be effectively zero.  A more cunning approach would be to apply
-some form of analysis to the program to place delays more effectively;
-such a scheme would rapidly turn into something similar to
-{\technique}.
+is as shown in figure~\ref{fig:eval:complex_hb}.  Note that this graph
+requires four happens-before edges.  This means that it would be
+difficult for tools such as Chess\needCite{} to handle, as, in its
+default configuration, Chess only considers executions with up to
+three context switches.  This construction can be easily extended to
+require arbitrarily many context switches, and so even if Chess were
+configured to use a higher threshold it would still be possible to
+defeat it using bugs of this type.
 
 The evaluation includes two variants of this bug; the one illustrated
 above, which requires four happens-before edges, and an extended
-version which requires 10 edges.
+version which requires 10 edges.  Both of them are analysed reasonably
+quickly by {\implementation} (200ms in the 4-edge case, versus 74
+seconds in the 10-edge one), and converted into an enforcer which
+allows the bug to be reproduced in just a few hundred milliseconds.
 
 \subsection{Summary tables}
+
+\todo{Need to think harder about what variants of the enforcers I want to include.
+  At the moment I do a full enforcer and an enforcer without
+  side-condition checking for every test, which is kind of silly
+  because most of the time that just shows that enforcers without
+  side-condition checking don't work very well.  It might be more
+  useful to try different timeout strategies instead.}
 
 \begin{sidewaystable}
 \input{eval/analysis_phase_times}
@@ -1299,8 +1348,6 @@ completely cover the actual critical sections in the program.
   the SD drops to something sane, but I don't think that would be
   terribly meaningful.}
 
-\section{Bugs from real programs}
-
 \subsection{glibc}
 
 \verb|glibc| is a kernel of glibc bug 2644 \cite{glibc2644}, which
@@ -1405,6 +1452,8 @@ sections, one containing the two accesses in \verb|ProcessCurrentURL|
 and one containing the assignment in \verb|CloseStreams|.  This fixes
 the bug.
 
+\section{Bugs from real programs}
+
 \subsection{mysql}
 
 Mysql 56324.  Read side:
@@ -1412,64 +1461,31 @@ Mysql 56324.  Read side:
 \begin{verbatim}
 void my_thread_end(void)
 {
-  struct st_my_thread_var *tmp;
-  tmp= my_pthread_getspecific(struct st_my_thread_var*,THR_KEY_mysys);
-
-#ifdef EXTRA_DEBUG_THREADS
-  fprintf(stderr,"my_thread_end(): tmp: 0x%lx  pthread_self: 0x%lx  thread_id: %ld\n",
-          (long) tmp, (long) pthread_self(), tmp ? (long) tmp->id : 0L);
-#endif
-
-#ifdef HAVE_PSI_INTERFACE
-  /*
-    Remove the instrumentation for this thread.
-    This must be done before trashing st_my_thread_var,
-    because the LF_HASH depends on it.
-  */
+...
   if (PSI_server)
     PSI_server->delete_current_thread();
-#endif
+}
 \end{verbatim}
 
 Write side:
 
 \begin{verbatim}
-#ifdef __WIN__
-int win_main(int argc, char **argv)
-#else
 int mysqld_main(int argc, char **argv)
-#endif
 {
-  /*
-    Perform basic thread library and malloc initialization,
-    to be able to read defaults files and parse options.
-  */
-  my_progname= argv[0];
-  if (my_basic_init())
-  {
-    fprintf(stderr, "my_basic_init() failed.");
 ....
-  }
-#endif
-  clean_up(1);
-#ifdef HAVE_PSI_INTERFACE
-  /*
-    Disable the instrumentation, to avoid recording events
-    during the shutdown.
-  */
   if (PSI_server)
   {
     PSI_server->delete_current_thread();
     PSI_server= NULL;
   }
-  shutdown_performance_schema();
-#endif
   mysqld_exit(0);
 }
 \end{verbatim}
 
 And the race is then on \verb|PSI_server|.  This one actually works;
-woo.
+woo.  We find the bug from the whole-program analysis, and it then
+gets turned into an enforcer, and the enforcer then makes it
+reproduce.  Fix generation also works.
 
 Possibly more interesting: there are multiple very similar bugs
 scattered throughout the program, and it found all of the ones I knew
@@ -1480,6 +1496,11 @@ have compiler optimisations, because otherwise the compiler caches
 \verb|PSI_server| in a register and avoids the crash.
 
 \todo{Need to finish running this on the optimised build.}
+
+\todo{Might be worth pointing out that the fix can lead
+  delete\_current\_thread() running an additional time, and then give
+  the definition of that function to show that the fix is correct
+  anyway?}
 
 \subsubsection{Effect of the induction rule}
 
@@ -1508,11 +1529,10 @@ relatively minor improvement in the final results.
   
 \section{Validation of tool implementation}
 
-\subsection{Cross-thread stack accesses}
-
 \subsection{Static analyses}
 
-SLI relies on two forms of whole-program static analysis applied to the target binary before the main analysis starts:
+SLI relies on two forms of whole-program static analysis applied to
+the target binary before the main analysis starts:
 
 \begin{itemize}
 \item
@@ -1521,61 +1541,103 @@ SLI relies on two forms of whole-program static analysis applied to the target b
   An analysis to recover the offset between RSP and RBP, where that is a constant.
 \end{itemize}
 
-Both analyses assume in at least some places that the program to be analyses conforms to the system ABI.
-If that assumption does not hold, or if there is simply a bug in one of them, then that might invalidate all of the other results.
-I therefore developed some Valgrind-based dynamic analyses to check that the results of this phase were correct.
+Both analyses assume that the program to be analyses conforms to the
+system ABI.  If that assumption does not hold, or if there is simply a
+bug in one of them, then that might invalidate all of the other
+results.  I therefore developed some Valgrind-based dynamic analyses
+to check that the results of this phase were correct.
 
 \todo{The tool also implements a register liveness analysis, but
   that's only used to build the points-to table, so validating the
-  points-to table also implicitly validates the liveness one.}
+  points-to table also implicitly validates the liveness one.  Also,
+  I've not described the liveness analysis anywhere, so it'd be hard
+  to wedge it in here.}
 
 \subsubsection{Points-to analysis}
 \label{sect:eval:validate:pta}
-\todo{I kind of end up describing this twice, once in the analysis
-  chapter and then again here.  Rationalise that down a bit.}
+\todo{Shrink this section.}
 
 The static points-to analysis builds an instruction attribute table
 for the program which includes, for each instruction:
 
 \begin{itemize}
 \item
-  Whether the current stack frame might include any pointers to itself.
+  Whether the current stack frame might include any pointers to itself
+  or to memory outside of the current frame.
 \item
-  Whether there might be any pointers to the current stack frame in memory which is not part of the current stack frame.
+  Whether there might be any pointers to the current stack frame in
+  from outside of it.
 \item
-  For each register, a flag saying whether that register might point at the current stack frame.
+  For each register, a flag saying whether that register might point
+  at the current stack frame or to memory.
 \end{itemize}
 
-The ``current stack frame'' here is defined to be the region of memory between \verb|RSP-128| and the value of \verb|RSP| at the time of the enclosing \verb|call| instruction\editorial{talk about effects of tail calls}.
-The tool to check this analysis has several parts:
+The ``current stack frame'' here is defined to be the region of memory
+between \verb|RSP-128| and the value of \verb|RSP| at the time of the
+immediately enclosing \verb|call| instruction\footnote{128 bytes is
+the size of stack red zone, which effectively forms part of the
+current stack frame.}\editorial{talk about effects of tail
+calls}\editorial{i.e. current RSP versus RSP at time of last call;
+could maybe be clearer about that.}.  The tool to check this analysis
+has several parts:
 
 \begin{itemize}
 \item
-  It must track the extent of the current frame; this is straightforward, since the analysis can always see the value of \verb|RSP| and all \verb|call| and \verb|ret| instructions.
+  It must track the extent of the current frame; this is
+  straightforward, since the analysis can always see the value
+  of \verb|RSP| and all \verb|call| and \verb|ret| instructions.
 \item
-  It checks, at the start of each instruction, whether any registers currently point into the current frame, and, if so, whether that is allowed by the instruction attribute table.
+  It checks, at the start of each instruction, whether any registers
+  currently point into the current frame, and, if so, whether that is
+  allowed by the instruction attribute table.
 \item
-  It attempts to track directly whether there exist any pointers to the current frame, whether in the frame or outside of it.
-  This part of the analysis assumes that there are no pointers into a frame when it is created at the start of a function and then monitors all stores to detect when such pointers are created.
-  This information then allows the analysis to directly check the might-be-pointer-to-frame flags in the instruction attribute table.
+  It attempts to track directly whether there exist any pointers to
+  the current frame, whether in the frame or outside of it.  This part
+  of the analysis assumes that there are no pointers into a frame when
+  it is created at the start of a function and then monitors all
+  stores to detect when such pointers are created.  This information
+  then allows the analysis to directly check the
+  might-be-pointer-to-frame flags in the instruction attribute table.
 \item
-  That assumption holds for most well-behaved programs, but is not absolutely guaranteed.
-  The dynamic analysis therefore also checks all load operations to confirm that there are no pointers which violate the flags in any memory locations accessed by a function.
-  There might, of course, be pointers into the current stack frame which are never loaded, but (assuming there are no cross-thread stack accesses) they can never be dereferenced, and so don't actually matter.
+  That assumption holds for most well-behaved programs, but is not
+  absolutely guaranteed.  The dynamic analysis therefore also checks
+  all load operations to confirm that they only return pointers to the
+  current stack frame when the static analysis allows the loaded
+  memory to contain pointers to the frame.
+
+  There might, of course, be pointers into the current stack frame
+  which are never loaded, but (assuming there are no cross-thread
+  stack accesses) they can never be dereferenced, and so don't
+  actually matter.
 \end{itemize}
 
 This flagged a number of minor problems with the analysis:
 
 \begin{itemize}
 \item
-  Pointers to the stack frame can sometimes be left behind in dead registers, and in particular in call-clobbered registers after function calls.
-  Correct programs which conform to the ABI will never make use of the values of these registers, and the static analysis makes use of that fact\editorial{...but doing so doesn't actually buy us anything...}, but it is much less obvious in a dynamic analysis.
-  The solution is simple: have the dynamic analysis overwrite all such registers with poison values when functions return.
-  If the program does conform to the ABI then this will have no effect, but if it makes use of the theoretically-dead values then its behaviour will change.
-  I ran the analysis in three modes, one which used zero as poison, one which used a small value which wasn't a valid pointer, and one which used a large value which wasn't a valid pointer.
+  Pointers to the stack frame can sometimes be left behind in dead
+  registers, and in particular in call-clobbered registers after
+  function calls.  Correct programs which conform to the ABI will
+  never make use of the values of these registers, and the static
+  analysis makes use of that fact, but it is hard for a dynamic
+  analysis to determine when a register is dead.  The solution is
+  simple: have the dynamic analysis overwrite all such registers with
+  poison values when functions return.  If the program does conform to
+  the ABI then this will have no effect, but if it makes use of the
+  theoretically-dead values then its behaviour will change.  I
+  repeated the analysis with three different poison values: zero, a
+  small number which was not a valid pointer, and a large value which
+  was not a valid pointer.
 
-  This revealed a single place which did not conform to the ABI in the desired way: glibc's internal pthread locking functions are guaranteed to never clobber \verb|RSI|, and glibc's syscall stubs make use of this in a number of places.
-  This particular static analysis is only applied to the program's main binary, and not any of the libraries which it is dynamically linked against, and so this is not a particular problem.
+  This revealed a single place which did not conform to the ABI in the
+  desired way: glibc's internal pthread locking functions are
+  guaranteed to never clobber \verb|RSI|, and glibc's syscall stubs
+  make use of this in a number of places\editorial{Cite, maybe?  It'll
+  be pointing at source rather than a document saying exactly what's
+  going on, but at least it's something.}.  This particular static
+  analysis is only applied to the program's main binary, and not any
+  of the libraries which it is dynamically linked against, and so this
+  is not a particular problem.
 
 \item
   \verb|alloca|
@@ -1614,10 +1676,10 @@ end with a store (for store CFGs).  This dynamic analysis attempts to
 validate that by capturing a large pool of dynamic traces from the
 program and then checking that CFG generator can generate the trace.
 Ideally, it would capture every such trace from an execution, but that
-has sufficiently high performance overhead to make it difficult to
-exercise all possible behaviour under it\editorial{blah}.  Instead,
-the analysis applies several filters to try to obtain a reasonably
-representative sample:
+has sufficiently high performance overhead that it would be difficult
+to exercise a broad cross-section of the program's behaviour while
+running such an analysis.  Instead, the analysis applies several
+filters to try to obtain a reasonably representative sample:
 
 \begin{itemize}
 \item
@@ -1642,17 +1704,17 @@ representative sample:
 
 The end result of this dynamic analysis is a large set of short
 fragments of the program's execution.  Each such fragment is
-considered in isolation, and appropriate instructions from it fed into
-the CFG generating algorithm.  The CFG can then be checked to ensure
-that the trace is actually possible in the CFG.  This analysis did not
-find any problems with the algorithm.
+considered in isolation, and appropriate\editorial{?} instructions
+from it fed into the CFG generating algorithm.  The CFG can then be
+checked to ensure that it includes the desired trace.  This analysis
+did not find any problems with the algorithm.
 
 \todo{Should really try to do something to convince myself that the
   sanity checker works.  Collecting more stats on the trace pool
   generated would be good, as would some sensitisation on those
   parameters.}
 
-\subsection{\StateMachine generation}
+\subsection{{\STateMachine} generation}
 
 Don't really have a plan for this; might just say that it's a trivial
 wrapper for libVEX.
@@ -1684,12 +1746,24 @@ Things to look at:
   interactions between code which we already know about.
 \end{itemize}
 
-\subsection{\StateMachine simplification}
+\subsection{Symbolic execution engine}
 
-The \StateMachine simplification passes are both complicated and
+No idea how to validate this one.  It's actually very simple, so I'm
+already pretty certain it's mostly correct.
+
+\subsection{{\STateMachine} simplification}
+
+\todo{The problem with this stuff is that there's a lot of machinery
+  involved, but the punch line is just that everything works fine,
+  which is somewhat unsatisfying.}
+
+\todo{Also, I've not run this in ages, so I should probably do that
+  again and see if it turns up anything interesting.}
+
+The {\StateMachine} simplification passes are both complicated and
 critical to SLI's correctness; validating that they are correct is
 therefore important.  To do so, I collected a selection of pre- and
-post-optimisation machines from a number of runs, evaluated them in
+post-simplification machines from a number of runs, evaluated them in
 identical initial configurations, and confirmed that they produced
 identical results.  Generating the initial conditions is non-trivial.
 At first I simply generated them completely at random, but found that
@@ -1712,7 +1786,7 @@ crash();
 \end{verbatim}
 
 Here, \verb|rax| is a 64-bit value, and so if its value is randomly
-chosen then the \StateMachine is highly unlikely to make it past the
+chosen then the {\StateMachine} is highly unlikely to make it past the
 first state, which would not constitute a good test.  Of course, it
 would be possible to bias the distribution to produce zeroes more
 often than other values, and hence avoid this issue.  This works, in
@@ -1772,7 +1846,7 @@ initial configurations:
   which the symbolic execution engine finds through the machine,
   whether that path ultimately crashes, survives, or escapes (due to
   e.g. dereferencing a bad pointer).
-\item[2] Pick a constraints which is not satisfied by any
+\item[2] Pick a constraint which is not satisfied by any
   configuration currently present in the initial configuration set.
   Attempt to generate a configuration which satisfies it and add it to
   the set.  If there are no constraints which are never satisfied,
@@ -1823,9 +1897,9 @@ reasonably high probability, exercise a useful selection of
 items:
 
 \begin{itemize}
-\item Initial values of some registers\footnote{For SSA \StateMachines
+\item Initial values of some registers\footnote{For SSA {\StateMachines}
   these will be the only values those registers ever have, but for
-  non-SSA \StateMachines the value might change during
+  non-SSA {\StateMachines} the value might change during
   interpretation.}.
 \item Partial contents of memory, in the form of a partial mapping
   from concrete addresses to concrete values.
@@ -1837,28 +1911,30 @@ items:
 \end{itemize}
 
 The configurations (hopefully) contain all of the parts of
-\StateMachine state which might affect the final result, but do not
+{\StateMachine} state which might affect the final result, but do not
 necessarily contain enough information to actually interpret the
-\StateMachines to completion.  For example, many \StateMachines will
-access locations on the stack, and so interpreting them will require
-the value of the stack pointer, but it is very rare for their final
-result to depend on the precise value of that pointer, and so the
-symbolic execution engine will not generate any constraints on that
-value and the initial configurations will not contain any value for
-it.  If the validator encounters any such unspecified values during
-\StateMachine interpretation it simply generates new random values for
-the relevant variables.  It then runs each initial state 100 times,
-with different random values each time, and checks that the
-\StateMachines match for each one.
+{\StateMachines} to completion.  For example, many {\StateMachines}
+will access locations on the stack, and so interpreting them will
+require the value of the stack pointer, but it is very rare for their
+final result to depend on the precise value of that pointer, and so
+the symbolic execution engine will not generate any constraints on
+that value and the initial configurations will not contain any value
+for it.  If the validator encounters any such unspecified values
+during {\StateMachine} interpretation it simply generates new random
+values for the relevant variables.  It then runs each initial state
+100 times, with different random values each time, and checks that the
+{\StateMachines} match for each one.
 
-One final subtlety is what to do with what to do with \StateMachines
+One final subtlety is what to do with what to do with {\StateMachines}
 which escape by, for instance, failing an assertion.  This indicates
 that some part of the analysis has determined that the configuration
-is not interesting, for some reason, 
+is not interesting, for some reason, \todo{There's some special
+handling here to do with retrying escaping machines, but I don't
+remember why I did it that way any more.  Think harder.  Also need to
+grab a whole bunch of statistics on what this actually does so as to
+convince people that it actually gets decent test coverage.}
 
-\todo{There's some special handling here to do with retrying escaping
-  machines, but I don't remember why I did it that way any more.
-  Think harder.  Also need to grab a whole bunch of statistics on what
-  this actually does so as to convince people that it actually gets
-  decent test coverage.}
-
+I ran the resulting tool on a selection of {\StateMachines} which were
+generated while analysing mysql.  It found a number of implementation
+bugs, which are now fixed, but did not reveal any fundamental problems
+with any of the algorithms involved.
