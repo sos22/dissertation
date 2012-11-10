@@ -1,3 +1,5 @@
+\todo{This is much less complete than the previous chapters.}
+
 \section{Eval plan}
 
 Things I want to show in the eval:
@@ -7,8 +9,8 @@ Things I want to show in the eval:
   reasonable amount of discussion about what it actually does.
   This'll include showing that the generated fixes work, and some bits
   about their relative performance.  I'd also like to discuss
-  whole-program vs. core dump vs. DRS mode here.  This will also
-  include a comparison to my implementation of DataCollider.
+  whole-program vs. core dump.  This will also include a comparison to
+  my implementation of DataCollider.
 
   Things to show:
 
@@ -20,6 +22,10 @@ Things I want to show in the eval:
   \item That the performance overhead of the enforcer when the bug
     doesn't reproduce isn't so massive that it'll make bugs less
     likely to reproduce.
+  \item Show how setting the sizes of the delays lets you trade off
+    time-to-reproduce against enforcer overheads.  That's never going
+    to be terribly convincing when you're using entirely artificial
+    bugs, but it might tell you something.
   \item That the side-condition checking stuff is both necessary and
     effective.
   \item That we can generate ``reasonable-looking'' fixes for all of
@@ -33,6 +39,11 @@ Things I want to show in the eval:
   useful for a human trying to fix the bug, but that's likely to be a
   rather hard argument to make.
 
+\item At some point I'm going to need to do a sensitivity analysis to
+  show that the timeouts don't need to be tuned particularly finely to
+  get bugs to repro.  Not sure how to do that.  All of the artificial
+  bugs work fine for timeouts between 10ms and 1 second, but that
+  isn't particularly convincing by itself.
 \item Show that it works for some slightly more realistic artificial
   bugs, probably from ripping sync blocks out of STAMP.
   i.e. real-size programs with artificial bugs.  I currently have one
@@ -55,11 +66,12 @@ Things I want to show in the eval:
   \item Try turning the various machine simplification passes on and
     off and see what effect that has on the CDF.  Likewise the
     induction rule.
+  \item Likewise changing the size of the analysis window.
   \item Just directly look at how long the various phases take.
   \item Alias analysis: try turning off the static analysis bit and
-    see how much effect that has.
-  \item Maybe say something about the number of states in
-    {\StateMachines}, how long the symbolic execution takes, etc?
+    see how much effect that has.  Likewise try running without the
+    dynamic analysis; the results will be very bad, but it'd be
+    interesting to put a number on how bad is bad.
   \end{itemize}
 
   Aim here is less proving some hypothesis and more just giving a
@@ -70,7 +82,9 @@ Things I want to show in the eval:
   and some things harder.
 \item I really want something to show how much the W isolation
   property costs us, in terms of bugs detected, and how much it buys
-  us, in terms of simpler analysis.
+  us, in terms of simpler analysis.  The implementation is such that
+  turning it on and off is fairly feasible, although I haven't tried
+  it in a while.
 \item I need to show that the dynamic analysis is reasonable.  Ideally
   that'd be by using a static analysis to get an upper bound and then
   showing that they're reasonably close, but implementing that'd be a
@@ -90,48 +104,8 @@ Other things I can look at and evaluate:
   Look at different strategies for combining machines into
   combi-enforcers.
 \item
-  Look at effect of different analysis window sizes: how many bugs do
-  we find, how many false positives, how much time does the analysis
-  take.
-\item
-  Look at how many bugs are killed off by the different clauses of the
-  crash definition.
-\item
-  Investigate performance hit of the enforcement mode, and how that
-  depends on the mechanism used to generate the enforcers
-  i.e. compiler versus interpreter.
-\item
-  How much does the W isolation property actually buy us, in terms of
-  analysis cost?  How much does it cost us, in terms of lost bugs?
-\item
-  How large are the CFGs and \StateMachines which we actually
-  generate?  Also, how large are the intermediate machines generated
-  when we're generating verification conditions?
-\item
-  Do we actually win anything from using the slightly odd form of SSA?
-  Not really sure how to evaluate that; it's sufficiently baked in now
-  that I couldn't reasonably replace it to do a cross-eval.
-\item
   We handle multi-rooted CFGs completely differently between read and
   write modes.  Does that win/lose anything?
-\item
-  There are a bunch of places where we have to decide between using
-  the simplifier and the sat checker.  Eval which works better for
-  each of them.  Downside of evalling this is that it means
-  *explaining* the difference between the simplifier and the sat
-  checker, which I'd really rather avoid if I can get away with it.
-\item
-  Crash enforcement: timeout strategies.
-\item
-  Crash enforcement: how useful is side-condition checking?
-\item
-  Crash enforcement: how often do we redundantly evaluate side conditions?
-\item
-  Crash enforcement: Is await-bound-exit actually useful?
-  We know it is in silly little artificial test cases, but perhaps not in real programs?
-\item
-  Currently artificially limit number of live assertions to 5.
-  Investigate what effect that has.
 \item
   Want something which can evaluate the effectiveness of the
   cross-function alias analysis pass.
@@ -141,12 +115,6 @@ Other things I can look at and evaluate:
 \item
   Want something which can evaluate the effectiveness of the state
   unification optimisation.
-\item
-  In order to make the theory behind the crash enforcers work you
-  always have to wait for a fixed amount of time when doing unbound
-  message operations, even if someone arrives before the time has
-  passed.  Most of the time, that extra delay is wasted.  Look at how
-  much time is wasted, and how bad it would be to just not do that.
 \end{itemize}
 
 \section{Artificial bugs}
@@ -156,27 +124,204 @@ artificial bugs, showing that it assists in both reproducing the bugs
 and fixing them, along with some discussion of what the various
 analysis phases actually do.
 
-Lookup between bug numbers and names:
+\subsection{Statistical considerations}
+
+The following sections include a number of attempts to characterise
+certain distributions, usually either the performance of a test
+program or the time taken for a test program to crash.  Unfortunately,
+these distributions are often strongly non-Gaussian and prone to large
+outliers, and so attempting to describe them as a mean plus or minus a
+standard deviation would be at best uninformative and worst outright
+deceptive\footnote{The time taken for the simple\_toctou bug to crash
+  without an enforcer, for example, is $3 \pm 8$ seconds, which is
+  very obviously meaningless.}.  The differences between the various
+configurations are generally large enough that there is no need for a
+formal significance test, and so these difficulties do not affect the
+qualitative conclusion that enforcers make bugs reproduce more quickly
+and fixes prevent them reproducing with low overhead, but I would
+still like to provide the reader with a more quantitative
+understanding of the various quantities evaluated.  As an additional
+complication, some of the tests reported here can run for a very long
+time in a largely uninformative way.  In order to keep the total time
+taken to run all experiments reasonably I therefore restricted all
+tests to run for at most three minutes; any which take longer than
+that are considered to have timed out.  I have therefore used the
+following protocol to characterise the distribution of times taken for
+tests:
 
 \begin{itemize}
-\item 1 -- Simple TOCTOU
-\item 2 -- Indexed TOCTOU
-\item 3 -- Indexed TOCTOU with rare writes
-\item 4 -- Indexed TOCTOU with rare reads
-\item 5 -- Multi-variable consistency constraint
-\item 6 -- Context-dependent TOCTOU; multiple calls to \verb|f|, but
-  only one has the bug of interest.
+\item All experiments start by running the test twenty times.  If
+  every test times out then I abandon the test and simply report the
+  result as \textit{timeout}.  If the data contains both timed-out and
+  non-timed-out results then I characterise it by the timeout rate,
+  written $timeout = n/20$, where $n$ is the number of runs which
+  timed out.
+\item If the test did not suffer any timeouts then the results are
+  tested for normality using the Anderson-Darling and Jarque-Bera
+  tests at the 90\% level.  If the data passes both tests then I
+  conclude that the data is normally distributed and characterise it
+  by the mean $\mu$ and estimated population standard deviation
+  $\sigma$, which I write as $\mu \pm \sigma$.
+\item If the data fails either normality test then I investigate
+  whether it might be normally distributed using a one-sided
+  Kolmogorov-Smirnov test at the 1\% level\editorial{I'm not convinced
+    I've got the KS test quite right.  The general form is definitely
+    right, but I think the critical value might be wrong.  Check with
+    a bootstrap test.}.  If this test passes then I conclude that the
+  data is uniformly distributed and report it as $[l, h]$, where $l$
+  is the lowest value observed and $h$ the highest\editorial{Maybe use
+    a Fischer-Tippett correction on those limits?}.
+\item If the quantity being investigated is the time taken for a
+  program to crash and the data appears to be neither Gaussian nor
+  uniform then I investigate whether it might be exponentially
+  distributed.  I run the experiment an additional eighty times, so
+  that I have one hundred samples of the distribution, and then
+  randomly partition the resulting data into ten sets of ten samples.
+  I then fit an exponential distribution to each set to produce ten
+  estimates of the distribution's $\lambda$ parameter and characterise
+  the distribution by the mean and estimated population standard
+  deviations of these estimates.  I accept that the data is
+  exponentially distributed if the data itself passes a
+  Kolmogorov-Smirnov test at the 1\% level and the set of estimates
+  passes both normality tests at the 90\% level.  I denote this
+  distribution by $\lambda = \mu \pm \sigma$.
+
+  If any of these additional experiments time out then I simply repeat
+  that run of the experiment.  The final results table includes the
+  number of additional runs which was necessary.
+
+\item Finally, if none of those tests succeed then I simply
+  characterise the distribution by the tenth, fiftieth, and ninetieth
+  percentiles of the enlarged data set, written $[p_{10}; p_{50};
+    p_{90}]_{100}$.
+\end{itemize}
+
+Performance distributions are generally somewhat better behaved, in
+that they have fewer extreme outliers and generally do not suffer
+timeouts.  For these, I simply run the test twenty times and discard
+the highest and lowest results.  If the resulting data passes the
+normality tests then I report it as $\mu \pm \sigma$; otherwise, I
+report the tenth, fiftieth, and ninetieth percentiles as $[p_{10};
+  p_{50}, p_{90}]_{18}$.  Note that the tenth and ninetieth
+percentiles do not fall precisely onto one of the samples; I use
+linear interpolation between the two nearest samples to produce a
+final value.
+
+From a statistical perspective, these scheme is hard to justify, and
+the resulting distributions should not be used for significance
+testing without, at the very least, using a multiple-testing
+correction.  On the other hand, they are effective at reducing complex
+test data to simple summary statistics and allowing rapid comparison
+of dramatically different distributions.  The values presented in this
+evaluation are generally sufficiently different that formal
+significance tests would be redundant and so I consider this to be a
+reasonable trade-off.
+
+\subsection{DataCollider-like implementation}
+
+As a point of comparison, I also implemented a tool which explores
+alternative thread schedules without first analysing the program to
+obtain {\StateMachines} and verification conditions, inspired by
+DataCollider\needCite{}.  The idea here is to select a random subset
+of memory-accessing instructions in the program and place breakpoint
+instructions at them.  When these breakpoints fire the tool examines
+the program state to determine which memory locations they access and
+sets a processor watch point\needCite{} on that location.  It then
+waits a short while to see if the watch point is triggered by any
+other threads.  If it is, the two instructions race and the tool
+selects which to execute first at random, then allows both threads to
+proceed unmolested.  Otherwise, the breakpoint and watch point are
+cleared and another breakpoint set elsewhere in the program.  The
+result is that the program explores its possible schedules more
+quickly than it would if run without these manipulations, which should
+lead to bugs being discovered more quickly.
+
+The effectiveness of this tool is obviously highly dependent on the
+fraction of instructions which are covered by breakpoints and the
+length of the delays inserted.  Some initial experiments suggested
+that these parameters lead to the most rapid bug
+reproduction\editorial{Should have done this in a more systematic
+  way.}:
+
+\begin{itemize}
+\item
+  At any given point, half of the program's memory accessing
+  instructions will have an instruction breakpoint, excluding stack
+  accesses\editorial{Putting a breakpoint on every instruction lead to
+    a deadlock; should probably figure out why.}.
+\item
+  When a breakpoint is hit, the tool will wait for up to 10ms for a
+  matching read or write to arrive.  When a thread does arrive, it
+  will select which to resume first at random, with equal probability.
+\item
+  Once a second, the tool discards its current instruction breakpoint
+  set and generates a new one.
+\end{itemize}
+
+It is instructive to compare these parameters to those used in the
+DataCollider paper.  The 10ms timeout is broadly similar, as
+DataCollider uses between one and fifteen millisecond timeouts,
+depending on the type of instruction.  Setting breakpoints on half of
+instructions, on the other hand, is not.  The actual DataCollider
+implementation adjusts the breakpoint density dynamically so as to
+achieve a particular breakpoint rate, and their paper does not specify
+a numerical breakpoint density, which makes a direct comparison
+difficult.  It is, however, possible to estimate the breakpoint
+density from the information which they do give.  Their evaluation
+shows breakpoint rates of up to 1500 breakpoints per second in a
+virtual machine with two processors running at 2.4GHz, so $4.8 \times
+10^9$ cycles per second.  If one assumes roughly one non-stack memory
+access every hundred cycles that translates to 4.8 million memory
+accessing instructions per second, and so they must trap roughly
+0.03\% of memory accessing instructions.  Even allowing for the fact
+that their implementation preferentially places breakpoints on
+instructions which execute infrequently this is still likely to
+translate to a breakpoint ratio several orders of magnitude lower than
+that used in this evaluation.
+
+Setting such a high breakpoint ratio has two main effects: bugs are
+detected more quickly, but the overheads of the tool are much higher.
+In particular, the high overheads mean that this tool is not an
+entirely practical approach to investigating concurrency bugs.  I
+present it merely as a baseline against which to evaluate
+{\implementation}.  \todo{Should really eval the overheads, rather
+  than just asserting that they're massive.  I mean, they are, but I
+  should have some evidence to back that up.}
+
+More fundamentally, using DataCollider to explore alternative
+schedules is itself somewhat unfair, as DataCollider was originally
+intended to discover races rather than to permute schedules, and,
+while it is trivial to extend it to perform schedule exploration, it
+is not entirely surprising that the results are somewhat poor.
+Nevertheless, it represents the approach which is conceptually close
+to {\technique}'s in the existing literature, and so I consider it to
+be an interesting reference point.
+
+\todo{I'd really like to do a comparison with CHESS, as well, but
+  that's only implemented for 32-bit Windows programs, and
+  {\technique} is only implemented for 64-bit Linux ones, which makes
+  a bit of a mess of direct comparisons.  It'd be kind of fun to
+  re-implement it for Linux, but I don't really have time to do that
+  right now.}
+
+\subsection{Lookup between bug numbers and names}
+\todo{This is a reference into the git repo; it will not be in the
+  final dissertation.}
+
+\begin{itemize}
+\item 1 -- simple\_toctou
+\item 2 -- indexed\_toctou
+\item 3 -- read\_indexed\_toctou
+\item 4 -- write\_indexed\_toctou
+\item 5 -- multi\_vatiable
+\item 6 -- context.
 \item 7 -- Cross-function TOCTOU; check in one function, use in the
   function it returns to.
-\item 8 -- Write to read hazard on the read side races with a wild
-  store.
-\item 9 -- Multiple possible bugs in one program, requiring combined
-  enforcement plans.
-\item 10 -- Lots of threads on the read side.
-\item 11 -- Something which couldn't be found by Chess or
-  DataCollider.  That really means something with at least three
-  mandatory preemptions.
-\item 12 -- Like 11, but with more preemptions.
+\item 8 -- write\_to\_read
+\item 9 -- multi\_bugs
+\item 10 -- multi\_threads
+\item 11 -- complex\_hb with four HB edges.
+\item 12 -- complex\_hb with ten HB edges.
 \item 13 -- Something which demonstrates data-dependent happens-before
   graphs.
 \item 14 -- Something with relevant synchronisation which means that
@@ -514,40 +659,8 @@ crashed after $1.144 \pm 0.002$ seconds (mean and standard deviation
 of ten runs), roughly as expected.  Note that this distribution was
 not Gaussian, due to the presence of positive outliers, but that the
 largest of these, 1.153 seconds, was not large enough to meaningfully
-change the conclusions.
-
-\textbf{Statistical considerations} As noted above, without the
-enforcer the program usually crashes after a little over five seconds
-while with the enforcer applied it crashes after between 1.1 and 1.2
-seconds.  It would be useful to have some indication of the
-uncertainty in the former number.  Characterising the time taken
-without an enforcer is, however, somewhat problematic, as the
-distribution of times taken is leptokurtic: the mean and standard
-deviation here was $5.0 \pm 5.1$\editorial{only ten runs; redo stats},
-even though the time taken is always positive, indicating that the
-standard deviation is pretty much meaningless.  As such, the
-distribution must be characterised in some other way.  From
-theoretical arguments, I expected the distribution to be a
-geometrically distributed integer multiplied by roughly one second,
-and so one obvious approach would be to characterise it by the $p$
-value of the geometric distribution, obtained using the method of
-moments.  This is roughly the approach I took: I ran the test 1,024
-times and partitioned the results into 32 sets of 32 results each,
-calculated an estimate $p$ value for each set, and then report the
-mean and standard deviation of those estimates.  These estimates do
-appear to be normally distributed (checked with the Anderson-Darling
-and Jarque-Bera tests at the the 90\% level), and so the mean and
-standard deviation provide a reasonable characterisation.
-
-\todo{Numbers in the big table are actually from a moronic
-  distribution resampler; need to do this properly.}
-
-\todo{This is a bit unnecessary, in the sense that nobody else ever
-  bothers, but also completely necessary, in the sense that without
-  that the numbers simply don't mean anything.}
-
-\todo{I should really do a goodness of fit test to make sure that the
-  distribution really is geometric there.}
+change the conclusions.  \todo{That's not how I said I was going to
+  characterise this distribution...}
 
 The fix generated in this case is very simple and contains two
 critical sections, one covering \verb|400624| to \verb|400630| and the
@@ -585,6 +698,8 @@ would usually have much lower overhead, assuming lock contention does
 not become a factor.  Even in this case, a factor of four overhead is
 not completely unreasonable when the alternative is a program which
 crashes frequently.
+
+\todo{Worst case ignoring loss of concurrency, of course.}
 
 \todo{I currently just call into libpthread to actually acquire and
   release the lock.  Just doing inline futex operations in the patch
@@ -971,8 +1086,8 @@ never runs.
 
 This test is a variant of the indexed\_toctou test in which there are
 32 read-side threads and 32 write-side ones, all operating
-independently.  This test is intended to show that {\technique}
-correctly handles
+independently.  This test is intended to show that {\implementation}
+correctly handles programs with more than two threads.
 
 \subsubsection{Complicated happens-before graphs (complex\_hb)}
 
@@ -1060,72 +1175,6 @@ such a scheme would rapidly turn into something similar to
 The evaluation includes two variants of this bug; the one illustrated
 above, which requires four happens-before edges, and an extended
 version which requires 10 edges.
-
-\subsection{DataCollider-like implementation}
-
-\todo{This needs to be earlier.}
-
-As a point of comparison, I also implemented a
-DataCollider\needCite{}-like tool for exploring alternative schedules,
-and I include some results obtained with that tool.  These show that,
-at least for simple artificial bugs, {\technique} is able to reproduce
-a wider variety of bugs, and that it is usually able to do so more
-quickly.
-
-The important properties of my DataCollider-like tool are:
-
-\begin{itemize}
-\item
-  At any given point, it will have breakpoints on half of the
-  memory-accessing instructions in the program, selected at random.
-\item
-  When a breakpoint is hit, the tool will wait for up to 10ms for a
-  matching read or write to arrive.  When a thread does arrive, it
-  will select which to resume first at random, with equal probability.
-\item
-  The set of instructions covered by breakpoints is changed every
-  second.
-\end{itemize}
-
-These parameters were selected because they appear to give the best
-results (i.e. shortest time to reproduce the bug) of all of the
-parameters which I tried.  \todo{Should be more systematic about the
-  parameter search there.}
-
-\todo{Reading the DC paper again, this isn't actually all that
-  similar: DC is only really a way of finding races, and not a
-  particularly effective way of tweaking the schedule.  Not sure what
-  I make of that.}
-
-It could be argued that smaller tests are inherently unfair to
-DataCollider-like techniques, as they work best in large programs with
-a large pool of concurrent memory accessing instructions so that the
-statistical sampling behaves well\editorial{Make that more clear.}.
-On the other hand, the density of breakpoints could also make this
-test unrealistically favourable to DC.  The original DataCollider
-paper dynamically adjusts the number of breakpoints to achieve a
-particular breakpoint rate, and so is hard to directly compare.  Their
-evaluation shows a highest breakpoint rate of roughly 1500 breakpoints
-per second in a virtual machine with two processors running at 2.4GHz,
-so assuming one memory access every hundred instructions that
-indicates that they sample roughly 0.003\% of memory accesses; even
-allowing for their implementation's preference to sample
-rarely-executed instructions, that suggests that they sample less than
-1\% of instructions.
-
-More fundamentally, using DataCollider to explore alternative
-schedules is itself somewhat unfair, as DataCollider was originally
-intended to discover races rather than to permute schedules, and,
-while it is trivial to extend it to perform schedule exploration, it
-is not entirely surprising that the results are somewhat poor.
-Nevertheless, it represents the approach which is conceptually closest
-to {\technique}'s in the existing literature, and so I consider it to
-be an interesting reference point.
-
-\todo{I'd really like to do a comparison with CHESS, as well, but
-  that's only implemented for 32-bit Windows programs, and
-  {\technique} is only implemented for 64-bit Linux ones, so that
-  doesn't really work so well.}
 
 \subsection{Summary tables}
 
