@@ -965,31 +965,31 @@ building data-dependent crash enforcers.
 \subsubsection{Conversion to SSA}
 \label{sect:ssa}
 
-{\STateMachines} are maintained in a variant of static single
-assignment (SSA) form.  SSA form is a standard compiler intermediate
-representation in which each variable has at most one static
-assignment\needCite{}.  Variables which are assigned to multiple times
-are converted into families of related variables (usually referred to
-as ``versions'' or ``generations'' of the variable), each of which is
-assigned to precisely once.  This has the effect of breaking up the
-live ranges of long-lived variables, which can expose other useful
-optimisations.  Most uses of the original variable will be converted
-into references to a specific member of one of these families; the
-only case in which this is not possible is where the correct member to
-use depends on the program's control flow, and in that case special
-$\Phi$ nodes are inserted into the program which select an appropriate
-member depending on the immediately proceeding control flow.  These
-$\Phi$ nodes are themselves unrealisable with reasonable overhead on
-most hardware, and so the program must be converted back from SSA form
-after being optimised and before being lowered to machine code.
+{\STateMachines} are, for the most part, maintained in a variant of
+static single assignment (SSA) form.  SSA is a standard compiler
+intermediate representation in which each variable has at most one
+static assignment\needCite{}.  Variables which are assigned to
+multiple times are converted into families of related variables
+(usually referred to as ``versions'' or ``generations'' of the
+variable), each of which is assigned to precisely once.  This has the
+effect of breaking up the live ranges of long-lived variables, which
+can expose other useful optimisations.  Most uses of the original
+variable will be converted into references to a specific member of one
+of these families; the only case in which this is not possible is
+where the correct member to use depends on the program's control flow,
+and in that case special $\Phi$ nodes are inserted into the program
+which select an appropriate member depending on the immediately
+proceeding control flow.  These $\Phi$ nodes are themselves
+unrealisable on most hardware, and so the program must be converted
+back from SSA form after being optimised and before being lowered to
+machine code.
 
 Many of the compiler optimisations for which SSA is helpful are also
-useful in the kinds of analyses used by SLI to determine whether a
-program might crash, and so SLI also converts its {\StateMachines}
-(which are analogous to a compiler's intermediate representation) into
-SSA form.  The precise semantics of the SSA form are, however, very
-slightly different to the more conventional one: whereas a
-compiler-style $\Phi$ node examines the program's preceding control
+relevant to {\technique}, and so {\technique} also converts its
+{\StateMachines} (which are analogous to a compiler's intermediate
+representation) into SSA form.  The precise semantics of the SSA form
+are, however, very slightly different to the conventional one: whereas
+a compiler-style $\Phi$ node examines the program's preceding control
 flow and maps from incoming control-flow edges to input variables, an
 SLI one examines the order in which variables have been assigned to
 and selects whichever was updated most recently (from a specified
@@ -1085,7 +1085,7 @@ something very similar to this.
 \subsection{Building write-side \StateMachines}
 \label{sect:derive:write_side}
 
-The definition of bug tuples given in
+The definition of bugs given in
 section~\ref{sect:finding_bugs:finding_candidate_bugs:formal_definition}
 is existentially quantified over all write thread sequences of length
 $N_w$ instructions.  As with the read-side {\StateMachines}, it would
@@ -1638,11 +1638,10 @@ mul (%rax * $11) -> %rax
     special cases.  This isn't very interesting.}
 \item
   {\Technique} attempts to eliminate memory accessing instructions
-  using a novel cross-function alias technique which incorporates a
-  fast but low-accuracy points-to analysis on the original binary with
-  a slower but more accurate alias analysis applied to the
-  {\StateMachine}; this is described in
-  section~\ref{sect:alias_analysis}.
+  using a cross-function alias technique which incorporates a fast but
+  low-accuracy points-to analysis on the original binary with a slower
+  but more accurate alias analysis applied to the {\StateMachine};
+  this is described in section~\ref{sect:alias_analysis}.
 \item
   {\Technique} attempts to eliminate $\Phi$ expressions from generated
   {\StateMachines} by converting them into multi-terminal binary
@@ -1653,11 +1652,6 @@ mul (%rax * $11) -> %rax
   fragments which differ only in variable names; the unification
   simplification, described in section~\ref{sect:unification} attempts
   to unify these.
-\item
-  \todo{Probably mention that we sometimes optimise on the assumption
-    that assertion failures correspond to crashes and sometimes on the
-    assumption that correspond to avoiding the crash, and discuss why
-    that's necessary.}
 \end{itemize}
 
 There are also a number of other minor simplifications:
@@ -1716,7 +1710,7 @@ f(x) {
    phases of the analysis have much greater flexibility to either move
    or discard such assertions, which can allow further useful
    optimisations.  \todo{I should really come up with a better example
-     here.}
+     here.  Or just not bother mentioning this part.}
 \end{itemize}
 
 \subsection{$\Phi$ elimination}
@@ -1768,8 +1762,8 @@ which input to the $\Phi$ would be selected if the $\Phi$ were issued
 immediately after that state, and then simply read off the MTBDD for
 the actual $\Phi$ state.  This allows all $\Phi$ states to be
 eliminated\editorial{Modulo typing issues, which I'm really going to
-  need to come up with a better story for.}, significantly simplifying
-later analysis phases.
+  need to come up with a better story for.}, simplifying later
+analysis phases.
 
 \subsubsection{Building the control dependence graph}
 
@@ -1880,7 +1874,7 @@ lifts the original MTBDD $a$ to a new MTBDD which evaluates to $a(k)$
 for any configuration $k$ where the assumption is true or to $\bot$
 where the assumption is false.  We then define an \textsc{unlift}
 operation which removes all paths through the MTBDD to these $\bot$
-values, returning the MTBDD to its original domain.  The net effect is
+values, returning the MTBDD to its original range.  The net effect is
 to produce a new MTBDD which evaluates to the same thing as the
 original whenever the assumption is true, but potentially tests fewer
 input variables while it does so.
@@ -1935,8 +1929,8 @@ labels for any which do not.  The result of the analysis is unchanged.
 \todo{I really don't want to have to define $zip$, because it's fiddly
   and not very interesting, but I can't find a cite for it.}
 
-\todo{Do I need to give the $flatten$ algorithm as well?  It's even
-  more tedious and annoying than these ones.}
+\todo{Do I need to give the \textsc{flatten} algorithm as well?  It's
+  even more tedious and annoying than these ones.}
 
 \todo{Need to think much harder about variable ordering within the
   BDDs.  Currently using pointer order, which is rather silly.  Also
@@ -2833,6 +2827,10 @@ useful ways:
 \subsection{Variable unification}
 \label{sect:unification}
 
+\todo{I'm kind of tempted to kill this section off.  It's kind of
+  neat, but it's not \emph{that} useful, and its novelty-to-fiddliness
+  ratio isn't brilliant.}
+
 The various {\StateMachine} simplifications can sometimes lead to
 there being multiple fragments in a single {\StateMachine} which differ
 only in variable and register names.  The variable unification pass
@@ -2978,9 +2976,7 @@ generate the unifier itself in the obvious way.
   terminology is also very similar, but they're not *quite* the same,
   which might be a bit confusing.}
 
-\todo{Should probably have a more realistic example, really; this one
-  makes it look like this is something which won't happen very often,
-  whereas actually it's quite useful.}
+\todo{Should probably have a more realistic example, really.}
 
 The final step of unifying side effects is unifying their memory
 accesses, if they have any.  At this point, the extra level of
