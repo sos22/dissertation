@@ -22,10 +22,6 @@ Things I want to show in the eval:
   \item That the performance overhead of the enforcer when the bug
     doesn't reproduce isn't so massive that it'll make bugs less
     likely to reproduce.
-  \item Show how setting the sizes of the delays lets you trade off
-    time-to-reproduce against enforcer overheads.  That's never going
-    to be terribly convincing when you're using entirely artificial
-    bugs, but it might tell you something.
   \item That the side-condition checking stuff is both necessary and
     effective.
   \item That we can generate ``reasonable-looking'' fixes for all of
@@ -97,26 +93,6 @@ Things I want to show in the eval:
   this isn't completely trivial.
 \end{itemize}
 
-Other things I can look at and evaluate:
-
-\begin{itemize}
-\item
-  Look at different strategies for combining machines into
-  combi-enforcers.
-\item
-  We handle multi-rooted CFGs completely differently between read and
-  write modes.  Does that win/lose anything?
-\item
-  Want something which can evaluate the effectiveness of the
-  cross-function alias analysis pass.
-\item
-  Want something which can evaluate the effectiveness of the phi
-  elimination pass.
-\item
-  Want something which can evaluate the effectiveness of the state
-  unification optimisation.
-\end{itemize}
-
 \section{Artificial bugs}
 
 I now present the results of running {\implementation} on a number of
@@ -126,44 +102,117 @@ analysis phases actually do.
 
 \subsection{Statistical considerations}
 
-The following sections include a number of attempts to characterise
-certain distributions, usually either the performance of a test
-program or the time taken for a test program to crash.  Unfortunately,
-these distributions are often strongly non-Gaussian and prone to large
-outliers, and so attempting to describe them as a mean plus or minus a
-standard deviation would be at best uninformative and worst outright
-deceptive\footnote{The time taken for the simple\_toctou bug to crash
-  without an enforcer, for example, is $3 \pm 8$ seconds, which is
-  very obviously meaningless.}.  The differences between the various
-configurations are generally large enough that there is no need for a
-formal significance test, and so these difficulties do not affect the
-qualitative conclusion that enforcers make bugs reproduce more quickly
-and fixes prevent them reproducing with low overhead, but I would
-still like to provide the reader with a more quantitative
-understanding of the various quantities evaluated.  As an additional
-complication, some of the tests reported here can run for a very long
-time in a largely uninformative way.  In order to keep the total time
-taken to run all experiments reasonably I therefore restricted all
-tests to run for at most three minutes; any which take longer than
-that are considered to have timed out.  I have therefore used the
-following protocol to characterise the distribution of times taken for
-tests:
+\todo{I might possibly be over-thinking this.}
+
+The following sections report the results of two kinds of experiments:
+performance overhead tests and crash time tests.  Neither can be
+sensibly approximated by any statistically convenient distributions.
+This makes the results somewhat difficult to summarise and interpret.
+Most of the effects reported here are sufficient large that formal
+statistical significance tests would be redundant, but it would still
+be useful to be able to quantitatively characterise both the
+parameters involved and the level of uncertainty in them.  I now
+explain the approach I have adopted to doing so.
+
+The performance distributions are simpler to understand than the crash
+time ones and so I discuss them first.  All of the test programs
+discussed below have some performance metric associated with them,
+usually the number of iterations of some loop completed per second,
+and this metric usually follows a roughly Gaussian distribution.  I
+characterise the performance of a test in isolation by running the
+test twenty times for ten seconds each, discarding the largest and
+smallest values, and then reporting the mean and estimated population
+standard deviation as $\mu \pm \sigma$\footnote{One complication is
+that most of these test programs contain bugs (deliberately) and may
+therefore crash before completing a ten second run.  Any such crashing
+runs were repeated until the program completed without crashing.}.
+All such results were also subjected to Anderson-Darling and
+Jarque-Bera normality tests at the 90\% level.  Whenever a test failed
+either test I concluded that it did not follow a Gaussian distribution
+and instead report the results as $[p_{10};p_{50};p_{90}]_n$, where
+$p_{10}$ is the tenth percentile\footnote{Linearly interpolating where
+that does not fall precisely on one of the samples}, $p_{50}$ is the
+fiftieth percentile, $p_{90}$ the ninetieth percentile, and $n$ the
+number of samples.
+
+I have also quoted estimates of the overhead of some possible
+modifications to the test programs.  The estimated overhead here is
+quite simple: $\frac{\textrm{baseline performance} - \textrm{modified
+performance}}{\textrm{baseline performance}}$.  Estimating the error
+bounds of this quantity is, however, somewhat more difficult.  When
+both the baseline and modified performance metrics are normally
+distributed the resulting overhead estimate has an infinitely large
+standard deviation\editorial{Possibly need a cite?}, which would be
+unhelpful.  It would still in principle be possible to derive a
+confidence interval for ratio using Fieller's theorem\needCite{}, but
+this would still leave the question of what to do when the data does
+not appear to be normally distributed\editorial{Don't actually have
+very much non-normal data, so I could just ignore it, but whatever.}.
+Instead, I take the 80\% confidence intervals for the two performance
+measures\footnote{Using a bootstrap method when necessary.} and use
+these to calculate the minimum and maximum overhead estimates where
+both performance metrics are within their confidence intervals.  This
+provides a conservative estimate of the 80\% confidence interval of
+the overhead\footnote{Note that this construction could, in principle,
+produce non-contiguous confidence intervals, or could even produce one
+which covers the entire real line.  This will be true of any
+conservative characterisation of the ratio of two distributions which
+might be Gaussian, be the Gleser-Hwang theorem\needCite{}.
+Fortunately, the data I have derived was sufficiently well-behaved
+that it produces small, contiguous confidence intervals.}.  I report
+this as $\alpha = \{a < b < c\}$, where $a$ and $c$ are the bounds of
+the confidence interval and $b$ is the simple ratio of
+means.  \todo{Von Luxberg and Franz 2007 calls this a geometric
+bootstrap, but I don't think that's a terribly helpful way of
+describing it.}
+
+\todo{Estimating overhead given before and after performance
+distributions, approximated by Gaussians, seems like the kind of thing
+that you'd have to do quite frequently.  It's kind of sad that there
+doesn't seem to be any standard protocol for it.}
+
+Crash time distributions are generally less well-behaved than
+performance distributions.  Depending on the precise test being
+examined, I would expect the distribution to have one of the following
+forms:
+
+\begin{itemize}
+\item
+  Some distributions will be roughly Gaussian.
+\item
+  Some distributions will be uniform over some range.  The enforcers
+  generated by {\technique} select the delay to be inserted uniformly
+  over some range, and if this delay dominates the time taken for
+  a bug to reproduce then the time taken to reproduce the bug will be
+  uniformly distributed.
+\item
+  Some distributions will be exponential, if the probability of
+  reproducing per unit time is a constant.  This is a good model if
+  the test program runs the buggy code at some fixed frequency and
+  each time it runs has a constant probability of triggering the bug.
+\end{itemize}
+ 
+As a further complication, some tests can take a very long time to
+reproduce their bug.  In order to keep the time taken to run tests
+reasonable I limit each test program to run for at most three minutes,
+at which point I consider the test program to have failed to reproduce
+its bug.  I have used the following protocol to characterise the
+distribution of times taken for a bug to reproduce:
 
 \begin{itemize}
 \item All experiments start by running the test twenty times.  If
   every test times out then I abandon the test and simply report the
   result as \textit{timeout}.  If the data contains both timed-out and
-  non-timed-out results then I characterise it by the timeout rate,
-  written $timeout = n/20$, where $n$ is the number of runs which
-  timed out.
-\item If the test did not suffer any timeouts then the results are
-  tested for normality using the Anderson-Darling and Jarque-Bera
-  tests at the 90\% level.  If the data passes both tests then I
-  conclude that the data is normally distributed and characterise it
-  by the mean $\mu$ and estimated population standard deviation
-  $\sigma$, which I write as $\mu \pm \sigma$.
+  non-timed-out results then I simply report the timeout rate, written
+  $timeout = n/20$, where $n$ is the number of runs which timed out.
+\item Otherwise, I discard the smallest and largest values and then
+  test for normality using the Anderson-Darling and Jarque-Bera
+  tests at the 90\% level.  If both pass then I conclude that the
+  data follows a Gaussian distribution and report it as $\mu \pm \sigma$,
+  where $\mu$ is the sample mean and $\sigma$ the estimated population
+  standard deviation.
 \item If the data fails either normality test then I investigate
-  whether it might be normally distributed using a one-sided
+  whether it might be uniformly distributed using a one-sided
   Kolmogorov-Smirnov test at the 1\% level\editorial{I'm not convinced
     I've got the KS test quite right.  The general form is definitely
     right, but I think the critical value might be wrong.  Check with
@@ -171,20 +220,20 @@ tests:
   data is uniformly distributed and report it as $[l, h]$, where $l$
   is the lowest value observed and $h$ the highest\editorial{Maybe use
     a Fischer-Tippett correction on those limits?}.
-\item If the quantity being investigated is the time taken for a
-  program to crash and the data appears to be neither Gaussian nor
+\item If the data appears to be neither Gaussian nor
   uniform then I investigate whether it might be exponentially
-  distributed.  I run the experiment an additional eighty times, so
-  that I have one hundred samples of the distribution, and then
-  randomly partition the resulting data into ten sets of ten samples.
-  I then fit an exponential distribution to each set to produce ten
-  estimates of the distribution's $\lambda$ parameter and characterise
-  the distribution by the mean and estimated population standard
-  deviations of these estimates.  I accept that the data is
-  exponentially distributed if the data itself passes a
-  Kolmogorov-Smirnov test at the 1\% level and the set of estimates
-  passes both normality tests at the 90\% level.  I denote this
-  distribution by $\lambda = \mu \pm \sigma$.
+  distributed.  I run the experiment an additional 110 times and
+  discard the largest and smallest five values, so that I have one
+  hundred samples of the distribution, and then randomly partition the
+  resulting data into ten sets of ten samples.  I fit an exponential
+  distribution to each set to produce ten estimates of the
+  distribution's $\lambda$ parameter\editorial{Maximum likelihood
+  estimator} and characterise the distribution by the mean and
+  estimated population standard deviations of these estimates.  I
+  accept that the data is exponentially distributed if the data itself
+  passes a Kolmogorov-Smirnov test at the 1\% level and the set of
+  estimates passes both normality tests at the 90\% level.  I denote
+  this distribution by $\lambda = \mu \pm \sigma$.
 
   If any of these additional experiments time out then I simply repeat
   that run of the experiment.  The final results table includes the
@@ -195,17 +244,6 @@ tests:
   percentiles of the enlarged data set, written $[p_{10}; p_{50};
     p_{90}]_{100}$.
 \end{itemize}
-
-Performance distributions are generally somewhat better behaved, in
-that they have fewer extreme outliers and generally do not suffer
-timeouts.  For these, I simply run the test twenty times and discard
-the highest and lowest results.  If the resulting data passes the
-normality tests then I report it as $\mu \pm \sigma$; otherwise, I
-report the tenth, fiftieth, and ninetieth percentiles as $[p_{10};
-  p_{50}, p_{90}]_{18}$.  Note that the tenth and ninetieth
-percentiles do not fall precisely onto one of the samples; I use
-linear interpolation between the two nearest samples to produce a
-final value.
 
 From a statistical perspective, these scheme is hard to justify, and
 the resulting distributions should not be used for significance
@@ -734,7 +772,7 @@ where otherwise noted, \verb|NR_PTRS| is set to 100.
 
 \begin{figure}
   \begin{subfloat}
-    \begin{minipage}{50mm}
+    \begin{minipage}{70mm}
 \begin{verbatim}
 while (1) {
   idx = random() % NR_PTRS;
@@ -748,7 +786,7 @@ while (1) {
     \caption{Read side}
   \end{subfloat}
   \begin{subfloat}
-    \begin{minipage}{50mm}
+    \begin{minipage}{70mm}
 \begin{verbatim}
 while (1) {
   idx = random() % NR_PTRS;
@@ -1227,6 +1265,44 @@ allows the bug to be reproduced in just a few hundred milliseconds.
   side-condition checking don't work very well.  It might be more
   useful to try different timeout strategies instead.}
 
+Tables~\ref{table:eval:analysis_phase}, \ref{table:eval:crash_times}
+and \ref{table:eval:perf_dists} summarise the results of these
+experiments.  Several important conclusions can be drawn from these
+tables:
+
+\begin{itemize}
+\item
+  The analysis performed by {\technique} is, for the most part, very
+  quick on these programs, generally requiring less than a second.
+  The only exception is the complex\_hb test with ten happens-before
+  edges, which requires a little over a minute to perform its initial
+  analysis; even this is not completely unreasonable given the
+  complexity of the test.
+\item
+  Converting the candidate bugs generated by the initial analysis
+  fixes completes in all cases in under a second.
+\item
+  Converting the candidate bugs into enforcers is also very quick,
+  mostly completing in under a second.  The only exception is,
+  again, complex\_hb with ten happens-before edges, which takes
+  roughly a minute.
+\item
+  The enforcers are all able to reproduce their intended bugs
+  quickly, in all cases much more quickly than the original program.
+\item
+  {\Technique} can automatically generate fixes for all of the bugs,
+  and those fixes have acceptably low overhead.
+\item
+  The DataCollider-like tool is effective for some bugs and
+  ineffective for others.  Where it is effective, it is generally less
+  effective than the {\technique}-generated enforcers.  The only
+  exception is the multi\_variable test, where the {\technique}
+  enforcer reproduces the bug roughly twice per second and the
+  DataCollider-like tool reproduces it roughly seven times per
+  second.  \todo{Need to figure out what's going on there.}
+\end{itemize}
+        
+
 \begin{sidewaystable}
 \input{eval/analysis_phase_times}
 \caption{Time taken for the various initial analysis phases}
@@ -1251,6 +1327,8 @@ the ratio of means, with no though given to the error distribution.  Need to thi
 about that some more.}
 \label{table:eval:perf_dists}
 \end{sidewaystable}
+
+\input{eval/crash_times_cdfs/cdfs}
 
 \section{Semi-artificial bugs}
 
