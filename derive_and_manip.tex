@@ -58,22 +58,6 @@ window; depending on the mode of operation and the program to be
 analysed, this will be on the order of dozens to hundreds of
 instructions.
 
-\subsection{Crash summaries}
-
-This analysis produces a series of crash summaries.
-Each summary represents a (possibly infinite) set of bug tuples has several components:
-
-\begin{itemize}
-\item The read \StateMachine, corresponding to the $R$ member of the bug tuple.
-\item The write \StateMachine, corresponding to the $W$ member of the bug tuple.
-\item The verification condition, a predicate on the program's state which corresponds to the $S$ member of the bug tuple.
-\item An aliasing table, which says which memory-accessing instructions in the read and write \StateMachines might access the same area of memory.
-\end{itemize}
-
-A crash summary represents a bug tuple $(R, W, S)$ if the summary's read \StateMachine includes the dynamic instruction trace $R$, its write \StateMachine includes the dynamic instruction trace $W$, and the verification condition is true of $S$.
-The set of summaries produced by the analysis is defined to be complete if every possible bug tuple is represented by at least one crash summary, and sound if the crash summaries only represent valid bug tuples.
-The analysis presented here is, in that sense, complete, subject to some caveats discussed in later sections, but not sound.
-
 \section{Description of \StateMachines}
 \label{sect:derive:description}
 
@@ -253,7 +237,7 @@ between the two loads and will otherwise survive.
     \node (lF) [stateIf, below left = of lD] {\state{If} $mai1:thread1 \happensBefore mai3:thread2$ };
     \node (lG) [stateTerminal, below right = of lD] {\state{Survive}};
     \node (lH) [stateTerminal, below right = of lF] {\state{Unreached}};
-    \node (lN) [stateSideEffect, below = of lF] {\state{Assert} $global\_ptr = global\_ptr$ };
+    \node (lN) [stateSideEffect, below = of lF] {\state{Assert} $\&global\_ptr = \&global\_ptr$ };
     \node (lI) [stateSideEffect, below = of lN] {l7: \state{Store} 0 $\rightarrow$ global\_ptr AT mai3:thread2 };
     \node (lJ) [stateSideEffect, below = of lI] {l4: \state{Load} tmp2 $\leftarrow$ global\_ptr AT mai1:thread1 };
     \node (lK) [stateIf, below = of lJ] { l5: \state{If} $BadPtr(tmp2)$ };
@@ -274,7 +258,7 @@ between the two loads and will otherwise survive.
     \draw[->,ifFalse] (lK) -- (lM);
   \end{tikzpicture}
   \label{fig:intro:cross_thread}
-  \caption{Cross-product of the \StateMachine shown in
+  \caption{Cross-product of the {\StateMachine} shown in
     figures~\ref{fig:intro:single_threaded_machine} and
     \ref{fig:intro:single_threaded_machine_write}.}
 \end{sidewaysfigure}
@@ -291,7 +275,7 @@ between the two loads and will otherwise survive.
   \end{tikzpicture}
   \label{fig:intro:cross_thread_opt}
   \caption{\STateMachine from figure~\ref{fig:intro:cross_thread}
-    after \StateMachine simplification.}
+    after {\StateMachine} simplification.}
 \end{figure}
 
 \STateMachines become somewhat more interesting when they capture the
@@ -304,7 +288,7 @@ of interesting new features here:
   duplicated.  In particular, some memory accesses have now been
   duplicated to multiple places in the \StateMachine.
 \item
-  $\happensBefore$ expressions.  These allow the \StateMachine to
+  $\happensBefore$ expressions.  These allow the {\StateMachine} to
   query the program's happens-before graph.  $maiA:threadB
   \happensBefore maiC:threadD$ is true precisely when memory access
   $A$ in thread $B$ happens before memory access $C$ in thread $D$.
@@ -313,9 +297,9 @@ of interesting new features here:
 \item
   \state{Assert} side-effects and the unreached state.  These are used to
   give later stages of the analysis hints about which paths through
-  the combined \StateMachine are likely to be interesting.  Assertion
+  the combined {\StateMachine} are likely to be interesting.  Assertion
   side-effects indicate that if some condition is false then the
-  \StateMachine is not worth analysing; later analysis phases make
+  {\StateMachine} is not worth analysing; later analysis phases make
   heavy use of these hints.  Likewise, any path which reaches an
   unreached state is considered to be uninteresting.  These two
   mechanisms are of precisely equivalent power; SLI uses one or the
@@ -329,11 +313,11 @@ of interesting new features here:
   to be considered\editorial{Need to be more precise about that.}.
 \end{itemize}
 
-The \StateMachine shown in figure~\ref{fig:intro:cross_thread}
+The {\StateMachine} shown in figure~\ref{fig:intro:cross_thread}
 correctly captures the interaction of the two input \StateMachines but
 is more complicated than it needs to be.  SLI therefore performs a few
 simplifications on the \StateMachine, detailed later, before passing
-the \StateMachine to the symbolic execution engine; the results are
+the {\StateMachine} to the symbolic execution engine; the results are
 shown in figure~\ref{fig:intro:cross_thread_opt}\footnote{Similar
   simplifications are also applied to the single-threaded
   \StateMachines, but those are uninteresting in this case.}.
@@ -351,8 +335,8 @@ example:
   CFG at CFG node $cfgB$, while $ControlFlow(threadA:cfgB{\rightarrow}cfgC)$ is
   true if thread $A$ transitions from CFG node $B$ to node $C$.  Note
   that the value of $ControlFlow$ expression does not depend on where
-  in the \StateMachine it is evaluated: the control flow within a
-  \StateMachine is (conceptually) independent of that of the original
+  in the {\StateMachine} it is evaluated: the control flow within a
+  {\StateMachine} is (conceptually) independent of that of the original
   program.
 \item
   Static analysis side effects.  These are used to import the results
@@ -642,8 +626,8 @@ either free from cycles or of length greater than $N_r$.
   \draw[->,thick] (box3) -- (box4) node [above,midway] {duplicate C'};
   \draw[->,thick] (box4) -- +(2.5,0) node [above,midway] {...};
 \end{tikzpicture}
-\label{fig:cyclic_cfg}
 \caption{A CFG containing a cycle.}
+\label{fig:cyclic_cfg}
 \end{figure}
 
 \begin{figure}
@@ -667,11 +651,11 @@ either free from cycles or of length greater than $N_r$.
     \node (box4) [fill=black!10,fit=(A) (B) (C) (D) (C') (B') (C'')] {};
   \end{pgfonlayer}
 \end{tikzpicture}
-\label{fig:unrolled_cyclic_cfg}
 \caption{Fully unrolled version of the CFG in
   figure~\ref{fig:cyclic_cfg}, preserving all paths of length six or
   fewer instructions.  Note that an additional root has been
   introduced at C''.}
+\label{fig:unrolled_cyclic_cfg}
 \end{figure}
 
 As an example, consider the CFG shown at the left of
@@ -844,7 +828,7 @@ discussed above.
 
 \todo{Should mention that I use libVEX to convert instructions to a
   slightly saner intermediate format before converting to
-  \StateMachine fragments, rather than doing it directly.}
+  {\StateMachine} fragments, rather than doing it directly.}
 
 The result of the previous phases is a control-flow graph containing
 all of the instructions which might be present in the $R$ fragment of
@@ -870,15 +854,15 @@ complications:
   instruction A had a single successor, B, in the original program,
   but has multiple successors in the unrolled CFG.  SLI handles these
   by converting them into \StateMachine-level control flow using
-  $ControlFlow$ expressions, so that the \StateMachine fragment for A
+  $ControlFlow$ expressions, so that the {\StateMachine} fragment for A
   will be something like ``if ($Control(A{\rightarrow}B)$) \{fragment for B\} else
   \{fragment for B'\}''.
 
 \item
   Likewise, the CFG can sometimes have multiple roots.  In this case,
-  the first state of the \StateMachine will be a test on the special
+  the first state of the {\StateMachine} will be a test on the special
   $Entry()$ expressions which will select an appropriate fragment of
-  \StateMachine to start with.  In the example, the first state will
+  {\StateMachine} to start with.  In the example, the first state will
   be ``if ($Entry(A)$) \{fragment for A\} else \{ fragment for
   C''\}''.
 \end{itemize}
@@ -925,15 +909,15 @@ them.
   \node[stateTerminal,below left = of l7] (lBeta) {Crash};
   \node[stateTerminal,below right = of l7] (lGamma) {Survive};
   \node[stateTerminal,right = of lGamma] (lAlpha) {Unreached};
-  \draw[->,ifFalse] (l1) -- (l2);
-  \draw[->,ifTrue] (l1) -- (l11);
+  \draw[->,ifTrue] (l1) -- (l2);
+  \draw[->,ifFalse] (l1) -- (l11);
   \draw[->] (l2) -- (l3);
   \draw[->,ifFalse] (l3) -- (l8);
   \draw[->,ifTrue] (l3) -- (l4);
   \draw[->] (l4) -- (l5);
   \draw[->] (l5) -- (l6);
-  \draw[->,ifFalse] (l6) -- (lAlpha);
-  \draw[->,ifTrue] (l6) -- (l7);
+  \draw[->,ifTrue] (l6) -- (lAlpha);
+  \draw[->,ifFalse] (l6) -- (l7);
   \draw[->,ifFalse] (l7) -- (lGamma);
   \draw[->,ifTrue] (l7) -- (lBeta);
   \draw[->] (l8) -- (l9);
@@ -957,17 +941,21 @@ easier if the we can arrange for the stack pointer to always have the
 same value at the end of the {\StateMachine}, regardless of where the
 {\StateMachine} starts, so that local variable accesses in the
 function containing the purported crashing instruction match up
-properly.  This is not completely trivial if the starting points are
-themselves in different functions with different inlining contexts.
-This problem can be solved by examining the generated {\StateMachine}
-and determining, for each entry point, how the stack pointer changes
-between that entry point and the end and then inserting an opposite
-change immediately before the entry point.  Most of the time, the only
-change to the stack pointer is adding or subtracting a constant, and
-so this is easy.  Otherwise, it fails.  The fact that the stack has
-been massaged in this way is recorded in the {\StateMachine} structure
-so that it can be undone later when building data-dependent crash
-enforcers.
+properly\footnote{Of course, this means that stack references near the
+  start of the {\StateMachine} will be less likely to match up.  This
+  is usually a reasonable trade-off, as all paths through the
+  {\StateMachine} end in the same way but might start in completely
+  different function contexts.}.  This is not completely trivial if
+the starting points are themselves in different functions with
+different inlining contexts.  This problem can be solved by examining
+the generated {\StateMachine} and determining, for each entry point,
+how the stack pointer changes between that entry point and the end and
+then inserting an opposite change immediately before the entry point.
+Most of the time, the only change to the stack pointer is adding or
+subtracting a constant, and so this is easy.  Otherwise, it fails.
+The fact that the stack has been massaged in this way is recorded in
+the {\StateMachine} structure so that it can be undone later when
+building data-dependent crash enforcers.
 
 \todo{Possibly interesting: this means that once you've converted to
   SSA, the initial generation of the stack pointer refers to its value
