@@ -35,6 +35,11 @@ Things I want to show in the eval:
   useful for a human trying to fix the bug, but that's likely to be a
   rather hard argument to make.
 
+  It might also be worth trying some pseudo-fixes which do everything
+  except for acquiring and releasing the lock, just so that I can
+  isolate how much of the overhead is the patching machinery and how
+  much the lock operation itself.
+
 \item Show that it works for some slightly more realistic artificial
   bugs, probably from ripping sync blocks out of STAMP.
   i.e. real-size programs with artificial bugs.  I currently have one
@@ -102,7 +107,8 @@ analysis phases actually do.
 
 \subsection{Statistical considerations}
 
-\todo{I might possibly be over-thinking this.}
+\todo{I might possibly be over-thinking this.  I may also be demonstrating
+  that I don't really understand how stats works.}
 
 The following sections report the results of two kinds of experiments:
 performance overhead tests and crash time tests.  Neither can be
@@ -149,9 +155,11 @@ this would still leave the question of what to do when the data does
 not appear to be normally distributed\editorial{Don't actually have
 very much non-normal data, so I could just ignore it, but whatever.}.
 Instead, I take the 80\% confidence intervals for the two performance
-measures\footnote{Using a bootstrap method when necessary.} and use
-these to calculate the minimum and maximum overhead estimates where
-both performance metrics are within their confidence intervals.  This
+measures\footnote{Using a bootstrap method when
+necessary.}\editorial{Should make it clear that these are intervals
+for the \emph{means} rather than for the data.} and use these to
+calculate the minimum and maximum overhead estimates where both
+performance metrics are within their confidence intervals.  This
 provides a conservative estimate of the 80\% confidence interval of
 the overhead\footnote{Note that this construction could, in principle,
 produce non-contiguous confidence intervals, or could even produce one
@@ -164,12 +172,18 @@ this as $\alpha = \{a < b < c\}$, where $a$ and $c$ are the bounds of
 the confidence interval and $b$ is the simple ratio of
 means.  \todo{Von Luxberg and Franz 2007 calls this a geometric
 bootstrap, but I don't think that's a terribly helpful way of
-describing it.}
+describing it.}  \todo{Alternative would be to use a Hwang bootstrap
+to estimate confidence intervals on the ratio directly, but there have
+been a bunch of papers recently saying that that gives you intervals
+which are too tight when its preconditions don't fit, and I don't know
+enough stats to check whether they do here.}
 
 \todo{Estimating overhead given before and after performance
 distributions, approximated by Gaussians, seems like the kind of thing
 that you'd have to do quite frequently.  It's kind of sad that there
 doesn't seem to be any standard protocol for it.}
+
+\todo{\emph{Should} do all of that stuff.  Currently just report the ratio of means.}
 
 Crash time distributions are generally less well-behaved than
 performance distributions.  Depending on the precise test being
@@ -237,7 +251,7 @@ distribution of times taken for a bug to reproduce:
 
   If any of these additional experiments time out then I simply repeat
   that run of the experiment.  The final results table includes the
-  number of additional runs which was necessary.
+  number of additional runs which were necessary.
 
 \item Finally, if none of those tests succeed then I simply
   characterise the distribution by the tenth, fiftieth, and ninetieth
@@ -245,11 +259,11 @@ distribution of times taken for a bug to reproduce:
     p_{90}]_{100}$.
 \end{itemize}
 
-From a statistical perspective, these scheme is hard to justify, and
+From a statistical perspective, this scheme is hard to justify, and
 the resulting distributions should not be used for significance
 testing without, at the very least, using a multiple-testing
-correction.  On the other hand, they are effective at reducing complex
-test data to simple summary statistics and allowing rapid comparison
+correction.  On the other hand, it is effective at reducing complex
+test data to a simple summary statistic and allowing rapid comparison
 of dramatically different distributions.  The values presented in this
 evaluation are generally sufficiently different that formal
 significance tests would be redundant and so I consider this to be a
@@ -421,8 +435,8 @@ while (1) {
     \end{minipage}
     \caption{Write-side}
   \end{subfloat}
-  \label{fig:eval:simple_toctou}
   \caption{The two sides of the simple\_toctou bug.}
+  \label{fig:eval:simple_toctou}
 \end{figure}
 
 \begin{figure}
@@ -448,8 +462,8 @@ while (1) {
     \end{minipage}
     \caption{Write side}
   \end{subfloat}
-  \label{fig:eval:simple_toctou_compiled}
   \caption{Disassembly of the program in figure~\ref{fig:eval:simple_toctou}.}
+  \label{fig:eval:simple_toctou_compiled}
 \end{figure}
 
 This is the simplest possible kind of concurrency bug: as
@@ -670,15 +684,14 @@ crash\editorial{Need to re-do that stat with more data}.
       \node[label,draw] at (loadSt.south west) {$\rightarrow$ Program crashes};
     \end{scope}
 
-    \draw[->] (storeDelay.east) to node {Load arrives during store
-    interval} (loadLdA2.west); \draw[->] (loadLdA2.west) to node {Load
-    discharges message with store} (storeSt2.east); \draw[->]
-    (storeSt2.east) to node {Discharge second message}
-    (loadLdB.west); \end{tikzpicture} \caption{Enforcing the
-    simple\_toctou bug.  Dotted lines indicate the program thread
-    running some uninteresting code, wavey lines indicate the program
-    thread sleeping.  The program crashes after roughly 1.14
-    seconds.}\todo{Not sure this one adds all that much.}
+    \draw[->] (storeDelay.east) to node {Load arrives during store interval} (loadLdA2.west);
+    \draw[->] (loadLdA2.west) to node {Load discharges message with store} (storeSt2.east);
+    \draw[->] (storeSt2.east) to node {Discharge second message} (loadLdB.west);
+  \end{tikzpicture}
+  \caption{Enforcing the simple\_toctou bug.  Dotted lines indicate
+    the program thread running some uninteresting code, wavey lines
+    indicate the program thread sleeping.  The program crashes after
+    roughly 1.14 seconds.}\todo{Not sure this one adds all that much.}
 \end{figure}
 
 With the enforcer loaded and delays set to be between 100ms and 200ms,
@@ -716,31 +729,20 @@ protected is itself quite small and so the function call sequence used
 to acquire or release the patch lock completely dominates the total
 size of the patch.
 
-\textbf{Performance} \todo{Think harder about stats.} It is not completely straightforwards to
-characterise the performance of this program without the enforcer
-applied as it very rarely runs long enough for to obtain a meaningful
-number.  The approach I have taken is to run the test program
-repeatedly until it managed to survive for ten seconds and then treat
-the number of iterations of the read thread in those ten seconds as
-the performance metric.  This average value of the metric was
-$351*10^6 \pm 4*10^6$ but this was not Gaussian, failing the
-Anderson-Darling test at the 99.5\% level.  Excluding the two lowest
-values as outliers gave a result of $352.5 * 10^6 \pm 0.1 * 10^6$ and
-those results passed both the Anderson-Darling and Jarque-Bera
-normality tests at 90\%.
 
-With the fix applied, performance in a full ten-element run dropped to
-$95.4 * 10^6 \pm 0.3 * 10^6$ with no outliers, and this distribution
-passed both normality tests at the 90\% level.  This gives an overhead
-of roughly a factor of 3.7.  This is obviously rather large, but is
-probably close to {\technique}'s worst case: the read-side critical
-section is very small and runs with very high frequency, and so the
-patch must acquire and release the lock with similarly high frequency
-and these lock operations dominate the time taken.  Any realistic test
-would usually have much lower overhead, assuming lock contention does
-not become a factor.  Even in this case, a factor of four overhead is
-not completely unreasonable when the alternative is a program which
-crashes frequently.
+With no fix, the test program completed $352.5 * 10^6 \pm 0.1 * 10^6$
+iterations per second.  With a fix applied, that performance dropped
+to $95.4 * 10^6 \pm 0.3 * 10^6$.  That gives an overhead of roughly a
+factor of 3.7.  This is obviously rather large, but is probably close
+to {\technique}'s worst case: the read-side critical section is very
+small and runs with very high frequency, and so the patch must acquire
+and release the lock with similarly high frequency and these lock
+operations dominate the time taken.  Any realistic test would usually
+have much lower overhead, assuming lock contention does not become a
+factor, simply because the critical sections would run less frequently
+and the overhead could be more effectively amortised.  Even in this
+case, a factor of four overhead is not completely unreasonable when
+the alternative is a program which crashes frequently.
 
 \todo{Worst case ignoring the loss of concurrency, of course.}
 
@@ -1265,7 +1267,7 @@ allows the bug to be reproduced in just a few hundred milliseconds.
   side-condition checking don't work very well.  It might be more
   useful to try different timeout strategies instead.}
 
-Tables~\ref{table:eval:analysis_phase}, \ref{table:eval:crash_times}
+Tables~\ref{table:eval:analysis_phases}, \ref{table:eval:crash_times}
 and \ref{table:eval:perf_dists} summarise the results of these
 experiments.  Several important conclusions can be drawn from these
 tables:
@@ -1302,6 +1304,9 @@ tables:
   second.  \todo{Need to figure out what's going on there.}
 \end{itemize}
         
+I also show cumulative distribution functions of the time which the
+various test cases take to reproduce their respective bugs in
+figure~\ref{fig:eval:artificial:crash_times_cdfs}.
 
 \begin{sidewaystable}
 \input{eval/analysis_phase_times}
@@ -1336,7 +1341,7 @@ These are real programs which I've modified to introduce new bugs.  So
 far, there's only one in this category, and it's really not terribly
 convincing.
 
-\subsubsection{Bayes}
+\subsection{Bayes}
 
 This is the Bayes test from the STAMP benchmark suite, modified to
 remove one if its critical sections.  The critical section looks like
@@ -1495,6 +1500,8 @@ pthread_cancel_init() {
   \caption{Source code for the glibc test case.}
 \end{figure*}
 
+\section{Bugs from real programs}
+
 \subsection{Thunderbird}
 
 \todo{Rewrite to fit new structure}
@@ -1529,8 +1536,6 @@ final result is similar: a single suggested fix, with two critical
 sections, one containing the two accesses in \verb|ProcessCurrentURL|
 and one containing the assignment in \verb|CloseStreams|.  This fixes
 the bug.
-
-\section{Bugs from real programs}
 
 \subsection{mysql}
 
