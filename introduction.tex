@@ -8,6 +8,10 @@
 \todo{The main thing missing here is a well-defined thesis.  Need to come
   up with one pretty damn quickly.}
 
+\smh{Probably want to explain a bit about (a) Happens-Before
+  (e.g. Boehm) and (b) program slicing before using the terms freely.}
+
+
 \section{Motivation}
 
 Commodity hardware is becoming increasingly concurrent, whether due to
@@ -29,19 +33,22 @@ to doing so: a set of techniques which can, first, slice a binary
 program to find parts which are relevant to a specific bug; second,
 analyse those slices to produce a dynamic analysis specifically
 targeted at that specific bug; and, third, automatically generate a
-fix for the bug.  The same analysis can also be used to find all
-possible bugs of a specific class in the program.  The algorithms
-involved have several modes of operation, most of which require
-minimal programmer involvement; the rest require none at all, beyond
-reproducing the bug which is to be fixed.
+fix for the bug.  \smh{Very strong} The same analysis can also be used
+to find all possible bugs of a specific class in the program.  The
+algorithms involved have several modes of operation, most of which
+require minimal programmer involvement; the rest require none at all,
+beyond reproducing the bug which is to be fixed.\smh{Algorithms+modes
+  seems odd.}
 
 One the other hand, the class of bugs to be targeted is somewhat
-limited: two threads interacting, with one modifying a shared
+limited\smh{Why?}: two threads interacting, with one modifying a shared
 structure while a second reads it, causing the reading thread to crash
 quickly in a recognisable way.  The precise definition of ``quickly''
 depends on the mode of operation and the program to be analyses, but
 will usually be dozens to hundreds of instructions.  This is a serious
-limitation, but still allows some realistic bugs to be analysed.
+limitation, but still allows some realistic bugs to be
+analysed.\smh{Why is this important (or not)?  i.e. can we reduce
+  other bugs to this or extend the technique?}
 
 \todo{I did have a reference saying that some reasonable proportion of
   real concurrency bugs falls into that category (like 30\% or so),
@@ -52,7 +59,7 @@ limitation, but still allows some realistic bugs to be analysed.
   any more, which complicates things a bit.  A lot of the
   \emph{actual} motivation for this was having to reverse-engineer
   chunks of Windows while I was at Citrix, but I'm not sure that's
-  something I really want to emphasise.}
+  something I really want to emphasise.}\smh{Agree}
 
 \todo{I'm possibly quite unusual in having actually fixed concurrency
   bugs in real programs by hacking up the machine code?  ``A tool to
@@ -84,7 +91,7 @@ limitation, but still allows some realistic bugs to be analysed.
 
 In its simplest mode, \technique{} uses a multi-stage pipeline to find
 and fix bugs in arbitrary binary programs, as shown in
-figure~\ref{fig:basic_pipeline}.  The pipeline starts by building up a
+Figure~\ref{fig:basic_pipeline}.  The pipeline starts by building up a
 model of the program's behaviour using a combination of static
 analysis, applied to the program's binary, and dynamic analysis,
 applied while the program is operating normally.  A mixture of
@@ -102,16 +109,16 @@ the program so as to make the bugs more likely to reproduce and then
 using the program's existing test suite to drive it towards them.  In
 effect, \technique{} turns its bug description into a new dynamic
 analysis which specifically attempts to reproduce that bug.  Since
-\technique{} mostly targets concurrency bugs, these modifications mostly
-consist of inserting additional delays, and hence encouraging the
-program to follow the desired schedules as far as possible.  The bugs
-which survive this winnowing process are then definitely real bugs,
-and can either be manually reviewed by a programmer or passed to the
-next phase which produces a fix targeted at that specific bug,
-completely automatically.  In addition to this basic mode of
-operation, \technique{} can also take as input a core dump or the log
-from a deterministic replay system and use that to produce a fix for a
-specific bug.
+\technique{} mostly targets concurrency bugs, these modifications
+mostly\smh{c/f RX?} consist of inserting additional delays, and hence
+encouraging the program to follow the desired schedules as far as
+possible.  The bugs which survive this winnowing process are then
+definitely real bugs, and can either be manually reviewed by a
+programmer or passed to the next phase which produces a fix targeted
+at that specific bug, completely automatically.  In addition to this
+basic mode of operation, \technique{} can also take as input a core
+dump or the log from a deterministic replay system and use that to
+produce a fix for a specific bug.
 
 I give a detailed description of \technique{} and some results obtained
 using \implementation, my implementation of it.  These include details
@@ -138,7 +145,8 @@ correct implementation of \technique{}.
 
 The basic analysis technique used, in all of these modes, is to take
 some small fragment of a binary program and approximate it using a
-\StateMachine\editorial{Desperately need a better name for these.},
+\StateMachine\editorial{Desperately need a better name for
+  these.}\smh{``sketch''? (What's in it?  What does it look like?}
 using a combination of decompilation, program slicing, and static
 analysis techniques.  These \StateMachines contain all of the
 information which is relevant to the bug being investigated but very
@@ -147,12 +155,12 @@ the raw machine code.  They have a number of important properties:
 
 \begin{itemize}
 \item
-  They can cross function boundaries, including between the program
-  itself and library functions\editorial{But only in certain modes: I
-    was a bit lazy in the bug-finding mode and restricted things to
-    the main binary.  It's just an artifact of the implementation, and
-    could be fixed without too much pain, but not in the time I have
-    left.}.
+  They can cross function boundaries, including those between the
+  program itself and library functions\editorial{But only in certain
+    modes: I was a bit lazy in the bug-finding mode and restricted
+    things to the main binary.  It's just an artifact of the
+    implementation, and could be fixed without too much pain, but not
+    in the time I have left.}.
 \item
   They can contain information from multiple program threads, and so
   can accurately capture all of the threads relevant to a particular
@@ -169,11 +177,13 @@ the raw machine code.  They have a number of important properties:
   Control-flow within a \StateMachine is not necessarily the same as
   control flow within the original program, and memory accesses within
   a \StateMachine do not necessarily correspond to specific memory
-  accesses in the original program, but can be related back when
-  necessary.  This means that intermediate analysis steps have a great
-  deal of flexibility to rewrite \StateMachines to remove unnecessary
-  information without unduly complicating actually using the results
-  of the analysis.
+  accesses in the original program.  This means that intermediate
+  analysis steps have a great deal of flexibility to rewrite
+  \StateMachines and hence to remove unnecessary information.  On the
+  other hand, it also means that translating the results of the
+  analysis back from \StateMachines to the original program requires a
+  little bit of care.  This is discussed in more detail in later
+  sections.
 \item
   They can be interpreted, given a snapshot of the program's state,
   its future happens-before graph, and some information about its
@@ -215,11 +225,9 @@ formal verification systems such as Promela\needCite{}.  The
 difference here is in the semantic structure of the program to be
 modelled: \technique{} models machine-code programs, and hence has no
 knowledge of higher-level constructs such as variables, arrays, or
-compound structures, whereas a tool like Promela or SAL\needCite{}
-work with source code and hence (mostly) assume that such information
-is available.  While it would be possible in principle to extract such
-information and hence build a SAL or Promela model, doing so would
-itself be somewhat time-consuming.
+compound structures, whereas tools like Promela or SAL\needCite{} work
+with source code and hence (mostly) assume that such information is
+available.
 
 Once a {\StateMachine} for a bug has been obtained, the analysis moves
 on to attempting to reproduce it.  {\Technique} does so by first
@@ -227,11 +235,13 @@ examining the {\StateMachine} to determine the happens-before graph
 necessary for the target bug to reproduce, along with any appropriate
 side-conditions, and then building a custom dynamic analysis for the
 original program which makes that happens-before graph more likely to
-occur.  The original program's original test suite is then used to
-exercise it, thus confirming that the bug actually does (or does not)
-exist.  Several such happens-before enforcers can be run on each
-program at any one time, which can significantly reduce the time taken
-for this verification step.
+occur\smh{Do you mean this?  ``Constructing an \emph{analysis} to make
+  the \emph{hb graph} more likely to \emph{occur}. Huh?}.  The
+original program's original test suite is then used to exercise it,
+thus confirming that the bug actually does (or does not) exist.
+Several such happens-before enforcers can be run on each program at
+any one time, which can significantly reduce the time taken for this
+verification step.
 
 Finally, the now-confirmed bug can be converted into a fix.  In this
 mode, {\technique} again examines the happens-before graph implicit in
@@ -266,7 +276,8 @@ eliminating the original bug.
   evaluation are likely to be correct.
 \end{itemize}
 
-\todo{Maybe include explicit comparisons to related work in here?}
+\todo{Maybe include explicit comparisons to related work in
+  here?}\smh{Maybe in intro, but not right here.}
 
 \section{Structure of this dissertation}
 
@@ -322,7 +333,8 @@ quickly.  In slightly more detail:
   locations: the read thread can see writes issued by either thread,
   even though the write thread can only see its own writes.
   Similarly, it is assumed that no other threads can interfere with
-  the two threads being examined.
+  the two threads being examined.\smh{Is this a big restriction?  Can
+    we not frame many bugs into this shape?}
 \item The read thread must crash \emph{quickly}: within the
   instructions represented by its \StateMachine.  Depending on how the
   program and the way in which the \StateMachine has been derived,
@@ -330,10 +342,17 @@ quickly.  In slightly more detail:
   the purposes of \implementation, a crash means either dereferencing
   a bad pointer, and so generating a segmentation fault, or calling
   one of a number of pre-defined crashing functions such as
-  \verb|abort| or \verb|__assert_fail|.
+  \verb|abort| or \verb|__assert_fail|.\smh{Can spin this around --
+    you require a bug has manifested detector.  Some simple ones are
+    segv() or assert() or panic() but something more complex would be
+    ok too, e.g TESLA.}
 \end{itemize}
 
 This is obviously a somewhat restricted class of bugs, but still
 contains some non-trivial ones, and restricting the class of bugs like
 this helps to make the analysis more tractable.
 
+
+\smh{Ok -- generally decent intro missing some structure, and still
+  missing the high level story in a para -- maybe fix up fig 2.1 with
+  annotations?}

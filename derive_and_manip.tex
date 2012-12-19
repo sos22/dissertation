@@ -13,14 +13,20 @@ investigated which can start in state $P$, such that:
   $R$ atomically then it will not crash before finishing $R$.  If the
   program cannot complete $R$ for some reason then it is assumed to
   not crash.
+
+  An alternative definition of R atomic is that if the program runs
+  $R$ and then $W$ atomically then $R$ does not crash; the two
+  definitions are equivalent because $W$ cannot possibly influence
+  whether $R$ crashes if it starts after $R$ finishes.
+
 \item[W atomic] Similarly, if the program starts in state $P$ and
   executes $W$ then $R$ atomically then it will not crash before
   finishing $R$.
-\item[Crash possible] If the program starts in state $P$ and then
-  executes $R$ and $W$ in parallel, interleaving their instructions,
-  it might crash.
+\item[Crash possible] There must exist some interleaving of $W$ and
+  $R$, starting from $P$, in which $R$ crashes.
 \item[W isolation] In all of the executions considered, $W$ does not
-  load from any locations which are stored to by $R$.
+  load from any locations which are stored to by $R$.\smh{Define
+    readset and writeset? (+relabel R+W as something else?)}
 \end{itemize}
 
 The first three constraints define what is meant by a two-thread
@@ -31,7 +37,7 @@ course, be possible to design a bug which requires the interaction of
 three or more threads in order to reproduce, but such bugs tend to be
 both rare in practice and extremely difficult to analyse in
 practice\needCite{} and so, following common practice\needCite{}, I
-completely ignore them here.
+completely ignore them here.\smh{!sarcy}
 
 The fourth constraint, W isolation, is perhaps more controversial, and
 restricts {\technique} to only consider those bugs which are caused by
@@ -39,7 +45,7 @@ one thread reading from a structure while another thread modifies it.
 This is obviously a somewhat smaller class of bugs than concurrency
 bugs in general, but is also much easier to analyse.  \todo{I really
   need to put something in the eval to show how much that costs/buys
-  us.}
+  us.}\smh{Give an example?}
 
 The definitions of ``program state'' and ``program fragment'' are
 perhaps non-obvious.  For {\technique}, a program state consists of
@@ -84,15 +90,15 @@ The {\StateMachines} themselves consist of three components:
   One or two fragments of the program's control-flow graph (CFG),
   corresponding to the program fragments discussed in the bug
   definition in
-  section~\ref{sect:finding_bugs:finding_candidate_bugs:formal_definition}.
+  Section~\ref{sect:finding_bugs:finding_candidate_bugs:formal_definition}.
   In the early analysis phases each {\StateMachine} represents the
   actions of only a single thread, so there is only one CFG fragment;
-  later on, they can represent both threads involved in the bug, in
-  which case there is one CFG fragment for each thread.  These
-  fragments are unrolled such that every instruction in the program
-  fragment corresponds to precisely one node in the control-flow
-  graph.  They can cross function boundaries, in which case the called
-  function is effectively inlined into the caller.
+  later on, a {\StateMachine} can represent both threads involved in
+  the bug, in which case there is one CFG fragment for each thread.
+  These fragments are unrolled such that every instruction in the
+  program fragment corresponds to precisely one node in the
+  control-flow graph.  They can cross function boundaries, in which
+  case the called function is effectively inlined into the caller.
 \item
   A table mapping memory access identifiers to sets of nodes in the
   control flow graph. This allows a single memory-accessing side
@@ -168,9 +174,10 @@ in a consistent state.
   \end{subfloat}
   \label{fig:intro:single_threaded_machine}
   \caption{A fragment of machine code, and the {\StateMachine}
-    generated for a bug which leads to a crash at 4006a7.  Circled
-    lines leaving an \state{If} state indicate the false branch,
-    uncircled ones indicate the true branch.}
+    generated for a bug which leads to a crash at 4006a7.  Dotted
+    lines leaving an \state{If} state indicate the false branch; solid
+    ones indicate the true branch.}\smh{Very ugly
+    figure!}\smh{Captions in italics?}
 \end{figure}
 
 Figure~\ref{fig:intro:single_threaded_machine} shows an example of a
@@ -237,7 +244,7 @@ between the two loads and will otherwise survive.
     \node (lF) [stateIf, below left = of lD] {\state{If} $mai1:thread1 \happensBefore mai3:thread2$ };
     \node (lG) [stateTerminal, below right = of lD] {\state{Survive}};
     \node (lH) [stateTerminal, below right = of lF] {\state{Unreached}};
-    \node (lN) [stateSideEffect, below = of lF] {\state{Assert} $\&global\_ptr = \&global\_ptr$ };
+    \node (lN) [stateSideEffect, below = of lF] {\state{Assert} $\&global\_ptr = \&global\_ptr$\smh{Huh?} };
     \node (lI) [stateSideEffect, below = of lN] {l7: \state{Store} 0 $\rightarrow$ global\_ptr AT mai3:thread2 };
     \node (lJ) [stateSideEffect, below = of lI] {l4: \state{Load} tmp2 $\leftarrow$ global\_ptr AT mai1:thread1 };
     \node (lK) [stateIf, below = of lJ] { l5: \state{If} $BadPtr(tmp2)$ };
@@ -305,22 +312,21 @@ of interesting new features here:
   mechanisms are of precisely equivalent power; SLI uses one or the
   other depending on which is more convenient at the time.
 \item
-  Paths in which either the store or load machine end without the
-  other starting will end in an unreached state, so they will not be
-  considered by the later analysis phases.  While not apparent in this
-  simple example, the algorithm used by SLI also uses partial-order
-  reduction\needCite{} to further reduce the number of interleavings
-  to be considered\editorial{Need to be more precise about that.}.
+  Paths in which either the store or load machine end\smh{ok terms}
+  without the other starting will end in an unreached state, so they
+  will not be considered by the later analysis phases.  While not
+  apparent in this simple example, the algorithm used by SLI also uses
+  partial-order reduction\needCite{} to further reduce the number of
+  interleavings to be considered\editorial{Need to be more precise
+    about that.}.
 \end{itemize}
 
-The {\StateMachine} shown in figure~\ref{fig:intro:cross_thread}
+The {\StateMachine} shown in Figure~\ref{fig:intro:cross_thread}
 correctly captures the interaction of the two input \StateMachines but
 is more complicated than it needs to be.  SLI therefore performs a few
 simplifications on the \StateMachine, detailed later, before passing
 the {\StateMachine} to the symbolic execution engine; the results are
-shown in figure~\ref{fig:intro:cross_thread_opt}\footnote{Similar
-  simplifications are also applied to the single-threaded
-  \StateMachines, but those are uninteresting in this case.}.
+shown in Figure~\ref{fig:intro:cross_thread_opt}.
 
 \STateMachines have a couple of other features not shown in this
 example:
@@ -347,7 +353,7 @@ example:
   whether the variable might point at a non-stack location.
 \item
   $\Phi$ side-effects.  These are described later when discussing the
-  SSA form used; they have a somewhat different semantic from the
+  SSA form used; they have somewhat different semantics from the
   $\Phi$ nodes used in optimising compilers.
 \item
   The expression language used to compute values for side-effects
@@ -359,9 +365,10 @@ example:
 \item
   Start and end atomic block side-effects.  These indicate that a
   given fragment of the {\StateMachine} should execute atomically, and
-  hence restrict the cross-product {\StateMachine}.  They are used
-  both to represent instructions with the \verb|LOCK| prefix (which
-  execute atomically) and some library-level functions such as
+  hence restrict the cross-product {\StateMachine}\smh{This is a nice
+    concept, wonder if it needs a better name?}.  They are used both
+  to represent instructions with the \verb|LOCK| prefix (which execute
+  atomically) and some library-level functions such as
   \verb|pthread_mutex_lock|\editorial{Should probably have a forwards
     ref to discussion of handling library functions.}.
 \item
@@ -377,7 +384,8 @@ example:
   the \emph{current} state of the {\StateMachine}, and can therefore
   reference {\StateMachine} variables and so forth, even though the
   load itself is evaluated against a snapshot of the program's initial
-  memory.
+  memory.\smh{Hmm -- seems complicated/arbitrary -- why?  Can you
+    clarify?}
 \end{itemize}
 
 %% They are also similar to the intermediate forms used by model
@@ -413,23 +421,25 @@ which {\technique} is being used.  There are three main cases: build
 \StateMachine{} from a deterministic replay system log.  The first of
 these is the simplest, and so I discuss it first.
 
-\subsection{Building read-side \StateMachines}
+\subsection{Building read-side \StateMachines}\smh{read-side -- hmm}
 
 The aim of this phase of the algorithm is to find every fragment of
-the program which might act as the first ($R$) element of the bug
-tuple.  The simplest approach would be to simply enumerate every
-dynamic fragment containing $N_r$ instructions which ends in a
-memory-accessing instruction and convert each one independently into a
-\StateMachine.  While it would be effective, this would be extremely
-time consuming, especially for larger values of $N_r$, and would
-perform a large amount of redundant work.  \Technique{} therefore uses
-a slightly more involved approach which attempts to share useful work
-between traces where possible.  The core idea here is to start with
-the instruction at which the program is purported to be able to crash
-and then expand backwards from there until every path is properly
-represented, up to the limit imposed by the analysis window.  This
-allows different paths to a given instruction to be analysed at the
-same time, sharing some analysis work.
+the program which might act as the first ($R$)\smh{You had (P,R,W).}
+element of the bug tuple.  The simplest approach would be to simply
+enumerate every dynamic fragment containing $N_r$ instructions which
+ends in a memory-accessing instruction and convert each one
+independently into a \StateMachine.  While it would be effective, this
+would be extremely time consuming, especially for larger values of
+$N_r$, and would perform a large amount of redundant work.
+\Technique{} therefore uses a slightly more involved approach which
+attempts to share useful work between traces where possible.  The core
+idea here is to start with the\smh{fussy! what instr is this?  is
+  there just 1???}\smh{``an instruction''?} instruction at which the
+program is purported to be able to crash and then expand backwards
+from there until every path is properly represented, up to the limit
+imposed by the analysis window.  This allows different paths to a
+given instruction to be analysed at the same time, sharing some
+analysis work.
 
 \subsubsection{Finding potentially-crashing instructions}
 
@@ -452,7 +462,9 @@ two types of crash:
 \end{itemize}
 
 These potentially-crashing instructions are then considered
-independently in turn.
+independently in turn.\smh{aren't there still a \emph{lot} of these?
+  (i.e. it's the backwards search that's important here, not the insn
+  choice?)}
 
 \subsubsection{Building the static control-flow graph}
 The next step, once a potentially-crashing instruction has been
@@ -477,7 +489,7 @@ discovered.
     \EndIf
     \State $current \gets \text{decode instruction at } currentInstr$
     \State $\mapIndex{result}{currentInstr} \gets current$
-    \State $predecessors \gets \text{predecessors of } currentInstr$
+    \State $predecessors \gets \text{predecessors of } currentInstr$\smh{How do we compute predecessors?}
     \State Add $predecessors$ to $pendingAtNextDepth$
   \EndWhile
   \State $pendingAtDepth \gets pendingAtNextDepth$
@@ -486,13 +498,14 @@ discovered.
 \end{algorithmic}
 \caption{Building a read-side static control flow graph within a
   single function. \todo{This is just depth-limited BFS; maybe drop
-    the explicit algorithm?}}
+    the explicit algorithm?}}\smh{No, but you can make owls to clarify
+  this in text (as you do).}
 \label{fig:derive:static_read_cfg_single_function}
 \end{figure}
 
 The simple case is that all of the needed instructions are contained
 within a single instruction.  In that case, the algorithm is as shown
-in figure~\ref{fig:derive:static_read_cfg_single_function}.  This
+in Figure~\ref{fig:derive:static_read_cfg_single_function}.  This
 simply implements a depth-limited breadth-first search starting at the
 potentially-crashing instruction and exploring backwards through the
 program's control flow.  Note that this can result in a CFG with
@@ -511,11 +524,12 @@ given only a binary program, for three reasons:
   At the same time, ignoring them completely means that many important
   program paths will be missed.
 \item
-  The AMD64 instruction set includes variable-length instructions, and
-  so there might be several overlapping instructions which all finish
-  at the start of the instruction currently being investigated.  In
-  most programs, only one of these will ever be executed, and it is
-  important to pick the right one.
+  The AMD64\smh{Are you being pedantic here?  Does ``x64'' work as a
+    replacement?} instruction set includes variable-length
+  instructions, and so there might be several overlapping instructions
+  which all finish at the start of the instruction currently being
+  investigated.  In most programs, only one of these will ever be
+  executed, and it is important to pick the right one.
 \item
   It is not always possible to identify which parts of a program are
   instructions and which data, which makes it difficult to determine
@@ -540,7 +554,9 @@ and third problems to be solved as well.
 
 \todo{But that doesn't quite work for types of run-time generated code
   other than shared libraries.  Might need to say something about
-  that.}
+  that.}\smh{Hmm -- perhaps .. (this would matter e.g. for obfuscated
+  code like burnintest)... But maybe could defer to end f the
+  section/or chapter or dissertation?}
 
 \subsubsection{Handling loops in the CFG}
 
@@ -649,17 +665,17 @@ either free from cycles or of length greater than $N_r$.
   \draw[->] (C'') -- (B');
   \begin{pgfonlayer}{bg}
     \node (box4) [fill=black!10,fit=(A) (B) (C) (D) (C') (B') (C'')] {};
-  \end{pgfonlayer}
+  \end{pgfonlayer}\smh{Center?}
 \end{tikzpicture}
 \caption{Fully unrolled version of the CFG in
-  figure~\ref{fig:cyclic_cfg}, preserving all paths of length six or
+  Figure~\ref{fig:cyclic_cfg}, preserving all paths of length six or
   fewer instructions.  Note that an additional root has been
   introduced at C''.}
 \label{fig:unrolled_cyclic_cfg}
 \end{figure}
 
 As an example, consider the CFG shown at the left of
-figure~\ref{fig:cyclic_cfg}, which contains a loop between
+Figure~\ref{fig:cyclic_cfg}, which contains a loop between
 instructions B and C.  This loop must be removed from the CFG while
 maintaining all paths which terminate at D and which contain $N_r$
 instructions.  The algorithm starts by performing a depth-first
@@ -704,35 +720,40 @@ rather than away from D, which would not be helpful.
 \label{fig:derive:read:unroll_cycle_break}
 \end{figure}
 
-This algorithm is guaranteed to preserve all paths of length $N_r$
-which end at the target instruction.  There are only two places in the
-algorithm which remove existing edges, so consider each in turn.  The
-first is the erasure on line 4.  This can only ever affect edges whose
-shortest path to a target is at least $N_r$ instructions long, and so
-cannot eliminate any paths to a target of length $N_r$, and is
-therefore safe.  The other is the replacement step at line 10, which
-replaces an edge from $edge.source$ to $edge.destination$ with one
-from $newNode$ to $edge.destination$.  This is safe provided that
-every path to $newNode$ has a matching path to $edge.source$, which is
-ensured by duplicating all of $edge.source$'s incoming edges to
-$newNode$.  At the same time, no additional paths will be introduced,
-because every path to $newNode$ has a matching path to $edge.source$.
+The complete algorithm is shown in
+Figure~\ref{fig:derive:read:unroll_cycle_break}.  This algorithm is
+guaranteed to preserve all paths of length $N_r$ which end at the
+target instruction.  There are only two places in the algorithm which
+remove existing edges, so consider each in turn.  The first is the
+erasure on line 4.  This can only ever affect edges whose shortest
+path to a target is at least $N_r$ instructions long, and so cannot
+eliminate any paths to a target of length $N_r$, and is therefore
+safe.  The other is the replacement step at line 10, which replaces an
+edge from $edge.source$ to $edge.destination$ with one from $newNode$
+to $edge.destination$.  This is safe provided that every path to
+$newNode$ has a matching path to $edge.source$, which is ensured by
+duplicating all of $edge.source$'s incoming edges to $newNode$.  At
+the same time, no additional paths will be introduced, because every
+path to $newNode$ has a matching path to $edge.source$.
 
-\todo{Is it worth doing a proof of termination as well?}
+\todo{Is it worth doing a proof of termination as well?}\smh{No,
+  although you might comment on the expected running time...}
 
 \subsubsection{Handling cross-function CFGs.}
 
-There is, of course, no particular guarantee that the entire trace
-will be contained in a single function, and SLI must correctly handle
-these cross-function CFGs.  It does so by partially inlining functions
-as necessary to restore the problem to the single-function case.  This
-means that instructions must be labelled by both the pointer of the
-instruction itself and also by its inlining context, which is simply
-the stack of functions into which it has been inlined\editorial{Not
-  terribly clear.}.  The only slight complications are that the
-inlining context is not necessarily known when CFG exploration starts,
-and it might be necessary to consider the same instruction in several
-contexts.
+There is, of course, no particular guarantee that the entire
+trace\smh{Not 100\% clear what you mean by this -- is this an actual
+  trace, or another word for the slice or CFG.  Imprecision makes this
+  stuff harder to read!} will be contained in a single function, and
+SLI must correctly handle these cross-function CFGs.  It does so by
+partially inlining functions as necessary to restore the problem to
+the single-function case.  This means that instructions must be
+labelled by both the pointer of the instruction itself and also by its
+inlining context, which is simply the stack of functions into which it
+has been inlined\editorial{Not terribly clear.}.  The only slight
+complications are that the inlining context is not necessarily known
+when CFG exploration starts, and it might be necessary to consider the
+same instruction in several contexts.
 
 There are two important cases to consider: backing into another
 function, where the exploration starts in one function and must be
@@ -754,7 +775,7 @@ the target function into each.
 
 \todo{As I write this I realise that the way I've done this is really,
   really stupid.  I should probably fix that before writing any more
-  about it.}
+  about it.}\smh{An example or two would probably help, too.}
 
 Tail calls do not require any particular special handling here.  If
 the exploration reaches the start of a function then all branches to
@@ -781,7 +802,7 @@ dump.  The core dump contains two critical pieces of information:
 \end{itemize}
 
 Knowing the instruction which crashed constrains the CFG in an obvious
-way, but the processor stack is moderately mode difficult to analyse.
+way, but the processor stack is moderately more difficult to analyse.
 In principle, it tells us where each currently-active function was
 called from, which would usefully constrain the set of predecessors,
 but extracting this information from a program binary without debug
@@ -794,7 +815,7 @@ strategies for solving this problem:
   the core dump, which attempts to map from instruction addresses to
   the offset between the current stack pointer and the address of the
   current function's return address.  When this analysis succeeds it
-  makes it trivial to determine from the core dump where the function
+  makes it easy to determine from the core dump where the function
   will return to, and hence where it was called from, but it will not
   always succeed.  In particular, the \verb|alloca| function can cause
   that offset to change at run-time, and so no static analysis will
@@ -803,8 +824,8 @@ strategies for solving this problem:
   An abstract interpreter, which attempts to interpret the program's
   machine code forwards from the point of the crash to determine what
   it would have done if it hadn't crashed.  This proceeds until it
-  reaches a \verb|ret| instruction, at which determining the return
-  address is again trivial.
+  reaches a \verb|ret| instruction, at which point determining the
+  return address is again straightforward.
 \end{itemize}
 
 \todo{Need to talk about when you use each, and why you need both.
@@ -826,19 +847,21 @@ discussed above.
 \subsubsection{Compiling the CFG to a \StateMachine}
 \label{sect:derive:compile_cfg}
 
-\todo{Should mention that I use libVEX to convert instructions to a
-  slightly saner intermediate format before converting to
-  {\StateMachine} fragments, rather than doing it directly.}
+\todo{Should mention that I use libVEX\smh{probably not at this level
+    of abstraction.} to convert instructions to a slightly saner
+  intermediate format before converting to {\StateMachine} fragments,
+  rather than doing it directly.}
 
-The result of the previous phases is a control-flow graph containing
-all of the instructions which might be present in the $R$ fragment of
-the crash tuple, and this CFG must now be compiled into a
-\StateMachine.  Were it not for the transformations performed in the
-loop unrolling phase this would be straightforward: simply decode each
-instruction in isolation and convert it into an appropriate fragment
-of \StateMachine, and then stitch all of the fragments together again
-in the obvious way.  The unrolling process introduces three major
-complications:
+The result of the previous phases\smh{Would be nice to refer back to a
+  figure (signpost) here!} is a control-flow graph containing all of
+the instructions which might be present in the $R$ fragment of the
+crash tuple, and this CFG must now be compiled into a \StateMachine.
+Were it not for the transformations performed in the loop unrolling
+phase this would be straightforward: simply decode each instruction in
+isolation and convert it into an appropriate\smh{hmm} fragment of
+\StateMachine, and then stitch all of the fragments together again in
+the obvious\smh{hmm} way.  The unrolling process introduces three
+major complications:
 
 \begin{itemize}
 \item
@@ -850,13 +873,14 @@ complications:
 
 \item
   Some additional edges will have been introduced which do not
-  correspond to anything in the original program.  In the example,
-  instruction A had a single successor, B, in the original program,
-  but has multiple successors in the unrolled CFG.  SLI handles these
-  by converting them into \StateMachine-level control flow using
-  $ControlFlow$ expressions, so that the {\StateMachine} fragment for A
-  will be something like ``if ($Control(A{\rightarrow}B)$) \{fragment for B\} else
-  \{fragment for B'\}''.
+  correspond to anything in the original program.  In the example in
+  Figure~\ref{fig:unrolled_cyclic_cfg}, instruction A had a single
+  successor, B, in the original program, but has multiple successors
+  in the unrolled CFG.  SLI handles these by converting them into
+  \StateMachine-level control flow using $ControlFlow$ expressions, so
+  that the {\StateMachine} fragment for A will be something like ``if
+  ($Control(A{\rightarrow}B)$) \{fragment for B\} else \{fragment for
+  B'\}''.
 
 \item
   Likewise, the CFG can sometimes have multiple roots.  In this case,
@@ -864,11 +888,11 @@ complications:
   $Entry()$ expressions which will select an appropriate fragment of
   {\StateMachine} to start with.  In the example, the first state will
   be ``if ($Entry(A)$) \{fragment for A\} else \{ fragment for
-  C''\}''.
+  C''\}''.\smh{?}
 \end{itemize}
 
 As a somewhat unrealistic example, suppose that the CFG in
-figure~\ref{fig:cyclic_cfg} had been generated from a program
+Figure~\ref{fig:cyclic_cfg} had been generated from a program
 something like this:
 
 \begin{verbatim}
@@ -881,9 +905,9 @@ D: STORE $0 -> *(rcx)
 The \verb|JMP_IF_NOT_EQ| instruction is supposed to indicate that
 \verb|C| loads from the memory at \verb|rcx+8|, jumping to \verb|B| if
 it is non-zero and proceeding to \verb|D| otherwise.  This will
-produce an unrolled CFG as in figure~\ref{fig:unrolled_cyclic_cfg}, as
+produce an unrolled CFG as in Figure~\ref{fig:unrolled_cyclic_cfg}, as
 already discussed, and a {\StateMachine} as shown in
-figure~\ref{fig:state_machine_for_cyclic_cfg}.
+Figure~\ref{fig:state_machine_for_cyclic_cfg}.
 
 At this stage special side-effects are added to the {\StateMachine} to
 represent the results of the earlier whole-program static analysis.
@@ -916,19 +940,20 @@ them.
   \draw[->,ifTrue] (l3) -- (l4);
   \draw[->] (l4) -- (l5);
   \draw[->] (l5) -- (l6);
-  \draw[->,ifTrue] (l6) -- (lAlpha);
-  \draw[->,ifFalse] (l6) -- (l7);
+  \draw[->,ifFalse] (l6) -- (lAlpha);
+  \draw[->,ifTrue] (l6) -- (l7);
   \draw[->,ifFalse] (l7) -- (lGamma);
   \draw[->,ifTrue] (l7) -- (lBeta);
   \draw[->] (l8) -- (l9);
   \draw[->] (l9) -- (l10);
-  \draw[->,ifFalse] (l10) -- (lAlpha);
-  \draw[->,ifTrue] (l10) -- (l4);
+  \draw[->,ifTrue] (l10) -- (lAlpha);
+  \draw[->,ifFalse] (l10) -- (l4);
   \draw[->] (l11) -- (l12);
-  \draw[->,ifFalse] (l12) -- (lAlpha);
-  \draw[->,ifTrue] (l12) -- (l8);
+  \draw[->,ifTrue] (l12) -- (lAlpha);
+  \draw[->,ifFalse] (l12) -- (l8);
 \end{tikzpicture}
-\caption{{\STateMachine} generated from the CFG shown in figure~\ref{fig:cyclic_cfg}.}
+\caption{{\STateMachine} generated from the CFG shown in
+  Figure~\ref{fig:cyclic_cfg}.}\editorial{Check this very carefully.}
 \label{fig:state_machine_for_cyclic_cfg}
 \end{figure}
 
@@ -968,7 +993,8 @@ building data-dependent crash enforcers.
 {\STateMachines} are, for the most part, maintained in a variant of
 static single assignment (SSA) form.  SSA is a standard compiler
 intermediate representation in which each variable has at most one
-static assignment\needCite{}.  Variables which are assigned to
+static assignment\needCite{}\smh{Cytron et al TOPLAS 91?  or some
+  textbook from AM's class?}.  Variables which are assigned to
 multiple times are converted into families of related variables
 (usually referred to as ``versions'' or ``generations'' of the
 variable), each of which is assigned to precisely once.  This has the
@@ -1001,13 +1027,13 @@ set).  This has several important implications:
   requires additional temporary variables to record which version of a
   particular variable has been most recently assigned to, whereas the
   more conventional control-flow based form does not.  This would be
-  an irritation in a compiler, but is not a problem for SLI, which
-  never has to perform that conversion.
+  an additional complication in a compiler, but is not a problem for
+  SLI, which never has to perform that conversion.
 \item
   A {\StateMachine}'s control flow graphs can be modified without
   needing to update $\Phi$ nodes.  For example, suppose that a
   {\StateMachine} is as shown on the left of
-  figure~\ref{fig:ssa_cfg1}, and suppose that further analysis shows
+  Figure~\ref{fig:ssa_cfg1}, and suppose that further analysis shows
   that the assignment of $z$ is dead.  We would like to remove the
   assignment and turn the {\StateMachine} into the one shown on the
   right.  This is correct as-is using SLI's $\Phi$ semantics.  If a
@@ -1032,12 +1058,13 @@ SSA-based compilers, including LLVM\needCite{} and gcc\editorial{I
   \emph{think} gcc does this; should probably check that.}.  This is
 because converting memory accesses to SSA form requires first solving
 the aliasing problem and determining when two memory accesses refer to
-the same memory location, and this is impossible in the general case.
-It is, of course, possible to identify some interesting cases in which
-memory SSA is both possible and useful, in the style of
-\editorial{cite Van Emmerik 2007}; {\technique}'s alias analysis pass,
-described in section~\ref{sect:alias_analysis} can be seen as doing
-something very similar to this.
+the same memory location, and this is impossible\smh{intractable} in
+the general case.  It is, of course, possible to identify some
+interesting cases in which memory SSA is both possible and useful, in
+the style of \editorial{cite Van Emmerik 2007}; {\technique}'s alias
+analysis pass, described in Section~\ref{sect:alias_analysis} can be
+seen as doing something very similar to this.\smh{This is a bit
+  rambling -- what do you want to say?}
 
 \begin{figure}
 \begin{tikzpicture}
@@ -1088,22 +1115,27 @@ something very similar to this.
 The definition of bugs given in
 section~\ref{sect:finding_bugs:finding_candidate_bugs:formal_definition}
 is existentially quantified over all write thread sequences of length
-$N_w$ instructions.  As with the read-side {\StateMachines}, it would
-be possible to enumerate all of these and attempt to analyse each, but
-this would be extremely inefficient, and so {\technique} uses a
-slightly more sophisticated approach.  The first observation required
-here is that a write-side {\StateMachine} is only interesting if it
-can influence the behaviour of the read-side {\StateMachine} in some
-way, which means that the read-side {\StateMachine} must load from at
-least one location which is stored to by the write-side
-{\StateMachine}.  The dynamic aliasing model can find, for any
-memory-loading instruction, a list of memory-storing instructions
-which might access the same memory location from another thread, and
-so find all of the stores which might influence the read-side
-{\StateMachine}.  It is then sufficient to consider just those
-write-thread traces which are of length less than or equal to $N_w$
-and which start and end with one of these interfering accesses, and
-this is usually a far smaller set.
+$N_w$ instructions\smh{Is it sensible to define $N_r$ and $N_w$
+  earlier? + to explain that they can be different?  I had assumed
+  analysis window was one param...}.  As with the read-side
+{\StateMachines}, it would be possible to enumerate all of these and
+attempt to analyse each, but this would be extremely inefficient, and
+so {\technique} uses a slightly more sophisticated approach.  The
+first observation required here is that a write-side {\StateMachine}
+is only interesting if it can influence the behaviour of the\smh{`a'?
+  Or do you generate write side slices separately for each read-side
+  slice?} read-side {\StateMachine} in some way, which means that the
+read-side {\StateMachine} must load from at least one location which
+is stored to by the write-side {\StateMachine}.  The dynamic aliasing
+model can find, for any memory-loading instruction, a list of
+memory-storing instructions which might access the same memory
+location from another thread\smh{is this complete?}, and so find all
+of the stores which might influence the read-side {\StateMachine}.  It
+is then sufficient to consider just those write-thread traces which
+are of length less than or equal to $N_w$ and which start and end with
+one of these interfering accesses\smh{This means an access in W which
+  may be read by some R insn? Or the last R insn?}\smh{Same loc or
+  different?}, and this is usually a far smaller set.
 
 It is obvious why the traces of interest must end with an interfering
 store, as anything after the final store definitely cannot influence
@@ -1114,7 +1146,7 @@ interfering one can influence the behaviour of the interfering
 instructions, and hence potentially the read-side {\StateMachine}.
 This is not a problem because of the W isolation assumption discussed
 in
-section~\ref{sect:finding_bugs:finding_candidate_bugs:formal_definition},
+Section~\ref{sect:finding_bugs:finding_candidate_bugs:formal_definition},
 which requires that the write {\StateMachine} never load any locations
 stored to by the read {\StateMachine}.  That means that the prefix of
 the write thread before the first interfering instruction cannot
@@ -1126,7 +1158,11 @@ discarding this information is always safe.  On the other hand, it
 might increase the complexity of the rest of the analysis, and so
 {\implementation} will sometimes re-introduce such context
 instructions according to some heuristics\editorial{Explain those
-  heuristics somewhere.}.  \todo{Not sure how clear that para is.}
+  heuristics somewhere.}.  \todo{Not sure how clear that para
+  is.}\smh{Not very clear at all.}\smh{Some more formalism might help,
+  including definition of interesting; of prefix interesting is just
+  fine, but the prefix does not value due to W isolation (+ ring it
+  contains no interesting store).}
 
 The procedure for building write-side {\StateMachines} is then a
 variant of that used for building read-side ones: find all of the
@@ -1152,16 +1188,20 @@ the read-side {\StateMachine}.  As indicated, this is straightforward:
   {\StateMachine} to be further simplified, which might allow
   some loads to be removed.  \todo{Do I need an example here?
     It's kind of boring, but the way this is written makes it
-    sound a bit mysterious.}
+    sound a bit mysterious.}\smh{Maybe just explain that there
+    is an undecorated version of the slice which you use.}\smh{Definitions +
+    abstraction = good for documents, too!}
 \item
   Enumerate all of the \state{Load} side-effects in the read-side
   {\StateMachine} and map them, via the memory access identifier table
   and the CFG fragment, into memory loading instructions in the original program.
 \item
-  For each such memory loading instruction, query the dynamic aliasing
-  table to find all of memory storing instructions which might access
-  the same location while the location is not private to a particular
-  thread.
+  For each non-pointer memory loading instruction, query the dynamic
+  aliasing table to find all of memory storing instructions which
+  might access the same location.\editorial{Arguably a little
+    deceptive: a single instruction can be sometimes private and
+    sometimes non-private, and the analysis correctly handles that.
+    Maybe that's too complicated to explain?}
 \end{itemize}
 
 Note that \state{Store} operations in the read-side {\StateMachine}
@@ -1179,19 +1219,20 @@ that \state{Load} side-effect.
   of them are diagrams, so I guess it's not too bad.}
 
 The input to this phase of the analysis is a set of potentially
-relevant static store instructions, and the analysis must build a
-collection of acyclic CFGs which cover all possible paths through the
-program which start and end with one of those instructions and which
-contain at most $N_w$ instructions.  This is easier than building the
-read-side CFGs in the sense that both ends of the CFG are ``bounded''
-by some well-defined instruction, whereas read-side CFGs potentially
-extend arbitrarily far backwards; it is harder in the sense that
-write-side CFG builder must also cluster the interfering instructions,
-deciding which should be included in a single trace and which analysed
-independently, whereas read-side CFGs contain only a single
-instruction.  The overall result is that write-side CFGs tend to be
-significantly smaller and easier to analyse than read-side ones but
-the unrolling algorithm itself is slightly more involved.
+relevant static store instructions\smh{Who are they?}, and the
+analysis must build a collection of acyclic CFGs which cover all
+possible paths through the program which start and end with one of
+those instructions and which contain at most $N_w$ instructions.  This
+is easier than building the read-side CFGs in the sense that both ends
+of the CFG are ``bounded'' by some well-defined instruction, whereas
+read-side CFGs potentially extend arbitrarily far backwards; it is
+harder in the sense that write-side CFG builder must also cluster the
+interfering instructions, deciding which should be included in a
+single trace and which analysed independently, whereas read-side CFGs
+concern only a single instruction.  The overall result is that the
+write-side CFGs tend to be significantly smaller and easier to analyse
+than read-side ones but the unrolling algorithm itself is slightly
+more involved.
 
 The first phase of the algorithm is to build a (possibly) cyclic
 fragment of the original program's control flow graph which includes
@@ -1199,7 +1240,7 @@ all instructions which might possibly be included in one of the final
 traces.  This is simple: starting from each potentially interfering
 instruction, {\technique} explores forwards for $N_w$ instructions,
 merges the resulting CFG fragments, and then discards any instructions
-which cannot reach an potentially interfering instruction within $N_w$
+which cannot reach a potentially interfering instruction within $N_w$
 instructions.  These CFG fragments may cross function boundaries; the
 details are the same as those for read-side CFGs in most important
 respects, and I do not repeat them here\editorial{Well, the fact that
@@ -1222,16 +1263,19 @@ information about where it might occur in an interesting path.  This
 label contains an entry for every possibly interfering instruction
 specifying:
 
-\begin{itemize}
+\begin{enumerate}
 \item
   The number of instructions on the shortest path from that
   interfering instruction to the labelled node (the ``min from''
-  distance).
+  distance), and
 \item
   The number of instructions on the shortest path from the labelled
   node to the interfering instruction or any of its duplicates (the
   ``min to'' distance).
-\end{itemize}
+\end{enumerate}
+
+\smh{Possibly define/use I = set of interfering instructions or $I_d$
+  = duplicates will make lots of text concise...}
 
 The asymmetry, taking the distance from a ``true'' interfering
 instruction and to any duplicate of an interfering instruction, is
@@ -1255,7 +1299,7 @@ therefore safe to discard any nodes $r$ where
 
 exceeds $N_w$, and the node label makes this quantity trivial to
 calculate.  The complete algorithm is then as shown in
-figure~\ref{fig:derive:store_cfg_unroll_alg}.
+Figure~\ref{fig:derive:store_cfg_unroll_alg}.
 
 \begin{figure}
 \begin{algorithmic}
@@ -1278,7 +1322,9 @@ figure~\ref{fig:derive:store_cfg_unroll_alg}.
     \EndWhile
   \EndFor
 \end{algorithmic}
-\caption{Loop unrolling algorithm for write-side CFGs.}
+\caption{Loop unrolling algorithm for write-side CFGs.
+  \textsc{findEdgeToBeBroken} and \textsc{combineLabels} are described
+  in the text below.}
 \label{fig:derive:store_cfg_unroll_alg}
 \end{figure}
 
@@ -1287,8 +1333,7 @@ Note that in this algorithm duplicating a node duplicates its
 \emph{incoming} edges are duplicated.  This reflects the fact that
 write-side CFGs are built up forwards from the interfering
 instructions while read-side CFGs are built up backwards from the
-target instruction.  \todo{Might need an example to say why that's
-  necessary.}
+target instruction.
 
 The algorithm relies on two utility functions:
 
@@ -1309,8 +1354,8 @@ The algorithm relies on two utility functions:
   computing the label for the new node which would be produced by
   duplicating $edge.end$.  This node will have the same outgoing edges
   as $edge.end$, and so the same $min\_to$ label, and a single
-  incoming edge from $edge.start$, so a $min\_from$ label which is
-  just $edge.start$'s $min\_from$ with one added to every value.
+  incoming edge from $edge.start$, and hence a $min\_from$ label which
+  is just $edge.start$'s $min\_from$ with one added to every value.
 \end{itemize}
 
 The resulting CFG can then be compiled to a {\StateMachine} in the
@@ -1377,10 +1422,10 @@ this:
 
 New nodes are shown in red, as is the edge which is modified, and
 edges which have been removed are shown crossed through.  Notice that
-whereas the shortest cyclic path starting at A was previous A,B,B, of
-length 3, it is now A, B, B1, B1, of length 4.  Suppose that the next
-depth-first iteration discovers the edge from C to A.  The algorithm
-will then break this edge by duplicating A:
+whereas the shortest cyclic path starting at A was previously A,B,B,
+of length 3, it is now A, B, B1, B1, of length 4.  Suppose that the
+next depth-first iteration discovers the edge from C to A.  The
+algorithm will then break this edge by duplicating A:
 
 \begin{tikzpicture}
   \node (A) at (0,2) [TrueCfgInstr] {A};
@@ -1448,8 +1493,9 @@ It will then duplicate B:
 \end{tikzpicture}
 
 Again the minimum distance from A to a cycle has increased, from four
-to five.  Now duplicate B because of the A1 to B cycle-completing
-edge:
+to five\smh{Not clear what this is.  You mean: shortest cyclic path
+  starting at A}.  Now duplicate B because of the A1 to B
+cycle-completing edge:
 
 \begin{tikzpicture}
   \node (A) at (0,2) [TrueCfgInstr] {A};
@@ -1485,7 +1531,7 @@ edge:
       B2 & 2 & 3 & 1 & 4        & 4\\
       B3 & 2 & 4 & 1 & 2        & 3\\
     \end{tabular}
-  };
+  };\smh{overall min hangs over right hand margin}
 \end{tikzpicture}
 
 The next cycle-completing edge considered is that from B2 to B1.  In
@@ -1586,10 +1632,10 @@ As desired, the graph has been rendered acyclic while preserving all
 paths of length up to five instructions.  As a minor optimisation,
 {\implementation} will merge node B2 with B4 and C3 with C2 before
 converting the CFG to a \StateMachine, as the nodes are semantically
-identical and this results in a slightly simpler
-\StateMachine\editorial{Well, kind of.  If you don't bother then the
-  {\StateMachine} simplifier will do it for you later, but doing it
-  early avoids some overhead.}.
+identical and this results in a slightly simpler \StateMachine.
+
+\smh{This is pretty good, though could be improved somewhat (layout at
+  least!)}
 
 \section{Simplifying {\StateMachines}}
 
@@ -1625,8 +1671,7 @@ mul (%rax * $11) -> %rax
   state for each instruction.  It would be more useful to produce a
   single state which set $rax$ to $((rax \times 16) - 7) \times 11$,
   and this simplification performs that transformation.  The algorithm
-  used is essentially the same as that employed by dcc\needCite{} and
-  so is not described in detail here.
+  used is based on that employed by dcc\needCite{}.
 
   One minor extension present in {\implementation} but not dcc is that
   {\implementation} can make use of \state{Assert} side-effects during
@@ -1634,23 +1679,22 @@ mul (%rax * $11) -> %rax
   less than $7$ then the expression $x > 22$ can be rewritten to
   $false$.  This does not require any significant changes to the bulk
   of the algorithm, beyond a few simple rules describing when such
-  rewrites are valid.  \todo{In other words, a whole bunch of fiddly
-    special cases.  This isn't very interesting.}
+  rewrites are valid.
+\item
+  {\Technique} attempts to eliminate $\Phi$ expressions from generated
+  {\StateMachines} by converting them into multi-terminal binary
+  decision diagrams over the {\StateMachine}'s control flow predicates;
+  this analysis is described in Section~\ref{sect:phi_elimination}.
 \item
   {\Technique} attempts to eliminate memory accessing instructions
   using a cross-function alias technique which incorporates a fast but
   low-accuracy points-to analysis on the original binary with a slower
   but more accurate alias analysis applied to the {\StateMachine};
-  this is described in section~\ref{sect:alias_analysis}.
-\item
-  {\Technique} attempts to eliminate $\Phi$ expressions from generated
-  {\StateMachines} by converting them into multi-terminal binary
-  decision diagrams over the {\StateMachine}'s control flow predicates;
-  this analysis is described in section~\ref{sect:phi_elimination}.
+  this is described in Section~\ref{sect:alias_analysis}.
 \item
   The {\StateMachines} generated by {\technique} often contain
   fragments which differ only in variable names; the unification
-  simplification, described in section~\ref{sect:unification} attempts
+  simplification, described in Section~\ref{sect:unification} attempts
   to unify these.
 \end{itemize}
 
@@ -1662,12 +1706,16 @@ There are also a number of other minor simplifications:
   to just $x$ or $(x \happensBefore y) \vee (y \happensBefore x)$ to
   $true$, and constant-folding for most common operators.
 \item
-  A write-side {\StateMachine} which terminates without issuing any
+  A write-side {\StateMachine} which terminates\smh{What does this
+    mean precisely?  You have write side beginning with an interfering
+    store, right??}\editorial{Oops, forgot to describe the bit where
+    we expand the write side backwards from the first store to get
+    some potentially-useful context.} without issuing any
   \state{Store} operations is unlikely to be useful, and so a simple
   control-flow analysis is used to turn any paths which do so into
   \state{Unreached} states.  Likewise, any fragments of a read-side
-  {\StateMachine} which can reach only a single terminal state
-  are replaced by that terminal state.
+        {\StateMachine} which can reach only a single terminal state
+        are replaced by that terminal state.
 \item
   {\Technique} is interested only in concurrency bugs, but the
   {\StateMachines} generated often contain large fragments which
@@ -1696,7 +1744,7 @@ f(x) {
 
    flattening the {\StateMachine}'s graph structure to text in the
    obvious way.  The test on \verb|x| is purely local, and so this
-   machine can be converted to
+   {\StateMachine} can be converted to
 
 \begin{verbatim}
 1: Load global_ptr to a
@@ -1710,7 +1758,8 @@ f(x) {
    phases of the analysis have much greater flexibility to either move
    or discard such assertions, which can allow further useful
    optimisations.  \todo{I should really come up with a better example
-     here.  Or just not bother mentioning this part.}
+     here.  Or just not bother mentioning this part.}\smh{Ack.  It's
+     too long for what it brings to the argument.}
 \end{itemize}
 
 \subsection{$\Phi$ elimination}
@@ -1719,19 +1768,17 @@ f(x) {
 The use of SSA form simplifies many parts of the analysis by breaking
 up variables into their different live ranges, but complicates some
 parts by introducing $\Phi$ side effects, which are themselves quite
-difficult to analyse.  The state unification simplification described
-in section~\ref{sect:unification} can also introduce further $\Phi$
-effects.  The reason that $\Phi$ side effects are hard to analyse is
-that their behaviour depends on the {\StateMachine}'s control flow,
-and this is not explicitly reified and so is unavailable to the usual
-simplification machinery.  The $\Phi$ elimination pass attempts to
-rectify this problem by converting the $\Phi$ effects into
-multi-terminal reduced ordered binary decision diagrams\needCite{}
-(MTBDDs) which take as input the {\StateMachine}'s existing
-control-flow predicates which produce as their output the input which
-will be selected by the $\Phi$.  The $\Phi$ itself can then be
-replaced with this MTBDD, making the control dependence explicit and
-simplifying later analyses.
+difficult to analyse.  The reason that $\Phi$ side effects are hard to
+analyse is that their behaviour depends on the {\StateMachine}'s
+control flow, and this is not explicitly reified and so is unavailable
+to the usual simplification machinery.  The $\Phi$ elimination pass
+attempts to rectify this problem by converting the $\Phi$ effects into
+multi-terminal reduced ordered binary decision
+diagrams\needCite{}\smh{Clarke 93?}  (MTBDDs) which take as input the
+{\StateMachine}'s existing control-flow predicates which produce as
+their output the input which will be selected by the $\Phi$.  The
+$\Phi$ itself can then be replaced with this MTBDD, making the control
+dependence explicit and simplifying later analyses.
 
 \todo{Having played around a bit, I'm now absolutely convinced that
   using BDDs in a few other places would massively improve
@@ -1761,10 +1808,10 @@ executed, extend this into a mapping from states to MTBDDs which show
 which input to the $\Phi$ would be selected if the $\Phi$ were issued
 immediately after that state, and then simply read off the MTBDD for
 the actual $\Phi$ state.  This allows all $\Phi$ states to be
-eliminated\editorial{Modulo typing issues, which I'm really going to
-  need to come up with a better story for.}, simplifying later
-analysis phases.
+eliminated, simplifying later analysis phases.
 
+\smh{Some duplication here.  Can you clarify/simplify?  (Maybe also
+  give an example?)}
 \subsubsection{Building the control dependence graph}
 
 The control dependence graph (CDG) is a standard compiler data
@@ -1782,10 +1829,10 @@ acyclic.
 The algorithm for building the graph is simple:
 
 \begin{algorithmic}[1]
-\State $cdg[root] = const(true)$
+\State $cdg[root] = const(true)$\smh{Presumably, you meant to italicise cdg itself to something?}
 \While {Some state is unlabelled in $cdg$}
   \State {$n \gets $ select a state which has no label but whose predecessors are all labelled}
-  \State {$cdg[n] \gets \bigvee \{cdg[p, n] \mid p \in \textrm{$n$'s predecessors}\}$}\Comment{Take union of all reaching paths}
+  \State {$cdg[n] \gets \bigvee \{cdg[p, n] \mid p \in \textrm{$n$'s predecessors}\}$}\Comment{Take union of all reaching paths}\smh{Maybe use a different font for comments?}
 \EndWhile
 \end{algorithmic}
 
@@ -1802,15 +1849,18 @@ cdg[x, y] = \begin{cases}
 \end{cases}
 \end{displaymath}
 
+\smh{The difference between a state and a node is???}
+
 Note that the selection on line 3 is only guaranteed to be possible
 because the {\StateMachine} is acyclic\editorial{Is that obvious?  Or
-  do I need to go and prove it?}.  This assumption is also the reason
-that {\technique}'s CDG is precise, whereas CDGs for full programs
-usually contain some approximations.  Apart from that, this algorithm
-is obvious: to find the conditions under which a state might execute,
-find the conditions under which all of its incoming edges might
-execute and take the union.  Once all states are labelled the CDG is
-complete.
+  do I need to go and prove it?}\smh{Yes, it's obvious (i.e. no need
+  for proof); however the main text should remain (i.e. worth
+  mentioning).}.  This assumption is also the reason that
+{\technique}'s CDG is precise, whereas CDGs for full programs usually
+contain some approximations.  Given that, the algorithm is simple: to
+find the conditions under which a state might execute, find the
+conditions under which all of its incoming edges might execute and
+take the union.  Once all states are labelled the CDG is complete.
 
 \subsubsection{Building the $\Phi$ map}
 
@@ -1820,7 +1870,7 @@ select which input of the $\Phi$ would be selected if the $\Phi$ were
 to be issued immediately after that state.  The complete map then
 makes eliminating the $\Phi$ side-effect trivial.  The algorithm for
 building the $\Phi$ map is shown in
-figure~\ref{fig:derive:phi:phi_map}
+Figure~\ref{fig:derive:phi:phi_map}
 
 \begin{figure}
 \begin{algorithmic}[1]
@@ -1837,6 +1887,11 @@ figure~\ref{fig:derive:phi:phi_map}
 \caption{Building the $\Phi$ map}
 \label{fig:derive:phi:phi_map}
 \end{figure}
+
+\smh{Ok -- I found this \emph{very} confusing and I think you can
+  explain it more easily.  GMTBDD = trad abstraction; you essentially
+  just want to use the CDG predicate to project the appropriate value
+  from $\Phi$.}
 
 The core idea is that of a gated MTBDD (GMTBDD).  This is a set of
 (BBDD, MTBDD) pairs where each BBDD is treated as a gate for the
@@ -1858,6 +1913,9 @@ the construction of the CDG ensures that precisely one gate will be
 enabled in any configuration of the input boolean variables, so that
 the GMTBDD is always defined.
 
+\smh{Very unclear! example?  Isn't this effectively just computing the
+  path condition?}
+
 \todo{I just made up GMTBDDs.  Google doesn't reveal anything with the
   same name, but I suspect that I'm not the first person to come up
   with the idea.  Should go and have a proper look for prior work.}
@@ -1866,7 +1924,7 @@ As a minor optimisation, the algorithm shown simplifies the MTBDD for
 state $n$ under the assumption that the CDG condition for $n$ is true;
 in other words, under the assumption that $n$ is actually run.  The
 \textsc{simplify} function is shown in
-figure~\ref{fig:derive:phi_elimination:simplify}.  The basic idea is
+Figure~\ref{fig:derive:phi_elimination:simplify}.  The basic idea is
 to define a $\textsc{implies}(a, b)$ operation which evaluates to $a$
 when $b$ is true or the special $\bot$ value when $b$ is false and to
 then use this to zip the original MTBDD with the assumption BDD.  This
@@ -1935,11 +1993,14 @@ labels for any which do not.  The result of the analysis is unchanged.
 \todo{Need to think much harder about variable ordering within the
   BDDs.  Currently using pointer order, which is rather silly.  Also
   need to mention that the ordering is consistent within any run of
-  the pass, but not necessarily between multiple runs.}
+  the pass, but not necessarily between multiple runs.}\smh{Well, you
+  need some order -- or are you hoping to simplify by relabelling?  Is
+  this worth it?}
 
 \todo{Might be worth explicitly calling out that the CDG can be shared
   between different $\Phi$ effects, but the $\Phi$ map needs to be
-  rebuilt each time?}
+  rebuilt each time?}\smh{Possibly.  As mentioned, this section is
+  among the most confusing so far.}
 
 %%  This is pretty much just a generalisation of the heuristic used in
 %%  Fujita, Matsunaga et al 1991 from BDDs to MTBDDs, so maybe I can
@@ -1948,13 +2009,11 @@ labels for any which do not.  The result of the analysis is unchanged.
 \subsection{Alias analysis}
 \label{sect:alias_analysis}
 
-\todo{Should probably mention that having a DRS log makes all of this
-  redundant.}
-
-SLI's {\StateMachines} represent a cross-function slice of the
-program's machine code, including a large number of memory-accessing
-instructions.  This presents a non-trivial alias analysis problem.
-SLI uses several techniques to resolve the resulting aliasing queries:
+SLI's {\StateMachines} potentially represent a cross-function slice of
+the program's machine code which may include a large number of
+memory-accessing instructions.  This presents a non-trivial alias
+analysis problem.  SLI uses several techniques to resolve the
+resulting aliasing queries:
 
 \begin{itemize}
 \item
@@ -1962,12 +2021,13 @@ SLI uses several techniques to resolve the resulting aliasing queries:
   program behaves during normal operation.  This model is generally
   reasonably effective at determining whether instructions which
   access the heap or global data might conflict, but does not contain
-  information on accesses to the local stack.
+  any information about accesses to the local stack.
 \item
   Next, a static analysis pass is used to determine which instructions
   might access local variables in the current stack frame.  This
   analysis is almost entirely function-local and is applied to every
-  function in the program before the main analysis pass starts.
+  function in the program before the main analysis pass
+  starts.\smh{Find ref / add a flow chart?}
 \item
   The results of this static analysis pass are incorporated into the
   {\StateMachines} in a way which automatically extends them to
@@ -1994,14 +2054,14 @@ Fortunately, that table is rather sparse for most programs, allowing
 some significant simplifications to be made.
 
 The intuition behind this analysis is that most fields in most data
-structures are accessed by a relatively small number of places in the
-program, and so if it were possible to identify the field being
+structures are accessed by a relatively small number of instructions
+in the program, and so if it were possible to identify the field being
 accessed by a given instruction then that would make it easy to
 determine whether two instructions might interfere\editorial{I should
   probably find a cite for someone doing that at source level.}.
 Unfortunately, that kind of higher-level information is not usually
 available when analysing binary programs.  SLI sidesteps that problem
-by identifying fields by the set of instructions which might access
+by labelling fields with the set of instructions which might access
 them; determining whether two instructions might alias is then a
 matter of determining whether they ever appear in the same field
 label.  The result is an alias table which can be collected in
@@ -2010,11 +2070,17 @@ aliasing queries quickly, and which requires a tolerable amount of
 space (tens of megabytes for mysqld, for instance).
 
 The dynamic analysis itself is quite simple.  The program's memory is
-divided into eight byte chunks, each of which has a label consisting
-of two set of accessing instructions, one for read instructions and
+divided into eight byte chunks\smh{Why is 8 bytes ok?  c/f Andy's
+  cache take chastity papers.}, each of which has a label consisting
+of two sets of accessing instructions, one for read instructions and
 one for write.  Any instruction which accesses that memory chunk adds
-itself to the relevant set.  These labels in effect identify the field
-for the memory chunk, and so adding an instruction to a set amounts to
+itself to the relevant set\smh{May be worth mentioning something about
+  simplified instruction at this stage, or do you do this with full
+  x86 insn?  What about RMW insn?}\smh{How does this work in practice?
+  Binary rewriting a la PIN?  valgrind?  custom analysis?  How
+  slow/fast?  What about repeared accesses?  Assume ok as they'll be
+  hot in registers??}.  These labels in effect identify the field for
+the memory chunk, and so adding an instruction to a set amounts to
 re-labelling one of the fields.  Eventually, the memory chunk will be
 released, due to the program either terminating or calling a
 \verb|free|-like function, and at that point the label is frozen and
@@ -2025,17 +2091,18 @@ Of course, implementing this scheme requires the dynamic analysis tool
 to be able to correctly identify \verb|free|-like functions.  Most of
 these are standard functions present in system libraries, which can be
 identified trivially, but it is also possible for a program to
-implement their own memory management routines, and in this case
+implement its own memory management routines, and in this case
 {\technique} depends on manually identifying these functions in order
 to build up a precise aliasing table.  This is the only place in which
 {\technique} relies on manual intervention.  If this information is
 not available then the aliasing table is likely to be highly
-inaccurate and the analysis is likely to take a long time to converge.
-It might in some cases be possible to infer the existence of these
-functions automatically; see, for example \todo{I was convinced that
-  there were some well-known existing papers doing just that, but now
-  I can't find them.  Need to dig around some more}.  I have not
-investigated doing so at this time.
+inaccurate and the analysis is likely to take a long time to
+converge\smh{What does that mean?}.  It might in some cases be
+possible to infer the existence of these functions automatically; see,
+for example \todo{I was convinced that there were some well-known
+  existing papers doing just that, but now I can't find them.  Need to
+  dig around some more}.  I have not investigated doing so at this
+time.
 
 {\Implementation} includes two minor refinements to this scheme:
 
@@ -2045,13 +2112,13 @@ investigated doing so at this time.
   noting which instructions accessed the stack.  Most programs include
   a very large number of stack-accessing instructions, and so tracking
   them as well would significantly increase the already-significant
-  cost of the analysis, and most such accesses are easily resolved
-  using other analysis mechanisms, and so doing so would not actually
-  be helpful. \todo{Need to eval how much that buys us.  In general,
-    need to eval completeness and overheads of the dynamic model.
-    Also, this isn't just a performance tweak, but avoids a lot of
-    nastiness to do with tail calls, since they kill off the frame but
-    aren't obvious in the instruction stream.}
+  cost of the analysis\smh{Why?}, and most such accesses are easily
+  resolved using other analysis mechanisms, and so doing so would not
+  actually be helpful. \todo{Need to eval how much that buys us.  In
+    general, need to eval completeness and overheads of the dynamic
+    model\smh{Ack}.  Also, this isn't just a performance tweak, but
+    avoids a lot of nastiness to do with tail calls, since they kill
+    off the frame but aren't obvious in the instruction stream.}
 \item
   The analysis attempts to identify accesses which are definitely
   thread-private, and marks them as such in the field labels.  Later
@@ -2060,11 +2127,13 @@ investigated doing so at this time.
   aliasing.  The scheme for identifying them is very simple: a memory
   region returned by \verb|malloc| is marked as thread-private, and
   whenever a pointer to a memory region is stored in non-stack memory
-  the region is marked as being thread-shared\footnote{The dynamic
-    analysis checks every memory access to make sure that only the
-    right thread ever accesses a thread-private memory region, and
-    will report an error if another thread accesses it; no such errors
-    were reported for any of the test programs.}.
+  the region is marked as being thread-shared\smh{So even if we malloc
+    an array of foo $\ast$s then malloc a bunch of foos and point to
+    them from the array?}\footnote{The dynamic analysis checks every
+    memory access to make sure that only the right thread ever
+    accesses a thread-private memory region, and will report an error
+    if another thread accesses it; no such errors were reported for
+    any of the test programs.}.
 \end{itemize}
 
 \todo{I did have a bit more on context sensitivity here (i.e. looking
@@ -2087,7 +2156,8 @@ queries between instructions which access shared memory, but does not
 provided any assistance with instructions which might access the local
 stack.  {\Technique}'s solution to that problem has three components.
 First, a simple static points-to and escape analysis is applied to
-each function in the program, before the main analysis starts, to
+each function in the program, before the main analysis\smh{flow chart
+  showing ``main analysis''? (with a better name!)} starts, to
 characterise which instructions might access that function's stack
 frame.  Second, the results of that static analysis are incorporated
 into the generated {\StateMachines}.  Finally, an alias analysis is
@@ -2101,12 +2171,14 @@ whether any pointers to the frame are ever stored into non-stack
 memory and which registers contain pointers to the frame.  This then
 provides the main analysis with additional context beyond the normal
 analysis window.  It would, of course, be possible to obtain the same
-information by extending the analysis window, but this is often
-expensive, and the use of a cheaper static analysis allows a far
-larger context to be plausibly considered.  As an added bonus, the
-results of the static analysis can be easily shared between multiple
-{\StateMachines}, which is problematic for properties derived from the
-{\StateMachines} themselves.
+information by extending the analysis window\smh{Is thi sthe same
+  window as was used to build the r-side and w-side slices? Been a
+  while since we talked about this.}, but this is often expensive, and
+the use of a cheaper static analysis allows a far larger context to be
+plausibly considered.  As an added bonus, the results of the static
+analysis can be easily shared between multiple {\StateMachines}, which
+is problematic for properties derived from the {\StateMachines}
+themselves.
 
 The information needed by the main analysis consists of meta-data
 about stack frames:
@@ -2165,11 +2237,11 @@ functions\footnote{The main analysis has no need of these assumptions
 \item
   The analysis assumes that all of the input arguments to functions
   are in registers.  In the case of AMD64 using a normal ABI this is
-  true for the first six arguments to a function \needCite{}, and,
-  since the vast majority of functions have fewer than six arguments
-  \needCite{}, this is not usually a problem.  \todo{But it can be
-    sometimes.  It'd be nice to know how often, and how bad it is when
-    it does happen.}
+  true for the first six arguments to a function, and, since the vast
+  majority of functions have fewer than six arguments, this is not
+  usually a problem.  \todo{But it can be sometimes.  It'd be nice to
+    know how often, and how bad it is when it does happen.}\smh{How
+    hard to detect?  Is there an explicit allocal or yuan?}
 
 \item
   The analysis assumes that it can determine which registers, out of
@@ -2186,36 +2258,21 @@ functions\footnote{The main analysis has no need of these assumptions
 \item
   The analysis assumes that the program does not contain any
   statically-constant pointers which point at something outside of the
-  main program.  This is a reasonable assumption to make because, on
-  most modern systems, virtual addresses are assigned by the operating
-  system rather than by the program, and so cannot possibly be known
-  when the program is compiled and hence cannot be present as static
-  constants.
-
-  Alternatively, consider what sort of program might violate this
-  assumption.  Assume the program is an ELF binary running on Linux,
-  for the sake of exposition; other operating systems are similar.
-  Such a program would have to have hard-coded certain virtual
-  addresses without marking them as reserved in the ELF metadata.
-  Since the dynamic linker runs before any part of the program, there
-  is no way for the program to express its preference, and so no way
-  for the dynamic linker to know that it must avoid mapping libraries
-  into a particular address.  As such, any correct program with such
-  hard-coded but unreserved addresses must have some fallback scheme
-  for then the addresses are unavailable, in which case hard-coding
-  the addresses would be pointless.  Of course, the program might
-  simply be buggy and hard-code an address without a fallback, but
-  this seems like a sufficiently unlikely sort of bug that I feel no
-  particular guilt about ignoring it.  \todo{Not sure I needed that
-    much detail there, really.}
+  main program.  It is possible for a program to violate this
+  assumption by, for instance, passing in an explicit address to the
+  \verb|mmap| system call, but this is a very unusual practice.  If
+  nothing else, programs which use fixed addresses in that way risk
+  conflicting with dynamically loaded libraries and hence become
+  highly non-portable for little practical benefit.\editorial{Rephrase
+    a bit.}
 
 \item
-  The analysis assumes that functions roughly follow the usual ABI:
+  The analysis assumes that functions follow the calling convention:
 
   \begin{itemize}
   \item They must not modify registers marked as call-preserved in the
-    ABI, or if they do modify the registers must restore their values
-    before returning.  This includes the stack pointer.
+    ABI (of if they do they must restore them before returning).  This
+    includes the stack pointer.
   \item They must either never return to the calling function at all
     or return to the instruction immediately after the \verb|call|
     which invoked them.  This is effectively another facet of the
@@ -2236,7 +2293,8 @@ functions\footnote{The main analysis has no need of these assumptions
 
     In other words, called functions must be written such that moving
     fields around in or adding padding to the calling function's frame
-    does not affect their behaviour\editorial{Could be clearer.}.
+    does not affect their behaviour\editorial{Could be
+      clearer.}.\smh{Doesn't add much (as written, anyway).}
   \end{itemize}
 
   The vast majority of functions conform to these assumptions.
@@ -2301,14 +2359,13 @@ interesting cases:
   incorrectly place.  I am not aware of any widely-used compiler which
   implements such an optimisation and so this is a largely theoretical
   concern\editorial{Might be worth asking on some compiler mailing
-    lists to make sure I haven't missed anything.}.
+    lists to make sure I haven't missed anything.}\smh{Yes, sounds good}.
 \end{itemize}
 
 In other words, the function heads assigned by these rules will match
 up with the actual first instructions of functions in the higher-level
-language, for most common compilers, which makes it more likely that
-the key assumption that function frames are created at entry points
-actually holds.
+language, which makes it more likely that function frames are created
+at entry points actually holds, as assumed by the analysis.
 
 The static analysis itself is a reasonably conventional points-to
 analysis.  Memory is divided into two regions, one containing the
@@ -2320,38 +2377,41 @@ instruction is unreachable or a mapping from locations to subsets of
 \{points-at-frame, points-at-memory\}; this label gives the points-to
 configuration of the locations at the start of the instruction.
 Instructions are converted into a set of data flow rules and the
-analysis then simply finds the least fixed point of those rules.
+analysis then simply finds the least fixed point of those
+rules.\smh{explain better i.e. PA[<reg>], PA[STACK], PA[NONSTACK] PA
+  $\rightarrow$ p[STACK,NONSTACK]}
 
 Define the following symbols:
 
 \begin{itemize}
-\item $before(i)$ is the start-of-instruction label for instruction
+\item $\mathit{before}(i)$ is the start-of-instruction label for instruction
   $i$.
-\item $after(i)$ is the end-of-instruction label for instruction $i$.
-  This is a function of $before(i)$ and the type of instruction at
-  $i$.
-\item $pred(i)$ is the set of instructions in this function which
-  might execute immediately before instruction $i$.
+\item $\mathit{after}(i)$ is the end-of-instruction label for
+  instruction $i$.  This is a function of $\mathrm{before}(i)$ and the
+  type of instruction at $i$.
+\item $\mathit{pred}(i)$ is the set of instructions in this function
+  which might execute immediately before instruction $i$.
 \item $\sqcup$ is the least upper bound operator on instruction
   labels, defined as:
 
   \begin{itemize}
-  \item $unreached {\sqcup} l = l$ and $l {\sqcup} unreached = l$, for
-    any instruction label $l$.
+  \item $\mathit{unreached} {\sqcup} l = l$ and $l {\sqcup}
+    \mathit{unreached} = l$, for any instruction label $l$.
   \item $l {\sqcup} l' = l \cup l'$, for $l$ and $l'$ not equal to
-    $unreached$, where $\cup$ is the element-wise union of all of the
-    locations in $l$.
+    $\mathit{unreached}$, where $\cup$ is the element-wise union of
+    all of the locations in $l$.
   \end{itemize}
 \end{itemize}
 
-Defining $before(i)$ in terms of $after(i)$ is then easy: $before(i) =
-\sqcup_{i' \in pred(i)}after(i')$, so that the points-to configuration
-at the start of an instruction is a conservative combination of the
-points-to configurations of all of its reachable predecessor
-instructions.  Defining $after(i)$ in terms of $before(i)$ is no more
-difficult but requires more special cases.  I give only a few
-interesting cases here; generalising to the full AMD64 instruction set
-is straightforward but tedious and unenlightening.
+Defining $\mathit{before}(i)$ in terms of $\mathit{after}(i)$ is then
+easy: $\mathit{before}(i) = \sqcup_{i' \in
+  \mathit{pred}(i)}\mathit{after}(i')$, so that the points-to
+configuration at the start of an instruction is a conservative
+combination of the points-to configurations of all of its reachable
+predecessor instructions.  Defining $\mathit{after}(i)$ in terms of
+$\mathit{before}(i)$ is no more difficult but requires more special
+cases.  I give only a few interesting cases here; generalising to the
+full AMD64 instruction set is straightforward.
 
 \begin{itemize}
 \item
@@ -2360,24 +2420,25 @@ is straightforward but tedious and unenlightening.
   Load instructions: LOAD ${\ast}reg \rightarrow reg'$ loads from the
   memory pointed to by register $reg$ into register $reg'$.
   $after(i)$ is will be unchanged except for the entry for $reg'$,
-  which is set based on $before(i)(reg)$ as follows:
+  which is updated based on $before(i)(reg)$ as follows:
 
   \begin{itemize}
   \item $stack \rightarrow before(i)(stack)$
   \item $non-stack \rightarrow before(i)(nonstack)$
   \item ${stack,non-stack} \rightarrow before(i)(stack) {\cup} before(i)(nonstack)$
   \item $\varnothing \rightarrow \varnothing$ \todo{Do I need to
-    explain that a bit more?}
+    explain that a bit more?}\smh{Ugly and not super
+    clear!}\smh{Define ``stack'' and ``nonstack'' first?}
   \end{itemize}
 
   \todo{That's kind of a clunky way of describing this, but it should
     at least be obvious what's going on.}
 \item
-  Store instructions: STORE $reg' \rightarrow reg$ stores the value of
-  register $reg'$ into the memory location pointed to by register
-  $reg$.  The points-to set for $reg$ and $reg'$ will be unchanged,
-  but the points-to sets for the stack and non-stack pseudo locations
-  may be updated.  If $before(i)(reg)$ includes $stack$ then
+  Store instructions: STORE $reg' \rightarrow {\ast}reg$ stores the
+  value of register $reg'$ into the memory location pointed to by
+  register $reg$.  The points-to set for $reg$ and $reg'$ will be
+  unchanged, but the points-to sets for the stack and non-stack pseudo
+  locations may be updated.  If $before(i)(reg)$ includes $stack$ then
   $after(i)(stack) = before(i)(stack) \cup before(i)(reg')$; otherwise
   $after(i)(stack) = before(i)(stack)$.  Likewise, if $before(i)(reg)$
   includes $non-stack$ then $after(i)(non-stack) =
@@ -2388,7 +2449,7 @@ is straightforward but tedious and unenlightening.
   $reg$ to constant value $k$.  This has already been discussed: if
   the constant refers to a location in the program's main binary then
   the points-to set for $reg$ will be set to $non-stack$; otherwise,
-  it is set to $\varnothing$.
+  it is set to $\varnothing$.\smh{Fix layout.}
 \item
   Register-register computation: SET $reg \oplus reg' \rightarrow
   reg''$ sets $reg''$ to some binary function of $reg$ and $reg'$.
@@ -2424,14 +2485,12 @@ iteration.  This is simple:
     but might point at memory outside of that frame.
   \item Other registers cannot point at anything.  This is not
     entirely true, in the sense that the caller could have loaded
-    anything at all into one of these registers.  On the other hand,
-    it is guaranteed that the function will never dereference one of
-    these registers, if it conforms to the ABI, and so treating them
-    as non-pointers is correct for the purposes of this analysis.
-    Marking them as pointers would mean that the stack frame would be
-    marked as containing pointers if the function ever saved them to
-    the stack, which is common for call-preserved registers, reducing
-    the accuracy of the analysis.
+    anything at all into these registers, but, if the callee conforms
+    to the ABI, it is guaranteed that the function will never
+    dereference any of them.  Marking them as pointers would mean that
+    the stack frame would be marked as containing pointers if the
+    function ever saved them to the stack, which is common for
+    call-preserved registers, reducing the accuracy of the analysis.
   \item Main memory can contain pointers to itself but not to the
     current stack frame.
   \item The current stack frame contains no pointers at all.
@@ -2447,7 +2506,9 @@ rules.  The resulting labelling of instructions accurately models the
 program's actual points-to behaviour, provided that the assumptions
 discussed above all hold.
 
-\todo{Need to eval how effective all of this actually is.}
+\todo{Need to eval how effective all of this actually is.}\smh{Ack;
+  also maybe look at how effective it would be to use more distinct
+  locations (i.e. a greater number of locations).}
 
 \subsubsection{Encoding information into \StateMachines}
 
@@ -2456,18 +2517,20 @@ function-local, in the sense that it can tell whether a given
 instruction accesses the current function's stack frame but cannot say
 anything about other frames.  {\Technique}'s {\StateMachines} are,
 however, cross-function, and so even the idea of a ``current
-function'' is not entirely well-defined.  Solving this mismatch has
-two main steps.  The first is to recover the function structure of the
-program, and hence to assign identifiers to stack frames which might
-be relevant.  The function-local information can then be extended to
-say which frames a given pointer might refer to, rather than just
-providing a simple does/does-not point at the current frame flag.
-Both of these phases are performed as part of the process of compiling
-CFGs to {\StateMachines}.
+function'' is not entirely well-defined.  Solving this mismatch
+involves two main steps.  The first is to recover the function
+structure of the program, and hence to assign identifiers to stack
+frames which might be relevant.  The function-local information can
+then be extended to say which frames a given pointer might refer to,
+rather than just providing a simple does/does-not point at the current
+frame flag.  Both of these phases are performed as part of the process
+of compiling CFGs to {\StateMachines}.
 
 \todo{Frame ID assignment is done over the entire {\StateMachine},
   whereas static analysis incorporation is done independently for each
-  entry point.  Not sure I make that terribly clear at the moment.}
+  entry point.  Not sure I make that terribly clear at the
+  moment.}\smh{I think it's reasonably clear.  Certainly a lot clearer
+  than some other things.}
 
 The first step in the encoding is to assign identifiers to all of the
 (dynamic) frames referenced by the program fragment being investigated
@@ -2484,6 +2547,7 @@ l1:  f();
 l2:  f();
 }
 \end{verbatim}
+\smh{Float?}
 
 The analysis should assign different frame IDs to the two calls, and
 so assigning the same frame ID to every instance of a given static
@@ -2501,6 +2565,9 @@ h() {
 }
 \end{verbatim}
 
+\smh{Float?  And label as an example?  Could combine both examples as
+  (a) + (b) on the lhs and rhs of single float...}
+
 Suppose that the {\StateMachine} being generated has entry points for
 both \verb|g| and \verb|h|.  Ideally, we would like to analyse the two
 instances of \verb|f| only once, to avoid doing redundant work, and
@@ -2514,10 +2581,10 @@ instructions.  These are initially represented by placeholder
 \verb|call| or \verb|ret| instruction and $frame$ is a placeholder for
 a frame identifier which will be assigned later.  These side-effects
 are similar to \state{Assert} ones in that they have no direct effect
-on the execution of the machine, but instead serve to provide hints to
-the analysis and to rule out certain uninteresting executions.  The
-task of this pass is to replace these placeholders with actual frame
-identifiers.
+on the execution of the {\StateMachine}, but instead serve to provide
+hints to the analysis and to rule out certain uninteresting
+executions.  The task of this pass\smh{undef} is to replace these placeholders
+with actual frame identifiers.
 
 {\Technique} solves this problem by recasting it as a simple
 constraint solving one.  A \state{StartFunction($frame$)} side-effect
@@ -2534,10 +2601,10 @@ two passes: one which determines the depth of the stack at each point
 in the \StateMachine, and hence how many variables are needed, and
 another which solves to determine the values of those variables.  The
 resulting stack layouts are then encoded into the {\StateMachine}
-using special \state{StackLayout} side-effects at every entry point
-and by attaching the relevant frame ID to each \state{StartFunction}
-and \state{EndFunction} side effect\editorial{Be more careful about
-  what entry point means.}.
+using special \state{StackLayout} side-effects\smh{What do these look
+  like?} at every entry point and by attaching the relevant frame ID
+to each \state{StartFunction} and \state{EndFunction} side
+effect\editorial{Be more careful about what entry point means.}.
 
 Tracking the boundaries between stack frames is simple.  The initial
 \state{StartFunction} and \state{EndFunction} side effects include a
@@ -2545,12 +2612,14 @@ copy of the stack pointer at the time when the matching instruction is
 issued, and this is updated by all of {\StateMachine} simplification
 passes in exactly the same way as any other side-effect input
 expression would be, so that the boundaries can be trivially read out
-of the side effects once the {\StateMachine} is converted to SSA form.
+of the side effects once the {\StateMachine} is converted to SSA
+form.\smh{Example for the program fragments shown on previous page?
+  e.g. show how the ids would be computed? and what they would be?}
 
 \todo{I could say quite a lot about how this works, and there are some
   moderately interesting subtle bits to it, but I don't think the
   interestingness justifies the amount of space needed to describe
-  them properly.}
+  them properly.}\smh{Agreed.}
 
 The next step, once frame IDs have been allocated and the stack layout
 determined, is to incorporate the information from the static analysis
@@ -2564,16 +2633,18 @@ information is, for each frame, when the {\StateMachine} starts:
   Whether there might be any pointers to the frame from somewhere
   other than the frame itself; and
 \item
-  Which registers might contain pointers to the frame.
+  Which registers might contain pointers to the frame.\smh{??}
 \end{itemize}
 
 Suppose the call stack consists of functions $f$, $g$, and $h$, where
 $h$ is the function executing when the {\StateMachine} starts.  The
-static analysis then makes determining this information for $h$'s
-frame trivial, as this is precisely the contents of $h$'s instruction
-label\editorial{\emph{Almost} precisely, anyway}, but $f$ and $g$'s
-frames present somewhat more difficulty.  One obvious approach would
-be to determine the disposition of $g$'s frame directly from the
+static analysis then makes determining this information\smh{What
+  information?  the load 3 datums?} for $h$'s frame trivial, as this
+is precisely the contents of $h$'s instruction label\smh{h is a
+  function, not an instruction}\smh{Do you mean before(I) or
+  after(I)?}\editorial{\emph{Almost} precisely, anyway}, but $f$ and
+$g$'s frames present somewhat more difficulty.  One obvious approach
+would be to determine the disposition of $g$'s frame directly from the
 static analysis instruction label for the \verb|call| from $g$ to $h$,
 but this is not sound because the prefix part of $h$ which is not
 included in the {\StateMachine} might store $g$'s frame to somewhere
@@ -2599,7 +2670,10 @@ addition, a \state{PointsTo} side-effect is added for every register,
 saying which initial frames the initial value of that register might
 point at.
 
-\todo{Good God I'm making a meal of explaining this.}
+\todo{Good God I'm making a meal of explaining this.}\smh{Yes.}
+
+\smh{Very confused now!! Have I got the call stack backwards??  Using
+  examples will help a lot!!}
 
 \todo{Mention that RSP's \state{PointsTo} says that it can point at
   any frame, not just the current one, because of the way
@@ -2671,17 +2745,18 @@ this context, but here's an attempt to do so anyway:
 The two key data structures here are the points-to table, which
 specifies which stack frames each frame or {\StateMachine}-level
 variable might point at, and the aliasing table, which maps from
-memory-accessing side effects to a set of side-effects with which they
-might alias.  They are built inductively, starting with
-conservative\editorial{Why?  Should be able to use aggressive tables
-  safely, and the results would probably be better.} initial values
-and then iteratively refining them until a fixed point is reached.
-This fixed point then allows aliasing queries between accesses to the
-stack to be resolved reasonably accurately\footnote{Remember that the
-  dynamic analysis already provides a way of resolving queries between
-  non-stack accesses.}, enabling a number of other useful
-simplifications such as store-load forwarding and the elimination of
-redundant store operations.
+memory-accessing side effects to a set of side-effects\smh{hmm
+  ``instructions'' might be clearer here, even if not strictly
+  accurate.} with which they might alias.  They are built inductively,
+starting with conservative\editorial{Why?  Should be able to use
+  aggressive tables safely, and the results would probably be better.}
+initial values and then iteratively refining them until a fixed point
+is reached.  This fixed point then allows aliasing queries between
+accesses to the stack to be resolved reasonably
+accurately\footnote{Remember that the dynamic analysis already
+  provides a way of resolving queries between non-stack accesses.},
+enabling a number of other useful simplifications such as store-load
+forwarding and the elimination of redundant store operations.
 
 The points-to table contains an entry for every {\StateMachine}-level
 variable which is ever modified by the {\StateMachine} giving the
@@ -2709,32 +2784,34 @@ entry points with different initial points-to configurations.
   lot of redundant work, but this is complicated enough already
   without need to drag in all that stuff.}  \todo{Might be worth
   talking about what actually happens when you have multiple contexts
-  with conflicting initial points-to configurations?}
+  with conflicting initial points-to configurations?}\smh{As before,
+  an example would help here...}
 
 The alias table is a mapping from \state{Load} side-effects in the
 {\StateMachine} to other memory-accessing side-effects in the
-{\StateMachine}, plus flags indicating whether a given might load from
-the initial state of memory or load the result of a store not present
-in the {\StateMachine}\footnote{The latter is useful when simplifying
-  single-threaded {\StateMachines} prior to considering their
-  interactions with other threads.}.  Building the initial aliasing
-table is somewhat more complex than the initial points-to table, as it
-incorporates some control-flow information from the structure of the
-{\StateMachine} and information from the dynamic analysis.
+{\StateMachine}, plus flags indicating whether a given load operation
+might load from the initial state of memory or load the result of a
+store not present in the {\StateMachine}\footnote{The latter is useful
+  when simplifying single-threaded {\StateMachines} prior to
+  considering their interactions with other threads.}.  Building the
+initial aliasing table is somewhat more complex than the initial
+points-to table, as it incorporates some control-flow information from
+the structure of the {\StateMachine} and information from the dynamic
+analysis.
 
 The first stage of building the initial aliasing table is an $O(n^2)$
 possibly-reaching analysis.  This builds up a complete table saying,
 for each state of the {\StateMachine}, which memory accesses might
 occur before that state and which are not killed before reaching the
-state.  The definition of killed is moderately interesting: an access
-is killed by another access which definitely accesses the same
-location, according to some simple arithmetic rules on the address
-expression, regardless of whether the killing access is a store or a
-load.  The point is that if you have a store followed by two loads to
-the same location then it's safe to only consider forwarding from the
-first load to the second, and not from the store to the second load,
-and doing so gives you a smaller possibly-reaching set, which makes
-the rest of the analysis a bit easier.
+state.  The definition of killed is somewhat subtle: an access is
+killed by another access which definitely accesses the same location,
+according to some simple arithmetic rules on the address expression,
+regardless of whether the killing access is a store or a load.  The
+point is that if you have a store followed by two loads to the same
+location then it's safe to only consider forwarding from the first
+load to the second, and not from the store to the second load, and
+doing so gives you a smaller possibly-reaching set, which makes the
+rest of the analysis a bit easier.
 
 Once the possibly-reaching analysis is complete, the result is
 winnowed back down to an actual aliasing table by removing the entries
@@ -2744,7 +2821,7 @@ analysis suggests that aliasing is impossible.  \todo{Need a two-step
 Slight oddity: we keep any store which might possibly alias, but loads
 only if they definitely do; need to explain why that's sound wrt to
 the loads-kill-accesses thing in the initial possibly-reaching
-analysis.
+analysis.\smh{Ah -- text is becoming a bit scrappier, it seems.}
 
 \todo{Also need to talk about how you set the might-load-initial flag.
   The might-load-external is a bit more obvious, but might still need
@@ -2771,7 +2848,8 @@ executes, even if $l$ is satisfied by a store which might have stored
 $s$.  This is because of the call-allocates-stack-frames rule: if $s$
 is dead when $l$ executes then any access to $s$ after being loaded by
 $l$ would be a use of freed stack memory, and we assume that that
-never happens. \todo{Need to argue this a bit more carefully.}
+never happens. \todo{Need to argue this a bit more
+  carefully.}\smh{Hmm.}
 
 Also need to talk about what happens wrt initial memory loads.  I
 should probably have mentioned initial memory load expressions some
@@ -2808,7 +2886,7 @@ useful ways:
   identical to that used when eliminating \state{$\Phi$} states.
 \item
   If the same location is definitely loaded twice, with no intervening
-  stores and not potential external stores, the second load can be
+  stores and no potential external stores, the second load can be
   replaced with a simple copy from the result of the first one.  This
   is essentially the same idea as the standard compiler available
   expression\needCite{} optimisation.
@@ -2821,7 +2899,11 @@ useful ways:
 \item
   Finally, \state{StackLayout}, \state{StartFunction}, and
   \state{EndFunction} side-effects can be removed if it can be shown
-  that no memory access ever accesses the relevant stack frames.
+  that no memory access ever accesses the relevant stack
+  frames.\smh{So what?  They have no effect anyway, right?  Generally:
+    use of + meaning of these ``side effects'' is unclear to me +
+    maybe another reader?}
+
 \end{itemize}
 
 \subsection{Variable unification}
@@ -2864,7 +2946,7 @@ unifier:
 \end{itemize}
 
 Unifying output registers is the simplest of these.  Suppose we have
-two side effects which we wish to unify:
+two side effects\smh{unc! !!!} which we wish to unify:
 \verb|A: Copy reg1 = 5 then C| and \verb|B: Copy reg2 = 5 then C|.
 The obvious unifier here is like this:
 
@@ -2987,6 +3069,9 @@ access identifier whose CFG set is the union of the two input
 identifier's CFG sets\editorial{Need to either say more or move this
   to some place a bit less obvious.}.
 
+\smh{Quite a lot of text for something that may or may not be
+  important...  Hmm.  Does this unification help with real progs?}
+
 \subsection{Other static analysis}
 
 \subsubsection{Frame pointer elimination}
@@ -3026,15 +3111,15 @@ into stack-pointer-relative ones wherever possible.
 \end{figure}
 
 The static analysis is itself rather simple and is illustrated in
-figure~\ref{fig:derive:frame_pointer_alg}.  This is a fairly
+Figure~\ref{fig:derive:frame_pointer_alg}.  This is a fairly
 conventional iteration to a fixed point.  Each instruction has an exit
 label which is initialised to $\bot$ and an entry label which is not
 initialised at all, the label at entry to an instruction is the
 $\sqcup$-union of all of its predecessors' labels, the label at the
 end of the instruction is a function (denoted \textsc{exitConfig}) of
 its entry label and the type of instruction, and the final result is
-the map from instructions to exit labels.  A few things remain to
-define:
+the map from instructions to exit labels\smh{Long sentence}.  A few
+things remain to define:
 
 \begin{itemize}
 \item
@@ -3049,9 +3134,9 @@ define:
 \item
   $l \sqcup \top = \top$ and $\top \sqcup l = \top$, for any $l$.
 \item
-  $offset(k) \sqcup offset(k) = offset(k)$
+  $offset(k) \sqcup \mathit{offset}(k) = \mathit{offset}(k)$
 \item
-  $offset(k) \sqcup offset(k)' = \top$ for any $k \not= k'$.
+  $offset(k) \sqcup \mathit{offset}(k)' = \top$ for any $k \not= k'$.
 \item
   The behaviour of $\textsc{exitConfig}(i, l)$ depends on the
   instruction $i$ being examined:
@@ -3060,23 +3145,31 @@ define:
   \item If $i$ modifies neither the frame pointer nor the stack
     pointer then the result is $l$.
   \item If it sets the frame pointer to be equal to the stack pointer
-    plus $k$ then the result is $const(k)$, and likewise if it sets
-    the stack pointer to the frame pointer plus $k$ the result is
-    $const(-k)$.
-  \item If it adds $k$ to the frame pointer and $l$ is $const(k')$
-    then the result is $const(k'+k)$.  For other values of $l$, the
-    result is just $l$.  Conversely, if it adds $k$ to the stack
-    pointer then the result is $const(k'-k)$.
+    plus $k$ then the result is $\mathit{const}(k)$, and likewise if
+    it sets the stack pointer to the frame pointer plus $k$ the result
+    is $\mathit{const}(-k)$.
+  \item If it adds $k$ to the frame pointer and $l$ is
+    $\mathit{const}(k')$ then the result is $\mathit{const}(k'+k)$.
+    For other values of $l$, the result is just $l$.  Conversely, if
+    it adds $k$ to the stack pointer then the result is
+    $\mathit{const}(k'-k)$.
   \item Otherwise, for any other modifications to the stack or frame
     pointers, the result is $\top$.
   \end{itemize}
 \end{itemize}
 
-Once these rules have converged any $const(k)$ entries in the
+Once these rules have converged any $\mathit{const}(k)$ entries in the
 resulting table will correctly specify the offset between the stack
 and frame pointers at that instruction.  The {\StateMachine} compiler,
-described in section~\ref{sect:derive:compile_cfg}, can then use this
+described in Section~\ref{sect:derive:compile_cfg}, can then use this
 information to remove most references to the frame pointer.
 
 \todo{Need to eval how often this works.}
 
+\smh{Ok, some nice text and I definitely feel that I have a better
+  understanding of what you've done.  But: (i) still need to define
+  some appropriate concepts and terms for them.  Will make text
+  easier.  (ii) Need overall ``flowchart'' or similar diagram to
+  explain things at a higher level of abstraction.  After this can go
+  into details, coming up for air from time to time.  (iii) Use
+  running examples to illustrate.}

@@ -11,8 +11,10 @@ lead to a crash and, if so, under what circumstances it might do so.
 The core of the approach is to take a pair of {\StateMachines}, one
 representing the read thread and the other representing the write
 thread, and convert them into a verification condition using symbolic
-execution.  This verification condition is satisfiable precisely when
-running the fragments of program represented by the two
+execution\smh{Think you need to be clearer about terminology... e.g
+  the ``read thread'' can also be the ``write thread'' at a different
+  time, right?!}.  This verification condition is satisfiable precisely
+when running the fragments of program represented by the two
 {\StateMachines} in parallel might lead to the bug being investigated
 reproducing.  This technique is complete in the sense that if it
 reports that the program has no bugs then it definitely does not,
@@ -25,7 +27,7 @@ making it sound, at the expense of a significant loss of completeness.
 
 The verification conditions generated here have three main components
 which correspond closely to the clauses of the bug definition in
-section~\ref{sect:finding_bugs:finding_candidate_bugs:formal_definition}.
+Section~\ref{sect:finding_bugs:finding_candidate_bugs:formal_definition}.
 These are:
 
 \begin{itemize}
@@ -38,10 +40,10 @@ These are:
 \item
   W atomic -- specifies that when the write-side {\StateMachine} is
   run to completion followed by the read-side {\StateMachine} the
-  read-side {\StateMachine} must not predict a crash.  This translates
-  into a further precondition which is true for initial states which
-  the write-side {\StateMachine} will transform into states which
-  satisfy the R atomic precondition.
+  read-side {\StateMachine} must not predict a crash\smh{Why the
+    asymmetry?}.  This translates into a further precondition which is
+  true for initial states which the write-side {\StateMachine} will
+  transform into states which satisfy the R atomic precondition.
 \item
   Crash possible -- requires that interleaving the two
   {\StateMachines} might cause the read-side {\StateMachine} to
@@ -76,11 +78,13 @@ that condition is satisfiable.
   can sometimes usefully reduce the set of paths which must be
   considered.
 \item Crash possible is produced by symbolically executing the
-  cross-product of the two {\StateMachines} and taking the disjunction
-  of all paths which reach the \state{Crash} state.  This time, the
-  \state{Unreached} state is treated as the \state{Survive} one, so as
-  to avoid reporting bugs when the cross-product machine reaches a
-  state which the analysis is supposed to be ignored.
+  cross-product of the two {\StateMachines}\smh{This is a useful
+    concept, but you define it only intuitively; maybe explain in a
+    bit more detail earlier?} and taking the disjunction of all paths
+  which reach the \state{Crash} state.  This time, the
+  \state{Unreached} state is treated as the \state{Survive} one, so
+  that no bug will be reported if the {\StateMachine} reaches a state
+  which the analysis is supposed to ignore.
 \end{itemize}
 
 Note that the intermediate {\StateMachines} used here are subject to
@@ -99,9 +103,9 @@ useful in solving aliasing problems.
   symbolic execution bit.  That might be a good idea, and would then
   completely kill off this section.}
 
-SLI uses a simple symbolic execution engine to evaluate machines and
-determine when {\StateMachines} will crash.  The details of this are
-fairly standard, and I give only a brief overview
+SLI uses a simple symbolic execution engine to evaluate
+{\StateMachines} and determine when they will crash.  The details of
+this are fairly standard, and I give only a brief overview
 here\editorial{\emph{Should} only give a brief overview; this ended up
   much more detailed than I'd expected.}.  The core data structure
 used by the execution engine is a queue of (mostly) symbolic
@@ -118,12 +122,12 @@ contains:
 \item
   A reference to the {\StateMachine}'s current (non-symbolic) state.
 \item
-  The order in which those temporaries were assigned to.  As discussed
-  in \S~\ref{sect:ssa}, SLI uses a slightly unusual form of single
-  static assignment in which $\Phi$ nodes select their input variable
-  based on which was assigned to most recently, rather than based on
-  the preceding control flow, and this keeping track of that ordering
-  allows that semantics to be implemented simply.
+  The order in which temporary values in that state were assigned to.
+  As discussed in \S\ref{sect:ssa}, SLI uses a slightly unusual form
+  of single static assignment in which $\Phi$ nodes select their input
+  variable based on which was assigned to most recently, rather than
+  based on the preceding control flow, and keeping track of that
+  ordering allows that semantics to be implemented simply.
 \item
   A log of all of the memory stores issued by the \StateMachine so far.
 \item
@@ -144,10 +148,11 @@ treated as if they reached the \state{Unreached} state\footnote{Note
   was generated to investigate a bad pointer dereference at memory
   accessing-instruction $I$ then $I$ will be translated into a test of
   a $BadPtr$ expression, rather than a memory access, and so will
-  never cause the {\StateMachine} to dereference a bad pointer.}.
+  never cause the {\StateMachine} to dereference a bad
+  pointer.}\smh{Not sure this helps clarify much...}.
 
 Implementing the various types of \StateMachine operation is
-straightforward:
+straightforward\smh{?}:
 
 \begin{itemize}
 \item Conditional branches.  The condition in the branch is compared
@@ -162,7 +167,7 @@ straightforward:
   simplified as far as possible using the information in the path
   constraint and stored in the appropriate place in the variable
   table.  The variable is then moved up in the variable assignment
-  order table.
+  order table\smh{this is a ``recency'' index?}.
 \item \state{Store} $value \rightarrow \ast(addr)$, which evaluates
   $addr$ and $value$ and stores the value of $value$ to the memory
   location $addr$.  The symbolic executor simplifies $addr$ and
@@ -177,23 +182,23 @@ straightforward:
   in the {\StateMachine}'s execution.  This is often useful if the bug
   to be investigated is itself a bad pointer dereference but tends to
   be less so if the bug is an assertion failure, and so the engine
-  only does this in the former case.
+  only does this in the former case.\smh{Don't get this.}
 
 \item \state{Load} $\ast(addr) \rightarrow var$, which evaluates
-  $addr$ to the address of a memory location and then copies the
-  current contents of that location to the {\StateMachine} variable
-  $var$.  As usual, symbolic execution starts by simplifying $addr$
-  using the path constraint.  The resulting address is then compared
-  to every location in the store log to determine which stores might
-  possibly satisfy the load and a successor configuration created for
-  each.  Each of these successor configurations will have $var$ set to
-  an appropriate value and the path constraint extended with enough
-  additional clauses to ensure that the \state{Load} is satisfied by
-  the desired \state{Store}.  There may also be an additional
-  successor configuration for the case where the \state{Load} does not
-  match any \state{Store}s and instead returns the initial contents of
-  memory, with appropriate values for $var$ and appropriate
-  modifications to the path constraint.
+  $addr$ to determine the address of a memory location and then copies
+  the current contents of that location to the {\StateMachine}
+  variable $var$.  As usual, symbolic execution starts by simplifying
+  $addr$ using the path constraint.  The resulting address is then
+  compared to every location in the store log to determine which
+  stores might possibly satisfy the load and a successor configuration
+  created for each.  Each of these successor configurations will have
+  $var$ set to an appropriate value and the path constraint extended
+  with enough additional clauses to ensure that the \state{Load} is
+  satisfied by the desired \state{Store}.  There may also be an
+  additional successor configuration for the case where the
+  \state{Load} does not match any \state{Store}s and instead returns
+  the initial contents of memory, with appropriate values for $var$
+  and appropriate modifications to the path constraint.
 
   As for \state{Store} operations, \state{Load}s may sometimes also
   introduce a constraint that the dereferenced pointer is valid, if
@@ -251,16 +256,16 @@ states.  Second, the various simplifications applied to the
 removing redundancy within the {\StateMachines}, and so it is rare for
 there to be multiple paths to a configuration.  Finally, the fact that
 {\technique} must represent an almost unconstrained indexed memory,
-rather than as a collection of objects, and so it is only safe to
+rather than as a collection of objects, means that it is only safe to
 merge states when every memory access can be mapped to a specific
 object, which is very rare\editorial{That's going to need \emph{way}
   more explanation before anyone has any idea what I'm talking
-  about.}; even symbolic execution engines such as KLEE which operate
-on machine code-like program representations require more information
-about the nature of program objects than {\technique} has access
-to\editorial{Technically true but arguably a little bit deceptive.}.
-As such, {\implementation}'s symbolic execution engine never attempts
-to merge configurations.
+  about.}; even symbolic execution engines, such as KLEE, which
+operate on machine code-like program representations require more
+information about the nature of program objects than {\technique} has
+access to\editorial{Technically true but arguably a little bit
+  deceptive.}.  As such, {\implementation}'s symbolic execution engine
+never attempts to merge configurations.
 
 \subsection{Building cross-product {\StateMachines}}
 \label{sect:using:build_cross_product}
@@ -279,11 +284,12 @@ are concatenated together by replacing the terminal state of the
 write-side {\StateMachine} with the a copy of the read-side
 {\StateMachine}), but the one used to derive the crash-possible
 constraint is somewhat more involved.  The obvious approach here would
-be to a cross-product of the two {\StateMachines}, but this would be
-both inefficient, due to the presence of partial order
-redundancies\needCite{}, and incorrect, due to the presence of atomic
-blocks within the {\StateMachines}.  {\Technique}'s approach is a
-refinement of the cross-product algorithm which avoids this
+be to use a simple cross-product\smh{cross-product is not particularly
+  well defined! (with \StateMachines)} of the two {\StateMachines},
+but this would be both inefficient, due to the presence of partial
+order redundancies\needCite{}, and incorrect, due to the presence of
+atomic blocks within the {\StateMachines}.  {\Technique}'s approach is
+a refinement of the cross-product algorithm which avoids this
 incorrectness while also mitigating the inefficiency.  It also avoids
 running either {\StateMachine} to completion before the other starts,
 since the results obtained from executing such a path would be
@@ -294,19 +300,21 @@ immediately discarded by the R atomic and W atomic preconditions.
   everything), but it's not quite coming together.}
 
 The algorithm used is actually rather simple.  The core idea is to
-identify each state of the output {\StateMachine} with a particular
+identify each state of the output {\StateMachine}\smh{not defined.  Is
+  this the thing you are constructing?} with a particular
 configuration of the two input {\StateMachines}, where the
 configuration contains all of the necessary information about the
 concurrent interleaving of the two {\StateMachines} and nothing else.
 More concretely, a configuration consists of five fields:
 
 \begin{itemize}
-\item The {\StateMachine} state which each machine is to execute next;
-\item A field saying which, if any, of the input {\StateMachines} are
-  currently in atomic blocks;
-\item A flag indicating whether the read-side {\StateMachine} has
+\item[1,2] The {\StateMachine} states which each machine is to execute
+  next;
+\item[3] A field saying which, if any, of the input {\StateMachines}
+  are currently in atomic blocks;
+\item[4] A flag indicating whether the read-side {\StateMachine} has
   issued any memory accesses yet; and
-\item A flag indicating whether the write-side {\StateMachine} has
+\item[5] A flag indicating whether the write-side {\StateMachine} has
   issued any stores.
 \end{itemize}
 
@@ -317,11 +325,11 @@ exhaustively explores every configuration reachable from this one,
 building the output {\StateMachine} as it goes.
 
 As an example, consider the {\StateMachines} shown in
-figure~\ref{fig:cross_product_input}.  $y$ here is supposed to
+Figure~\ref{fig:cross_product_input}.  $y$ here is supposed to
 indicate some value which is local to the write-side {\StateMachine}
 and $x$ some global variable in memory.  These produce the
 cross-product {\StateMachine} shown in
-figure~\ref{fig:cross_product_output}.  I highlight a couple of the more important
+Figure~\ref{fig:cross_product_output}.  I highlight a couple of the more important
 features of this diagram:
 
 \begin{itemize}
@@ -350,20 +358,17 @@ features of this diagram:
   accesses into the output {\StateMachine}.  In this way all of the
   relevant memory ordering behaviour of the two input {\StateMachines}
   is incorporated into the output {\StateMachine}.
-\item The output {\StateMachine} might no longer be in static single
-  assignment form.  This can sometimes reduce the effectiveness of
-  {\StateMachine} simplifications on the output {\StateMachine}.
-
-  \todo{This kind of sucks.  I need to think of something clever to
-    say here.  Or I could just re-SSA-ify the {\StateMachine} once I'm
-    done building it.}
-
+\item This might sometimes cause a variable-defining side effect to be
+  duplicated to multiple places in the output {\StateMachine},
+  breaking single static assignment form.  An additional pass is used
+  to restore the SSA property, introducing additional variables and
+  $\Phi$ side effects as necessary.
 \item In this case, simplification will be effective and will reduce
   the {\StateMachine} to that shown in
-  figure~\ref{fig:cross_product_output_opt}; symbolic execution is
+  Figure~\ref{fig:cross_product_output_opt}; symbolic execution is
   barely necessary to determine the crash constraint.  More complex
   {\StateMachines} will not simplify nearly so well. \todo{Not sure I
-    really needed to say that.}
+    really needed to say that.}\smh{Maybe forward ref to eval??}
 \end{itemize}
 
 \begin{figure}
@@ -395,7 +400,8 @@ features of this diagram:
     \end{tikzpicture}
     \caption{Write-side}
   \end{subfloat}
-  \caption{Some {\StateMachines}.  $x$ is a global memory location.}
+  \caption{Some {\StateMachines}.  $x$ is a global memory
+    location.}\smh{Hangs off right margin.}
   \label{fig:cross_product_input}
 \end{figure}
 
@@ -438,7 +444,7 @@ features of this diagram:
     \draw[->,ifFalse] (P) -- (R);
   \end{tikzpicture}
   \caption{Cross product of the {\StateMachines} shown in
-    figure~\ref{fig:cross_product_input}. \todo{redo layout} }
+    Figure~\ref{fig:cross_product_input}. \todo{redo layout}}\smh{Ack!}
   \label{fig:cross_product_output}
 \end{figure}
 
@@ -448,7 +454,10 @@ features of this diagram:
     \node[stateTerminal, below = of A] (B) {\state{Crash} };
     \draw[->] (A) -- (B);
   \end{tikzpicture}
-  \caption{Result of simplifying {\StateMachine} shown in figure~\ref{fig:cross_product_output}.}
+  \caption{Result of simplifying {\StateMachine} shown in
+    Figure~\ref{fig:cross_product_output}.}\smh{Cool! maybe also show
+    original code + write out figure's textural representation
+    (i.e. use English too!)}
   \label{fig:cross_product_output_opt}
 \end{figure}
 
@@ -474,7 +483,7 @@ not illustrated here:
   safe to dispense with the $\happensBefore$ condition and directly
   issue that access.
 
-  \todo{Shrink this}
+  \todo{Shrink this}\smh{And/or move it to later?}
 
   Note that it is \emph{not} safe to simply test the two next accesses
   against each other and skip the $\happensBefore$ test if those two
@@ -495,9 +504,11 @@ not illustrated here:
     \draw[<->, dashed] (L2) -- (S2);
   \end{tikzpicture}
 
+  \smh{Need to fix this example}
+
   This is supposed to indicate that the read-side {\StateMachine} has
   two operations, L1 and L2, and the store machine has three, S1
-  through S3, and that L1 could alias with S1 or S3 while L2 can only
+  through S3, and that L1 could alias with S2 or S3 while L2 can only
   alias with S2.  This graph cannot be correctly handled if only
   directly-racing accesses are considered for permutation.  The
   algorithm will start in the configuration (L1, S1, $\varnothing$,
@@ -569,7 +580,7 @@ case of \technique, there are two main causes of path explosion:
   $O(nm)$ states, where $n$ is number of states in the read-side
   {\StateMachine} and $m$ the number in the write-side one.  The
   number of paths through the combined {\StateMachine} then grows as
-  $O(2^(nm))$, which again grows rather quickly.
+  $O(2^{(nm)})$, which again grows rather quickly.
 \end{itemize}
 
 The result is that, in the common case where the read-side
@@ -578,10 +589,10 @@ write-side one mostly of \state{Store} ones, the symbolic execution
 engine might have to consider up to $O((2n)^m)$ distinct paths when
 evaluating the cross-product {\StateMachine}.  This is obviously
 completely infeasible for even moderate values of $n$ and $m$.  For
-good performance, {\technique} is completely reliant on the various
-simplification and analysis techniques to reduce $n$ and $m$ to
-something manageable.  Fortunately, as discussed in the evaluation,
-they are able to do so in a useful set of cases.
+good performance, {\technique} relies on the various simplification
+and analysis techniques to reduce $n$ and $m$ to manageably small
+values.  Fortunately, as discussed in the evaluation, they are able to
+do so in a useful set of cases.
 
 \subsection{Use of the induction rule}
 
@@ -616,11 +627,11 @@ a single bug from the cycle and reporting that, ignoring all others.
 This rule relies on the monotonicity property of the definition of
 crashes, as discussed in \S~\ref{sect:monotonicity}.  As such, it is
 not sound in the presence of mandatory concurrency, and might lead to
-bugs which do not require mandatory concurrency being neglected simply
-because they happen to be ``near to'' a bug which does.  As argued
-previously, mandatory concurrency should be rare in most programs, and
-so I do not expect this to be a problem in practice.  \todo{Might want
-  a bit more there?}
+bugs which do not require mandatory concurrency\smh{Not clear what
+  this is!} being neglected simply because they happen to be ``near
+to'' a bug which does.  As argued previously, mandatory concurrency
+should be rare in most programs, and so I do not expect this to be a
+problem in practice.  \todo{Might want a bit more there?}
 
 \todo{Forward ref eval to say how useful this is.}
 
@@ -629,7 +640,8 @@ so I do not expect this to be a problem in practice.  \todo{Might want
 
 \todo{Making a bit of a meal of this.  Easiest answer might be to just
   drop it completely; it doesn't really add enough to justify its
-  size.  Certainly doesn't belong here.}
+  size.  Certainly doesn't belong here.}\smh{Yes, I agree: it's not
+  clear you need this at all, and certainly not here.}
 
 The set of bugs detected by SLI depends on the size of the two
 analysis windows.  Setting this to too small a value will of course
@@ -654,9 +666,9 @@ Store $t_0$ to loc2    & Store $t_3$ to loc2 \\
 \textit{Something complicated} & Store $t_3 + 1$ to loc2 \\
 Load $t_1$ from loc1  & \\
 Load $t_2$ from loc2 & \\
-Crash if $t_2 == t_2$ & \\
+Crash if $t_1 == t_2$ & \\
 \end{tabular}
-\caption{Example of threads with mandatory concurrency.}
+\caption{Example of threads with mandatory concurrency.}\smh{Centre/space}
 \label{fig:mandatory_concurrency1}
 \end{figure}
 
@@ -668,16 +680,16 @@ Load $t'$ from loc1   & Load $t'''$ from loc1 \\
 Load $t''$ from loc2  & Store $t'''$ to loc2 \\
 Crash if $t' == t''$  & Store $t''' + 1$ to loc2
 \end{tabular}
-\caption{Truncation of the example in figure~\ref{fig:mandatory_concurrency1}.}
+\caption{Truncation of the example in Figure~\ref{fig:mandatory_concurrency1}.}
 \label{fig:mandatory_concurrency2}
 \end{figure}
 
 As a concrete example, consider the threads shown in
-figure~\ref{fig:mandatory_concurrency1}.  Running the read thread
+Figure~\ref{fig:mandatory_concurrency1}.  Running the read thread
 atomically is guaranteed to crash, from any starting state, and so
 there will be no valid bugs tuples.  On the other hand, if the read
 thread is truncated as shown in
-figure~\ref{fig:mandatory_concurrency2} then the analysis might find a
+Figure~\ref{fig:mandatory_concurrency2} then the analysis might find a
 bug:
 
 \begin{itemize}
@@ -747,11 +759,13 @@ insufficient-concurrency bugs, for several reasons:
   untested sequential one.
 \end{itemize}
 
-SLI therefore completely ignores these insufficient-concurrency bugs.
+SLI therefore completely ignores these insufficient-concurrency
+bugs.\smh{So why have 2 pages of description of them?}
 
 I now show that insufficient-concurrency bugs are the only case in
 which the monotonicity property might be violated in two-threaded
-programs\editorial{This really isn't a very convincing proof.}.
+programs\editorial{This really isn't a very convincing proof.}\smh{Is
+  this supposed to be here?  Surely earlier or later (if at all)?}.
 First, define some notation:
 
 \begin{itemize}
@@ -770,7 +784,7 @@ Assume that there is no bug for the pair $R$, $W$, i.e.
 
 \begin{displaymath}
   {\forall}P.PR = \bot \vee PWR = \bot \vee \bot \not\in P(R \times W)
-\end{displaymath}
+\end{displaymath}\smh{Huh?  What are you trying to prove here?  Why??}
 
 This is a two-threaded program, and so the only way to advance from
 state $P$ is to step either $R$ or $W$.  Call the result when stepping
@@ -821,6 +835,9 @@ reveal more bugs in the presence of mandatory concurrency, and,
 conversely, when the program does not use mandatory concurrency,
 enlarging the analysis window cannot disguise bugs, as desired.
 
+\smh{I think the whole ``proof'' can/should be elided here -- just
+  state the assumptions you make for SLI to work.  Can later see if
+  these assumptions can be relaxed or violations detected etc.}
 
 \section{The satisfiability checker}
 This doesn't really belong here.  I should figure out where to put it.
@@ -834,7 +851,7 @@ an implicit analytic tableaux-type thing.
 
 \todo{Should make it explicit that the CFGs we're working with here
   are the unrolled CFGs used when building {\StateMachines}, rather
-  than the program's raw CFGs.}
+  than the program's raw CFGs.}\smh{Need some terminology!}
 
 Given a pair of {\StateMachines} and a verification condition it is
 possible to build a ``crash enforcer'': a patch to the program which
@@ -877,15 +894,15 @@ l8:   ADD global_ptr + idx2 -> reg4
 l9:   STORE 0 -> *reg4
 \end{verbatim}
 
-(This is essentially the bug indexed\_toctou discussed in
-section~\ref{sect:eval:indexed_toctou}).  There is a risk here that
+(This is essentially the bug indexed\_toctou\smh{?} discussed in
+Section~\ref{sect:eval:indexed_toctou}).  There is a risk here that
 \verb|thread1| might crash if \verb|l9| is interleaved between
 \verb|l2| and \verb|l5| and \verb|idx1 == idx2|.  The previous
 analysis phase will detect this bug and produce the verification
 condition $idx1 = idx2 \wedge l2 \happensBefore l9 \wedge l9
-\happensBefore l5$.  This can then be used to augment the
-control flow graph of the program with happens-before edges, as
-shown in figure~\ref{fig:using:example_hb_graph}.
+\happensBefore l5$.  This can then be used to augment the control flow
+graph of the program with happens-before edges, as shown in
+Figure~\ref{fig:using:example_hb_graph}.
 
 \begin{figure}
   \begin{tikzpicture}
@@ -944,7 +961,7 @@ make it more likely that the critical store will intervene.
 More complex happens-before graphs can make it more complex to
 determine where delays should be inserted.  Consider, for instance,
 the happens-before graph shown in
-figure~\ref{fig:enforce_crash:complex_hb}.  This is intended to show
+Figure~\ref{fig:enforce_crash:complex_hb}.  This is intended to show
 two threads, one which executes instructions A, B and C in order and
 the other which executes X and then Y, where the behaviour of interest
 only happens with the interleaving A, X, B, Y, C.  There is no simple
@@ -1091,7 +1108,7 @@ At a high level, the algorithm used has the following phases:
 \item
   ``Slice'' the verification condition according to the possible
   happens-before graphs. As discussed in
-  section~\ref{sect:intro:overview}, {\technique} can correctly
+  Section~\ref{sect:intro:overview}, {\technique} can correctly
   capture the happens-before graph necessary for a bug to reproduce
   even when that happens-before graph is data-dependent.
   Unfortunately, those data-dependencies make it difficult to encode
@@ -1099,7 +1116,7 @@ At a high level, the algorithm used has the following phases:
   {\Technique} therefore re-expresses the verification condition as a
   function of the happens-before graph, effectively eliminating the
   dependency.  This is discussed in more detail in
-  section~\ref{sect:enforce:slice_hb_graph}.
+  Section~\ref{sect:enforce:slice_hb_graph}.
 \item
   The algorithm now considers each possible happens-before graph in
   turn and, for each one:
@@ -1117,12 +1134,12 @@ At a high level, the algorithm used has the following phases:
     messages.
   \end{itemize}
 
-  This is discussed in section~\ref{sect:enforce:place_vcs}.
+  This is discussed in Section~\ref{sect:enforce:place_vcs}.
 \item
   If appropriate, multiple enforcers can be combined at this point,
   which can sometimes make it easier to discover bugs if the initial
   analyses have produced a very large pool of candidates.  More
-  details are given in section~\ref{sect:enforce:combine_enforcers}.
+  details are given in Section~\ref{sect:enforce:combine_enforcers}.
 \item
   Decide on a strategy for gaining control of the program at
   appropriate points.  The crash enforcement plan only imposes
@@ -1142,8 +1159,8 @@ At a high level, the algorithm used has the following phases:
 \item
   Depending on the desired mode of operation, the plan is then passed
   to either the plan interpreter, discussed in
-  section~\ref{sect:enforce:interpreting}, or the compiler, discussed
-  in section~\ref{sect:enforce:compiling}.  In either case, the result
+  Section~\ref{sect:enforce:interpreting}, or the compiler, discussed
+  in Section~\ref{sect:enforce:compiling}.  In either case, the result
   is an ELF shared object which can be loaded into the target program
   to enforce the plan \todo{(at least for {\implementation})}.
 \end{itemize}
@@ -1167,7 +1184,7 @@ a function of the happens-before graph, deriving a new verification
 condition for each possible graph.  These new conditions can then be
 treated independently and recombined as if they were enforcers for
 completely independent bugs, as discussed in
-section~\ref{sect:enforce:combine_enforcers}.
+Section~\ref{sect:enforce:combine_enforcers}.
 
 This re-expression is itself straightforward: enumerate all of the
 $\happensBefore$ expressions in the verification condition and then
@@ -1288,12 +1305,12 @@ Our task now is to force the program to follow this plan.
   An interpreter with well-defined semantics, a high likelihood of
   successfully imposing the plan, and some useful theoretical
   properties, but very high run-time overheads.  This is described in
-  section~\ref{sect:enforce:interpreting}.
+  Section~\ref{sect:enforce:interpreting}.
 \item
   A compiler which makes far more approximations, and hence is far
   less likely to impose the plan successfully and far less
   analytically tractable, but which has slightly lower run-time
-  overhead.  This is described in section~\ref{sect:enforce:compiling}.
+  overhead.  This is described in Section~\ref{sect:enforce:compiling}.
 \end{itemize}
 
 \label{sect:enforce:assign_entry_points}
@@ -1383,7 +1400,7 @@ an impossible thing to determine for an arbitrary binary.
 \begin{itemize}
 \item
   Functions are only ever entered at their entry point, as determined
-  by the analysis described in section~\ref{sect:function_head}.  In
+  by the analysis described in Section~\ref{sect:function_head}.  In
   particular, any branches from dynamically generated or library code
   back into the main program must branch to a function head.
 \item
@@ -1488,18 +1505,19 @@ or a frame pointer, so that the function calling context can be
 properly checked.  SLI uses a static analysis, performed when
 generating the crash enforcement plan, to solve this problem.  The
 static analyses already described are sufficient to determine the
-entry point of the function containing a given RIP, and so it is easy
-to perform a simple abstract interpretation forwards from that point
-to the given RIP and hence find the number of bytes which the function
-will push onto the stack on the way\footnote{This is generally fixed
-  for all possible paths, due to the way in which most compilers are
-  implemented.}.  The first entry in the call stack is trivially true
-because of the way the jumps are patched in.  The second one is the
-return address of the current function, which can be found using that
-offset.  The third one is the return address of the calling function,
-and the offset there is just the previous offset plus the offset in
-the calling function.  In this way all necessary offsets can be found
-and the entry-point stack checked completely.
+entry point of the function containing a given RIP\smh{undef -- I
+  think}, and so it is easy to perform a simple abstract
+interpretation forwards from that point to the given RIP and hence
+find the number of bytes which the function will push onto the stack
+on the way\footnote{This is generally fixed for all possible paths,
+  due to the way in which most compilers are implemented.}.  The first
+entry in the call stack is trivially true because of the way the jumps
+are patched in.  The second one is the return address of the current
+function, which can be found using that offset.  The third one is the
+return address of the calling function, and the offset there is just
+the previous offset plus the offset in the calling function.  In this
+way all necessary offsets can be found and the entry-point stack
+checked completely.
 
 
 \subsection{Interpreting the plan}
@@ -1512,18 +1530,21 @@ The plan interpreter runs in the address space of the target program
 and, as already discussed, arranges to take control of the program at
 the plan entry points.  It then interprets the program's machine code,
 enforcing the plan as it goes, until the plan either completes or
-fails\footnote{The machine code interpreter used is a lightly modified
-  version of the one used by the Xen hypervisor\needCite{}.}.  In
-either case, the interpreter then restores the target program's
+fails\smh{By fails you mean succeed?? Causes the intended
+  failure?}\footnote{The machine code interpreter used is a lightly
+  modified version of the one used by the Xen hypervisor\needCite{}.}.
+In either case, the interpreter then restores the target program's
 register state and branches back to the original program's code.  If
 the plan completed successfully the program should then quickly crash,
 having suffered the bug which is to be reproduced.  Otherwise, the
 program continues unmolested in the hope that there will be another
-opportunity to reproduce the bug later on.
+opportunity to reproduce the bug later on.\smh{Hmm. Not very clear;
+  what does ``success'' mean here?}
 
 \todo{Need to talk somewhere about what happens if you try to enforce
-  contradictory HB graphs at the same time.  The results really aren't
-  very pretty.}
+  contradictory\smh{Don't really need to talk about it; instead say
+    that the plan is checked for satisfiability.} HB graphs at the
+  same time.  The results really aren't very pretty.}
 
 The enforcement plan can be thought of as a program in a very simple
 language.  Unfortunately, the semantics of this language are
@@ -1532,9 +1553,9 @@ between several possible options using information which only becomes
 available later in the execution.  {\Technique} resolves this issue
 using a power set-like construction\editorial{Probably want a cite for
   that, maybe.} which allows it to explore both branches of the
-non-determinism simultaneously, up to some level of approximation.
-The easiest way to describe this is to first define a low-level,
-abstract, semantics for the interpreter, using a look-ahead
+non-determinism simultaneously\smh{blurkle}, up to some level of
+approximation.  The easiest way to describe this is to first define a
+low-level, abstract, semantics for the interpreter, using a look-ahead
 nondeterministic choice operator, and then implement a higher-level,
 concrete, interpreter which effectively interprets sets of lower-level
 interpreters in lockstep parallelism.  The higher-level interpreter
@@ -1599,7 +1620,7 @@ a time.  For each node, it proceeds through several stages:
   this is done here.  This might in turn allow additional
   side-conditions to be evaluated; if so, these side-conditions are
   used to restrict the set of possible successor states in the obvious
-  way.
+  way.\smh{hmm}
 \end{itemize}
 
 \subsubsection{Sending and receiving messages in the abstract semantics}
@@ -1618,7 +1639,7 @@ operation can be modelled by this simple Petri net:
   \draw[->] (beforeTx) -- (trans);
   \draw[->] (trans) -- (afterRx);
   \draw[->] (trans) -- (afterTx);
-\end{tikzpicture}
+\end{tikzpicture}\smh{Center}
 
 The message can only be discharged if the side condition holds, and
 the side condition can only be evaluated once both threads reach the
@@ -1634,7 +1655,7 @@ pre-specified, and most of the complexity of the message algorithm
 lies in determining them.  The basic idea here is that a message send
 or receive operation should rendezvous with any receive or send which
 occurs near enough in the program execution.  This is illustrated in
-figure~\ref{fig:enforce:message_windows}: each message operation
+Figure~\ref{fig:enforce:message_windows}: each message operation
 defines a window in the program's execution, and the interpreter must
 arrange to synchronise with any message operation whose interval
 overlaps with the current message's.  In the abstract semantics, which
@@ -1787,7 +1808,7 @@ operations overlap; in other words, if they occur with time $D_1 +
 D_2$ of each other.  To put it another way, each occurrence of CFG 2
 defines a window in the execution of size $D_1 + D_2$ such that the
 bug will reproduce if CFG 1 starts anywhere in that window.  CFG 1
-starts randomly with rate $R_1$, and so the probability of any give
+starts randomly with rate $R_1$, and so the probability of any given
 instance of CFG 2 reproducing the bug is roughly $R_1(D_1 + D_2)$,
 provided CFG 1 is sufficiently rare that we can neglect the
 probability of two instances occurring in the window.  The expected
@@ -1815,15 +1836,15 @@ is set to zero.
   ambition.}
 
 It now remains to set whichever of $D_1$ and $D_2$ is not fixed at
-zero.  Assume without loss of that this is $D_2 = 0$.
-{\Implementation} then selects $D_1$ so as to achieve a particular
-level of overhead $k$ by setting $D_1 = \frac{k -
-  \frac{D_0}{R_2}}{R_1}$, where $D_0$ is an estimate of the cost of
-entering the interpreter and then immediately exiting.  This is not,
-in fact, a constant, due to the need to sometimes interpret additional
-instructions as determined by the patch strategy or to check
-side-conditions before considering a message operation, but
-{\implementation} uses the constant time 100$\mu$s anyway.
+zero.  Assume without loss of that $D_2 = 0$.  {\Implementation} then
+selects $D_1$ so as to achieve a particular level of overhead $k$ by
+setting $D_1 = \frac{k - \frac{D_0}{R_2}}{R_1}$, where $D_0$ is an
+estimate of the cost of entering the interpreter and then immediately
+exiting.  This is not, in fact, a constant, due to the need to
+sometimes interpret additional instructions as determined by the patch
+strategy or to check side-conditions before considering a message
+operation, but {\implementation} uses the constant time 100$\mu$s
+anyway.\smh{hmm}
 
 \subsubsection{Implementing non-deterministic choice in the Succ phase}
 
@@ -1846,7 +1867,9 @@ resolve the earlier choice, at which point all but one of the threads
 will exit and the interpreter can revert to ``single-threaded''
 execution mode.  If a thread is bound when it performs a
 non-deterministic choice then its bound thread must also be
-duplicated, to ensure that the new thread has something to bind to.
+duplicated, to ensure that the new thread has something to bind
+to.\smh{Huh?  (I'm still suffering from lack of understanding of
+  earlier text and terminology.)}
 
 One subtlety here is that the original program's underlying
 instruction can only be retired once, and so the high-level
@@ -1985,17 +2008,18 @@ versa.  There are a couple of features to note in this algorithm:
 Note that the side condition is evaluated as the message is being
 discharged, while the two interpreters are merged.  \todo{This is
   incomprehensible, which is a pity because it's also quite
-  important.} It is possible to imagine an alternative implementation
-in which discharging the message copies enough state from the
-transmitting interpreter to the receiver to allow the condition to be
-evaluated locally in the receiver after the interpreters have been
+  important.}\smh{Yes, I agree!! (or more precisely, I half agree)} It
+is possible to imagine an alternative implementation in which
+discharging the message copies enough state from the transmitting
+interpreter to the receiver to allow the condition to be evaluated
+locally in the receiver after the interpreters have been
 unmerged\footnote{Or, conversely, one where state is copied from the
   receiver to the transmitter and the side-condition evaluated in the
   transmitter after transmission.}.  This would reduce the size of the
 synchronised section and so would appear, on the face of it, to offer
 greater parallelism, and hence potentially better performance.
 Unfortunately, it does not work.  To illustrate the problem, consider
-again the example shown in figure~\ref{fig:using:example_hb_graph}.
+again the example shown in Figure~\ref{fig:using:example_hb_graph}.
 One thread modifies a shared structure while another thread reads it,
 and the program will crash if the two threads happen to be operating
 on the same structure at the same time.  Suppose that the read thread
@@ -2005,15 +2029,16 @@ reduce the delay on the read side's first message send to zero and
 increase the delay on the write side's first message receive to
 compensate.  Now, when the write interpreter does run it will stop
 just before \verb|l9| waiting for a matching read interpreter to
-arrive.  By hypothesis, many such interpreters will arrive, as the
-read thread runs more often than the write one.  In the alternative
-design, the side condition can only be evaluated in the receiving
-interpreter once the message operation is complete.  In this case the
-receiving interpreter is the write thread, and so every read
-interpreter will be forced to bind to the write thread.  Only one
-interpreter can be bound to the write thread at any one time, and so
-satisfying these later attempts to bind will force the write
-interpreter to be duplicated many times.  Because of timeout
+arrive.  \smh{I'm kind of with you until about here, but the bit after
+  is complete gobbledegook to me.} By hypothesis, many such
+interpreters will arrive, as the read thread runs more often than the
+write one.  In the alternative design, the side condition can only be
+evaluated in the receiving interpreter once the message operation is
+complete.  In this case the receiving interpreter is the write thread,
+and so every read interpreter will be forced to bind to the write
+thread.  Only one interpreter can be bound to the write thread at any
+one time, and so satisfying these later attempts to bind will force
+the write interpreter to be duplicated many times.  Because of timeout
 rebalancing, the read interpreter will proceed from \verb|l2|
 immediately and quickly reach \verb|l5|, where it has to receive a
 message from \verb|l9|.  At this point, there are two possible
@@ -2104,6 +2129,7 @@ l2:  *x = 7;
      <something_complicated>
 }
 \end{verbatim}
+\smh{Indent}
 
 And the read thread looks like this:
 
@@ -2116,7 +2142,7 @@ l4: b = *x;
 This program is clearly buggy.  One way of reproducing this bug would
 be to interleave instructions as \verb|l1|, \verb|l3|, \verb|l2|,
 \verb|l4|, and SLI will discover this interleaving as the
-happens-before graph show in figure~\ref{fig:enforce:await_exit_hb}.
+happens-before graph show in Figure~\ref{fig:enforce:await_exit_hb}.
 The algorithm described so far will be sufficient to enforce this
 graph (assuming that the two fragments of code shown can actually
 execute in parallel) but may still struggle to reproduce the bug.
@@ -2149,6 +2175,8 @@ complete, and thus very rarely, it has very low performance overhead.
 \label{fig:enforce:await_exit_hb}
 \end{figure}
 
+\smh{Is this important?  Why?}
+
 \subsection{Combining multiple enforcers}
 \label{sect:enforce:combine_enforcers}
 
@@ -2166,18 +2194,19 @@ includes a mechanism for enforcing multiple bugs at once.
 
 \subsection{Run-time considerations}
 
-Evaluating side conditions is not always completely trivial, even once
-all of the inputs are available.  In particular, $LD(addr)$
-expressions require a moderate amount of care.  These are defined to
-return the contents of memory at a particular address.  The problem is
-that the address might turn out to be a bad pointer, and it is
-important for the enforcer not to cause the program to crash in that
-case.  {\Implementation} solves this problem by simply catching page
-faults generated while evaluating side conditions.  If any such faults
-occur then the relevant low-level interpreter state is considered to
-have failed.  This is not always ideal from the point of view of
-reproducing the bug, but avoids spuriously crashing the program under
-test.
+Evaluating side conditions\smh{I'm not sure calling these ``side
+  conditions'' helps... is there a better phrase/term?} is not always
+completely trivial, even once all of the inputs are available.  In
+particular, $LD(addr)$ expressions require a moderate amount of care.
+These are defined to return the contents of memory at a particular
+address.  The problem is that the address might turn out to be a bad
+pointer, and it is important for the enforcer not to cause the program
+to crash in that case.  {\Implementation} solves this problem by
+simply catching page faults generated while evaluating side
+conditions.  If any such faults occur then the relevant low-level
+interpreter state is considered to have failed.  This is not always
+ideal from the point of view of reproducing the bug, but avoids
+spuriously crashing the program under test.
 
 \todo{Another major approximation: $LD$ is supposed to return the
   initial contents of memory, but that's not necessarily available.
@@ -2191,168 +2220,28 @@ test.
   easier to implement and easier to fast-out of the enforcer, but
   risks introducing these bad dereferences.}
 
-\subsection{Compiling the plan}
-\label{sect:enforce:compiling}
-
-\todo{Implementation of this is currently massively broken; need to
-  decide whether I'm going to fix it or just use a slightly older
-  version, or just drop it completely.  Also, some of the
-  simplifications to the semantics described here aren't really
-  necessary or well thought-through.  Also, doing this is completely
-  bloody pointless.}
-
-In addition to a plan interpreter, SLI also includes a plan compiler, which combines the plan with the program's original machine code to produce a modified version of the program which performs the necessary enforcement actions without needing an interpreter.
-The intent here is to reduce the overhead of the interpreter in the case where SLI is investigating many bugs most of which do not exist.
-Making this practical requires several simplifications to the semantics:
-
-\begin{itemize}
-\item
-  The number of physical program threads operating in the plan is limited.
-  In particular, it is assumed that only one program thread will be executing the read side of the plan at any time, and likewise only one thread will be executing the write side.
-\item
-  The message semantics are simplified: messages are sent asynchronously, with a delay only on the read side, and must be ``cancelled'' when the relevant thread exits.
-  This has two important implications: first, that a message send can never fail and, second, the something must keep track of what messages a given thread currently has outstanding.
-  Combined with the first simplification, it also means that at most one instance of any given message can be outstanding at any one time, and so it is easy to place the relevant information in a global structure without needing any dynamic memory allocation.
-\item
-  High-level interpreter contexts only ever access the state of their own low-level interpreters.
-  This has two important implications:
-
-  \begin{itemize}
-  \item
-    Remote low-level interpreters are never duplicated during message operations.
-    If the normal semantics would require an interpreter to be duplicated then the local message operation fails.
-  \item
-    The receive message filter can only be executed by the receiving thread after receiving a message.
-  \end{itemize}
-\item
-  When a low-level interpreter is duplicated due to a non-deterministic choice in the Succ phase the low-level state's stash table is not duplicated.
-  Instead, all low-level interpreters in a given high-level interpreter share a single stash table.
-\end{itemize}
-
-The result is a system with lower run-time overheads, but also a lower probability of reproducing interesting bugs.
-It has a much larger I-cache footprint but a smaller D-cache one\editorial{Not sure where I'm going with that, although it is true and kind of interesting}.
-
-I now briefly outline the implementation of this compiler.
-The core idea is to compile the CFG in the enforcement plan into a state machine.
-This state machine consists of a large number of smaller intra-instruction state machines, as illustrated in figure~\todo{...}, each of which models a single instruction in the original program.
-The label on each state is itself a set of low-level labels which consist of a four-tuple of the plan thread which is executing, a reference to the plan CFG node, a set of messages which have been sent by the thread, and the phase of the intra-instruction state machine.
-Each state is compiled to a small fragment of machine code (which might be empty, if this instruction does not have an relevant annotation in the plan) plus a set of relocations specifying the fragment's relationships to the other states.
-Once every state has been compiled these relocations can be discharged and the fragments concatenated together to form the final patch.
-
-I now discuss the details of each phase of the intra-instruction machine:
-
-\begin{itemize}
-\item[RecvMsg]
-  Examine the set of CFG nodes which are active in the current state and determine whether the plan requires any of them to receive messages.
-  If so, emit code to examine the global outstanding-message structures to see whether of the desired messages are currently outstanding.
-  If there are, receive precisely that message.
-  Any other message receive operations are considered to have failed and the relevant CFG nodes removed from the current state label.
-  If no message sends are currently outstanding then the physical thread is delayed until either one is available or some timeout is reached.
-  If a message becomes available then it is received, and otherwise all receives fail and all receiving CFG nodes are removed from the label.
-  Note that this does not necessarily mean that the state label will become empty\footnote{Although that is the common case.} as there may be some CFG nodes which do not need to receive messages.
-
-  Once a message is received its content is simply copied from the global message area into the local thread's stash area.
-\item[OrigInstr]
-  Store any generated values into simulation slots and issue the original instruction.
-  There are three main cases to consider here:
-
-  \begin{itemize}
-  \item
-    Simple memory loads.
-    If the instruction is of the form \verb|LOAD *location -> register|, and the value loaded is to be saved, then it is sufficient to just copy \verb|register| into the simulation slot after the original instruction has completed.
-  \item
-    Compound memory loads.
-    Instructions which load from memory but are not themselves simple loads are more difficult to handle.
-    For concreteness, suppose that the instruction is \verb|CMP 76,*loc1|, and the annotation requires us to save the value loaded.
-    The instruction loads from \verb|*loc1| but does not leave the result in any locations which we can easily access.
-    It would be possible to solve this problem by adding another load of \verb|*loc1|, but that would run the risk of a store in a remote thread modifying \verb|*loc1| between the two loads, leading to very confusing results.
-    SLI instead solves this problem by rewriting the instruction to this:
-
-\begin{verbatim}
-LOAD *loc1 -> reg1
-STORE reg1 -> simslot
-CMP 76, reg1
-\end{verbatim}
-
-    This exposes the loaded value to the instrumentation framework, allowing it to be stored to the simulation slot as desired.
-
-    Instructions which modify memory in-place, such as \verb|ADD 1 + *loc1 -> *loc1|, pose a similar problem and can be solved in the same way, provided that they do not have a \verb|LOCK| prefix.
-    \verb|LOCK|ed instructions are more complex, as separating the load and store phases into separate instructions would violate the semantics of the program and might introduce new bugs.
-    SLI solves this problem using a \verb|CMPXCHG| loop.
-    For instance, the instruction \verb|LOCK ADD 1 + *loc1 -> *loc1| would be converted to this machine code fragment:
-
-\begin{verbatim}
-1: LOAD *loc1 -> reg1
-ADD 1 + reg1 -> reg2
-LOCK CMPXCHG *loc1, reg1 -> reg2
-if_cmpxchg_failed goto l1
-STORE reg1 -> simslot
-\end{verbatim}
-
-    The \verb|CMPXCHG| instruction here is supposed to be an invented syntax for the x86 machine code instruction which atomically compares \verb|*loc1| to \verb|reg1| and, if they are equal, sets \verb|*loc1| to \verb|reg2|.
-    This allows SLI to expose the value of the implicit load while preserving the \verb|LOCK| semantics of the original instruction.
-  \item
-    Branch instructions are deferred to the FindSucc state.
-  \end{itemize}
-  
-\item[SendMsg]
-  Send any outgoing messages.
-  This amounts to simply copying the message payload into the global message area, setting a global flag to indicate that the message is currently outstanding, and adding the message ID to the state label's set of sent messages.
-  This always succeeds and advances to the FindSucc state.
-
-\item[ExitThread]
-  When a low-level thread exits it is necessary to cancel any messages which it has sent.
-  The compiler takes the union of all of the sent-messages sets in its low-level, removes the thread which is to exit, and then takes the union again.
-  Any messages present in the first set but not the second need to be cancelled by setting the relevant global message-outstanding flag to zero.
-  The compiler will then either exit the patch, if the last low-level thread has exited, or resume the intra-instruction state machine at an appropriate place.
-\end{itemize}
-
-
-\begin{tikzpicture}
-\node[flowChartState] (RecvMsg) {RecvMsg};
-\node[flowChartState,above left = of RecvMsg] (StartThread) {StartThread};
-\node[flowChartState,above right = of RecvMsg] (CheckForThreadStart) {CheckForThreadStart};
-\node[flowChartState, below = of RecvMsg] (OrigInstr) {OrigInstr};
-\node[flowChartState, below = of OrigInstr] (VerfCond) {VerfCond};
-\node[flowChartState, below = of VerfCond] (SendMsg) {SendMsg};
-\node[flowChartState, below = of SendMsg] (FindSucc) {FindSucc};
-\node[flowChartState, right = of VerfCond] (CondFail) {CondFail};
-\node[flowChartState, right = of CondFail] (Exit) {Exit};
-\node[flowChartState, left = of RecvMsg] (RecvdMsg) {RecvdMsg};
-\draw[->] (CheckForThreadStart) -- (RecvMsg) -- (OrigInstr) -- (VerfCond) -- (SendMsg) -- (FindSucc);
-\draw[->] (StartThread) to [bend right=10] (CheckForThreadStart);
-\draw[->] (CheckForThreadStart) to [bend right=10] (StartThread);
-\draw[->,dashed] (FindSucc.east) to [bend right=75] (CheckForThreadStart.east);
-\draw[->] (RecvMsg) -- (RecvdMsg) -- (OrigInstr);
-\draw[->] (RecvMsg) -- (Exit);
-\draw[->] (VerfCond) -- (CondFail) -- (Exit);
-\draw[->] (FindSucc) -- (Exit);
-\end{tikzpicture}
-
-  
 \section{Fixing bugs using global locks}
 \label{sect:fix_global_lock}
 
-In addition to finding bugs, SLI can also be used to fix them in a
-largely automated fashion.  The basic approach here is to binary patch
-the program to introduce a new global lock covering the program's
-relevant instructions, preventing them from executing in parallel and
-hence preventing the bug from occurring (assuming that the relevant
-instructions have been correctly identified).  The relevant
-instructions are duplicated into a binary patch, unrolling loops and
-tracing across function boundaries in a way which reflects the
-function inlining and loop unrolling performed during the initial CFG
-generation phase, and the duplicates modified to acquire and release
-the lock at appropriate points.  The original program is then patched
-to branch to the duplicates when necessary.
+In addition to finding bugs, SLI can also be used to fix them.  The
+basic approach here is to binary patch the program to introduce a new
+global lock covering the program's relevant instructions, preventing
+them from executing in parallel and hence preventing the bug from
+occurring (assuming that the relevant instructions have been correctly
+identified).  The relevant instructions are duplicated into a binary
+patch, unrolling loops and tracing across function boundaries in a way
+which reflects the function inlining and loop unrolling performed
+during the initial CFG generation phase, and the duplicates modified
+to acquire and release the lock at appropriate points.  The original
+program is then patched to branch to the duplicates when necessary.
 
 The first step in producing such a fix is correctly identifying the
 instructions which must be included in the critical sections.  These
 will be roughly a subset of the instructions involved in the
-control-flow graphs associated with \StateMachines; a subset because
-some instructions in the CFG do not need to be protected, and roughly
-because some instructions not in the CFG will also be included in the
-critical section.
+control-flow graphs associated with \StateMachines; a ``subset''
+because some instructions in the CFG do not need to be protected, and
+``roughly'' because some instructions not in the CFG will also be
+included in the critical section.
 
 \todo{Already explained this once in the context of building crash
   summaries and enforcers!}
@@ -2400,8 +2289,8 @@ The approach taken here is simple:
   verification condition.  These entirely capture the
   instruction-interleaving parts of the bug to be fixed, and, since
   instruction-interleaving is the only thing which can be influenced
-  by this type of patch, the resulting set of edges contains all of
-  the useful information in the condition.
+  by this type of patch\smh{As opposed to?}, the resulting set of
+  edges contains all of the useful information in the condition.
 \item
   Identify all of the CFG nodes which are mentioned in one of those
   happens-before edges.
@@ -2448,10 +2337,10 @@ might improve concurrency and reduce starvation, but imposes higher
 overheads due to the greater number of lock operations.  In principle
 the happens-before graph implicit in the verification condition
 contains enough information to determine whether dropping the lock is
-safe, but, in this mode, SLI does not make use of this information,
-and always uses the former strategy\footnote{But
-  see~\ref{sect:fix_from_drs} for a mode in which it can use the other
-  approach.}.
+safe, but, in this mode\smh{??You mean ``bug fixing mode''??}, SLI
+does not make use of this information, and always uses the former
+strategy\footnote{But see~\ref{sect:fix_from_drs} for a mode in which
+  it can use the other approach.}.
 
 Once the relevant fragments of CFG have been identified, {\technique}
 must examine the machine code of the original program and effectively
@@ -2482,11 +2371,11 @@ completed, without ever allowing a thread to acquire the lock twice
 and hence deadlock against itself.  Finally, the patch might also need
 to include additional instructions which are not part of any CFG
 fragment if the patch strategy (discussed in
-section~\ref{sect:enforce:assign_entry_points}) added extra
-instructions to the $Cont$ set.  The result is that the code in the
-duplicated patch fragment is not quite an exact match for that in the
-original program, even ignoring the additional lock acquire and
-release operations.
+Section~\ref{sect:enforce:assign_entry_points}) added extra
+instructions to the $Cont$ set\smh{blurk!}.  The result is that the
+code in the duplicated patch fragment is not quite an exact match for
+that in the original program, even ignoring the additional lock
+acquire and release operations.
 
 The simplest way of thinking about this is to first augment the
 machine code semantics so as to include the necessary additional
@@ -2495,6 +2384,8 @@ simply a matter of interpreting this enhanced semantics, and to then
 partially evaluate this interpreter to produce machine code in the
 original semantics.  The output of this partial evaluator then forms
 the bulk of the fix.
+
+\smh{This is a strange way of thinking about it (to me at least).}
 
 The state of a thread in the augmented semantics consists of all of
 the state of a thread in the original semantics, including things like
@@ -2505,8 +2396,8 @@ small amount of additional state:
 \item $checkForEntry$ -- a flag indicating whether the thread needs to
   check whether it has entered any additional CFG fragments.
 \item $locked$ -- a flag indicating whether the thread currently holds
-  the patch lock.
-\item $cfgNodes$ -- a set of nodes taken from the CFG fragments
+  the patch lock.\smh{Ugly}
+\item $\mathit{cfgNodes}$ -- a set of nodes taken from the CFG fragments
   indicating which instructions the thread might currently be
   executing.  This might be empty if the thread is currently executing
   one of the additional instructions in the patch strategy's $Cont$
@@ -2533,26 +2424,26 @@ would be quite simple:
   interpreter would examine the current call stack and the possible
   set of CFG fragment entry points to determine whether any new CFG
   fragments have started.  If so, the relevant CFG nodes added to
-  $cfgNodes$.  In either case, $checkForEntry$ is cleared.
+  $\mathit{cfgNodes}$.  In either case, $checkForEntry$ is cleared.
 \item[\textbf{Return}] The interpreter would then consider returning
-  to the program's normal semantics.  This is safe if $cfgNodes$ is
+  to the program's normal semantics.  This is safe if $\mathit{cfgNodes}$ is
   empty and the instruction pointer is not part of the $Cont$
   set\footnote{Note that the thread is guaranteed not to be holding
     the lock at this point.}  The transfer itself is quite simple:
   just branch to the relevant instruction pointer in the original
   program.
 \item[\textbf{Lock}] The interpreter now acquires the lock, provided
-  that $cfgNodes$ is non-empty and $locked$ is currently clear,
+  that $\mathit{cfgNodes}$ is non-empty and $locked$ is currently clear,
   setting $locked$ as it does so.
 \item[\textbf{Issue}] The interpreter emulates the program's original
   instruction, using the un-augmented semantics, writing back any
   required changes to memory or the process registers.  This will
   include updating the thread's instruction pointer, and the
   interpreter can then easily use this to determine which CFG nodes
-  the thread might execute next and hence the new value of $cfgNodes$.
+  the thread might execute next and hence the new value of $\mathit{cfgNodes}$.
 \item[\textbf{Unlock}] Finally, the interpreter would check whether it
   needs to release the lock.  It should do so whenever $locked$ is set
-  and $cfgNodes$ is empty, clearing $locked$ as it does so.  The
+  and $\mathit{cfgNodes}$ is empty, clearing $locked$ as it does so.  The
   interpreter then returns to the \textbf{CheckForEntry} state and the
   cycle begins again.
 \end{itemize}
@@ -2592,12 +2483,12 @@ In a little more detail:
   context validation tree, as discussed in \todo{...}.  The leaves of
   this validation tree will contain branches to augmented instructions
   in the \textbf{Return} state with an appropriately-augmented
-  $cfgNodes$ set\editorial{The \textbf{Return} state will then
-    immediately discover that $cfgNodes$ is non-empty and move to
+  $\mathit{cfgNodes}$ set\editorial{The \textbf{Return} state will then
+    immediately discover that $\mathit{cfgNodes}$ is non-empty and move to
     \textbf{Lock}, but actually saying that makes the parallels with
     the interpreter a bit less obvious.}.
 
-  The current (unaugmented) instruction pointer and current $cfgNodes$
+  The current (unaugmented) instruction pointer and current $\mathit{cfgNodes}$
   set usually place significant constraints on the set of entry points
   which the thread might currently be executing, and so the validation
   tree can often itself be partially evaluated to determine precisely
@@ -2607,7 +2498,7 @@ In a little more detail:
   possible call to a lock acquire or release function, as appropriate,
   followed by a simple branch to the next state.
 \item \textbf{Return} states partially evaluate to either a branch
-  back to the original program code, if $cfgNodes$ is empty and the
+  back to the original program code, if $\mathit{cfgNodes}$ is empty and the
   address to return to is not in the patch strategy's $Cont$ set, or a
   branch to the \textbf{Issue} state otherwise.
 \item Most of the time, the \textbf{Issue} state partially evaluates
@@ -2617,8 +2508,8 @@ In a little more detail:
   which must be re-encoded to reference the correct data relative to
   the new instruction pointer, and control flow instructions, which
   are discussed below.  Assuming that this is not a control flow
-  operations, the state updates $cfgNodes$ to contain all of the CFG
-  nodes which are successors of current members of $cfgNodes$ and
+  operations, the state updates $\mathit{cfgNodes}$ to contain all of the CFG
+  nodes which are successors of current members of $\mathit{cfgNodes}$ and
   whose instruction pointer matches that of the desired successor
   instruction and then returns to state \textbf{CheckForEntry}.
 \end{itemize}
@@ -2651,9 +2542,9 @@ additional field, $redzone$, indicating whether the red zone has been
 cleared, allowing red zone clearing to be performed precisely when
 necessary.
 
-\todo{Move this para to be later.} One concern here might be that
-modifying the program's stack in this way might confuse another thread
-which is simultaneously examining the stack.  Such cross-stack
+\todo{Move this para to be later.}\smh{Yes} One concern here might be
+that modifying the program's stack in this way might confuse another
+thread which is simultaneously examining the stack.  Such cross-stack
 accesses are rare in most programs anyway, and in any case are handled
 correctly for correct programs here because the modified stack pointer
 never escapes into any of the original program's code.  This means
@@ -2681,24 +2572,26 @@ Control flow operations are not completely trivial to represent in
 this model.  Direct control flow, where the target of the control flow
 transfer is immediately apparent from the instruction itself, is
 relatively easy and can be handled by comparing the target address to
-the possible successors of all of the CFG nodes in $cfgNodes$ and
-generating a new successor state with $cfgNodes$ appropriately
+the possible successors of all of the CFG nodes in $\mathit{cfgNodes}$ and
+generating a new successor state with $\mathit{cfgNodes}$ appropriately
 updated.  Indirect control flow is more difficult and requires run
 time validation of the target address.  There are three main cases to
 consider: indirect jumps, indirect calls, and return instructions.
 
 \paragraph{Indirect jump instructions,} which simply set the instruction pointer
-to a calculated value.  In order to partially evaluate these states
-{\technique} must examine all of the successors of nodes in the
-$cfgNodes$ set and segregate them by their instruction pointer.  The
-code generated for the state will compare the target of the branch
-instruction to each such instruction pointer in turn and, when one
-matches, jump to an augmented instruction with an appropriate
-$cfgNodes$ set.  If none match then the patch moves on to consider
-instructions in the patch strategy's $Cont$ set, comparing the
-generated branch target to each in turn and branching to an
-appropriate augmented instruction if any match.  Finally, if none of
-those match, the patch can exit the augmented semantics by directly
+to a calculated value\smh{Not a sentence.}.  In order to partially
+evaluate these states {\technique} must examine all of the successors
+of nodes in the $\mathit{cfgNodes}$ set and segregate them by their instruction
+pointer.  The code generated for the state will compare the target of
+the branch instruction to each such instruction pointer in turn and,
+when one matches, jump to an augmented instruction with an appropriate
+$\mathit{cfgNodes}$ set.  If none match then the patch moves on to consider
+instructions in the patch strategy's $Cont$ set\smh{This is a detail
+  that doesn't matter at a certain level of abstraction; you need to
+  separate the idea/algorithm from the combined code you've written.},
+comparing the generated branch target to each in turn and branching to
+an appropriate augmented instruction if any match.  Finally, if none
+of those match, the patch can exit the augmented semantics by directly
 branching to the computed branch target, dropping the lock first if
 necessary.
 
@@ -2785,17 +2678,22 @@ extremely fragile without cooperation from the program\footnote{An
   call and hence the use of registers, which brings us back to the
   original problem.}.
 
+\smh{This is all fine, but it is a detail that probably doesn't
+  deserve the best part of a page!  Focus, select, highlight,
+  abstract.}
+
 \todo{Maybe explain why I'm happy to use the GS trick in the enforcers
   but don't want to do so here?}
 
 \paragraph{Indirect call instructions,} which are similar to indirect jumps
 except that they also store the current instruction pointer to the
-stack.  The issues involved here are similar, except that the patch
-must store the return address in addition to maintaining the stack
-pointer and branching to an appropriate location.  If the interpreter
-is to continue then this can be accomplished by setting $redzone$ to
-another special value, $finishCall(return\_address)$.  Otherwise,
-the exit sequence can be modified slightly:
+stack\smh{Not a sentence.}.  The issues involved here are similar,
+except that the patch must store the return address in addition to
+maintaining the stack pointer and branching to an appropriate
+location.  If the interpreter is to continue then this can be
+accomplished by setting $redzone$ to another special value,
+$finishCall(return\_address)$.  Otherwise, the exit sequence can be
+modified slightly:
 
 \begin{verbatim}
 mov %rdi, 0x80(%rsp) ; Store next instruction address
@@ -2846,16 +2744,16 @@ modified location\footnote{The exception is if another thread is
   I ignore the possibility here.}.
 
 \paragraph{Return instructions,} which pop an address off of the stack
-and return to it.  If the $cfgNode$ set is currently non-empty then
-this is very simple because, by construction, when the $cfgNode$ set
-is non-empty the program's call stack must match the call stack in the
-CFG nodes.  That means that the return instruction can be partially
-evaluated without needing to examine the actual contents of the stack,
-and the only instruction which actually needs to be emitted is
-\verb|lea 8(%rsp), %rsp|, which pops the return address off of the
-stack and discards the result.  \todo{Actually need a couple more
-  side-conditions on that, but they're not terribly interesting and
-  would just confuse things a bit.}
+and return to it\smh{Not a sentence}.  If the $cfgNode$ set is
+currently non-empty then this is very simple because, by construction,
+when the $cfgNode$ set is non-empty the program's call stack must
+match the call stack in the CFG nodes.  That means that the return
+instruction can be partially evaluated without needing to examine the
+actual contents of the stack, and the only instruction which actually
+needs to be emitted is \verb|lea 8(%rsp), %rsp|, which pops the return
+address off of the stack and discards the result.  \todo{Actually need
+  a couple more side-conditions on that, but they're not terribly
+  interesting and would just confuse things a bit.}
 
 \todo{But that branch means that you end a function with a jump rather
   than a ret, which is going to screw your branch predictor despite
@@ -2876,7 +2774,7 @@ to the unaugmented program.  The exit fragment is very simple:
 
 \begin{verbatim}
 pop %rdi
-lea 0x80(%rsp), %rsp)
+lea 0x80(%rsp), %rsp
 ret
 \end{verbatim}
 
@@ -2890,7 +2788,8 @@ The result of all of these manipulations is that {\technique} is able
 to maintain control of the program when necessary, and transfer back
 to the original program seamlessly when control is no longer
 necessary, without causing excessive damage to the processor's branch
-predictor in the common case.
+predictor in the common case.\smh{How important is this?  Is a fixed
+  prog that's 10\% slower suckey?  ok?}
 
 These control-flow considerations somewhat complicate the partial
 evaluator.  The complete thing looks like this:
@@ -2949,7 +2848,9 @@ with, usually, acceptably low overhead.
 
 \todo{I've avoided talking about the flags register here, because that
   makes everything much more complicated and this is pretty fiddly as
-  it is.  Not sure if I can get away with that.}
+  it is.  Not sure if I can get away with that.}\smh{In general you
+  can mention something at a reasonable level of abstraction without
+  needing to provide every detail.}
 
 \subsection{Building context validation trees}
 \todo{This is a bit of a mess.}
@@ -2957,9 +2858,9 @@ with, usually, acceptably low overhead.
 One important component of the \textbf{CheckForEntryState} which is
 not discussed above is checking whether the current thread's call
 stack matches up with that of any CFG entry points, and hence whether
-additional nodes need to be added to the $cfgNodes$ set.  {\Technique}
-must generate machine code which will perform this check and branch to
-an appropriate augmented label according to the result.
+additional nodes need to be added to the $\mathit{cfgNodes}$ set.
+{\Technique} must generate machine code which will perform this check
+and branch to an appropriate augmented label according to the result.
 
 The first step of building the validation tree is to convert the set
 of entry points into a mapping from stack contexts to CFG nodes.  A
@@ -2967,7 +2868,7 @@ stack context here is a list of $(offset, value)$ pairs which give an
 offset from the current stack pointer and a value which must be
 present at that offset.  This is straightforward given the call stack
 in the entry point and the algorithm for extracting the return address
-of a function given in section~\ref{sect:using:find_return_address}.
+of a function given in Section~\ref{sect:using:find_return_address}.
 
 The next step is to emit machine code to compare the current stack to
 these sets of stack contexts and branch to an appropriate label in the
@@ -3068,7 +2969,8 @@ The resulting machine code is structured as a tree whose internal
 nodes are tests of locations on the stack and whose leaves are
 branches into the augmented semantics.
 
-\todo{Example, maybe?}
+\todo{Example, maybe?}\smh{Hell yes!! (or just leave out the whole
+  section?)}
 
 \subsection{Other ways of fixing the bugs}
 \todo{I've come up with an algorithm for doing this using a message
@@ -3086,176 +2988,16 @@ branches into the augmented semantics.
   them, either, but they are kind of interesting.  Probably worth a
   paragraph or two.}
 
-\section{Fixing bugs from DRS logs}
-\label{sect:fix_from_drs}
 
-\todo{I think this section can probably die.  It doesn't really fit
-  with any of the other bits of the dissertation, and it's really just
-  a bit annoying.}
-
-The simplest way to fix a bug is to start from a DRS log.
-Given a log, identifying the thread and which is most responsible for a crash is generally straightforward.
-If the crash is caused by dereferencing a bad pointer then the responsible thread is the one which dereferenced the pointer; if the crash is an assertion failure then the responsible thread is the one which called \verb|abort()| (or equivalent).
-The log then makes it trivial to determine what instructions the responsible thread executed before it crashed, and a suffix of these can be compiled into a \StateMachine capturing the most relevant parts of the responsible thread's behaviour.
-
-The log also makes it trivial to determine precisely which stores the read-side thread raced with, and so building a write-side \StateMachine is redundant.
-Instead, the read-side \StateMachine is ``slid across'' the log, evaluating it at every step (subject to some typing constraints which ensure that the result is reasonable), and the resulting pattern of safe and unsafe regions converted directly into critical sections, without ever needing to generate an explicit write-side \StateMachines.
-
-\subsection{Building the read-side \StateMachine}
-\todo{This is gratuitously different from the non-DRS mode in an enormous number of places.  I should fix that.}
-
-Working from a DRS log provides a lot of information which is not available in SLI's normal mode of operation.
-This makes some parts of the algorithm redundant.
-In particular, there is no need to generate large numbers of CFGs of fragments of the program which might be relevant, as we know precisely which instructions were executed leading up to the crash.
-Instead, in this mode, SLI generates the \StateMachine directly from the log.
-It starts with a small stub machine representing just the instruction which crashed and then expands it backwards, incorporating a single instruction from the log at a time.
-For instance, suppose that the fragment of program to be investigated looked like this:
-
-\begin{verbatim}
-l1: mov $5, %rax
-l2: mov (global1), %rbx
-l3: mov (%rax + %rbx), %rcx
-\end{verbatim}
-
-and the program crashed due to dereferencing a bad pointer at \verb|l3|.
-The initial stub \StateMachine will then be just:
-
-\begin{verbatim}
-if (BadPtr(rax + rbx)) crash(); else survive();
-\end{verbatim}
-
-Incorporating \verb|l2| will transform that to
-
-\begin{verbatim}
-LOAD (global1) -> rbx
-if (BadPtr(rax + rbx)) crash(); else survive();
-\end{verbatim}
-
-Incorporating \verb|l1| will then produce the \StateMachine
-
-\begin{verbatim}
-COPY 5 -> rax
-LOAD (global1) -> rbx
-if (BadPtr(rax + rbx)) crash(); else survive();
-\end{verbatim}
-
-Which can be simplified in the usual way to produce
-
-\begin{verbatim}
-LOAD (global1) -> rbx
-if (BadPtr(rbx)) crash(); else survive();
-\end{verbatim}
-
-And this can then be used in the rest of the analysis.
-
-The major subtlety here lies in the handling of control flow, and the parts of the program which are not executed.
-One possible approach would be to simply say that any changes to the control flow cause the bug to be avoided, but this is over-optimistic.
-Consider, for instance, a program like this one:
-
-\begin{verbatim}
-ptr = global;
-if (some_condition)
-    idx = 1;
-else
-    idx = 2;
-local = ptr[idx];
-\end{verbatim}
-
-This program loads a pointer to an array from a global variable and then loads some index in the array, with the index chosen depending on some condition.
-Suppose that the race then causes the pointer in \verb|global1| to sometimes be bad, and that the reproduction of the bug was obtained while \verb|some_condition| holds.
-The bug itself does not depend on \verb|some_condition|, but if one were to assume that any changes to control flow avoid the bug then SLI would not be able to show this.
-This problem can only be avoided by exploring untaken branches, and SLI does so, for some (configurable) number of instructions.
-If the control flow rejoins that which is represented in the DRS log then an appropriate branch is included from one part of the \StateMachine to another, and if it does not rejoin then a branch to the \verb|NoCrash| state is used instead.
-
-One complication here is that a given static instruction might be represented multiple times in the DRS instruction trace, and hence multiple times in the \StateMachine, if the instruction is part of some loop.
-This makes it ambiguous where the branch should branch to.
-SLI solves this problem by taking the earliest instance of the instruction, and hence branching to the place in the \StateMachine nearest the root.
-This helps to keep the loop structure of the program intact, subject to the unrolling implicit in the DRS log.
-
-The example shown above might then turn into a \StateMachine something like this:
-
-\begin{verbatim}
-LOAD global1 -> ptr
-if (some_condition) {
-   COPY 1 -> idx1
-} else {
-   COPY 2 -> idx2
-}
-if (BadPtr(ptr + idx)) {
-   crash();
-} else {
-   survive();
-}
-\end{verbatim}
-
-The standard simplified will then transform that to this:
-
-\begin{verbatim}
-LOAD global1 -> ptr
-if (BadPtr(ptr + (some_condition ? 1 : 2))) {
-   crash();
-} else {
-   survive();
-}
-\end{verbatim}
-
-SLI uses a rule that \verb|BadPtr(x + k)| is equivalent to \verb|BadPtr(x)| whenever \verb|k| is a small constant, and so correctly determines that the bug is independent of \verb|some_condition| in this case.
-
-\todo{Discuss using more powerful bug definitions here e.g. Valgrind, invariant discovery, etc, by applying them to the log and then converting to stub machines, so that you can apply this to races which lead to bugs other than immediate bad pointer dereferences.}
-
-\subsection{Requirements on the DRS}
-
-\subsection{Finding remote critical regions}
-
-The fixes generated by SLI rely on making the read-side \StateMachine operate as-if atomically and then ensuring that it does not execute in any states where doing so would lead to a crash.
-In the normal mode of operation, the regions which would lead to a crash are determined by modelling the rest of the program as a set if write-side \StateMachines and then using symbolic execution, but it is possible to be more accurate\editorial{or possibly precise?} if a full DRS log is available.
-Instead of the set of \StateMachines, the log itself can be used as a model for the rest of the program.
-The idea here is that the log contains a sequence of possible states of the program, and contains all of the ones which are relevant to this particular way of reproducing the bug of interest.
-SLI therefore slides the read-side \StateMachine over this log, evaluating it at every instruction, and hence classifies the log into ``safe'' and ``unsafe'' regions, and the transitions between these two types of region give the boundaries of the write-side critical regions.
-
-As a minor optimisation, SLI only re-evaluates the \StateMachine if there has been a store to some memory location which is loaded by the \StateMachine.
-This cannot affect the results in any way, but means that the \StateMachine does not have to be evaluated as often.
-
-One important complication here is the presence of dynamically-allocated data structures.
-SLI relies on being able to identify points in the program where these are allocated and released.
-The loads in the read \StateMachine will correspond to specific load operations in the DRS log and SLI is then able to check which dynamic instance of structures those accesses access and will only evaluate the \StateMachine while all of the relevant structures remain live.
-
-Once the log has been classified, the classification must be converted into realisable critical sections.
-In other words, SLI must identify points in the program at which it must insert lock acquire operations and points where it must insert lock release operations.
-Ideally, each unsafe region in the log would correspond to a single critical section, with a single acquire operation and a single release one.
-This can fail in several ways:
-
-\begin{itemize}
-\item
-  The start and end of the unsafe region might be in different threads, if, for instance, one thread violates an invariant and another thread then restores it.
-  It is difficult to model a cross-thread operation as a critical section.
-  SLI cannot prevent this kind of bug, and the unsafe region is simply ignored.
-\item
-  There might be non-trivial control flow between the start and end of an unsafe region within a single thread.
-  In that case additional acquire and release operations must be inserted to ensure that locks are not leaked, double-acquired, or double-released.
-\item
-  The program might have additional synchronisation mechanisms which, when combined with the SLI-inferred synchronisation, lead to a deadlock.
-\end{itemize}
-
-These are discussed in more detail in \S~\ref{sect:fix_global_lock}.
-
-\todo{This is in dire need of rewriting.}
-
-Note that the definition of a dynamic structure is somewhat subtle here.
-Most obviously, \verb|malloc| and \verb|free| represent boundaries in the lifespan of such structures (with \verb|malloc| being the start and \verb|free| being the end), but ``re-typing'' operations can also impose such boundaries.
-The intent of the sliding procedure is to capture other operations which the program might perform on the data structures involved in the synchronisation bug, in the same way that write-side \StateMachines do in the non-DRS case.
-In effect, the program's behaviour is constrained using a heuristic memory safety property, and this memory safety property must correspond reasonably closely to the program's actual structure.
-
-The underlying hypothesis here is that the program has some kind of internal type system which constrains which operations will be performed on a given memory location.
-This means that two pieces of code can only race if they have types which are in some sense compatible, so that they might access overlapping memory locations.
-The combination of the read-side \StateMachine and the set of dynamic instances accessed by it defines, in a slightly ill-defined way, a set of types which the read side of the critical section might access.
-SLI must then find some other operations on the same types to synchronise against, and this is the aim of the sliding procedure.
-In order for this to work, the read \StateMachine must only be slid to places where the current types match up with the types for which it was derived.
-SLI must therefore be able to identify points where the types of memory locations change.
-This includes things like \verb|malloc| and \verb|free|, but is also likely to include things like program-specific memory allocators or object pools.
-The precise set will depend on the program's type system, and so can only be sensibly modelled with assistance from the programmer.
-
-
-
+\smh{Ok; this chapter suffers somewhat from the lack of clear + useful
+  definitions/abstractions in the earlier chapters.  Remember: you are
+  trying to explain the system you built at multiple levels of
+  abstraction; it's the 1-sentence version versus the 100 page version
+  versus the 2 page version, ....  General recipe is: (i) explanation
+  (1 para, signposting rest of text), (ii) walkthrough (2-3 pages,
+  with diagrams, entire process in moderate detail) ... identify terms
+  and concepts: crucial to be able to ignore+elide some details. (iii)
+  deep dive (for parts identified above) (iv) recap (like (i) or
+  (ii)).}
 
 

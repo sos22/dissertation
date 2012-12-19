@@ -15,20 +15,26 @@ Things I want to show in the eval:
   Things to show:
 
   \begin{itemize}
-  \item That simple bugs reproduce much more quickly with an enforce
-    than without.  It'd also be nice to show that they reproduce more
-    quickly under SLI than under DataCollider.
+  \item That simple bugs reproduce much more quickly with an enforcer
+    than without\smh{Comparison to simpler schemes}.  It'd also be
+    nice to show that they reproduce more quickly under SLI than under
+    DataCollider.
   \item That the analysis to produce them is nice and cheap.
   \item That the performance overhead of the enforcer when the bug
     doesn't reproduce isn't so massive that it'll make bugs less
     likely to reproduce.
   \item That the side-condition checking stuff is both necessary and
-    effective.
+    effective.\smh{+what it is}
   \item That we can generate ``reasonable-looking'' fixes for all of
     the test bugs.
   \item That the fixes generated actually fix the intended bug.
+
   \item That the fixes generated have vaguely plausible performance
-    overhead.
+    overhead.\smh{Top bit has to be ``technique can fix x\% of bugs in
+      the test set, with an average y\% overhead.}\smh{Second most
+      important eval is pushing the limits i.e. why does SLI not work
+      for large program or multiple threads or ... . Plus how might
+      new research help fix this.}
   \end{itemize}
 
   It'd also be quite nice if I could show that the summaries are
@@ -38,14 +44,14 @@ Things I want to show in the eval:
   It might also be worth trying some pseudo-fixes which do everything
   except for acquiring and releasing the lock, just so that I can
   isolate how much of the overhead is the patching machinery and how
-  much the lock operation itself.
+  much the lock operation itself.\smh{Sure}
 
 \item Show that it works for some slightly more realistic artificial
   bugs, probably from ripping sync blocks out of STAMP.
   i.e. real-size programs with artificial bugs.  I currently have one
   bug produced by removing synchronisation from one of the STAMP
   benchmarks for which this works reasonably well; should try to
-  expand that a bit.
+  expand that a bit.\smh{Ack}
 
 \item That it could feasibly scale up to something of realistic size.
   Obvious approach here is just to show that we can run the full
@@ -53,17 +59,21 @@ Things I want to show in the eval:
   looking like this will find at most one or two new bugs, which makes
   it all a bit less convincing.  This'll be mostly just showing that
   the analysis does actually complete in a sensible amount of time.
+  \smh{Yes; this will be very nice.}
+
 \item I'm going to pick one of those big programs (probably mysql,
   since that's where I've done the most testing so far) and do a few
   more experiments on it:
 
   \begin{itemize}
-  \item Display a CDF of how long it takes to analyse each instruction.
+  \item Display a CDF of how long it takes to analyse each
+    instruction.\smh{Why?}
   \item Try turning the various machine simplification passes on and
     off and see what effect that has on the CDF.  Likewise the
-    induction rule.
+    induction rule.\smh{Ok}
   \item Likewise changing the size of the analysis window.
-  \item Just directly look at how long the various phases take.
+  \item Just directly look at how long the various phases
+    take.\smh{Ack}
   \item Alias analysis: try turning off the static analysis bit and
     see how much effect that has.  Likewise try running without the
     dynamic analysis; the results will be very bad, but it'd be
@@ -80,22 +90,26 @@ Things I want to show in the eval:
   property costs us, in terms of bugs detected, and how much it buys
   us, in terms of simpler analysis.  The implementation is such that
   turning it on and off is fairly feasible, although I haven't tried
-  it in a while.
+  it in a while.\smh{This may be interesting to eval --- but it
+    certainly is something you should explain/justify in English prose
+    much \emph{much} earlier.}
+
 \item At some point I'm going to need to do a sensitivity analysis to
   show that the timeouts don't need to be tuned particularly finely to
   get bugs to repro.  Not sure how to do that.  All of the artificial
   bugs work fine for timeouts between 10ms and 1 second, but that
   isn't particularly convincing by itself.
-\item I need to show that the dynamic analysis is reasonable.  Ideally
-  that'd be by using a static analysis to get an upper bound and then
-  showing that they're reasonably close, but implementing that'd be a
-  pain in the backside.  Alternative is just to look at convergence
-  rates.  I should also look at how large the resulting alias tables
-  are for different 
+\item I need to show that the dynamic analysis is reasonable\smh{?}.
+  Ideally that'd be by using a static analysis to get an upper bound
+  and then showing that they're reasonably close, but implementing
+  that'd be a pain in the backside.  Alternative is just to look at
+  convergence rates.  I should also look at how large the resulting
+  alias tables are for different
 \item I need to show that the tool is actually correctly implemented
   itself.  The small number of bugs found in real programs means that
   this has more than a little bit of a negative-results flavour, so
-  this isn't completely trivial.
+  this isn't completely trivial.\smh{Hmm -- not sure how to do this??
+    Formal proofoid?}
 \end{itemize}
 
 \section{Artificial bugs}
@@ -122,73 +136,77 @@ explain the approach I have adopted to doing so.
 
 The performance distributions are simpler to understand than the crash
 time ones and so I discuss them first.  All of the test programs
-discussed below have some performance metric associated with them,
-usually the number of iterations of some loop completed per second,
-and this metric usually follows a roughly Gaussian distribution.  I
-characterise the performance of a test in isolation by running the
-test twenty times for ten seconds each, discarding the largest and
-smallest values, and then reporting the mean and estimated population
-standard deviation as $\mu \pm \sigma$\footnote{One complication is
-that most of these test programs contain bugs (deliberately) and may
-therefore crash before completing a ten second run.  Any such crashing
-runs were repeated until the program completed without crashing.}.
-All such results were also subjected to Anderson-Darling and
-Jarque-Bera normality tests at the 90\% level.  Whenever a test failed
-either test I concluded that it did not follow a Gaussian distribution
-and instead report the results as $[p_{10};p_{50};p_{90}]_n$, where
-$p_{10}$ is the tenth percentile\footnote{Linearly interpolating where
-that does not fall precisely on one of the samples}, $p_{50}$ is the
-fiftieth percentile, $p_{90}$ the ninetieth percentile, and $n$ the
-number of samples.
+discussed below have some performance metric\smh{So bigger is good?}
+associated with them, usually the number of iterations of some loop
+completed per second, and this metric usually follows a roughly
+Gaussian distribution.  I characterise the performance of a test in
+isolation by running the test twenty times for ten seconds each,
+discarding the largest and smallest values, and then reporting the
+mean and estimated population standard deviation as $\mu \pm
+\sigma$\footnote{One complication is that most of these test programs
+  contain bugs (deliberately) and may therefore crash before
+  completing a ten second run.  Any such crashing runs were repeated
+  until the program completed without crashing.}.  All such results
+were also subjected to Anderson-Darling and Jarque-Bera normality
+tests at the 90\% level.  Whenever an experiment failed either test I
+concluded that it did not follow a Gaussian distribution and instead
+report the results as $[p_{10};p_{50};p_{90}]_n$, where $p_{10}$ is
+the tenth percentile\footnote{Linearly interpolating where that does
+  not fall precisely on one of the samples}, $p_{50}$ is the fiftieth
+percentile, $p_{90}$ the ninetieth percentile, and $n$ the number of
+samples.
 
 I have also quoted estimates of the overhead of some possible
 modifications to the test programs.  The estimated overhead here is
 quite simple: $\frac{\textrm{baseline performance} - \textrm{modified
-performance}}{\textrm{baseline performance}}$.  Estimating the error
-bounds of this quantity is, however, somewhat more difficult.  When
-both the baseline and modified performance metrics are normally
-distributed the resulting overhead estimate has an infinitely large
-standard deviation\editorial{Possibly need a cite?}, which would be
-unhelpful.  It would still in principle be possible to derive a
-confidence interval for ratio using Fieller's theorem\needCite{}, but
-this would still leave the question of what to do when the data does
-not appear to be normally distributed\editorial{Don't actually have
-very much non-normal data, so I could just ignore it, but whatever.}.
-Instead, I take the 80\% confidence intervals for the two performance
-measures\footnote{Using a bootstrap method when
-necessary.}\editorial{Should make it clear that these are intervals
-for the \emph{means} rather than for the data.} and use these to
-calculate the minimum and maximum overhead estimates where both
-performance metrics are within their confidence intervals.  This
-provides a conservative estimate of the 80\% confidence interval of
-the overhead\footnote{Note that this construction could, in principle,
-produce non-contiguous confidence intervals, or could even produce one
-which covers the entire real line.  This will be true of any
-conservative characterisation of the ratio of two distributions which
-might be Gaussian, be the Gleser-Hwang theorem\needCite{}.
-Fortunately, the data I have derived was sufficiently well-behaved
-that it produces small, contiguous confidence intervals.}.  I report
-this as $\alpha = \{a < b < c\}$, where $a$ and $c$ are the bounds of
-the confidence interval and $b$ is the simple ratio of
-means.  \todo{Von Luxberg and Franz 2007 calls this a geometric
-bootstrap, but I don't think that's a terribly helpful way of
-describing it.}  \todo{Alternative would be to use a Hwang bootstrap
-to estimate confidence intervals on the ratio directly, but there have
-been a bunch of papers recently saying that that gives you intervals
-which are too tight when its preconditions don't fit, and I don't know
-enough stats to check whether they do here.}
+    performance}}{\textrm{baseline performance}}$\smh{You assume a
+  clear denom?}.  Estimating the error bounds of this quantity is,
+however, somewhat more difficult.  When both the baseline and modified
+performance metrics are normally distributed the resulting overhead
+estimate has an infinitely large standard deviation\editorial{Possibly
+  need a cite?}, which would be unhelpful.  It would still in
+principle be possible to derive a confidence interval for ratio using
+Fieller's theorem\needCite{}, but this would still leave the question
+of what to do when the data does not appear to be normally
+distributed\editorial{Don't actually have very much non-normal data,
+  so I could just ignore it, but whatever.}.  Instead, I take the 80\%
+confidence intervals for the two performance measures\footnote{Using a
+  bootstrap method when necessary.}\editorial{Should make it clear
+  that these are intervals for the \emph{means} rather than for the
+  data.} and use these to calculate the minimum and maximum overhead
+estimates where both performance metrics are within their confidence
+intervals.  This provides a conservative estimate of the 80\%
+confidence interval of the overhead\footnote{Note that this
+  construction could, in principle, produce non-contiguous confidence
+  intervals, or could even produce one which covers the entire real
+  line.  This will be true of any conservative characterisation of the
+  ratio of two distributions which might be Gaussian, be the
+  Gleser-Hwang theorem\needCite{}.  Fortunately, the data I have
+  derived was sufficiently well-behaved that it produces small,
+  contiguous confidence intervals.}.  I report this as $\alpha = \{a <
+b < c\}$, where $a$ and $c$ are the bounds of the confidence interval
+and $b$ is the simple ratio of means.  \todo{Von Luxberg and Franz
+  2007 calls this a geometric bootstrap, but I don't think that's a
+  terribly helpful way of describing it.}  \todo{Alternative would be
+  to use a Hwang bootstrap to estimate confidence intervals on the
+  ratio directly, but there have been a bunch of papers recently
+  saying that that gives you intervals which are too tight when its
+  preconditions don't fit, and I don't know enough stats to check
+  whether they do here.}
 
 \todo{Estimating overhead given before and after performance
 distributions, approximated by Gaussians, seems like the kind of thing
 that you'd have to do quite frequently.  It's kind of sad that there
 doesn't seem to be any standard protocol for it.}
 
-\todo{\emph{Should} do all of that stuff.  Currently just report the ratio of means.}
+\todo{\emph{Should} do all of that stuff.  Currently just report the
+  ratio of means.}\smh{Probably ok for now.  Remember there's a lot of
+  system + measurement noise.}
 
 Crash time distributions are generally less well-behaved than
-performance distributions.  Depending on the precise test being
-examined, I would expect the distribution to have one of the following
-forms:
+performance distributions.  Depending on the precise test\smh{BAd
+  word! use ``run''?} being examined, I would expect the distribution
+to have one of the following forms:
 
 \begin{itemize}
 \item
@@ -269,6 +287,10 @@ evaluation are generally sufficiently different that formal
 significance tests would be redundant and so I consider this to be a
 reasonable trade-off.
 
+\smh{Most of this does not matter and is insufficiently precise
+  anyway.  What benefit is there in having defined in a metric that is
+  not decent??}
+
 \todo{Alternative is just to tell the reader to look at the CDFs,
   but I quite like having a table of simple summary statistics.}
 
@@ -294,10 +316,10 @@ lead to bugs being discovered more quickly.
 
 The effectiveness of this tool is obviously highly dependent on the
 fraction of instructions which are covered by breakpoints and the
-length of the delays inserted.  Some initial experiments suggested
-that these parameters lead to the most rapid bug
-reproduction\editorial{Should have done this in a more systematic
-  way.}:
+length of the delays inserted.  Some initial experiments\smh{By you?
+  or by them?  what workloads?} suggested that these parameters lead
+to the most rapid bug reproduction\editorial{Should have done this in
+  a more systematic way.}:
 
 \begin{itemize}
 \item
@@ -342,7 +364,8 @@ entirely practical approach to investigating concurrency bugs.  I
 present it merely as a baseline against which to evaluate
 {\implementation}.  \todo{Should really eval the overheads, rather
   than just asserting that they're massive.  I mean, they are, but I
-  should have some evidence to back that up.}
+  should have some evidence to back that up.}\smh{+maybe look at would
+  they would be if you uses 0.03\% like the original?}
 
 More fundamentally, using DataCollider to explore alternative
 schedules is itself somewhat unfair, as DataCollider was originally
@@ -404,7 +427,7 @@ be an interesting reference point.
   dissertation at least once, just to prove that it exists.}
 
 \todo{Perhaps I should move some of this discussion a bit earlier and
-  treat it as an example?}
+  treat it as an example?}\smh{Yes, could be a good plan!}
 
 \begin{figure}
   \begin{subfloat}
@@ -462,13 +485,13 @@ while (1) {
     \end{minipage}
     \caption{Write side}
   \end{subfloat}
-  \caption{Disassembly of the program in figure~\ref{fig:eval:simple_toctou}.}
+  \caption{Disassembly of the program in Figure~\ref{fig:eval:simple_toctou}.}\smh{More clear separation}
   \label{fig:eval:simple_toctou_compiled}
 \end{figure}
 
 This is the simplest possible kind of concurrency bug: as
 single-variable time-of-check, time-of-use race.  The two threads
-involved are shown in figure~\ref{fig:eval:simple_toctou}.  The intent
+involved are shown in Figure~\ref{fig:eval:simple_toctou}.  The intent
 here is to model a very simple structure which is accessed frequently
 but updated rarely.  The bug is, of course, that the updating thread
 might set \verb|global_ptr| to \verb|NULL| in between the two reads of
@@ -481,7 +504,7 @@ easily explained; {\implementation} is able to reproduce and fix the
 bug even without those markers\editorial{Could last time I tried it,
   probably worth checking that again with the current version.}.
 Compiling this program produced the machine code fragments illustrated
-in figure~\ref{fig:eval:simple_toctou_compiled}.
+in Figure~\ref{fig:eval:simple_toctou_compiled}.
 
 \begin{figure}
   \begin{minipage}{100mm}
@@ -516,7 +539,7 @@ Verification condition: (!((mai1:2 <-< mai98:4)) && (mai1:1 <-< mai98:4))
 \end{verbatim}
   \end{minipage}
   \caption{Crash summary generated for the program in
-    figure~\ref{fig:eval:simple_toctou}.}
+    Figure~\ref{fig:eval:simple_toctou}.}\smh{Gory.  Can you relayout or ``redraw''?}
   \label{fig:eval:simple_toctou_summary}
 \end{figure}
 
@@ -534,7 +557,7 @@ Verification condition: (!((mai1:2 <-< mai98:4)) && (mai1:1 <-< mai98:4))
 \end{figure}
 
 SLI produces a single candidate bug for this program, shown in
-figure~\ref{fig:eval:simple_toctou_summary}.  This is hopefully
+Figure~\ref{fig:eval:simple_toctou_summary}.  This is hopefully
 reasonably easy to understand at this point.  The candidate bug
 consists of several parts:
 
@@ -547,9 +570,10 @@ consists of several parts:
   here contains CFG nodes three through 6, while the store machine has
   CFG node 52; these identifiers are arbitrary.  In this case the CFGs
   are largely uninteresting, but in a more complex example these
-  fragments would include details of which nodes were created by loop
-  unrolling and some information on the function call structure of the
-  program.
+  fragments would\smh{hmm.  How is this not present in the actual
+    {\StateMachines}?} include details of which nodes were created by
+  loop unrolling and some information on the function call structure
+  of the program.
 
   Note that the instruction which actually crashes, \verb|400637| is
   not included in the CFGs.  This is because it is completely
@@ -571,7 +595,7 @@ consists of several parts:
   in a more complex example SLI might merge several similar program
   accesses into a single \StateMachine-level accesses, and in that
   case a single memory access identifier might map to multiple CFG
-  nodes.
+  nodes\smh{Hmm... really??  Why is this good?}.
 \item An aliasing table, showing which memory accesses might
   potentially access the same memory, according to the
   dynamically-collected aliasing table.
@@ -622,17 +646,17 @@ Patch = {0x400624, 0x400815}, Cont = {}
 
 The next step of the pipeline is to take that crash summary and
 convert it into a crash enforcement plan, shown in
-figure~\ref{fig:eval:simple_toctou_cep}.  In this case, no side
+Figure~\ref{fig:eval:simple_toctou_cep}.  In this case, no side
 conditions need to be checked and no program-level values need to be
 stashed, and so this is a direct encoding of the verification
 condition and control flow graph from
-figure~\ref{fig:eval:simple_toctou_summary}.  There is only one bug to
+Figure~\ref{fig:eval:simple_toctou_summary}.  There is only one bug to
 be enforced and that bug only reproduces in a single possible
 happens-before graph and so there is precisely one plan-level thread
-for every summary-level one.  Finally, the patch strategy generated is
-very simple, with a single $Patch$ entry for the first instruction in
-each CFG fragment and no $Cont$ entries, because the test program's
-control flow is such that that will not risk the
+for every summary-level one\smh{New terms!}.  Finally, the patch
+strategy generated is very simple, with a single $Patch$ entry for the
+first instruction in each CFG fragment and no $Cont$ entries, because
+the test program's control flow is such that that will not risk the
 branch-to-corrupted-instruction problem.
 
 \todo{Hmm.  A lot of the features of the plan only really make sense
@@ -646,7 +670,8 @@ branch-to-corrupted-instruction problem.
 The plan can then be loaded into the buggy program in order to make
 the bug reproduce more easily.  In this particular case the results
 are somewhat unimpressive, as this bug already reproduces quite
-easily, but still show a small improvement in reproduction time.
+easily, but still show a small improvement in reproduction
+time.\smh{So this somehow then turns into thing with message passing?}
 
 The time to reproduce a bug of this kind follows a roughly exponential
 distribution, as each iteration of the write loop has a roughly
@@ -701,11 +726,11 @@ distribution between the two.  This delay consists of two components:
 \begin{itemize}
 \item One second, which is caused by the call to \verb|sleep| in the
   test harness.
-\item An additional 100 to 200ms, which is caused by the RX message
-  delay.  The write thread starts its critical section at one second
-  in and must immediately wait for a read thread to arrive.  In this
-  configuration, the thread will wait for between 100 and 200
-  milliseconds.
+\item An additional 100 to 200ms\smh{Huh?}, which is caused by the RX
+  message delay\smh{What is this?}.  The write thread starts its
+  critical section at one second in and must immediately wait for a
+  read thread to arrive.  In this configuration, the thread will wait
+  for between 100 and 200 milliseconds.
 \end{itemize}
 
 To confirm this explanation, I modified the interpreter to seed the
@@ -749,18 +774,19 @@ the alternative is a program which crashes frequently.
 \todo{I currently just call into libpthread to actually acquire and
   release the lock.  Just doing inline futex operations in the patch
   might be a bit faster than that, at least some of the time, which'd
-  help to get the overhead numbers down.}
+  help to get the overhead numbers down.}\smh{Ok}
 
-\todo{Give details of the machine the test is running on.}
+\todo{Give details of the machine the test is running on.}\smh{Yes}
 
 \todo{Give some breakdown of where the overhead comes from.  I
   strongly suspect that it's almost all down to the cost of acquiring
-  and releasing the lock; it'd be nice to confirm that.}
+  and releasing the lock; it'd be nice to confirm that.}\smh{Yes}
 
 \todo{Say something about how I set the analysis window.  It doesn't
   really matter for these tests, because it's entirely constrained by
   the STOP\_ANALYSIS markers anyway, but it'd still be an idea to have
-  a sentence or two somewhere to say that.}
+  a sentence or two somewhere to say that.}\smh{Possibly need some
+  much earlier, too!}
 
 \subsubsection{Indexed TOCTOU bug (indexed\_toctou)}
 \label{sect:eval:indexed_toctou}
@@ -768,8 +794,9 @@ the alternative is a program which crashes frequently.
 In this variant of a TOCTOU bug, there are multiple instances of the
 structure which is being raced on and the bug will only manifest if
 the reading and writing threads happen to coincide.  This bug
-exercises the side-condition-checking part of SLI.  The code involved
-in the race is shown in figure~\ref{fig:eval:indexed_toctou}.  Except
+exercises the side-condition-checking part of SLI\smh{So where does
+  this manifest in the fix?? (or the enforcer)??}.  The code involved
+in the race is shown in Figure~\ref{fig:eval:indexed_toctou}.  Except
 where otherwise noted, \verb|NR_PTRS| is set to 100.
 
 \begin{figure}
@@ -828,6 +855,9 @@ situations where doing so is unlikely to trigger the bug, and this
 causes the buggy code to run far less frequently than it otherwise
 would.
 
+\smh{Ok this is very cool!!  need to make clearer!  (earlier in text
+  -- not here)}
+
 \todo{I seem to get completely different results out of this test
   depending on the phase of the moon.  Not sure what to make of that.}
 
@@ -835,7 +865,7 @@ As a further test, I investigated what happens when the length of the
 delays is modified, first by reducing it to between 10 and 20
 milliseconds and then by increasing it to between 1000 and 2000
 milliseconds.  The results are shown in
-table~\ref{table:eval:indexedtoctou:delay}.  The important point to
+Table~\ref{table:eval:indexedtoctou:delay}.  The important point to
 note here is that disabling side-condition checking and setting a
 timeout of one second actually leads to a lower bug reproduction rate
 than simply running without an enforcer of any sort, and increasing
@@ -853,13 +883,13 @@ Delay range  & With side-condition checking          & Without side-condition ch
 \end{tabular}
 \caption{Effect of side condition and delay parameter on time taken to
   reproduce the indexed\_toctou bug.}  \todo{Some of those are quite
-  small sample sizes; redo.}
+  small sample sizes; redo.}\smh{Center; layout better}
 \label{table:eval:indexedtoctou:delay}
 \end{table}
 
 As a final test, I investigated the effect changing the \verb|NR_PTRS|
 parameter, and how that interacted with the delay parameter.  The
-results are shown in table~\ref{table:eval:indexedtoctou:nrptrs}.
+results are shown in Table~\ref{table:eval:indexedtoctou:nrptrs}.
 
 \todo{The NR\_PTRS = 1000 configuration with no side conditions
   definitely isn't Gaussian, but I don't have enough data to say more
@@ -898,7 +928,7 @@ that.}.  This is far smaller than the factor of four reported in the
 simple\_toctou case, largely because the test loop in this case
 includes a call to \verb|random|, which is rather expensive relative
 to simple lock operations and helps to amortise the cost of the
-additional synchronisation.
+additional synchronisation.\smh{Graphs are better -- visual}
 
 \todo{I don't believe for a minute that those distributions are Gaussian.}
 
@@ -909,7 +939,7 @@ additional delays such that either the write operation (for
 write\_indexed\_toctou) or the read operation (for
 read\_indexed\_toctou) is far more common than the other.  This test
 illustrates the importance of rebalancing delays between the various
-happens-before edges in the crash enforcement plans.
+happens-before edges in the crash enforcement plans.\smh{Phar exp?}
 
 Without an enforcer, these bugs failed to reproduce within the three
 minute timeout in any of twenty runs.  With a full enforcer,
@@ -972,7 +1002,7 @@ while (1) {
 This bug is intended to illustrate that {\technique} is able to
 correctly analyse multi-variable atomicity violations.  The code for
 the two sides of the bug is shown in
-figure~\ref{fig:eval:multi_variable}.  Note that in this case the race
+Figure~\ref{fig:eval:multi_variable}.  Note that in this case the race
 leads to an assertion failure, whereas previous bugs lead to a bad
 pointer dereference.
 
@@ -1039,6 +1069,9 @@ write_thread() {
     }
 }
 \end{verbatim}
+\smh{Maybe indicate there is a different bug?  e.g. a box around
+  relevant lines? (can explain in text that in practice its above via
+  a macro)}
 
 Here, there are two calls to \verb|f|, only one of which could ever
 possibly exhibit the bug, and that call is much less frequent than the
@@ -1242,7 +1275,7 @@ while (1) {
 \end{figure}
 
 In this case, the bug will only reproduce if the happens-before graph
-is as shown in figure~\ref{fig:eval:complex_hb}.  Note that this graph
+is as shown in Figure~\ref{fig:eval:complex_hb}.  Note that this graph
 requires four happens-before edges.  This means that it would be
 difficult for tools such as Chess\needCite{} to handle, as, in its
 default configuration, Chess only considers executions with up to
@@ -1306,7 +1339,7 @@ tables:
         
 I also show cumulative distribution functions of the time which the
 various test cases take to reproduce their respective bugs in
-figure~\ref{fig:eval:artificial:crash_times_cdfs}.
+Figure~\ref{fig:eval:artificial:crash_times_cdfs}.
 
 \begin{sidewaystable}
 \input{eval/analysis_phase_times}
