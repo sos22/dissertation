@@ -348,7 +348,7 @@ to describe how to generalise this algorithm to operate when no
 information is available at all, such as when trying to discover a
 currently-unknown bug (Section~\ref{sect:derive:unknown_bugs}), and
 when more information is available about the program's state at the
-time of the crash (Section~\needCite{}).
+time of the crash (Section~\ref{sect:derive:from_core_dump}).
 
 \todo{I'm not convinced that this is a good way of discussing this,
   because those generalisations are pretty obvious and this is
@@ -384,11 +384,16 @@ several stages:
   initial \backref{summary} component of the {\StateMachine}.  Each
   instruction in the \backref{CFG} is translated independently and the
   resulting fragments are then stitched back together to form the
-  \backref{summary}.
+  \backref{summary}.  This is described in
+  Section~\ref{sect:derive:compile_cfg}.
 \item The \backref{summary} is then compared to the \backref{program
   model}, producing \backref{annotation states} as necessary.
-\item Finally, the \backref{summary} is converted to \introduction{static
-  single assignment} form (SSA).
+  Detailed discussion of how these annotations are generated is
+  deferred to Section~\ref{sect:alias_analysis}, which also describes
+  the main consumer of them.
+\item Finally, the \backref{summary} is converted to
+  \introduction{static single assignment} form (SSA).  The SSA form
+  used by {\technique} is described in Section~\ref{sect:ssa}.
 \end{itemize}
 
 The resulting {\StateMachine} captures all of the relevant information
@@ -410,7 +415,7 @@ has been discovered.
 \State $depth \gets 0$
 \State $pendingAtDepth \gets \queue{targetInstrAddress}$
 \State $result \gets \map{}$
-\While{$depth < N_r$}
+\While{$depth < \alpha$}
   \State $pendingAtNextDepth \gets \queue{}$
   \While{$\neg{}empty(pendingAtDepth)$}
     \State $currentInstr \gets pop(pendingAtDepth)$
@@ -582,6 +587,7 @@ program's behaviour within the \backref{analysis window}.
 \end{figure}
 
 \begin{figure}
+\begin{center}
 \begin{tikzpicture}
   [node distance=1 and 0.3]
   \node (A) at (0,2) [CfgInstr] {A};
@@ -602,31 +608,33 @@ program's behaviour within the \backref{analysis window}.
     \node (box4) [fill=black!10,fit=(A) (B) (C) (D) (C') (B') (C'')] {};
   \end{pgfonlayer}\smh{Center?}
 \end{tikzpicture}
+\end{center}
 \caption{Fully unrolled version of the CFG in
   Figure~\ref{fig:cyclic_cfg}, preserving all paths of length six or
   fewer instructions.  Note that an additional root has been
-  introduced at C''.}
+  introduced at C''.}\todo{Underful hbox}
 \label{fig:unrolled_cyclic_cfg}
 \end{figure}
 
 As an example, consider the CFG shown at the left of
 Figure~\ref{fig:cyclic_cfg}, which contains a loop between
 instructions B and C.  This loop must be removed from the CFG while
-maintaining all paths which terminate at D and which contain $N_r$
-instructions.  The algorithm starts by performing a depth-first
-traversal backwards through the graph from D until it finds an edge
-which closes a cycle.  In this case, that is the edge from C to B.
-SLI will therefore break this edge by duplicating the instruction at
-the start of the edge, C, along with all of its incoming edges (in
-this case, just the B to C edge).  The C to B edge can then be
-redirected to be from C' to B, producing the next diagram in the
-sequence.  All paths which were possible in the old graph will also be
-possible in the new one, if duplicated nodes are treated as
-semantically equivalent, and the loop is now one instruction further
-away from the target instruction D.  The process then repeats, moving
-the cycle steadily further and further away from D until all paths
-ending of length $N_r$ ending at D are acyclic, at which point the
-cycle can be safely removed from the graph.
+maintaining all paths which terminate at D and which contain
+\backref{$\alpha$} or fewer instructions.  The algorithm starts by
+performing a depth-first traversal backwards through the graph from D
+until it finds an edge which closes a cycle.  In this case, that is
+the edge from C to B.  SLI will therefore break this edge by
+duplicating the instruction at the start of the edge, C, along with
+all of its incoming edges (in this case, just the B to C edge).  The C
+to B edge can then be redirected to be from C' to B, producing the
+next diagram in the sequence.  All paths which were possible in the
+old graph will also be possible in the new one, if duplicated nodes
+are treated as semantically equivalent, and the loop is now one
+instruction further away from the target instruction D.  The process
+then repeats, moving the cycle steadily further and further away from
+D until all paths ending of length \backref{$\alpha$} ending at D are
+acyclic, at which point the cycle can be safely removed from the
+graph.
 
 Note that the edge which is modified is the back edge, from C to B,
 which points ``away from D'', and not the forwards edge from B to C.
@@ -674,21 +682,25 @@ path to $newNode$ has a matching path to $edge.source$.
 \todo{Is it worth doing a proof of termination as well?}\smh{No,
   although you might comment on the expected running time...}
 
-\subsubsection{Handling cross-function CFGs.}
+\subsection{Handling cross-function CFGs.}
 
-There is, of course, no particular guarantee that the entire
-trace\smh{Not 100\% clear what you mean by this -- is this an actual
-  trace, or another word for the slice or CFG.  Imprecision makes this
-  stuff harder to read!} will be contained in a single function, and
-SLI must correctly handle these cross-function CFGs.  It does so by
-partially inlining functions as necessary to restore the problem to
-the single-function case.  This means that instructions must be
-labelled by both the pointer of the instruction itself and also by its
-inlining context, which is simply the stack of functions into which it
-has been inlined\editorial{Not terribly clear.}.  The only slight
-complications are that the inlining context is not necessarily known
-when CFG exploration starts, and it might be necessary to consider the
-same instruction in several contexts.
+There is, of course, no guarantee that all of the instructions in the
+\backref{analysis window} will be contained within a single function,
+and if they are not then {\technique} must be able to generate
+appropriate cross-function \backref{CFG}s.  It does so by partially
+inlining functions as necessary to restore the problem to the
+single-function case.  This means that instructions must be labelled
+by both the pointer of the instruction itself and also by its inlining
+context, which is simply the stack of functions into which it has been
+inlined\editorial{Not terribly clear.}.  The only slight complications
+are that the inlining context is not necessarily known when CFG
+exploration starts, and it might be necessary to consider the same
+instruction in several contexts.
+
+\todo{That's kind of a stupid way of doing this.  Should only need to
+  duplicate instructions when the inlining context matters, which is
+  pretty much just when we see both the start and end of the
+  function.}
 
 There are two important cases to consider: backing into another
 function, where the exploration starts in one function and must be
@@ -697,12 +709,12 @@ one, where the exploration starts in one function and must be extended
 to include that function's callers.  Backing into a function is
 simple: the analysis finds the functions which are to be
 called\footnote{There might be more than one function if the
-  instruction is a dynamic call.  In that case, the dynamic analysis
-  is used to find the set of all possibly-called functions and they
-  are all treated as possible predecessors.}, finds all of the return
-instructions in those functions, and treats those as the predecessor
-of the current instruction with an appropriately extended inlining
-context.
+  instruction is a dynamic call.  In that case, the \backref{program
+    model} is used to find the set of all possibly-called functions
+  and they are all treated as possible predecessors.}, finds all of
+the return instructions in those functions, and treats those as the
+predecessor of the current instruction with an appropriately extended
+inlining context.
 
 Backing out of a function is more complex.  In this case, the analysis
 must consider all possible callers of the target function and inline
@@ -718,115 +730,7 @@ that instruction will be treated as possible predecessors of it,
 regardless of whether they come from call instructions or simple
 branch instructions.
 
-
-\subsection{Generalising to finding unknown bugs}
-\label{sect:derive:unknown_bugs}
-The aim of this phase of the algorithm is to find every fragment of
-the program which might act as the first ($R$)\smh{You had (P,R,W).}
-element of the bug tuple.  The simplest approach would be to simply
-enumerate every dynamic fragment containing $N_r$ instructions which
-ends in a memory-accessing instruction and convert each one
-independently into a \StateMachine.  While it would be effective, this
-would be extremely time consuming, especially for larger values of
-$N_r$, and would perform a large amount of redundant work.
-\Technique{} therefore uses a slightly more involved approach which
-attempts to share useful work between traces where possible.  The core
-idea here is to start with the\smh{fussy! what instr is this?  is
-  there just 1???}\smh{``an instruction''?} instruction at which the
-program is purported to be able to crash and then expand backwards
-from there until every path is properly represented, up to the limit
-imposed by the analysis window.  This allows different paths to a
-given instruction to be analysed at the same time, sharing some
-analysis work.
-
-\subsubsection{Finding potentially-crashing instructions}
-
-The first phase of this algorithm is to find all instructions in the
-program which might crash, which is generally straightforward given
-the information available at this stage.  {\Implementation} considers
-two types of crash:
-
-\begin{itemize}
-\item Assertion-failure type crashes.  These are caused by the program
-  calling a function such as \verb|__assert_fail| or \verb|abort|
-  provided by an operating system library.  Finding such functions is
-  generally straightforward given the usual dynamic linker
-  information, and the initial whole-program static analysis phase can
-  then find all callers of those functions\editorial{Forward ref}.
-\item Bad pointer dereferences.  Any memory-accessing instruction
-  could potentially dereference a bad pointer, and so
-  {\implementation} simply enumerates all memory accessing
-  instructions discovered by the initial static analysis.
-\end{itemize}
-
-These potentially-crashing instructions are then considered
-independently in turn.\smh{aren't there still a \emph{lot} of these?
-  (i.e. it's the backwards search that's important here, not the insn
-  choice?)}
-
-
-\subsubsection{Generating CFGs from core dumps}
-
-Rather than trying to find all of the potential bugs in a program, SLI
-can instead be used to investigate a specific bug which has been
-reproduced to produce a core dump.  The procedure used is identical
-except for the way in which read-side control-flow graphs are
-generated, and so it is described here.  In this targeted mode, SLI
-does not attempt to generate every possible read-side CFG, but instead
-just generates those which might lead to the bug exhibited in the core
-dump.  The core dump contains two critical pieces of information:
-
-\begin{itemize}
-\item
-  The instruction which crashed.
-\item
-  The processor stack at the time of the crash.
-\end{itemize}
-
-Knowing the instruction which crashed constrains the CFG in an obvious
-way, but the processor stack is moderately more difficult to analyse.
-In principle, it tells us where each currently-active function was
-called from, which would usefully constrain the set of predecessors,
-but extracting this information from a program binary without debug
-information and without a frame pointer is non-trivial.  SLI has two
-strategies for solving this problem:
-
-\begin{itemize}
-\item
-  A static analysis, run on the binary before attempting to analyse
-  the core dump, which attempts to map from instruction addresses to
-  the offset between the current stack pointer and the address of the
-  current function's return address.  When this analysis succeeds it
-  makes it easy to determine from the core dump where the function
-  will return to, and hence where it was called from, but it will not
-  always succeed.  In particular, the \verb|alloca| function can cause
-  that offset to change at run-time, and so no static analysis will
-  ever succeed.
-\item
-  An abstract interpreter, which attempts to interpret the program's
-  machine code forwards from the point of the crash to determine what
-  it would have done if it hadn't crashed.  This proceeds until it
-  reaches a \verb|ret| instruction, at which point determining the
-  return address is again straightforward.
-\end{itemize}
-
-\todo{Need to talk about when you use each, and why you need both.
-  Which is potentially awkward, because I've forgotten myself.}
-
-Knowing the contents of the call stack at the time of the crash
-effectively tells us what the correct inlining context to use is,
-which can then be used to constrain the backing-out-of-function case
-discussed above.
-
-\subsubsection{Expanding the CFG}
-\label{sect:derive:benefits_of_longer_fragments}
-
-\todo{Expanding the fragment sometimes makes things go faster if it
-  means you get some useful context.  I'm not sure whether I want to
-  discuss that (the implementation doesn't really make any use of it),
-  but if I do it'll go here.}
-
-\subsubsection{Compiling the CFG to a \StateMachine}
+\subsection{Compiling the CFG to a \StateMachine}
 \label{sect:derive:compile_cfg}
 
 \todo{Should mention that I use libVEX\smh{probably not at this level
@@ -834,43 +738,57 @@ discussed above.
   intermediate format before converting to {\StateMachine} fragments,
   rather than doing it directly.}
 
-The result of the previous phases\smh{Would be nice to refer back to a
-  figure (signpost) here!} is a control-flow graph containing all of
-the instructions which might be present in the $R$ fragment of the
-crash tuple, and this CFG must now be compiled into a \StateMachine.
-Were it not for the transformations performed in the loop unrolling
-phase this would be straightforward: simply decode each instruction in
-isolation and convert it into an appropriate\smh{hmm} fragment of
-\StateMachine, and then stitch all of the fragments together again in
-the obvious\smh{hmm} way.  The unrolling process introduces three
-major complications:
+The algorithm presented so far can build the \backref{CFG} component
+of the {\StateMachine}.  The next step is to convert that
+\backref{CFG} into the \backref{summary} component.  The
+{\StateMachine} analysis language is powerful enough to make
+translating individual instructions in isolation completely
+straightforward.  Connecting them together is, however,
+slightly more difficult, as the edges in the \backref{CFG} no
+longer match up precisely with those in the original program,
+so that, for instance, an instruction which would normally
+have a single successor might have multiple successors in the
+\backref{CFG}, or one which would normally have multiple successors
+might only have one.  There are three cases which require
+special care:
 
 \begin{itemize}
 \item
-  Some edges will be erased from the CFG, so that the program can
-  branch from instruction A to instruction B but the CFG does not
-  allow that to happen.  These are simply converted to branches to the
-  special \state{Unreached} state, reflecting the fact that these
-  paths are of no interest to the rest of the analysis.
+  Some edges will be erased from the \backref{CFG}, so that the
+  program can branch from instruction A to instruction B but the
+  \backref{CFG} does not allow that to happen.  These are simply
+  converted to branches to the special \state{Unreached} state,
+  reflecting the fact that these paths are of no interest to the rest
+  of the analysis.
 
 \item
   Some additional edges will have been introduced which do not
   correspond to anything in the original program.  In the example in
   Figure~\ref{fig:unrolled_cyclic_cfg}, instruction A had a single
   successor, B, in the original program, but has multiple successors
-  in the unrolled CFG.  SLI handles these by converting them into
-  \StateMachine-level control flow using $ControlFlow$ expressions, so
-  that the {\StateMachine} fragment for A will be something like ``if
-  ($Control(A{\rightarrow}B)$) \{fragment for B\} else \{fragment for
-  B'\}''.
+  in the unrolled \backref{CFG}.  {\Technique} handles these by
+  converting them into \StateMachine-level control flow using
+  $ControlFlow$ expressions, so that the {\StateMachine} fragment for
+  A will be something like ``\state{If} ($\controlEdge{threadId}{A}{B}$)
+  \{fragment for B\} else \{fragment for B'\}''.
 
 \item
-  Likewise, the CFG can sometimes have multiple roots.  In this case,
-  the first state of the {\StateMachine} will be a test on the special
+  The \backref{CFG} can sometimes have multiple roots.  In this case,
+  the first state of the {\StateMachine} will be a test on special
   $Entry()$ expressions which will select an appropriate fragment of
   {\StateMachine} to start with.  In the example, the first state will
-  be ``if ($Entry(A)$) \{fragment for A\} else \{ fragment for
-  C''\}''.\smh{?}
+  be something like
+
+  \state{If} $(\entryExpr{\mai{threadId}{A}})$ \\
+  \{fragment for A\} \\
+  else \\
+  \{fragment for C''\}\editorial{Ugly ugly ugly}
+
+  The \backref{CFG} has two roots, A and C'', and this selects an
+  appropriate place from which to start the \backref{summary}
+  according to where the thread entered the \backref{CFG} (as
+  indicated by the Entry expression).\editorial{Gah.}
+
 \end{itemize}
 
 As a somewhat unrealistic example, suppose that the CFG in
@@ -900,21 +818,21 @@ them.
 
 \begin{figure}
 \begin{tikzpicture}
-  \node[stateIf,initial] (l1) {If $Entry(A)$};
-  \node[stateSideEffect,below left = of l1] (l2) {A: Copy $rdx$ to $rcx$};
-  \node[stateIf,below = of l2] (l3) {If $\controlEdge{threadId}{A}{B}$};
-  \node[stateSideEffect,below = of l3] (l4) {B: Load $rcx$ to $rcx$};
-  \node[stateSideEffect,below = of l4] (l5) {C: Load $rcx+8$ to $tmp$};
-  \node[stateIf,below = of l5] (l6) {If $tmp = 0$};
-  \node[stateIf,below = of l6] (l7) {D: If $BadPtr(rcx)$};
-  \node[stateSideEffect,below right = of l3] (l8) {B': Load $rcx$ to $rcx$};
-  \node[stateSideEffect,below = of l8] (l9) {C': Load $rcx+8$ to $tmp$};
-  \node[stateIf,below = of l9] (l10) {If $tmp = 0$};
-  \node[stateSideEffect,below right = of l1] (l11) {C'': Load $rcx+8$ to $tmp$};
-  \node[stateIf,below = of l11] (l12) {If $tmp = 0$};
-  \node[stateTerminal,below left = of l7] (lBeta) {Crash};
-  \node[stateTerminal,below right = of l7] (lGamma) {Survive};
-  \node[stateTerminal,right = of lGamma] (lAlpha) {Unreached};
+  \node[stateIf,initial] (l1) {\state{If} $Entry(A)$};
+  \node[stateSideEffect,below left = of l1] (l2) {A: \state{Copy} $\mathit{rdx}$ to $\mathit{rcx}$};
+  \node[stateIf,below = of l2] (l3) {\state{If} $\controlEdge{threadId}{A}{B}$};
+  \node[stateSideEffect,below = of l3] (l4) {B: \state{Load} $\mathit{rcx}$ to $\mathit{rcx}$};
+  \node[stateSideEffect,below = of l4] (l5) {C: \state{Load} $\mathit{rcx}+8$ to $\mathit{tmp}$};
+  \node[stateIf,below = of l5] (l6) {\state{If} $\mathit{tmp} = 0$};
+  \node[stateIf,below = of l6] (l7) {D: \state{If} $\mathit{BadPtr}(\mathit{rcx})$};
+  \node[stateSideEffect,below right = of l3] (l8) {B': \state{Load} $\mathit{rcx}$ to $\mathit{rcx}$};
+  \node[stateSideEffect,below = of l8] (l9) {C': \state{Load} $\mathit{rcx}+8$ to $\mathit{tmp}$};
+  \node[stateIf,below = of l9] (l10) {\state{If} $\mathit{tmp} = 0$};
+  \node[stateSideEffect,below right = of l1] (l11) {C'': \state{Load} $\mathit{rcx}+8$ to $\mathit{tmp}$};
+  \node[stateIf,below = of l11] (l12) {\state{If} $\mathit{tmp} = 0$};
+  \node[stateTerminal,below left = of l7] (lBeta) {\state{Crash}};
+  \node[stateTerminal,below right = of l7] (lGamma) {\state{Survive}};
+  \node[stateTerminal,right = of lGamma] (lAlpha) {\state{Unreached}};
   \draw[->,ifTrue] (l1) -- (l2);
   \draw[->,ifFalse] (l1) -- (l11);
   \draw[->] (l2) -- (l3);
@@ -935,41 +853,11 @@ them.
   \draw[->,ifFalse] (l12) -- (l8);
 \end{tikzpicture}
 \caption{{\STateMachine} generated from the CFG shown in
-  Figure~\ref{fig:cyclic_cfg}.}\editorial{Check this very carefully.}
+  Figure~\ref{fig:cyclic_cfg}.}\todo{Check this very carefully.}
 \label{fig:state_machine_for_cyclic_cfg}
 \end{figure}
 
-\subsubsection{Stack canonicalisation}
-
-The aim of the {\StateMachine} building algorithm is to share work
-between different contexts in which the crashing instruction is found
-by combining the contexts into a single {\StateMachine}.  This is much
-easier if the we can arrange for the stack pointer to always have the
-same value at the end of the {\StateMachine}, regardless of where the
-{\StateMachine} starts, so that local variable accesses in the
-function containing the purported crashing instruction match up
-properly\footnote{Of course, this means that stack references near the
-  start of the {\StateMachine} will be less likely to match up.  This
-  is usually a reasonable trade-off, as all paths through the
-  {\StateMachine} end in the same way but might start in completely
-  different function contexts.}.  This is not completely trivial if
-the starting points are themselves in different functions with
-different inlining contexts.  This problem can be solved by examining
-the generated {\StateMachine} and determining, for each entry point,
-how the stack pointer changes between that entry point and the end and
-then inserting an opposite change immediately before the entry point.
-Most of the time, the only change to the stack pointer is adding or
-subtracting a constant, and so this is easy.  Otherwise, it fails.
-The fact that the stack has been massaged in this way is recorded in
-the {\StateMachine} structure so that it can be undone later when
-building data-dependent crash enforcers.
-
-\todo{Possibly interesting: this means that once you've converted to
-  SSA, the initial generation of the stack pointer refers to its value
-  at the \emph{end} of the machine, whereas for every other register
-  it refers to the value at the \emph{beginning}.}
-
-\subsubsection{Conversion to SSA}
+\subsection{Conversion to SSA}
 \label{sect:ssa}
 
 {\STateMachines} are, for the most part, maintained in a variant of
@@ -995,13 +883,13 @@ machine code.
 Many of the compiler optimisations for which SSA is helpful are also
 relevant to {\technique}, and so {\technique} also converts its
 {\StateMachines} (which are analogous to a compiler's intermediate
-representation) into SSA form.  The precise semantics of the SSA form
-are, however, very slightly different to the conventional one: whereas
-a compiler-style $\Phi$ node examines the program's preceding control
-flow and maps from incoming control-flow edges to input variables, an
-SLI one examines the order in which variables have been assigned to
-and selects whichever was updated most recently (from a specified
-set).  This has several important implications:
+representation) into SSA form.  The details of the SSA form are,
+however, very slightly different to the conventional one: whereas a
+compiler-style $\Phi$ node examines the program's preceding control
+flow and maps from incoming control-flow edges to input variables, a
+{\technique} one examines the order in which variables have been
+assigned to and selects whichever was updated most recently (from a
+specified set).  This has several important implications:
 
 \begin{itemize}
 \item
@@ -1035,18 +923,17 @@ are given here; see \needCite{} for more information\editorial{blah}.
 
 Note that while {\StateMachine}-level variables, including registers,
 are converted to single static assignment form, memory accesses are
-not.  In this respect {\technique} follows the same pattern as most
-SSA-based compilers, including LLVM\needCite{} and gcc\editorial{I
-  \emph{think} gcc does this; should probably check that.}.  This is
-because converting memory accesses to SSA form requires first solving
-the aliasing problem and determining when two memory accesses refer to
-the same memory location, and this is impossible\smh{intractable} in
-the general case.  It is, of course, possible to identify some
-interesting cases in which memory SSA is both possible and useful, in
-the style of \editorial{cite Van Emmerik 2007}; {\technique}'s alias
-analysis pass, described in Section~\ref{sect:alias_analysis} can be
-seen as doing something very similar to this.\smh{This is a bit
-  rambling -- what do you want to say?}
+not.  This is because it is not always clear from the {\StateMachine}
+when two \state{Store} operations modify the same memory location,
+which makes the conversion process far more difficult.  \todo{Maybe
+  cite Van Emmerik 2007 here?}
+
+\todo{Maybe mention that LLVM and gcc do something very similar?}
+
+\todo{Not actually sure how interesting this is, now that I've written
+  it down.  It's all true, and it does make a bit of difference to the
+  symbolic execution stuff, but I could probably rewrite to drop it
+  completely without leaving a particularly obvious hole.}
 
 \begin{figure}
 \begin{tikzpicture}
@@ -1089,102 +976,222 @@ seen as doing something very similar to this.\smh{This is a bit
 \label{fig:ssa_cfg1}
 \end{figure}
 
-\todo{Not actually sure how interesting this is, now that I've written it down.}
+\subsection{Generating CFGs from core dumps}
+\label{sect:derive:from_core_dump}
 
-\subsection{Building write-side \StateMachines}
+In many cases there may be more information available about the bug
+than just the crashing instruction pointer.  In many particular, the
+contents of the processor stack at the time of the crash might be
+available\footnote{This would, for instance, be main source of
+  information available in a Windows minidump \todo{cite?}, many other
+  platforms include a stack snapshot in addition to more extensive
+  information \todo{maybe some more cites?}.}.  {\Technique} can use
+this snapshot, when available, to restrict the set of read-side
+\backref{CFG}s which must be considered.
+
+The most important information in the stack is the sequence of
+functions which were called to reach the current instruction, which is
+equivalent to {\technique}'s inlining contexts.  Extracting this
+information is, however, non-trivial if the program to be analysed
+lacks frame pointers and debug information.  {\Technique} has two
+strategies for solving this problem:
+
+\begin{itemize}
+\item
+  A static analysis, run on the binary before attempting to analyse
+  the core dump, which attempts to map from instruction addresses to
+  the offset between the current stack pointer and the address of the
+  current function's return address.  When this analysis succeeds it
+  makes it easy to determine from the core dump where the function
+  will return to, and hence where it was called from, but it will not
+  always succeed.  In particular, the \verb|alloca| function can cause
+  that offset to change at run-time, and so no static analysis will
+  ever succeed.
+\item
+  An abstract interpreter, which attempts to interpret the program's
+  machine code forwards from the point of the crash to determine what
+  it would have done if it hadn't crashed.  This proceeds until it
+  reaches a \verb|ret| instruction, at which point determining the
+  return address is again straightforward.
+\end{itemize}
+
+\todo{Need to talk about when you use each, and why you need both.
+  Which is potentially awkward, because I've forgotten myself.}
+
+Knowing the contents of the call stack at the time of the crash
+effectively tells us what the correct inlining context to use is,
+which can then be used to constrain the backing-out-of-function case
+discussed above.
+
+\subsection{Finding unknown bugs}
+\label{sect:derive:unknown_bugs}
+
+\todo{I don't really have anything clever to say here.}
+
+The previous sections described how to derive the read thread's
+{\StateMachine} when the analysis already knows, from some external
+source, which instruction the program will crash at.  This is useful
+when {\technique} is being used to investigate a known bug, but
+{\technique} can also be used to look for previously unknown ones.
+The scheme used is quite simple: enumerate all of the instructions in
+a program which might crash due to a bug of the class being
+investigated and then consider each independently in turn.  This is
+obviously only feasible if the majority of instructions can be
+dismissed quickly.  Fortunately, they can be: {\implementation} takes,
+on average, a few tens of milliseconds per instruction on fairly
+modest hardware, allowing even large programs with millions of
+instructions to be analysed in a few days\editorial{Put some actual
+  numbers in here.}.  Parallelisation would allow this time to be
+reduced further if necessary.
+
+Identifying instructions which might crash depends on the type of bug
+which is to be investigated, but is generally straightforwards.
+{\Implementation} considers two types of crash:
+
+\begin{itemize}
+\item Assertion-failure type crashes.  These are caused by the program
+  calling a function such as \verb|__assert_fail| or \verb|abort|
+  provided by an operating system library.  Finding such functions is
+  generally straightforward given the usual dynamic linker
+  information, and the initial whole-program static analysis phase can
+  then find all callers of those functions\editorial{Forward ref}.
+\item Bad pointer dereferences.  Any memory-accessing instruction
+  could potentially dereference a bad pointer, and so
+  {\implementation} simply enumerates all memory accessing
+  instructions discovered by the initial static analysis.
+\end{itemize}
+
+These potentially-crashing instructions are then considered
+independently in turn.\smh{aren't there still a \emph{lot} of these?
+  (i.e. it's the backwards search that's important here, not the insn
+  choice?)}
+
+\subsubsection{Stack canonicalisation}
+
+The aim of the {\StateMachine} building algorithm is to share work
+between different contexts in which the crashing instruction is found
+by combining the contexts into a single {\StateMachine}.  This is much
+easier if the we can arrange for the stack pointer to always have the
+same value at the end of the {\StateMachine}, regardless of where the
+{\StateMachine} starts, so that local variable accesses in the
+function containing the purported crashing instruction match up
+properly\footnote{Of course, this means that stack references near the
+  start of the {\StateMachine} will be less likely to match up.  This
+  is usually a reasonable trade-off, as all paths through the
+  {\StateMachine} end in the same way but might start in completely
+  different function contexts.}.  This is not completely trivial if
+the starting points are themselves in different functions with
+different inlining contexts.  This problem can be solved by examining
+the generated {\StateMachine} and determining, for each entry point,
+how the stack pointer changes between that entry point and the end and
+then inserting an opposite change immediately before the entry point.
+Most of the time, the only change to the stack pointer is adding or
+subtracting a constant, and so this is easy.  Otherwise, it fails.
+The fact that the stack has been massaged in this way is recorded in
+the {\StateMachine} structure so that it can be undone later when
+building data-dependent crash enforcers.
+
+\todo{Possibly interesting: this means that once you've converted to
+  SSA, the initial generation of the stack pointer refers to its value
+  at the \emph{end} of the machine, whereas for every other register
+  it refers to the value at the \emph{beginning}.}
+
+\subsection{Building the write thread's \StateMachines}
 \label{sect:derive:write_side}
 
-The definition of bugs given in
-section~\ref{sect:finding_bugs:finding_candidate_bugs:formal_definition}
-is existentially quantified over all write thread sequences of length
-$N_w$ instructions\smh{Is it sensible to define $N_r$ and $N_w$
-  earlier? + to explain that they can be different?  I had assumed
-  analysis window was one param...}.  As with the read-side
-{\StateMachines}, it would be possible to enumerate all of these and
-attempt to analyse each, but this would be extremely inefficient, and
-so {\technique} uses a slightly more sophisticated approach.  The
-first observation required here is that a write-side {\StateMachine}
-is only interesting if it can influence the behaviour of the\smh{`a'?
-  Or do you generate write side slices separately for each read-side
-  slice?} read-side {\StateMachine} in some way, which means that the
-read-side {\StateMachine} must load from at least one location which
-is stored to by the write-side {\StateMachine}.  The dynamic aliasing
-model can find, for any memory-loading instruction, a list of
-memory-storing instructions which might access the same memory
-location from another thread\smh{is this complete?}, and so find all
-of the stores which might influence the read-side {\StateMachine}.  It
-is then sufficient to consider just those write-thread traces which
-are of length less than or equal to $N_w$ and which start and end with
-one of these interfering accesses\smh{This means an access in W which
-  may be read by some R insn? Or the last R insn?}\smh{Same loc or
-  different?}, and this is usually a far smaller set.
+At this stage, {\technique} has build the read thread's
+{\StateMachine} for some bug which is to be investigated.  The next
+step is to build the write thread's {\StateMachine}.  According to the
+bug definition in Section~\ref{sect:intro:types_of_bugs}, we should
+now consider every possible sequence of \backref{$\alpha$}
+instructions in the program, convert each to a {\StateMachine}, and
+consider every possible interleaving of the read thread's
+{\StateMachine} with each of these write {\StateMachines}.  This would
+clearly be completely impractical for all but the most trivial
+programs.  Fortunately, it is possible to significantly reduce the set
+of sequences which must be considered by using the \backref{program
+  model}.
 
-It is obvious why the traces of interest must end with an interfering
-store, as anything after the final store definitely cannot influence
-the read-side {\StateMachine} and hence cannot influence whether the
-program crashes.  It is perhaps less obvious why the trace must also
-start with an interfering access: instructions before the first
-interfering one can influence the behaviour of the interfering
-instructions, and hence potentially the read-side {\StateMachine}.
-This is not a problem because of the W isolation assumption discussed
-in
-Section~\ref{sect:finding_bugs:finding_candidate_bugs:formal_definition},
-which requires that the write {\StateMachine} never load any locations
-stored to by the read {\StateMachine}.  That means that the prefix of
-the write thread before the first interfering instruction cannot
-possibly have any effect on the concurrent behaviour of the program,
-and so only influences the sequential behaviour of the write thread.
-In the absence of any other information {\technique} makes no
-assumptions about the context in which {\StateMachines} operate and so
-discarding this information is always safe.  On the other hand, it
-might increase the complexity of the rest of the analysis, and so
-{\implementation} will sometimes re-introduce such context
-instructions according to some heuristics\editorial{Explain those
-  heuristics somewhere.}.  \todo{Not sure how clear that para
-  is.}\smh{Not very clear at all.}\smh{Some more formalism might help,
-  including definition of interesting; of prefix interesting is just
-  fine, but the prefix does not value due to W isolation (+ ring it
-  contains no interesting store).}
+The \backref{program model} includes, for each instruction which reads
+from memory, a list of all of the instructions which might store to
+the same memory location\footnote{As usual, this list is only complete
+  when the \backref{dynamic analysis} from which the \backref{program
+    model} is built is itself complete.}.  This instructions in this
+list are referred to as the \introduction{interfering
+  stores}\editorial{Need a less generic-sounding name} for the read
+thread.  We can then immediately reduce the set of sequences which
+need to be considered to just those which include some instruction
+from the \backref{interfering stores} set, which is already a useful
+reduction.  Two further observations make it possible to reduce the
+set of sequences further:
+
+\begin{itemize}
+\item Any instructions in the write thread after the last
+  \backref{interfering store} cannot possible influence the behaviour
+  of the read thread, and so cannot possibly affect whether the
+  program crashes.  They can therefore be completely discarded.
+\item Instructions prior to the first \backref{interfering store} can
+  also be discarded.  This is perhaps less obvious.  Discarding these
+  instructions is safe only because of the \backref{W isolation}
+  property.  The write thread cannot load from any locations which are
+  stored to by the read thread, and so, in particular, its load
+  operations cannot race with any operations in the read thread.
+  Their only possible effect is to restrict the possible values of
+  thread-local state, such as machine registers or stack locations,
+  when the write thread starts.  In the absence of such restrictions,
+  {\technique} will consider all possible initial values for this
+  state, and thus discarding these restrictions is safe.
+
+  On the other hand, it is not always desirable to do so, if the
+  restrictions would have provided useful hints to later phases of the
+  analysis.  For instance, if the bug to be investigated is a bad
+  pointer dereference, knowing that the value stored into a shared
+  structure is a pointer to the write thread's stack, and hence
+  definitely valid, is often useful.  The approach taken by
+  {\implementation} is to first generate a set of \backref{CFGs} which
+  all start with an \backref{interfering store} and then extend them
+  backwards to include a little bit of preceding context, as long as
+  doing so is unambiguous and does not exceed the \backref{analysis
+    window}.  ``Unambiguous'' here means that {\implementation} will
+  replace a \backref{CFG} root instruction A with an instruction B if
+  B is always the instruction executed immediately before
+  A.\editorial{Not a nice way of phrasing that.}
+\end{itemize}
 
 The procedure for building write-side {\StateMachines} is then a
 variant of that used for building read-side ones: find all of the
 potentially interfering store instructions, build an acyclic CFG which
 includes all traces of appropriate length which start and end with an
-interfering store, and then compile the CFG down to a {\StateMachine}.
-The details are, however, slightly different, and I describe them in
-the next couple of sections.
+interfering store, potentially extend it with a little bit of extra
+context, and then compile the CFG down to a {\StateMachine}.  The
+details are, however, slightly different, and I describe them in the
+next couple of sections.
 
 \subsubsection{Finding relevant stores}
 
-The first phase of building the write-side \StateMachines is to
+The first phase of building the write-side {\StateMachines} is to
 determine which stores in the program might possibly interfere with
 the read-side {\StateMachine}.  As indicated, this is straightforward:
+simply take all \state{Load} states in the read thread's
+{\StateMachine} and compare them to the \backref{program model} to
+find all of the store instructions which might possibly interfere with
+them.
 
-\begin{itemize}
-\item
-  Remove all of the optional annotations from the read-side
-  \StateMachine.  These are the side effects which provide additional
-  information to the analysis but do not themselves affect the
-  semantics of the \StateMachine, such as \state{Assert} or
-  \state{Stack-Layout} side effects.  This can sometimes allow the
-  {\StateMachine} to be further simplified, which might allow
-  some loads to be removed.  \todo{Do I need an example here?
-    It's kind of boring, but the way this is written makes it
-    sound a bit mysterious.}\smh{Maybe just explain that there
-    is an undecorated version of the slice which you use.}\smh{Definitions +
-    abstraction = good for documents, too!}
-\item
-  Enumerate all of the \state{Load} side-effects in the read-side
-  {\StateMachine} and map them, via the memory access identifier table
-  and the CFG fragment, into memory loading instructions in the original program.
-\item
-  For each non-pointer memory loading instruction, query the dynamic
-  aliasing table to find all of memory storing instructions which
-  might access the same location.\editorial{Arguably a little
-    deceptive: a single instruction can be sometimes private and
-    sometimes non-private, and the analysis correctly handles that.
-    Maybe that's too complicated to explain?}
-\end{itemize}
+As a minor optimisation, {\implementation} first attempts to remove
+\state{Load}s which are only used to select between one of several
+possible \backref{annotation states}.  Doing so is also simple: remove
+all of the \backref{annotation states} from the read-side
+{\StateMachine} and the simplify the resulting {\StateMachine} as far
+as possible.  Any \state{Load}s which are discarded by these
+simplifications can then be ignored when building the set of
+\backref{interfering stores}.  This might, for instance, be useful if
+a \state{Load} is dead\editorial{in the sense of dead code
+  elimination} except for being used to select between several
+possible \state{PointerAliasing} annotations; such \state{Load}s are
+almost never relevant to the bug being investigated, and so
+considering their interactions with the write thread is usually a
+waste of time.  \todo{Now I write it out like that, this sounds like a
+  much less good idea.  Hmm.}
 
 Note that \state{Store} operations in the read-side {\StateMachine}
 are not considered at this stage, even though {\technique} does handle
@@ -1196,54 +1203,55 @@ potentially interfering stores in remote threads will be detected
 because the dynamic aliasing model will report that they alias with
 that \state{Load} side-effect.
 
-\subsubsection{Build write-side CFGs}
+\subsubsection{Build write thread CFGs}
 \todo{This has far more pages than it really deserves, although most
   of them are diagrams, so I guess it's not too bad.}
 
-The input to this phase of the analysis is a set of potentially
-relevant static store instructions\smh{Who are they?}, and the
-analysis must build a collection of acyclic CFGs which cover all
-possible paths through the program which start and end with one of
-those instructions and which contain at most $N_w$ instructions.  This
-is easier than building the read-side CFGs in the sense that both ends
-of the CFG are ``bounded'' by some well-defined instruction, whereas
-read-side CFGs potentially extend arbitrarily far backwards; it is
-harder in the sense that write-side CFG builder must also cluster the
+The input to this phase of the analysis is the set of
+\backref{interfering store} instructions, and the analysis must build
+a collection of acyclic CFGs which cover all possible paths through
+the program which start and end with one of those instructions and
+which contain at most \backref{$\alpha$} instructions.  This is easier
+than building the read thread CFGs in the sense that both ends of the
+CFG are ``bounded'' by some well-defined instruction, whereas read
+thread CFGs potentially extend arbitrarily far backwards; it is harder
+in the sense that write thread CFG builder must also cluster the
 interfering instructions, deciding which should be included in a
-single trace and which analysed independently, whereas read-side CFGs
-concern only a single instruction.  The overall result is that the
-write-side CFGs tend to be significantly smaller and easier to analyse
-than read-side ones but the unrolling algorithm itself is slightly
-more involved.
+single trace and which analysed independently, whereas read thread
+CFGs concern only a single instruction.  The overall result is that
+the write thread CFGs tend to be significantly smaller and easier to
+analyse than read thread ones but the unrolling algorithm itself is
+slightly more involved.
 
 The first phase of the algorithm is to build a (possibly) cyclic
 fragment of the original program's control flow graph which includes
 all instructions which might possibly be included in one of the final
 traces.  This is simple: starting from each potentially interfering
-instruction, {\technique} explores forwards for $N_w$ instructions,
-merges the resulting CFG fragments, and then discards any instructions
-which cannot reach a potentially interfering instruction within $N_w$
-instructions.  These CFG fragments may cross function boundaries; the
-details are the same as those for read-side CFGs in most important
-respects, and I do not repeat them here\editorial{Well, the fact that
-  you're exploring forwards rather than backwards makes it a bit
-  different, but not in an interesting way.}.
+instruction, {\technique} explores forwards for \backref{$\alpha$}
+instructions, merges the resulting CFG fragments, and then discards
+any instructions which cannot reach a potentially interfering
+instruction within \backref{$\alpha$} instructions.  These CFG
+fragments may cross function boundaries; the details are the same as
+those for read thread CFGs in most important respects, and I do not
+repeat them here\editorial{Well, the fact that you're exploring
+  forwards rather than backwards makes it a bit different, but not in
+  an interesting way.}.
 
-The next step is to remove the cycles from the CFG.  As with read-side
-CFGs, this is accomplished by duplicating nodes so as to unroll loops
-until any path which uses the loop more than once must be longer than
-$N_w$ instructions, at which point the loop-closing edges can be
-safely discarded.  There is, however, one important difference: in the
-read-side CFG, we are interested in any path which terminates at a
-specific point, whereas in the write-side CFG we need to preserve any
-path which goes between any members of a set of interesting
-instructions.  This makes it more difficult to determine when a loop
-has been unrolled sufficiently, as it is no longer sufficient to just
-check the distance to a nominated target instruction.  {\Technique}
-solves this problem by labelling each node in the graph with
-information about where it might occur in an interesting path.  This
-label contains an entry for every possibly interfering instruction
-specifying:
+The next step is to remove the cycles from the CFG.  As with read
+thread CFGs, this is accomplished by duplicating nodes so as to unroll
+loops until any path which uses the loop more than once must be longer
+than \backref{$\alpha$} instructions, at which point the loop-closing
+edges can be safely discarded.  There is, however, one important
+difference: in the read thread CFG, we are interested in any path
+which terminates at a specific point, whereas in the write thread CFG
+we need to preserve any path which goes between any members of a set
+of interfering instructions.  This makes it more difficult to
+determine when a loop has been unrolled sufficiently, as it is no
+longer sufficient to just check the distance to a nominated target
+instruction.  {\Technique} solves this problem by labelling each node
+in the graph with information about where it might occur in an
+interesting path.  This label contains an entry for every possibly
+interfering instruction specifying:
 
 \begin{enumerate}
 \item
@@ -1276,45 +1284,46 @@ redundant\footnote{The symmetrical statement is also true: every path
 therefore safe to discard any nodes $r$ where
 
 \begin{displaymath}
-\min_{s \in \textrm{interfering instructions}}min\_from(s, r) + \min_{s \in \textrm{interfering instructions and duplicates}}min\_to(s, r)
+\min_{s \in I}\mathit{min\_from}(s, r) + \min_{s \in I_d}\mathit{min\_to}(s, r)
 \end{displaymath}
 
-exceeds $N_w$, and the node label makes this quantity trivial to
-calculate.  The complete algorithm is then as shown in
-Figure~\ref{fig:derive:store_cfg_unroll_alg}.
+exceeds \backref{$\alpha$}, where $I$ is the set of
+\backref{interfering stores} and $I_d$ the set of \backref{interfering
+  stores} and their duplicates.  The complete algorithm is then as
+shown in Figure~\ref{fig:derive:store_cfg_unroll_alg}.
 
 \begin{figure}
 \begin{algorithmic}
   \State {Compute initial labelling of graph}
   \For {$t$ in the set of potentially-relevant stores}
     \While {graph rooted at $t$ is not cycle-free}
-       \State $edge \gets \textsc{findEdgeToBeBroken}(t, \{\})$
-       \State $newLabel \gets \textsc{combineLabels}(\text{current label of } edge.start, \text{current label of } edge.end)$
-       \If {$\min_s(newLabel.minFrom(s)) + \min_s(newLabel.minTo(s)) > N_w$}
-           \State {remove $edge$}
+       \State $\mathit{edge} \gets \textsc{findEdgeToBeBroken}(t, \{\})$
+       \State $\mathit{newLabel} \gets \textsc{combineLabels}(\text{current label of } \mathit{edge}.\mathit{start}, \text{current label of } \mathit{edge}.\mathit{end})$
+       \If {$\min_s(\mathit{newLabel}.\mathit{minFrom}(s)) + \min_s(\mathit{newLabel}.\mathit{minTo}(s)) > N_w$}
+           \State {remove $\mathit{edge}$}
        \Else
-           \State $newNode \gets \text{duplicate } edge.end$
-           \For {Edges $e$ leaving $edge.end$}
-              \State {Create a new edge from $newNode$ to $e.end$}
+           \State $\mathit{newNode} \gets \text{duplicate } \mathit{edge}.\mathit{end}$
+           \For {Edges $e$ leaving $\mathit{edge}.\mathit{end}$}
+              \State {Create a new edge from $\mathit{newNode}$ to $e.\mathit{end}$}
            \EndFor
-           \State {Set label of $newNode$ to $newLabel$}
-           \State {Replace $edge$ with an edge from $edge.start$ to $newNode$}
-           \State {Recalculate $min\_from$ for $edge.end$ and its successors, if necessary}
+           \State {Set label of $\mathit{newNode}$ to $\mathit{newLabel}$}
+           \State {Replace $\mathit{edge}$ with an edge from $\mathit{edge}.\mathit{start}$ to $\mathit{newNode}$}
+           \State {Recalculate $\mathit{min\_from}$ for $\mathit{edge}.\mathit{end}$ and its successors, if necessary}
        \EndIf
     \EndWhile
   \EndFor
 \end{algorithmic}
-\caption{Loop unrolling algorithm for write-side CFGs.
+\caption{Loop unrolling algorithm for write thread CFGs.
   \textsc{findEdgeToBeBroken} and \textsc{combineLabels} are described
   in the text below.}
 \label{fig:derive:store_cfg_unroll_alg}
 \end{figure}
 
 Note that in this algorithm duplicating a node duplicates its
-\emph{outgoing} edges, whereas when building a read-side CFG the
+\emph{outgoing} edges, whereas when building a read thread CFG the
 \emph{incoming} edges are duplicated.  This reflects the fact that
-write-side CFGs are built up forwards from the interfering
-instructions while read-side CFGs are built up backwards from the
+write thread CFGs are built up forwards from the interfering
+instructions while read thread CFGs are built up backwards from the
 target instruction.
 
 The algorithm relies on two utility functions:
@@ -1334,15 +1343,17 @@ The algorithm relies on two utility functions:
   done.
 \item \textsc{combineLabels} is also simple, and is responsible for
   computing the label for the new node which would be produced by
-  duplicating $edge.end$.  This node will have the same outgoing edges
-  as $edge.end$, and so the same $min\_to$ label, and a single
-  incoming edge from $edge.start$, and hence a $min\_from$ label which
-  is just $edge.start$'s $min\_from$ with one added to every value.
+  duplicating $\mathit{edge}.\mathit{end}$.  This node will have the
+  same outgoing edges as $\mathit{edge}.\mathit{end}$, and so the same
+  $min\_to$ label, and a single incoming edge from
+  $\mathit{edge}.\mathit{start}$, and hence a $\mathit{min\_from}$
+  label which is just $\mathit{edge}.\mathit{start}$'s
+  $\mathit{min\_from}$ with one added to every value.
 \end{itemize}
 
 The resulting CFG can then be compiled to a {\StateMachine} in the
-same way as a read-side CFG is.  The only major difference is that
-write-side CFGs can sometimes contain disjoint components, in which
+same way as a read thread CFG is.  The only major difference is that
+write thread CFGs can sometimes contain disjoint components, in which
 case each such component is compiled to a separate {\StateMachine}.
 
 As an example, consider this cyclic CFG:
@@ -1688,14 +1699,14 @@ There are also a number of other minor simplifications:
   to just $x$ or $(x \happensBefore y) \vee (y \happensBefore x)$ to
   $true$, and constant-folding for most common operators.
 \item
-  A write-side {\StateMachine} which terminates\smh{What does this
+  A write thread {\StateMachine} which terminates\smh{What does this
     mean precisely?  You have write side beginning with an interfering
     store, right??}\editorial{Oops, forgot to describe the bit where
     we expand the write side backwards from the first store to get
     some potentially-useful context.} without issuing any
   \state{Store} operations is unlikely to be useful, and so a simple
   control-flow analysis is used to turn any paths which do so into
-  \state{Unreached} states.  Likewise, any fragments of a read-side
+  \state{Unreached} states.  Likewise, any fragments of a read thread
         {\StateMachine} which can reach only a single terminal state
         are replaced by that terminal state.
 \item
