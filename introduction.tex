@@ -48,16 +48,16 @@ way.\todo{Need a bit more here.}
     [block/.style = rectangle,draw,fill=blue!20,
       line/.style = draw, -latex']
     \node [block,draw] (dynamic) {Running program};
-    \node [block,draw, below right = of dynamic] (model) {Program model};
+    \node [block,draw, below right = of dynamic] (model) {\introduction{Program model}};
     \node [block,draw, above right = of model] (static) {Program binary};
-    \node [block,draw, below = of model] (candidates) {Candidate bugs};
+    \node [block,draw, below = of model] (candidates) {\introduction{Candidate bugs}};
     \node [block,draw, below = of candidates] (repro) {Reproduction};
     \node [block,draw, below = of repro] (fix) {Fixes};
-    \path [line,->] (dynamic) to node [left] {Dynamic analysis} (model);
-    \path [line,->] (static) to node [right] {Static analysis} (model);
+    \path [line,->] (dynamic) to node [left] {\introduction{Dynamic analysis}} (model);
+    \path [line,->] (static) to node [right] {\introduction{Static analysis}} (model);
     \path [line,->] (model) to node [right] {Bug generation} (candidates);
-    \path [line,->] (candidates) to node [right] {Enforcement} (repro);
-    \path [line,->] (repro) to node [right] {Fix generation} (fix);
+    \path [line,->] (candidates) to node [right] {\introduction{Enforcement}} (repro);
+    \path [line,->] (repro) to node [right] {\introduction{Fix generation}} (fix);
   \end{tikzpicture}
   \caption{Basic pipeline}
 \end{center}
@@ -67,26 +67,27 @@ way.\todo{Need a bit more here.}
 In its simplest mode, \technique{} uses a multi-stage pipeline to find
 and fix concurrency bugs in arbitrary binary programs, as shown in
 Figure~\ref{fig:basic_pipeline}.  The pipeline starts by building up a
-model of the program's behaviour using a combination of static
-analysis, applied to the program's binary, and dynamic analysis,
-applied while the program is operating normally.  This model can then
-be used, via a mixture of symbolic execution and further static
-analysis, to generate a set of candidate bugs.  These represent all of
-the places in the program which might possibly suffer from a bug of
-the type being investigated, if the program ever reaches a particular
-configuration.  This set is usually quite large for realistic
-programs, and often contains a very high proportion of false
+\backref{model} of the program's behaviour using a combination of
+static analysis, applied to the program's binary, and dynamic
+analysis, applied while the program is operating normally.  This model
+can then be used, via a mixture of symbolic execution and further
+static analysis, to generate a set of \backref{candidate bugs}.  These
+represent all of the places in the program which might possibly suffer
+from a bug of the type being investigated, if the program ever reaches
+a particular configuration.  This set is usually quite large for
+realistic programs, and often contains a very high proportion of false
 positives, and so the next stage is to trim it back to bugs which
 might actually occur.  The approach used here is somewhat unusual:
 rather than applying a succession of more powerful analysis,
 {\technique} instead modifies the program so as to make the bug
-reproduce more easily in a process called enforcement\editorial{Ugly
-  phrasing.} and then runs the program through its existing test
-suite.  This step eliminates all false positives from the set of
-candidate bugs.  Finally, the remaining confirmed bugs are passed to
-the fix generation phase, which produces a modified version of the
-original program containing additional synchronisation which is
-guaranteed to eliminate the bug.
+reproduce more easily in a process called
+\backref{enforcement}\editorial{Ugly phrasing.} and then runs the
+program through its existing test suite.  This step eliminates all
+false positives from the set of candidate bugs.  Finally, the
+remaining confirmed bugs are passed to the \backref{fix generation}
+phase, which produces a modified version of the original program
+containing additional synchronisation which is guaranteed to eliminate
+the bug.
 
 \smh{c/f RX?}
 
@@ -94,30 +95,31 @@ In addition to this basic mode of operation, \technique{} can also
 take as input a core dump or the log from a deterministic replay
 system and use that to produce a fix for a specific bug.
 
-I give a detailed description of \technique{} and some results obtained
-using \implementation, my implementation of it.  These include details
-of the fixes generated for a selection of bugs, both artificial ones
-and some from real programs, and a demonstration that the analysis
-scales to realistically large programs with acceptable computational
-cost.  This includes bugs which were unknown to the author before
-writing the tool\editorial{Or, more precisely, one bug which was
-  unknown to me before writing the tool but which was known to the
-  program's original developers, and which is a trivial variation of a
-  bug which I did know about.  But, you know, take your victories
-  where you can get them.}.  I also show that the fixes generated
-often have sufficiently low overhead to be useful; usually a few
-percent in more realistic tests.  Finally, I give the results of a
+I give a detailed description of \technique{} and some results
+obtained using \implementation, my implementation of it.  These
+include details of the fixes generated for a selection of bugs, both
+artificial ones and some from real programs, and a demonstration that
+the analysis scales to realistically large programs with acceptable
+computational cost.  This includes bugs which were unknown to the
+author before writing the tool\editorial{Or, more precisely, one bug
+  which was unknown to me before writing the tool but which was known
+  to the program's original developers, and which is a trivial
+  variation of a bug which I did know about.  But, you know, take your
+  victories where you can get them.}.  I also show that the fixes
+generated often have sufficiently low overhead to be useful; usually a
+few percent in more realistic tests.  Finally, I give the results of a
 small set of experiments intended to show that \implementation{} is a
-correct implementation of \technique{}.
+correct implementation of \technique{}.\editorial{Does this really
+  belong here?}
 
 The basic analysis technique used, in all of these modes, is to take
 some small fragment of a binary program and approximate it using a
-\StateMachine\editorial{Desperately need a better name for
-  these.}\smh{``sketch''? (What's in it?  What does it look like?)}: a
-simplified version of part of the program which contains all of the
-information which is relevant to the bug being investigated but very
-little irrelevant information.  This makes them far easier to analyse
-than the raw machine code.  They have a number of important
+\introduction{\StateMachine}\editorial{Desperately need a better name
+  for these.}\smh{``sketch''? (What's in it?  What does it look
+  like?)}: a simplified version of part of the program which contains
+all of the information which is relevant to the bug being investigated
+but very little irrelevant information.  This makes them far easier to
+analyse than the raw machine code.  They have a number of important
 properties:
 
 \begin{itemize}
@@ -194,20 +196,21 @@ with source code and hence (mostly) assume that such information is
 available.
 
 Once a {\StateMachine} for a bug has been obtained, it is converted
-into a verification condition.  This is a predicate which is true
-precisely when the bug being investigated reproduces, expressed in
-terms of the program's state (its memory contents, registers, etc.),
-its happens-before graph (the order in which memory accesses are
-interleaved), and its control flow (which exit is taken from branch
-instructions).  These could be passed to existing model checking tools
-such as \needCite{} or \needCite{} \editorial{Probably; I haven't
-  really thought about the details.} to check whether the bug might
-actually exist, or a programmer could simply manually expect them.
-More interestingly, {\technique} can use them to generate ``bug
-enforcers'': modified versions of the program with additional delays
-and synchronisation which make the bug more likely to reproduce.  The
-original program's original test suite is then used to exercise it,
-thus confirming that the bug actually does (or does not) exist.
+into a \introduction{verification condition}.  This is a predicate
+which is true precisely when the bug being investigated reproduces,
+expressed in terms of the program's state (its memory contents,
+registers, etc.), its happens-before graph (the order in which memory
+accesses are interleaved), and its control flow (which exit is taken
+from branch instructions).  These could be passed to existing model
+checking tools such as \needCite{} or \needCite{} \editorial{Probably;
+  I haven't really thought about the details.} to check whether the
+bug might actually exist, or a programmer could simply manually
+inspect them.  More interestingly, {\technique} can use them to
+generate ``\backref{bug enforcers}'': modified versions of the program
+with additional delays and synchronisation which make the bug more
+likely to reproduce.  The original program's original test suite is
+then used to exercise it, thus confirming that the bug actually does
+(or does not) exist.
 
 Finally, the now-confirmed bug can be converted into a fix.  In this
 mode, {\technique} examines the happens-before graph in the
@@ -266,7 +269,30 @@ hence eliminating the original bug.
   and similarities between {\technique} and previous approaches.
 \end{description}
 
+\section{Background}
+\subsection{BDDs}
+
+Explain what BDDs are.  Explain differences between boolean BDDs and
+MTBDDs.  Mention that the nodes in our BDDs are themselves potentially
+complicated conditions over the program state, and what that means for
+the BDD normalisation property.
+
+\subsection{The happens-before graph}
+
+Just say what a happens-before graph is, and give the syntax I've used
+for querying it.  Discuss full-transitive versus transitively-reduced
+graph (probably only needs a sentence).  Mention that we sometimes
+have to query happens-before edges for memory accesses which never
+actually happened, and explain what that means.
+
+\subsection{Program slicing}
+
+\emph{Very} brief discussion of what program slicing actually is.  I
+don't think it's a particularly useful way of thinking about things,
+but it's what all the related work does.
+
 \section{Type of bug considered}
+\label{sect:intro:types_of_bugs}
 
 {\Technique} considers only a restricted class of all possible bugs:
 those where two threads are accessing the same structure, with one
@@ -279,35 +305,51 @@ thread to crash quickly and recognisably.  In slightly more detail:
   considered.  There might, of course, be additional threads in the
   program, and this is acceptable provided that those other threads
   are not needed to reproduce the bug.
-\item One thread must be \emph{reading} from the structure while
-  another is \emph{writing} to it.  Bugs in which both threads are
-  simultaneously updating the same structure are not considered\smh{Is
-    this a big restriction?  Can we not frame many bugs into this
-    shape?}.
-\item The \emph{structure} is defined quite loosely: it is a (usually
-  non-contiguous) collection of locations in memory which are accessed
-  by both threads.  There is no requirement that it match up with any
+\item The \emph{structure} is defined quite loosely: it is the (often
+  non-contiguous) collection of memory locations which are accessed by
+  both threads.  There is no requirement that it match up with any
   language- or programmer- level definition of structure such as
   \verb|struct| in C or a \verb|class| in C++ (and in fact such
   higher-level constructs do not exist in the binaries which
   {\technique} analyses).
-\item Only \emph{concurrency} bugs are considered.  This means that
-  there must be some critical sections in the reading and writing
-  threads such that running those sections atomically with respect to
-  each other is guaranteed not to crash but interleaving them might.
+\item One thread $R$ must be \emph{reading} from the structure while
+  another $W$ is \emph{writing} to it.  Bugs in which both threads are
+  simultaneously updating the same structure are not considered\smh{Is
+    this a big restriction?  Can we not frame many bugs into this
+    shape?}.  {\Technique} also assumes that the two threads
+  communicate only via memory.  These two assumptions mean that the
+  $R$ thread cannot influence the $W$ thread's behaviour in any way;
+  this is referred to as the \introduction{W isolation} property
+\item Only \emph{concurrency} bugs are considered: there must be some
+  critical sections in the $R$ and $W$ threads such that running those
+  sections atomically with respect to each other is guaranteed not to
+  crash but interleaving them might.  In a little more detail:
+
+  \begin{itemize}
+  \item Running the $R$ thread's critical section atomically before
+    the $W$ thread's critical section starts must not result in a
+    crash.  This is the \introduction{R atomic} property.
+  \item Similarly, running the $R$ thread's critical section
+    atomically after the $W$ thread's critical section has completed
+    must also not crash.  This is the \introduction{W atomic}
+    property.
+  \item There must be some interleaving of the two critical sections
+    which does lead to a crash.  This is the \introduction{Crash
+      possible} property.
+  \end{itemize}
 \item The reading threads must crash \emph{quickly}.  {\Technique}
-  uses a finite analysis window $\alpha$ and will only consider
-  reordering concurrent operations which occur at most $\alpha$
-  instructions before the crash.  Bugs which require knowledge of the
-  program behaviour beyond that window cannot be analysed.  Another
-  way of thinking about this is to say that {\technique} only
-  considers bugs which can be fixed by small critical sections
-  containing fewer than $\alpha$ dynamic instructions.  $\alpha$ can,
-  in principle, be arbitrarily large, but computational constraints
-  mean that in practice it will be limited to a few dozen to a few
-  hundred instructions, depending on the program to be analysed and
-  how much information about the bug is available before analysis
-  starts.
+  uses a finite \introduction{analysis window} \introduction{$\alpha$}
+  and will only consider reordering concurrent operations which occur
+  at most $\alpha$ instructions before the crash.  Bugs which require
+  knowledge of the program behaviour beyond that window cannot be
+  analysed.  Another way of thinking about this is to say that
+  {\technique} only considers bugs which can be fixed by small
+  critical sections containing fewer than $\alpha$ dynamic
+  instructions.  $\alpha$ can, in principle, be arbitrarily large, but
+  computational constraints mean that in practice it will be limited
+  to a few dozen to a few hundred instructions, depending on the
+  program to be analysed and how much information about the bug is
+  available before analysis starts.
 \item The tool\editorial{What tool?} must be able to \emph{recognise}
   that the program has crashed.  For the purposes of my prototype
   {\implementation}, this means that it must suffer either a fatal

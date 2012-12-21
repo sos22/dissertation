@@ -481,15 +481,15 @@ not illustrated here:
   It is not always necessary to consider both orderings for every
   memory access.  In particular, if the access in one machine cannot
   possibly alias with \emph{any} future access in the other then it is
-  safe to dispense with the $\happensBefore$ condition and directly
+  safe to dispense with the $\happensBeforeEdge$ condition and directly
   issue that access.
 
   \todo{Shrink this}\smh{And/or move it to later?}
 
   Note that it is \emph{not} safe to simply test the two next accesses
-  against each other and skip the $\happensBefore$ test if those two
-  accesses happen not to conflict.  To understand why, consider this
-  diagram:
+  against each other and skip the $\happensBeforeEdge$ test if those
+  two accesses happen not to conflict.  To understand why, consider
+  this diagram:
 
   \begin{tikzpicture}
     \node[draw] (L1) {L1};
@@ -514,8 +514,8 @@ not illustrated here:
   directly-racing accesses are considered for permutation.  The
   algorithm will start in the configuration (L1, S1, $\varnothing$,
   false, false), and determine that L1 can race with S1 so introduce
-  an $\happensBefore$ test to distinguish the two cases.  Consider the
-  case where L1 is issued before S1 first.  The algorithm will now
+  an $\happensBeforeEdge$ test to distinguish the two cases.  Consider
+  the case where L1 is issued before S1 first.  The algorithm will now
   have to encode a {\StateMachine} for the configuration (L2, S1,
   $\varnothing$, true, false).  L2 does not directly conflict with S1,
   so it might issue L2 and S1 in either order.  If it issues L2 first
@@ -1172,8 +1172,8 @@ At a high level, the algorithm used has the following phases:
 \todo{This is often rather expensive, and is always rather stupid.
   Need to come up with a better way of doing it.  Obvious way is to
   re-express the VS as a BBDD and then just reorder all the
-  $\happensBefore$ variables to the root of the DAG, at which point it
-  all becomes trivial.}
+  $\happensBeforeEdge$ variables to the root of the DAG, at which
+  point it all becomes trivial.}
 
 {\STateMachines} and verification conditions are capable of
 representing data and control flow dependent happens-before graphs,
@@ -1188,12 +1188,12 @@ completely independent bugs, as discussed in
 Section~\ref{sect:enforce:combine_enforcers}.
 
 This re-expression is itself straightforward: enumerate all of the
-$\happensBefore$ expressions in the verification condition and then
-consider all combinations of those expressions in turn, generating a
-new verification condition for each.  This could potentially generate
-$2^n$ new verification conditions, and hence might appear to be
-computationally unpleasant.  In practice, it is usually tolerable, for
-two main reasons:
+$\happensBeforeEdge$ expressions in the verification condition and
+then consider all combinations of those expressions in turn,
+generating a new verification condition for each.  This could
+potentially generate $2^n$ new verification conditions, and hence
+might appear to be computationally unpleasant.  In practice, it is
+usually tolerable, for two main reasons:
 
 \begin{itemize}
 \item
