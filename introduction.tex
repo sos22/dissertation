@@ -222,6 +222,56 @@ hence eliminating the original bug.
 
 \todo{Cite Holzmann and Smith, 2001.}
 
+\begin{sidewaystable}
+\begin{tabular}{lllp{4.5cm}p{10.5cm}}
+\multicolumn{2}{l}{State}       & \multicolumn{2}{l}{Fields} & Meaning \\
+\hline
+\multicolumn{2}{l}{\state{If}}  & \state{cond} & BBDD        & Conditional branch with two successor states.  Evaluates \state{cond}, branching to one successor if it is true and the other if it is false. \\
+\hline
+\multicolumn{2}{l}{Terminal states} &          &             & Terminal states.  The {\StateMachine} execution finishes when it reaches one of these. \\
+ & \state{Survive}              &              &             & The bug has been avoided. \\
+ & \state{Crash}                &              &             & The bug will definitely happen. \\
+ & \state{Unreached}            &              &             & A contradiction has been reached, or this path through the {\StateMachine} is otherwise uninteresting. \\
+\hline
+\multicolumn{2}{l}{Side-effect states}\\
+ & \state{Load}                 & \state{addr} & Expression BDD & \multirow{2}{10.5cm}{Load from program memory.  \state{addr} is evaluated to an address and the current contents of memory at that address copied to the {\StateMachine} temporary \state{tmp}.} \\
+ &                              & \state{tmp}  & {\StateMachine} temporary \\
+\\
+ & \state{Store}                & \state{addr} & Expression BDD & \multirow{2}{10.5cm}{Store to program memory.  \state{data} and \state{addr} are evaluated to concrete values and the value of \state{data} stored to the address \state{addr}.} \\
+ &                              & \state{data} & Expression BDD \\
+\\
+ & \state{Copy}                 & \state{data} & Expression BDD & \multirow{2}{10.5cm}{Evaluate an expression and store the result in a {\StateMachine} temporary.} \\
+ &                              & \state{tmp}  & {\StateMachine} temporary \\
+ & $\Phi$                       & \state{input}& Set of {\StateMachine} temporaries & \multirow{2}{10.5cm}{Examine the temporaries in \state{input}, select whichever has been assigned to most recently, and copy its value to \state{tmp}.  See \S\ref{sect:ssa}.} \\
+ &                              & \state{tmp}  & {\StateMachine} temporary \\
+\end{tabular}
+\end{sidewaystable}
+
+\begin{sidewaystable}
+\begin{tabular}{lllp{4.5cm}p{10.5cm}}
+ & \state{ImportRegister}       & \state{tid}  & Thread ID       & \multirow{4}{10.5cm}{Copy the value of register \state{reg} in program thread \state{tid} into {\StateMachine} temporary \state{tmp}.  \state{pts} gives the points-to set for the register, as derived by the initial static analysis pass; see \S\ref{sect:alias_analysis}.} \\
+ &                              & \state{reg}  & Register ID \\
+ &                              & \state{tmp}  & {\StateMachine} temporary \\
+ &                              & \state{pts}  & Points-to set \\
+ & \state{StartAtomic}, \state{EndAtomic} &    &                 & Mark the start and end of atomic blocks, used to constrain the set of schedules which must be considered; see \S\ref{sect:usin:build_cross_product}. \\
+\hline
+\multicolumn{2}{l}{Annotation states}\\
+ & \state{Assert}               & \state{cond} & BBDD            & Note that a particular condition is guaranteed to be true at a particular point in the {\StateMachine}'s execution. \\
+ & \state{StartFunction}        & \state{frame}& Stack frame ID  & \multirow{3}{10.5cm}{Note that thread \state{tid} has just create stack frame \state{frame}, and that the boundary between this frame and the previous one is \state{rsp}.} \\
+ &                              & \state{tid}  & Thread ID \\
+ &                              & \state{rsp}  & Expression BDD \\
+ & \state{EndFunction}          & \state{frame}& Stack frame ID  & \multirow{3}{10.5cm}{Inverse of \state{StartFunction}.  Indicates that a thread has destroyed a stack frame.} \\
+ &                              & \state{tid}  & Thread ID \\
+ &                              & \state{rsp}  & Expression BDD \\
+ & \state{StackLayout}          & \state{tid}  & Thread Id       & \multirow{2}{10.5cm}{Specifies the set of frames which are on the initial stack for some thread and, for each frame, whether the frame might contain a pointer to itself and whether it might be pointed at from elsewhere in memory.}\\
+ &                              & \state{frames}& Set of frame IDs \\
+ &                              & \state{pointsAtSelf} & Mapping from frame ID to flags \\
+ &                              & \state{pointedAt} & Mapping from frame ID to flags\\
+\end{tabular}
+\caption{Types of {\StateMachine} states}
+\label{table:intro:state_machine_states}
+\end{sidewaystable}
+
 \section{Contributions}
 
 \begin{itemize}
