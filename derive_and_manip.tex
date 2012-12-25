@@ -1375,13 +1375,18 @@ As an example, consider this cyclic CFG:
   \end{pgfonlayer}
   \draw node [right=of box1] {
     \begin{tabular}{lccccc}
-      labels & min to A & min from A & min to C & min from C & overall min\\
-      A & 0 & 0 & 2 & 1 & 0\\
+      labels & \multicolumn{2}{c}{min to} & \multicolumn{2}{c}{min from} & overall min\\
+             & A & C & A & C \\
+      A & 0 & 2 & 0 & 1 & 0\\
       B & 2 & 1 & 1 & 2 & 2\\
-      C & 1 & 2 & 0 & 0 & 0\\
+      C & 1 & 0 & 2 & 0 & 0\\
     \end{tabular}
   };
 \end{tikzpicture}
+
+\todo{All of these diagrams need checking over carefully.  I
+  rearranged the column headings, need to make sure that I rearranged
+  the data to match.}
 
 Blue nodes indicate the interfering instructions.  The overall min
 column is the minimum min\_to value plus the minimum min\_from one; it
@@ -1409,11 +1414,12 @@ this:
   \end{pgfonlayer}
   \draw node [right=of box1] {
     \begin{tabular}{lccccc}
-      labels & min to A & min from A & min to C & min from C & overall min\\
-      A  & 0 & 0 & 2 & 1 & 0\\
+      labels & \multicolumn{2}{l}{min to} & \multicolumn{2}{l}{min from} & overall min\\
+         & A & C & A & C \\
+      A  & 0 & 2 & 0 & 1 & 0\\
       B  & 2 & 1 & 1 & 2 & 2\\
-      C  & 1 & 2 & 0 & 0 & 0\\
-      B1 & 2 & 2 & 1 & 3 & 3\\
+      C  & 1 & 0 & 2 & 0 & 0\\
+      B1 & 2 & 1 & 2 & 3 & 3\\
     \end{tabular}
   };
 \end{tikzpicture}
@@ -1444,12 +1450,13 @@ algorithm will then break this edge by duplicating A:
   \end{pgfonlayer}
   \draw node [right=of box1] {
     \begin{tabular}{lccccc}
-      labels & min to A & min from A & min to C & min from C & overall min\\
-      A  & 0 & 0 & 2 & $\infty$ & 0\\
-      A1 & 0 & 3 & 2 & 1 & 1\\
+      labels & \multicolumn{2}{l}{min to} & \multicolumn{2}{l}{min from} & overall min\\
+         & A & C & A & C\\
+      A  & 0 & 2 & 0 & $\infty$ & 0\\
+      A1 & 0 & 2 & 3 & 1 & 1\\
       B  & 2 & 1 & 1 & 2 & 2\\
-      C  & 1 & 2 & 0 & 0 & 0\\
-      B1 & 2 & 2 & 1 & 3 & 3\\
+      C  & 1 & 0 & 2 & 0 & 0\\
+      B1 & 2 & 1 & 2 & 3 & 3\\
     \end{tabular}
   };
 \end{tikzpicture}
@@ -1479,13 +1486,14 @@ It will then duplicate B:
   \end{pgfonlayer}
   \draw node [right=of box1] {
     \begin{tabular}{lccccc}
-      labels & min to A & min from A & min to C & min from C & overall min\\
-      A  & 0 & 0 & 2 & $\infty$ & 0\\
-      A1 & 0 & 3 & 2 & 1 & 1\\
+      labels & \multicolumn{2}{l}{min to} & \multicolumn{2}{l}{min from} & overall min\\
+         & A & C & A & C\\
+      A  & 0 & 2 & 0 & $\infty$ & 0\\
+      A1 & 0 & 2 & 3 & 1 & 1\\
       B  & 2 & 1 & 1 & 2 & 2\\
-      C  & 1 & 2 & 0 & 0 & 0\\
-      B1 & 2 & 2 & 1 & 3 & 3\\
-      B2 & 2 & 3 & 1 & 4 & 4\\
+      C  & 1 & 0 & 2 & 0 & 0\\
+      B1 & 2 & 1 & 2 & 3 & 3\\
+      B2 & 2 & 1 & 3 & 4 & 4\\
     \end{tabular}
   };
 \end{tikzpicture}
@@ -1519,14 +1527,15 @@ cycle-completing edge:
   \end{pgfonlayer}
   \draw node [right=of box1] {
     \begin{tabular}{lccccc}
-      labels & min to A & min from A & min to C & min from C & overall min\\
-      A  & 0 & 0 & 2 & $\infty$ & 0\\
-      A1 & 0 & 3 & 2 & 1        & 1\\
+      labels & \multicolumn{2}{l}{min to} & \multicolumn{2}{l}{min from} & overall min\\
+         & A & C & A & C\\
+      A  & 0 & 2 & 0 & $\infty$ & 0\\
+      A1 & 0 & 2 & 3 & 1        & 1\\
       B  & 2 & 1 & 1 & $\infty$ & 2\\
-      C  & 1 & 2 & 0 & 0        & 0\\
-      B1 & 2 & 2 & 1 & 3        & 3\\
-      B2 & 2 & 3 & 1 & 4        & 4\\
-      B3 & 2 & 4 & 1 & 2        & 3\\
+      C  & 1 & 0 & 2 & 0        & 0\\
+      B1 & 2 & 1 & 2 & 3        & 3\\
+      B2 & 2 & 1 & 3 & 4        & 4\\
+      B3 & 2 & 1 & 4 & 2        & 3\\
     \end{tabular}
   };\smh{overall min hangs over right hand margin}
 \end{tikzpicture}
@@ -1562,14 +1571,15 @@ instruction or a duplicate of it, and so the edge is simply deleted:
   \end{pgfonlayer}
   \draw node [right=of box1] {
     \begin{tabular}{lccccc}
-      labels & min to A & min from A & min to C & min from C & overall min\\
-      A  & 0 & 0 & 2 & $\infty$ & 0\\
-      A1 & 0 & 3 & 2 & 1        & 1\\
+      labels & \multicolumn{2}{l}{min to} & \multicolumn{2}{l}{min from} & overall min\\
+         & A & C & A & C\\
+      A  & 0 & 2 & 0 & $\infty$ & 0\\
+      A1 & 0 & 2 & 3 & 1        & 1\\
       B  & 2 & 1 & 1 & $\infty$ & 2\\
-      C  & 1 & 2 & 0 & 0        & 0\\
-      B1 & 2 & 2 & 1 & 3        & 3\\
-      B2 & 2 & 3 & 1 & 4        & 4\\
-      New label & 2 & 4 & 1 & 5 & 5\\
+      C  & 1 & 0 & 2 & 0        & 0\\
+      B1 & 2 & 1 & 2 & 3        & 3\\
+      B2 & 2 & 1 & 3 & 4        & 4\\
+      New label & 2 & 1 & 4 & 5 & 5\\
     \end{tabular}
   };
 \end{tikzpicture}
@@ -1608,19 +1618,20 @@ until the graph is completely acyclic\editorial{I used to have more
   \end{pgfonlayer}
   \draw node [right=of box1] {
     \begin{tabular}{lccccc}
-      labels & min to A & min from A & min to C & min from C & overall min\\
-      A  & 0 & 0 & 2 & $\infty$ & 0\\
-      A1 & 0 & 3 & 2 & 1        & 1\\
-      A2 & 0 & 6 & $\infty$ & 4 & 4\\
+      labels & \multicolumn{2}{l}{min to} & \multicolumn{2}{l}{min from} & overall min\\
+         & A & C & A & C\\
+      A  & 0 & 2 & 0 & $\infty$ & 0\\
+      A1 & 0 & 2 & 3 & 1        & 1\\
+      A2 & 0 & $\infty$ & 6 & 4 & 4\\
       B  & 2 & 1 & 1 & $\infty$ & 2\\
-      B1 & 2 & 2 & 1 & $\infty$ & 3\\
-      B2 & $\infty$ & 3 & 1 & $\infty$ & 4\\
-      B3 & 2 & 4 & 1 & 2        & 3\\
-      B4 & $\infty$ & 5 & 1 & 3        & 4\\
-      C  & 1 & 2 & 0 & 0        & 0\\
-      C1 & 1 & 5 & 0 & 3        & 4\\
-      C2 & $\infty$ & 6 & 0 & 4        & 4\\
-      C3 & $\infty$ & 4 & 0 & $\infty$ & 4\\
+      B1 & 2 & 1 & 2 & $\infty$ & 3\\
+      B2 & $\infty$ & 1 & 3 & $\infty$ & 4\\
+      B3 & 2 & 1 & 4 & 2        & 3\\
+      B4 & $\infty$ & 1 & 5 & 3        & 4\\
+      C  & 1 & 0 & 2 & 0        & 0\\
+      C1 & 1 & 0 & 5 & 3        & 4\\
+      C2 & $\infty$ & 0 & 6 & 4        & 4\\
+      C3 & $\infty$ & 0 & 4 & $\infty$ & 4\\
     \end{tabular}
   };
 \end{tikzpicture}
