@@ -272,6 +272,20 @@ hence eliminating the original bug.
 \label{table:intro:state_machine_states}
 \end{sidewaystable}
 
+\begin{table}
+\begin{tabular}{lp{11.5cm}}
+Expression & Meaning \\
+\hline
+$\smTmp{A}$ & The value of {\StateMachine} temporary $A$. \\
+$\happensBefore{A}{B}$ & True if event $A$ happens before event $B$, false if $B$ happens before $A$.  See section~\ref{sect:implementation_hacks:hb_ordering} for definition if either $A$ or $B$ does not happen. \\
+$\entryExpr{\mai{tid}{instr}}$ & True if thread $tid$ starts with instruction $instr$, and false otherwise. \\
+$\controlEdge{tid}{A}{B}$ & True if thread $tid$ executed instruction $B$ immediately after instruction $A$. False if it executed some other instruction after $A$ and undefined if it did not execute $A$ at all.\\
+$\smLoad{expr}$ & The initial value of the memory at location $expr$. \\
+\end{tabular}
+\caption{Types of expressions supported by the {\StateMachine} language.  The usual arithmetic operators, such as addition, multiplication, bit shift, etc., are also supported.}
+\label{table:intro:state_machine_exprs}
+\end{table}
+
 \section{Contributions}
 
 \begin{itemize}
@@ -348,10 +362,12 @@ but it's what all the related work does.
 \section{Type of bug considered}
 \label{sect:intro:types_of_bugs}
 
-{\Technique} considers only a restricted class of all possible bugs:
-those where two threads are accessing the same structure, with one
-reading and one writing, and this concurrency causes the reading
-thread to crash quickly and recognisably.  In slightly more detail:
+While {\StateMachines} are themselves a reasonably general mechanism
+for modelling fragments of a program, {\implementation} considers only
+a restricted class of possible bugs: those where two threads are
+accessing the same structure, with one reading and one writing, and
+this concurrency causes the reading thread to crash quickly and
+recognisably.  In slightly more detail:
 
 \begin{itemize}
 \item The bug must be reproducible with only \emph{two} threads
@@ -444,3 +460,7 @@ performing the analysis.  \editorial{I don't actually show that
 \smh{Ok -- generally decent intro missing some structure, and still
   missing the high level story in a para -- maybe fix up fig 2.1 with
   annotations?}
+
+For clarity, this dissertation will, for the most part, only discuss
+this class of bugs.  Section~\ref{sect:future_work:generalising}
+considers possible ways of relaxing some of these restrictions.
