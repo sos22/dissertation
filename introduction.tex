@@ -336,16 +336,141 @@ $\smLoad{expr}$ & The initial value of the memory at location $expr$. \\
 \section{Background}
 \subsection{BDDs}
 
-Explain what BDDs are.  Explain differences between boolean BDDs and
-MTBDDs.  Mention that the nodes in our BDDs are themselves potentially
-complicated conditions over the program state, and what that means for
-the BDD normalisation property.
+A binary decision diagram, or BDD, is an efficient graphical
+representation of a function from a finite set of boolean input
+variables to a single boolean result.  An example is shown in
+Figure~\ref{fig:intro:example_bdd}.  The graph can be evaluated from
+the root downwards, with each node representing a test of one of the
+input variables.  If the variable is true, evaluation follows the
+solid edge to the next node, and if it is false evaluation follows the
+dashed edge.  Eventually, evaluation reaches one of the two leaf
+nodes, $\mathit{true}$ and $\mathit{false}$, which gives the final
+result of the function.  \todo{Cite Lee 1995, maybe?}  While not shown
+in the example, BDDs can share sub-graphs, often allowing more complex
+functions to be represented compactly.  Indeed, the BDDs used by
+{\implementation} (and most other systems) always share nodes whenever
+it is possible to do so.  This makes the BDD representation of a
+function canonical up to the order in which the variables are
+tested\editorial{Cite Bryant 1986.}.
 
-I should probably say somewhere what variable ordering I'm using for
-these, but it won't make any sense here because I've not defined
-enough terms to hook the description off.
+\todo{BDDs allow efficient implementation of many important
+  operators...}
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node (x) [BddNode] {$x$};
+    \node (y) [BddNode, below right = of x] {$y$};
+    \node (z) [BddNode, below left = of y] {$z$};
+    \node (true) [BddLeaf, below left = of z] {$\mathit{true}$};
+    \node (false) [BddLeaf, below right = of z] {$\mathit{false}$};
+    \draw [BddTrue] (x) -- (y);
+    \draw [BddFalse] (x) -- (false);
+    \draw [BddTrue] (y) -- (true);
+    \draw [BddFalse] (y) -- (z);
+    \draw [BddTrue] (z) -- (true);
+    \draw [bddFalse] (z) -- (false);
+  \end{tikzpicture}
+  \caption{Example BDD, representing the expression $x \wedge (y \vee z)$}
+  \label{fig:intro:example_bdd}
+\end{figure}
+
+There is an important complication when using BDDs to represent
+properties of a program, which is that the boolean input variables
+must be related back to the registers and memory locations of the
+original program.  It might, for instance, be that in the example $x =
+(A < 5)$, $y = (A > 7)$ and $z = (A == 6)$, where $A$ is some variable
+in the original program.  {\Technique} defines a simple expression
+language, outlined in Table~\ref{table:intro:state_machine_exprs}, for
+defining these primitive expressions, and nodes in the BDD are
+labelled with expressions in this language rather than with boolean
+variables.  This has two important implications: first, that the input
+variables to the BDD are not necessarily independent, and, second,
+that the BDDs are only canonicalised to the extent that the input
+primitive expressions can be canonicalised.  {\Implementation}
+includes some rules which attempt to canonicalise these primitive
+expressions (by, for instance, lifting simple boolean operators like
+$\wedge$ or $\vee$ into the BDD, and by sorting the arguments to
+commutative operators like $+$), but such canonicalisation can never
+hope to be complete\editorial{Cite G\"odel's theorem. :)}.  This is,
+in practice, very rarely an issue, and the minor inconvenience is more
+than justified by the ability to efficiently represent arbitrary
+predicates over the original program's state.
+
+There is an obvious generalisation of BDDs to graphs with more than
+two terminal nodes, representing functions which evaluate to some
+domain more complex than simple booleans.  These generalised BDDs are
+known as multi-terminal BDDs or MTBDDs\needCite{}.  Most BDDs used by
+{\Technique} are multi-terminal; to avoid ambiguity, BDDs with only
+two terminals will be referred to as boolean BDDs, or BBDDs.  In
+pseudocode, the type of a BDD whose terminals are values of type $t$
+will be written as $BDD(t)$.
+
+There are two particularly important special cases of multi-terminal
+BDDs: expression BDDs and composition BDDs.  Expression BDDs, or
+$BDD(expr)$, are BDDs in which the terminals are themselves
+expressions over the original program's state.  Expression BDDs allow
+arbitrary functions of the program state to be represented in a way
+which is canonical (up to the canonicalisation of primitive
+expressions) and reasonably efficient.  They are used, for instance,
+to represent the address field of a {\StateMachine} \state{Load}
+state.
+
+Composition BDDs, $BDD(BDD(k))$, are BDDs whose terminals are
+themselves BDDs.  In other words, there is a layer of ``outer'' BDDs
+which is used to select one of a number of possible ``inner'' BDDs.
+This is a generalisation of $BDD(k)$ because it allows the variable
+ordering to be violated at the transition from the outer to the inner
+BDD.  These composition BDDs are used primarily to represent
+control-flow dependent properties of the {\StateMachine}, where the
+outer BDD expresses the constraint for a particular control-flow path
+to be followed and the inner one gives the value of the
+control-dependent property when it is.  See, for instance, the $\Phi$
+elimination pass discussed in section~\ref{sect:phi_elimination}.
+
+\todo{I should probably say somewhere what variable ordering I'm using
+  for these, but it won't make any sense here because I've not defined
+  enough terms to hook the description off.}
+
+\todo{Maybe mention that my BDD implementation uses a kind of operator
+  node?  Or maybe defer that to an implementation details chapter?}
+
+\subsection{Memory model}
+
+{\Technique} makes several important simplifying assumptions about the
+program's memory model:
+
+\begin{itemize}
+\item
+  {\Technique} assumes that all memory accesses are issued
+  immediately, and are immediately visible to all other threads and
+  processors.  In other words, it assumes a strongly ordered memory
+  model.  This is a reasonable approximation for the AMD64
+  architecture targeted by {\implementation}\footnote{The only
+    permissible behaviour which is not modelled is that stores can be
+    reordered to after loads, and even this is extremely rare.}, but
+  would need to be reconsidered if an implementation were desired for
+  less weakly ordered systems such as IA64 or the Alpha.
+\item
+  {\Technique} assumes that the program does not use misaligned memory
+  accesses.  These are extremely rare in most programs, due to their
+  very poor performance\editorial{Cite, maybe?}, and so this is not a
+  major limitation.
+\item
+  {\Implementation} assumes that if a memory location is initialised
+  with a write of size $n$ then any subsequent loads from that
+  location will be of size $m \le n$.  In other words, it assumes that
+  any load will consume data from at most one store.  \todo{It might
+    actually be easier to remove that limitation than to justify it.}
+\end{itemize}
 
 \subsection{The happens-before graph}
+
+The happens-before graph for a parallel execution is a partial
+ordering over events in the execution, showing which events occur
+before which other events\needCite{}.  For {\technique}, these events
+are the memory-accessing states of the {\StateMachine}, and it is
+assumed that there is some total order on them
+
 
 Just say what a happens-before graph is, and give the syntax I've used
 for querying it.  Discuss full-transitive versus transitively-reduced
