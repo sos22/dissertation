@@ -1,0 +1,1684 @@
+\section{Overview of the {\StateMachine} abstraction}
+
+\todo{Redundancy between this section and next one.}
+
+The core data structure used by {\technique}'s initial analysis phases
+is the {\StateMachine}.  This can be viewed as a simplified version of
+a fragment of the original program which contains all of the
+information relevant to the particular bug under investigation and
+very little else.  This makes them far easier to analyse than raw
+machine code.  They have a number of important properties:
+
+\begin{itemize}
+\item
+  They can cross function boundaries, and so can be used to model
+  cross-function properties of the program.
+\item
+  {\STateMachines} are themselves completely deterministic, aiding
+  simple analysis, but can contain information from multiple program
+  threads, and so can accurately capture all of the threads relevant
+  to a particular race, but are themselves completely deterministic,
+  aiding simple analysis.  In particular, the \StateMachine for a
+  particular bug can be used to build the happens-before graph
+  necessary for that bug to reproduce (including when that
+  happens-before graph is data-dependent).
+\item
+  \STateMachines can incorporate information obtained by the initial
+  static and dynamic analysis passes in a reasonably straightforward
+  way.
+\item
+  Control-flow within a \StateMachine is not necessarily the same as
+  control flow within the original program, and memory accesses within
+  a \StateMachine do not necessarily correspond to specific memory
+  accesses in the original program.  This means that intermediate
+  analysis steps have a great deal of flexibility to rewrite
+  \StateMachines and hence to remove unnecessary information.  On the
+  other hand, it also means that translating the results of the
+  analysis back from \StateMachines to the original program requires a
+  little bit of care.  This is discussed in more detail in later
+  sections.
+\item
+  They can be interpreted, given a snapshot of the program's state,
+  its future happens-before graph, and some information about its
+  control flow, to make a prediction about whether the program might,
+  starting from that state, suffer the bug which is being
+  investigated.  Alternatively, they can be symbolically executed to
+  determine what initial states might lead to the bug.
+\item
+  Individual \StateMachines must complete in a finite, bounded, number
+  of operations; equivalently, \StateMachines are acyclic and finite.
+  This makes them far easier to analyse, but at the expense of
+  somewhat limiting their expressive power.  In the particular case of
+  \technique{}, we are only interested in bugs related to fairly small
+  fragments of the program (those which should have been critical
+  sections, but aren't) and so this is a tolerable limitation; it
+  might be more of a concern in other applications.
+  Section~\todo{...} briefly discusses some possible ways of removing
+  this restriction.
+\end{itemize}
+
+\STateMachines are in many respects similar to executable program
+slices of the original program, with the key difference that, unlike a
+program slice, a \StateMachine is not expressed in the same language
+as the original program.  This is to some extent a forced decision
+({\technique} operates on binaries, whereas most program slicing
+systems operate on source code; programming languages are not usually
+particularly convenient intermediate forms, but machine code is far
+worse), but the extra flexibility can sometimes make this more
+convenient than more conventional source-level program
+slices\editorial{Should maybe have a forward ref here?}.
+
+A somewhat closer analogy is with the abstract models commonly used in
+formal verification systems such as Promela\needCite{}.  The
+difference here is in the semantic structure of the program to be
+modelled: \technique{} models machine-code programs, and hence has no
+knowledge of higher-level constructs such as variables, arrays, or
+compound structures, whereas tools like Promela or SAL\needCite{} work
+with source code and hence (mostly) assume that such information is
+available.  This gives them a great deal of analytical power, but
+makes it more difficult for them to model details of the program which
+are more apparent in machine code than source code, and, as already
+mentioned, these details are often important when investigating
+concurrency issues.
+
+\todo{Cite Holzmann and Smith, 2001.}
+
+\section{Semantics of {\StateMachines}}
+
+A {\StateMachine} is, at its core, a simplified version of a fragment
+of the program expressed in a simple (non-Turing complete) analysis
+language, along with some ancillary structures showing how that
+fragment relates to the original program.  Programs in the analysis
+language consist of a directed acyclic graph of states, starting from
+some designated root state and ending at one of the three terminal
+states.  Internal states of the graph are either simple two-way
+conditionals or side-effect states representing the program's actions.
+An overview of the available state types is given in
+Table~\ref{table:state_machine_states}.
+
+It is important to emphasise at this stage that {\StateMachines}
+states do not directly correspond to instructions in the original
+program: one state might represent several instructions, or a single
+instruction might be represented by multiple states.  For instance, an
+instruction in a function $f$ might correspond to one state when $f$
+is called from $g$ and another when $f$ is called from $h$, and
+instructions which are not relevant to the behaviour being
+investigated will not have any corresponding states at all.  This
+gives {\technique} a great deal of flexibility when simplifying
+{\StateMachines}, and hence allows it to remove most irrelevant
+information from the {\StateMachine}.
+
+In addition to the graph of states, {\StateMachines} may also have
+some temporary variables.  These are simple slots into which the
+values of expressions and the results of \state{Load} operations can
+be stored.  Temporaries can only store simple values, with no internal
+structure, and there is no concept analogous to a pointer to a
+temporary\footnote{For {\implementation}, {\StateMachine} temporaries
+  are simple 128-bit values, so as to be able to store the contents of
+  an XMM register in one temporary, but other choices would be
+  possible.}.  It is important to note that {\StateMachine}
+temporaries do not necessarily correspond to any particular bit of
+program state, and that most program state will not be represented by
+any temporary.
+
+\begin{sidewaystable}
+\begin{tabular}{lllp{4.5cm}p{10.5cm}}
+\multicolumn{2}{l}{State}       & \multicolumn{2}{l}{Fields} & Meaning \\
+\hline
+\multicolumn{2}{l}{\state{If}}  & \state{cond} & BBDD        & Conditional branch with two successor states.  Evaluates \state{cond}, branching to one successor if it is true and the other if it is false. \\
+\hline
+\multicolumn{2}{l}{Terminal states} &          &             & Terminal states.  The {\StateMachine} execution finishes when it reaches one of these. \\
+ & \state{Survive}              &              &             & The bug has been avoided. \\
+ & \state{Crash}                &              &             & The bug will definitely happen. \\
+ & \state{Unreached}            &              &             & A contradiction has been reached, or this path through the {\StateMachine} is otherwise uninteresting. \\
+\hline
+\multicolumn{2}{l}{Side-effect states}\\
+ & \state{Load}                 & \state{addr} & Expression BDD & \multirow{2}{10.5cm}{Load from program memory.  \state{addr} is evaluated to an address and the current contents of memory at that address copied to the {\StateMachine} temporary \state{tmp}.} \\
+ &                              & \state{tmp}  & {\StateMachine} temporary \\
+\\
+ & \state{Store}                & \state{addr} & Expression BDD & \multirow{2}{10.5cm}{Store to program memory.  \state{data} and \state{addr} are evaluated to concrete values and the value of \state{data} stored to the address \state{addr}.} \\
+ &                              & \state{data} & Expression BDD \\
+\\
+ & \state{Copy}                 & \state{data} & Expression BDD & \multirow{2}{10.5cm}{Evaluate an expression and store the result in a {\StateMachine} temporary.} \\
+ &                              & \state{tmp}  & {\StateMachine} temporary \\
+ & $\Phi$                       & \state{input}& Set of {\StateMachine} temporaries & \multirow{2}{10.5cm}{Examine the temporaries in \state{input}, select whichever has been assigned to most recently, and copy its value to \state{tmp}.  See \S\ref{sect:ssa}.} \\
+ &                              & \state{tmp}  & {\StateMachine} temporary \\
+\end{tabular}
+\caption{\emph{Continued...}}
+\end{sidewaystable}
+
+\begin{sidewaystable}
+\begin{tabular}{lllp{4.5cm}p{10.5cm}}
+ & \state{ImportRegister}       & \state{tid}  & Thread ID       & \multirow{3}{10.5cm}{Copy the value of register \state{reg} in program thread \state{tid} into {\StateMachine} temporary \state{tmp}.} \\
+ &                              & \state{reg}  & Register ID \\
+ &                              & \state{tmp}  & {\StateMachine} temporary \\
+ & \state{StartAtomic}          &              &                 & \multirow{2}{10.5cm}{Mark the start and end of atomic blocks, used to constrain the set of schedules which must be considered; see \S\ref{sect:using:build_cross_product}.} \\
+ & \state{EndAtomic}            \\
+ & \state{Assert}               & \state{cond} & BBDD            & Note that a particular condition is guaranteed to be true at a particular point in the {\StateMachine}'s execution. \\
+\end{tabular}
+\caption{Types of {\StateMachine} states}
+\label{table:state_machine_states}
+\end{sidewaystable}
+
+\subsection{{\STateMachine} expression language}
+
+\begin{table}
+\begin{tabular}{lp{11.5cm}}
+Expression & Meaning \\
+\hline
+$\smTmp{A}$ & The value of {\StateMachine} temporary $A$. \\
+$\happensBefore{A}{B}$ & True if event $A$ happens before event $B$, false if $B$ happens before $A$.  See section~\ref{sect:implementation_hacks:hb_ordering} for definition if either $A$ or $B$ does not happen. \\
+$\entryExpr{\mai{tid}{instr}}$ & True if thread $tid$ starts with instruction $instr$, and false otherwise. \\
+$\controlEdge{tid}{A}{B}$ & True if thread $tid$ executed instruction $B$ immediately after instruction $A$. False if it executed some other instruction after $A$ and undefined if it did not execute $A$ at all.\\
+$\smBadPtr{expr}$ & True if $expr$ evaluates to a value which is not a valid pointer.\\
+$\smLoad{expr}$ & The initial value of the memory at location $expr$. \\
+\end{tabular}
+\caption{Types of expressions in the {\StateMachine} expression
+  language.  The usual arithmetic operators, such as addition,
+  multiplication, bit shift, etc., are also supported, but logical
+  operators such as $\wedge$ and $\vee$ are not.}
+\label{table:state_machine_exprs}
+\end{table}
+
+Any non-trivial {\StateMachine} will include some expressions over the
+original program's state.  These are expressed using an expression
+language which is described in Table~\ref{table:state_machine_exprs}.
+This language is, for most part, quite conventional, and includes
+simple mechanisms for querying the program's behaviour and state and
+for obtaining the values of {\StateMachine} temporaries, or for
+evaluating simple arithmetic operators.
+
+One important feature is, however, missing: any scheme for evaluating
+logical connectives such as $\wedge$ or $\vee$.  These operators are
+not represented using the expression language, but are instead encoded
+into generalised binary decision diagrams, or BDDs, which are
+themselves expressed in terms of the expression language.  These BDDs
+allow much more efficient implementations of many common operations
+than would be possible with a scheme based entirely on unconstrained
+expressions.
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node (x) [BddNode] {$\smTmp{A} = 72$};
+    \node (y) [BddNode, below right = of x] {$\smLoad{\smTmp{B}} = 9$};
+    \node (z) [BddNode, below left = of y] {$\smTmp{B} > 912$};
+    \node (true) [BddLeaf, below left = of z] {$715$};
+    \node (false) [BddLeaf, below right = of z] {$\smTmp{C}$};
+    \draw [BddTrue] (x) -- (y);
+    \draw [BddFalse] (x) -- (false);
+    \draw [BddTrue] (y) -- (true);
+    \draw [BddFalse] (y) -- (z);
+    \draw [BddTrue] (z) -- (true);
+    \draw [BddFalse] (z) -- (false);
+  \end{tikzpicture}
+  \caption{An example expression BDD.  This can evaluate to either
+    $715$ or $\smTmp{C}$, depending on the values of $\smTmp{A}$,
+    $\smTmp{B}$ and the initial contents of program memory.}
+  \label{fig:derive:example_expr_bdd}
+\end{figure}
+
+Two types of BDD used in {\StateMachine} states: expression BDDs and
+boolean BDDs.  The difference is that boolean BDDs, or BBDDs, are
+constrained to evaluate to a simple boolean, whereas expression BDDs
+evaluate to an expression in the expression language.  An example
+expression BDD is shown in Figure~\ref{fig:derive:example_expr_bdd}.
+This BDD evaluates to $715$ if either $\smTmp{A} \not= 72$ or both
+$\smLoad{\smTmp{B}} = 9$ and $\smTmp{B} > 912$, or to $\smTmp{C}$
+otherwise.  There are several things to notice here:
+
+\begin{itemize}
+\item The variables tested by internal nodes can also be arbitrary
+  expressions in the expression language.
+\item The leaves of the BDD are generalised from simple boolean
+  constants to arbitrary expressions in the expression language.
+\end{itemize}
+
+These two properties mean that expression BDDs can represent complex
+functions of program state (they are used, for instance, for the
+address field of a \state{Load} state), and do not overly complicate
+any of the usual BDD manipulation algorithms.  They do, however, mean
+that expression BDDs can only be canonical to the extent that
+expressions in the expression language can be canonicalised.
+Unfortunately, completely canonicalising general expressions is
+impossible\editorial{Cite the incompleteness theorem.}, and so while
+ordinary BDDs are canonical representations of boolean functions there
+might be multiple expression BDD representations of a single function.
+Non-independence of the conditions tested by the BDD's internal nodes
+can also lead to there being multiple representations of a single
+function.
+
+This lack of canonicalisation can sometimes lead to poor performance
+if a single function is represented in many different forms.
+Fortunately, a few very simple canonicalisation rules, such as sorting
+the arguments to commutative operators and respecting transitivity of
+equality, usually suffice to reduce redundancy to an acceptable level
+and avoid the worst performance problems.  These are discussed further
+in Section~\ref{sect:implementation_hacks:bdd_ordering}.  For now, it
+suffices to assume that any texturally different expressions are
+completely independent.  Given that assumption, expression BDDs are
+always stored in a completely reduced form and are completely
+canonical.
+
+\subsection{Example}
+
+\begin{figure}
+\begin{verbatim}
+400694: mov    global_ptr,%rax
+40069b: test   %rax,%rax
+40069e: je     4006ad
+4006a0: mov    global_ptr,%rax
+4006a7: movl   $0x5,(%rax)
+\end{verbatim}
+\caption{A fragment of machine code.  The {\StateMachine} for this
+  fragment is shown in
+  Figure~\ref{fig:derive:single_threaded_machine}}
+\label{fig:derive:single_threaded_machine_inp}
+\end{figure}
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node (l1) at (0,2) [stateSideEffect] {l1: \state{Load} tmp1 $\leftarrow$ global\_ptr AT cfg6 };
+    \node (l2) [stateIf, below=of l1] {l2: \state{If} (0 == tmp1)};
+    \node (l4) [stateSideEffect, below=of l2] {l4: \state{Load} tmp2 $\leftarrow$ global\_ptr AT cfg3 };
+    \node (l3) [stateTerminal, right=of l4] {l3: \state{Survive} };
+    \node (l5) [stateIf, below=of l4] {l5: \state{If} (BadPtr(tmp2))};
+    \node (l6) [stateTerminal, below=of l5] {l6: \state{Crash}};
+    \draw[->] (l1) -- (l2);
+    \draw[->,ifTrue] (l2) -- (l3);
+    \draw[->,ifFalse] (l2) -- (l4);
+    \draw[->] (l4) -- (l5);
+    \draw[->,ifFalse] (l5) -- (l3);
+    \draw[->,ifTrue] (l5) -- (l6);
+  \end{tikzpicture}
+  \caption{{\StateMachine} generated from the machine code in
+    Figure~\ref{fig:derive:single_threaded_machine_inp}, assuming that
+    the bug to be investigated is a crash at 4006a7.}\smh{Captions in
+    italics?}
+  \label{fig:derive:single_threaded_machine}
+\end{figure}
+
+Figure~\ref{fig:derive:single_threaded_machine} shows an example of a
+simple single-threaded {\StateMachine}\footnote{This is the crashing
+  thread component of the simple\_toctou test discussed in more detail
+  in Section~\ref{sect:eval:art:simple_toctou}.}.  It illustrates a
+simple time-of-check, time-of-use race: the program loads from
+\verb|global_ptr| twice in quick succession, validating the result of
+the first and using the result of the second.  It is trivial to read
+off from this diagram that the program might crash if some other
+thread modifies \verb|global_ptr| in between the two loads, and that
+it will otherwise survive.  Notice that \verb|4006a7|, the instruction
+which crashes, is not itself represented in the \backref{CFG}: by the
+time that instruction executes, the program is either doomed to crash
+or has definitely avoided the bug, and so that instruction is
+irrelevant to determining when (and whether) the bug can actually
+happen, and so it is not included in the {\StateMachine}.
+
+\begin{figure}[t]
+\begin{verbatim}
+4008fb: movq   $0x0,global_ptr
+\end{verbatim}
+\caption{Other side of the race shown in
+  Figure~\ref{fig:derive:single_threaded_machine_inp}.}
+\label{fig:derive:single_threaded_machine_write_inp}
+\end{figure}
+
+\begin{figure}[t]
+  \begin{tikzpicture}
+    \node (l7) [stateSideEffect] {l7: \state{Store} 0 $\rightarrow$ global\_ptr AT cfg8 };
+  \end{tikzpicture}
+  \caption{{\STateMachine} generated from the code in
+    Figure~\ref{fig:derive:single_threaded_machine_write_inp}.  In
+    this case, the code to be represented has only a single
+    instruction, and so the {\StateMachine} is very
+    simple. \todo{Looks a bit silly.}}
+  \label{fig:derive:single_threaded_machine_write}
+\end{figure}
+
+\begin{sidewaysfigure}
+  \todo{Redo this to get rid of the \state{Unreached} states, because
+    I don't want to talk about them quite yet.}
+  \begin{tikzpicture}
+    \node (lA) [stateIf] { \state{If} $\happensBefore{\mai{cfg6}{thread1}}{\mai{cfg8}{thread2}}$ };
+    \node (lB) [stateSideEffect, below = of lA] { l1: \state{Load} tmp1 $\leftarrow$ global\_ptr AT cfg6:thread1 };
+    \node (lC) [stateSideEffect, below right = of lA] {l7: \state{Store} 0 $\rightarrow$ global\_ptr AT cfg8:thread2 };
+    \node (lD) [stateIf, below = of lB] { l2: \state{If} (0 == tmp1) };
+    \node (lE) [stateTerminal, below = of lC] { \state{Unreached} };
+    \node (lF) [stateIf, below left = of lD] {\state{If} $\happensBefore{\mai{cfg3}{thread1}}{\mai{cfg8}\mai{thread2}}$ };
+    \node (lG) [stateTerminal, below right = of lD] {\state{Survive}};
+    \node (lH) [stateTerminal, below right = of lF] {\state{Unreached}};
+    \node (lI) [stateSideEffect, below = of lF] {l7: \state{Store} 0 $\rightarrow$ global\_ptr AT cfg8:thread2 };
+    \node (lJ) [stateSideEffect, below = of lI] {l4: \state{Load} tmp2 $\leftarrow$ global\_ptr AT cfg3:thread1 };
+    \node (lK) [stateIf, below = of lJ] { l5: \state{If} $BadPtr(tmp2)$ };
+    \node (lL) [stateTerminal, below left = of lK] { \state{Crash} };
+    \node (lM) [stateTerminal, below right = of lK] { \state{Survive} };
+    \draw[->,ifTrue] (lA) -- (lB);
+    \draw[->,ifFalse,draw] (lA) -- (lC);
+    \draw[->] (lB) -- (lD);
+    \draw[->] (lC) -- (lE);
+    \draw[->,ifTrue] (lD) -- (lG);
+    \draw[->,ifFalse] (lD) -- (lF);
+    \draw[->,ifTrue] (lF) -- (lH);
+    \draw[->,ifFalse] (lF) -- (lI);
+    \draw[->] (lI) -- (lJ);
+    \draw[->] (lJ) -- (lK);
+    \draw[->,ifTrue] (lK) -- (lL);
+    \draw[->,ifFalse] (lK) -- (lM);
+  \end{tikzpicture}
+  \caption{\backref{Summary} component of the cross-product of the
+    {\StateMachine} shown in
+    Figures~\ref{fig:derive:single_threaded_machine} and~
+    \ref{fig:derive:single_threaded_machine_write}.}
+  \label{fig:derive:cross_thread}
+\end{sidewaysfigure}
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node (lA) [stateSideEffect] {\state{Assert} $0 \not= InitMemory(global\_ptr)$ and $cfg6:thread1 \happensBefore cfg7:thread2$};
+    \node (lB) [stateIf, below = of lA] {\state{If} $cfg3:thread1 \happensBefore cfg7:thread2$ };
+    \node (lC) [stateTerminal, below left = of lB] {\state{Survive}};
+    \node (lD) [stateTerminal, below right = of lB] {\state{Crash}};
+    \draw [->] (lA) -- (lB);
+    \draw [->,ifTrue] (lB) -- (lC);
+    \draw [->,ifFalse] (lB) -- (lD);
+  \end{tikzpicture}
+  \caption{\STateMachine from figure~\ref{fig:derive:cross_thread}
+    after {\StateMachine} simplification.}
+  \label{fig:derive:cross_thread_opt}
+\end{figure}
+
+\STateMachines become somewhat more interesting when they capture the
+results of multiple threads.  Figure~\ref{fig:derive:cross_thread}
+shows an example of such a {\StateMachine}.  It is the
+\introduction{cross-product} of the {\StateMachines} shown in
+Figures~\ref{fig:derive:single_threaded_machine}
+and~\ref{fig:derive:single_threaded_machine_write_inp}.  Note that
+even though the {\StateMachine} completely captures the concurrent
+behaviour of the two {\StateMachines}, it is itself completely
+deterministic, and hence is relatively easy to simplify.  The result
+of these simplifications is shown in
+Figure~\ref{fig:derive:cross_thread_opt}.  Simplification is generally
+much cheaper than symbolic execution, and so this can provide a very
+worthwhile performance improvement.
+
+\subsection{Things I chose not to do}
+
+\begin{itemize}
+\item
+  Didn't replace the \state{If} with a BDD over states, because the
+  canonicalisation rules get kind of complicated.  The problem is that
+  as we simplify the {\StateMachine} the contents of individual states
+  changes, and so it's not clear how to maintain the reduced property
+  of the BDD when doing so.
+\item
+  I used \state{ImportRegister} side effects rather than an
+  initial-register-value expression in the expression language.
+  That turns out to make the \state{Phi} semantics a bit easier.
+\end{itemize}
+
+\section{Building the crashing thread's \StateMachine}
+
+The input to this phase of the analysis is the raw instruction pointer
+for the thread which crashed, at the time of the crash, plus the
+program binary and \backref{program model}.  It must use these to
+build a {\StateMachine} representing the final \backref{$\alpha$}
+instructions executed by the crashing thread.  The approach used has
+several stages:
+
+\begin{itemize}
+\item First, determine which instructions need to be included in the
+  {\StateMachine}.  This will be a fragment of the program's control
+  flow graph which includes every instruction which the crashing
+  thread might have executed in the \backref{$\alpha$} instructions
+  immediately prior to crashing, and as few other instructions as
+  possible.  This is described in more detail in
+  Section~\ref{sect:derive:build_static_cfg}.
+\item Next, unroll any loops in that control flow graph fragment such
+  that all cyclic paths contain at least \backref{$\alpha$}
+  instructions.  At that point, the cycles can be safely broken
+  without changing the program's behaviour within the
+  \backref{analysis window}.  This is described in more detail in
+  Section~\ref{sect:derive:handling_loops}.
+\item The acyclic \backref{CFG} can then be compiled to produce the
+  initial {\StateMachine}.  Each instruction in the \backref{CFG} is
+  translated independently and the resulting fragments are then
+  stitched back together to form the {\StateMachine}.  This is
+  described in Section~\ref{sect:derive:compile_cfg}.
+\item Finally, the {\StateMachine} is converted to
+  \introduction{static single assignment} form (SSA).  The SSA form
+  used by {\technique} is described in Section~\ref{sect:ssa}.
+\end{itemize}
+
+The resulting {\StateMachine} captures all of the relevant information
+from this thread and can be consumed by the rest of the analysis
+framework.
+
+\subsection{Building the crashing thread's static control-flow graph}
+\label{sect:derive:build_static_cfg}
+
+The first step in building the crashing thread's {\StateMachine} is to
+find it's CFG.  I assume here that the bug to be investigated has
+already been reproduced and that the call stack and instruction
+pointer at the time of the crash are readily available\footnote{These
+  might, for instance have been extracted from a windows minidump
+  \todo{cite} or a Unix-style core-dump \todo{cite?}.};
+Section~\ref{sect:derive:unknown_bugs} generalises this to finding
+previously-unknown bugs.
+
+\begin{figure}
+\begin{algorithmic}[1]
+\State $\mathit{depth} \gets 0$
+\State $\mathit{pendingAtDepth} \gets \queue{\mathit{targetInstrAddress}}$
+\State $\mathit{result} \gets \map{}$
+\While{$\mathit{depth} < \alpha$}
+  \State $\mathit{pendingAtNextDepth} \gets \queue{}$
+  \While{$\neg{}\mathit{empty}(\mathit{pendingAtDepth})$}
+    \State $\mathit{currentInstr} \gets \mathit{pop}(\mathit{pendingAtDepth})$
+    \If {$\mathit{result} \textrm{ has entry for } \mathit{currentInstr}$}
+      \State \textbf{continue}
+    \EndIf
+    \State $\mathit{current} \gets \text{decode instruction at } \mathit{currentInstr}$
+    \State $\mapIndex{\mathit{result}}{\mathit{currentInstr}} \gets \mathit{current}$
+    \State $\mathit{predecessors} \gets \text{predecessors of } \mathit{currentInstr}$
+    \State Add $\mathit{predecessors}$ to $\mathit{pendingAtNextDepth}$
+  \EndWhile
+  \State $\mathit{pendingAtDepth} \gets \mathit{pendingAtNextDepth}$
+  \State $\mathit{depth} \gets \mathit{depth} + 1$
+\EndWhile
+\end{algorithmic}
+\caption{Building a read-side static control flow graph within a
+  single function.  Computing the predecessors of an instruction is
+  non-trivial and is discussed in more detail in the main text.}
+\label{fig:derive:static_read_cfg_single_function}
+\end{figure}
+
+The simple case is that all of the needed instructions are contained
+within a single function.  In that case, the algorithm is as shown in
+Figure~\ref{fig:derive:static_read_cfg_single_function}.  This simply
+implements a depth-limited breadth-first search starting at the
+crashing instruction and exploring backwards through the program's
+control flow.  Note that this can result in a CFG with multiple roots.
+
+There is a slight subtlety on line 13, which determines the
+predecessors of a given instruction.  This is not always obvious,
+given only a binary program, for three reasons:
+
+\begin{itemize}
+\item
+  The program might contain indirect branches.  It is difficult to
+  determine statically where these might branch to.  A conservative
+  approach would be to assume that they might branch anywhere, but
+  this leads to unmanageably complex CFGs even for trivial programs.
+  At the same time, ignoring them completely means that many important
+  program paths will be missed.
+\item
+  Many instruction sets include variable-length instructions, and so
+  there might be several overlapping instructions which all finish at
+  the start of the instruction currently being investigated.  In most
+  programs, only one of these will ever be executed, and it is
+  important to pick the right one.
+\item
+  It is not always possible to identify which parts of a program are
+  instructions and which data, which makes it difficult to determine
+  whether a given sequence of bytes which happens to have the right
+  format to be a branch instruction should be treated as one.
+\end{itemize}
+
+{\Implementation} solves this problem using a combination of
+\backref{static} and \backref{dynamic analysis}.  First, the
+\backref{dynamic analysis} tracks the targets of all indirect branch
+and call instructions.  This makes the first problem trivial (assuming
+that the dynamic analysis is complete).  This information also
+includes a list of all of the functions in the program which are
+called by the operating system or by library functions\footnote{Shared
+  libraries, in the usual model, cannot statically assume anything
+  about the memory layout of the program which they are to be linked
+  against, and so all branches from a shared library into the main
+  program will be indirect.}.  Knowing all entry points into the main
+program, plus all branches within the main program, is sufficient for
+a simple static analysis to enumerate every instruction in the main
+program, and this then allows the second and third problems to be
+solved as well.\editorial{I want to mention the \backref{program
+    model} in there somewhere, but can't quite fit it in.}
+
+\todo{But that doesn't quite work for types of run-time generated code
+  other than shared libraries.  Might need to say something about
+  that.}\smh{Hmm -- perhaps .. (this would matter e.g. for obfuscated
+  code like burnintest)... But maybe could defer to end f the
+  section/or chapter or dissertation?}
+
+\subsection{Handling loops in the crashing thread's CFG}
+\label{sect:derive:handling_loops}
+
+There may be loops in the CFGs generated by the algorithm in
+Section~\ref{sect:derive:build_static_cfg}, but {\technique} requires
+that the {\StateMachines} be finite and acyclic.  These loops must
+therefore be eliminated, and they must be eliminated in a way which is
+guaranteed to preserve all paths of length \backref{$\alpha$} ending
+at the instruction being investigated.  The approach {\technique}
+takes is to unroll the loops, duplicating instructions as necessary,
+until every path from a root of the CFG to the target instruction is
+either free from cycles or of length greater than \backref{$\alpha$}.
+The remaining cycles can then be eliminated without changing the
+program's behaviour within the \backref{analysis window}.
+
+\begin{figure}
+\begin{tikzpicture}
+  [node distance=1 and 0.3]
+  \begin{scope}
+    \node (A) at (0,2) [CfgInstr] {A};
+    \node (B) [CfgInstr] [below=of A] {B}; 
+    \node (C) [CfgInstr] [below=of B] {C}; 
+    \node (D) [CfgInstr] [below=of C] {D}; 
+    \draw[->] (A) -- (B);
+    \draw[->] (B) -- (C);
+    \draw[->] (C) -- (D);
+    \draw[->] (C.east) to [bend right=90] (B.east) node (edge1) [right] {};
+    \begin{pgfonlayer}{bg}
+      \node (box1) [fill=black!10,fit=(A) (B) (C) (D) (edge1)] {};
+    \end{pgfonlayer}
+  \end{scope}
+  \begin{scope}[xshift=4cm]
+    \node (A) at (0,2) [CfgInstr] {A};
+    \node (B) [CfgInstr] [below=of A] {B}; 
+    \node (C) [CfgInstr] [below=of B] {C}; 
+    \node (D) [CfgInstr] [below=of C] {D};  
+    \node (C') [CfgInstr] [right=of C] {C'};
+    \draw[->] (A) -- (B);
+    \draw[->] (B) -- (C);
+    \draw[->] (C) -- (D);
+    \draw[->] (B) to [bend right=10] (C');
+    \draw[->] (C') to [bend right=10] (B);
+    \begin{pgfonlayer}{bg}
+      \node (box2) [fill=black!10,fit=(A) (B) (C) (D) (C')] {};
+    \end{pgfonlayer}
+  \end{scope}
+  \begin{scope}[xshift=8cm]
+    \node (A) at (0,2) [CfgInstr] {A};
+    \node (B) [CfgInstr] [below=of A] {B};
+    \node (B') [CfgInstr] [right=of B] {B'};
+    \node (C) [CfgInstr] [below=of B] {C};
+    \node (D) [CfgInstr] [below=of C] {D};
+    \node (C') [CfgInstr] [right=of C] {C'};
+    \draw[->] (A) -- (B);
+    \draw[->] (B) -- (C);
+    \draw[->] (C) -- (D);
+    \draw[->] (C') -- (B);
+    \draw[->] (A) -- (B');
+    \draw[->] (B') to [bend right=10] (C');
+    \draw[->] (C') to [bend right=10] (B');
+    \begin{pgfonlayer}{bg}
+      \node (box3) [fill=black!10,fit=(A) (B) (C) (D) (C') (B')] {};
+    \end{pgfonlayer}
+  \end{scope}
+  \begin{scope}[xshift=12cm]
+    \node (A) at (0,2) [CfgInstr] {A};
+    \node (B) [CfgInstr] [below=of A] {B};
+    \node (B') [CfgInstr] [right=of B] {B'};
+    \node (C) [CfgInstr] [below=of B] {C};
+    \node (C') [CfgInstr] [right=of C] {C'};
+    \node (C'') [CfgInstr] [right=of C'] {C''};
+    \node (D) [CfgInstr] [below=of C] {D};
+    \draw[->] (A) -- (B);
+    \draw[->] (B) -- (C);
+    \draw[->] (C) -- (D);
+    \draw[->] (C') -- (B);
+    \draw[->] (A) -- (B');
+    \draw[->] (B') -- (C');
+    \draw[->] (C'') to [bend right=10] (B');
+    \draw[->] (B') to [bend right=10] (C'');
+    \begin{pgfonlayer}{bg}
+      \node (box4) [fill=black!10,fit=(A) (B) (C) (D) (C') (B') (C'')] {};
+    \end{pgfonlayer}
+  \end{scope}
+  \draw[->,thick] (box1) -- (box2) node [above,midway] {duplicate C};
+  \draw[->,thick] (box2) -- (box3) node [above,midway] {duplicate B};
+  \draw[->,thick] (box3) -- (box4) node [above,midway] {duplicate C'};
+  \draw[->,thick] (box4) -- +(2.5,0) node [above,midway] {...};
+\end{tikzpicture}
+\caption{A CFG containing a cycle.}
+\label{fig:cyclic_cfg}
+\end{figure}
+
+\begin{figure}
+\begin{center}
+\begin{tikzpicture}
+  [node distance=1 and 0.3]
+  \node (A) at (0,2) [CfgInstr] {A};
+  \node (B) [CfgInstr] [below=of A] {B};
+  \node (B') [CfgInstr] [right=of B] {B'};
+  \node (C) [CfgInstr] [below=of B] {C};
+  \node (C') [CfgInstr] [right=of C] {C'};
+  \node (C'') [CfgInstr] [above right=of B'] {C''};
+  \node (D) [CfgInstr] [below=of C] {D};
+  \draw[->] (A) -- (B);
+  \draw[->] (B) -- (C);
+  \draw[->] (C) -- (D);
+  \draw[->] (C') -- (B);
+  \draw[->] (A) -- (B');
+  \draw[->] (B') -- (C');
+  \draw[->] (C'') -- (B');
+  \begin{pgfonlayer}{bg}
+    \node (box4) [fill=black!10,fit=(A) (B) (C) (D) (C') (B') (C'')] {};
+  \end{pgfonlayer}\smh{Center?}
+\end{tikzpicture}
+\end{center}
+\caption{Fully unrolled version of the CFG in
+  Figure~\ref{fig:cyclic_cfg}, preserving all paths of length six or
+  fewer instructions.  Note that an additional root has been
+  introduced at C''.}
+\label{fig:unrolled_cyclic_cfg}
+\end{figure}
+
+As an example, consider the CFG shown at the left of
+Figure~\ref{fig:cyclic_cfg}, which contains a loop between
+instructions B and C.  This loop must be removed from the CFG while
+maintaining all paths which terminate at D and which contain
+\backref{$\alpha$} or fewer instructions.  The algorithm starts by
+performing a depth-first traversal backwards through the graph from D
+until it finds an edge which closes a cycle.  In this case, that is
+the edge from C to B.  SLI will therefore break this edge by
+duplicating the instruction at the start of the edge, C, along with
+all of its incoming edges (in this case, just the B to C edge).  The C
+to B edge can then be redirected to be from C' to B, producing the
+next diagram in the sequence.  All paths which were possible in the
+old graph will also be possible in the new one, if duplicated nodes
+are treated as semantically equivalent, and the loop is now one
+instruction further away from the target instruction D.  The process
+then repeats, moving the cycle steadily further and further away from
+D until all paths ending of length \backref{$\alpha$} ending at D are
+acyclic, at which point the cycle can be safely removed from the
+graph.
+
+Note that the edge which is modified is the back edge, from C to B,
+which points ``away from D'', and not the forwards edge from B to C.
+Trying to break the B to C edge would have moved the cycle away from A
+rather than away from D, which would not be helpful.
+
+\begin{figure}
+\begin{algorithmic}[1]
+  \While {graph is not cycle-free}
+     \State $edge \gets \textsc{findEdgeToBeBroken}(targetInstr)$
+     \If {$edge$ is at least $N_r$ instructions from target instruction}
+        \State {Erase $edge$ from graph}
+     \Else
+        \State {$newNode \gets$ duplicate of $edge.source$}
+        \For {$i$ incoming edge of $edge.source$}
+           \State {Create a new edge from $i.source$ to $newNode$}
+        \EndFor
+        \State {Replace $edge$ with an edge from $newNode$ to $edge.destination$}
+     \EndIf
+  \EndWhile
+\end{algorithmic}
+\caption{Loop unrolling and cycle breaking algorithm.
+  \textsc{findEdgeToBeBroken} simply performs a depth-first search of
+  the graph backwards from $targetInstr$ and returns the first edge
+  which completes a cycle.}
+\label{fig:derive:read:unroll_cycle_break}
+\end{figure}
+
+The complete algorithm is shown in
+Figure~\ref{fig:derive:read:unroll_cycle_break}.  This algorithm is
+guaranteed to preserve all paths of length $N_r$ which end at the
+target instruction.  There are only two places in the algorithm which
+remove existing edges, so consider each in turn.  The first is the
+erasure on line 4.  This can only ever affect edges whose shortest
+path to a target is at least $N_r$ instructions long, and so cannot
+eliminate any paths to a target of length $N_r$, and is therefore
+safe.  The other is the replacement step at line 10, which replaces an
+edge from $edge.source$ to $edge.destination$ with one from $newNode$
+to $edge.destination$.  This is safe provided that every path to
+$newNode$ has a matching path to $edge.source$, which is ensured by
+duplicating all of $edge.source$'s incoming edges to $newNode$.  At
+the same time, no additional paths will be introduced, because every
+path to $newNode$ has a matching path to $edge.source$.
+
+\todo{Is it worth doing a proof of termination as well?}\smh{No,
+  although you might comment on the expected running time...}
+
+\subsection{Handling cross-function CFGs.}
+
+\label{sect:derive:cross_function_cfgs}
+
+There is, of course, no guarantee that all of the instructions in the
+\backref{analysis window} will be contained within a single function,
+and if they are not then {\technique} must be able to generate
+appropriate cross-function \backref{CFG}s.  It does so by partially
+inlining functions as necessary to restore the problem to the
+single-function case.  This means that instructions must be labelled
+by both the pointer of the instruction itself and also by its inlining
+context, which is simply the stack of functions into which it has been
+inlined\editorial{Not terribly clear.}.  The only slight complications
+are that the inlining context is not necessarily known when CFG
+exploration starts, and it might be necessary to consider the same
+instruction in several contexts.
+
+\todo{That's kind of a stupid way of doing this.  Should only need to
+  duplicate instructions when the inlining context matters, which is
+  pretty much just when we see both the start and end of the
+  function.}
+
+There are two important cases to consider: backing into another
+function, where the exploration starts in one function and must be
+extended backwards into the end of another one, and backing out of
+one, where the exploration starts in one function and must be extended
+to include that function's callers.  Backing into a function is
+simple: the analysis finds the functions which are to be
+called\footnote{There might be more than one function if the
+  instruction is a dynamic call.  In that case, the \backref{program
+    model} is used to find the set of all possibly-called functions
+  and they are all treated as possible predecessors.}, finds all of
+the return instructions in those functions, and treats those as the
+predecessor of the current instruction with an appropriately extended
+inlining context.
+
+Backing out of a function is more complex.  In this case, the analysis
+must consider all possible callers of the target function and inline
+the target function into each.  
+
+\todo{As I write this I realise that the way I've done this is really,
+  really stupid.  I should probably fix that before writing any more
+  about it.}\smh{An example or two would probably help, too.}
+
+Tail calls do not require any particular special handling here.  If
+the exploration reaches the start of a function then all branches to
+that instruction will be treated as possible predecessors of it,
+regardless of whether they come from call instructions or simple
+branch instructions.
+
+\subsection{Compiling the CFG to a \StateMachine}
+\label{sect:derive:compile_cfg}
+
+\todo{Should mention that I use libVEX\smh{probably not at this level
+    of abstraction.} to convert instructions to a slightly saner
+  intermediate format before converting to {\StateMachine} fragments,
+  rather than doing it directly.}
+
+The algorithm presented so far can build a \backref{CFG} of the
+instructions in the \backref{analysis window}.  The next step is to
+compile that \backref{CFG} to form the initial {\StateMachine}.  The
+{\StateMachine} analysis language is powerful enough to make
+translating individual instructions in isolation completely
+straightforward.  Connecting them together is, however, slightly more
+difficult, as the edges in the \backref{CFG} no longer match up
+precisely with those in the original program, so that, for instance,
+an instruction which would normally have a single successor might have
+multiple successors in the \backref{CFG}, or one which would normally
+have multiple successors might only have one.  There are three cases
+which require special care:
+
+\begin{itemize}
+\item
+  Some edges will be erased from the \backref{CFG}, so that the
+  program can branch from instruction A to instruction B but the
+  \backref{CFG} does not allow that to happen.  These are simply
+  converted to branches to the special \state{Unreached} state,
+  reflecting the fact that these paths are of no interest to the rest
+  of the analysis.
+
+\item
+  Some additional edges will have been introduced which do not
+  correspond to anything in the original program.  In the example in
+  Figure~\ref{fig:unrolled_cyclic_cfg}, instruction A had a single
+  successor, B, in the original program, but has multiple successors
+  in the unrolled \backref{CFG}.  {\Technique} handles these by
+  converting them into \StateMachine-level control flow using
+  $ControlFlow$ expressions, so that the {\StateMachine} fragment for
+  A will be something like ``\state{If} ($\controlEdge{threadId}{A}{B}$)
+  \{fragment for B\} else \{fragment for B'\}''.
+
+\item
+  The \backref{CFG} can sometimes have multiple roots.  In this case,
+  the first state of the {\StateMachine} will be a test on special
+  $Entry()$ expressions which will select an appropriate fragment of
+  {\StateMachine} to start with.  In the example, the first state will
+  be something like
+
+  \state{If} $(\entryExpr{\mai{threadId}{A}})$ \\
+  \{fragment for A\} \\
+  else \\
+  \{fragment for C''\}\editorial{Ugly ugly ugly}
+
+  The \backref{CFG} has two roots, A and C'', and this selects an
+  appropriate place from which to start the \backref{summary}
+  according to where the thread entered the \backref{CFG} (as
+  indicated by the Entry expression).\editorial{Gah.}
+
+\end{itemize}
+
+As a somewhat unrealistic example, suppose that the CFG in
+Figure~\ref{fig:cyclic_cfg} had been generated from a program
+something like this:
+
+\begin{verbatim}
+A: MOV rdx -> rcx
+B: LOAD *(rcx) -> rcx
+C: JMP_IF_NOT_EQ *(rcx + 8), 0, B
+D: STORE $0 -> *(rcx)
+\end{verbatim}
+
+The \verb|JMP_IF_NOT_EQ| instruction is supposed to indicate that
+\verb|C| loads from the memory at \verb|rcx+8|, jumping to \verb|B| if
+it is non-zero and proceeding to \verb|D| otherwise.  This will
+produce an unrolled CFG as in Figure~\ref{fig:unrolled_cyclic_cfg}, as
+already discussed, and a {\StateMachine} as shown in
+Figure~\ref{fig:state_machine_for_cyclic_cfg}.
+
+\begin{figure}
+\begin{tikzpicture}
+  \node[stateIf,initial] (l1) {\state{If} $Entry(A)$};
+  \node[stateSideEffect,below left = of l1] (l2) {A: \state{Copy} $\mathit{rdx}$ to $\mathit{rcx}$};
+  \node[stateIf,below = of l2] (l3) {\state{If} $\controlEdge{threadId}{A}{B}$};
+  \node[stateSideEffect,below = of l3] (l4) {B: \state{Load} $\mathit{rcx}$ to $\mathit{rcx}$};
+  \node[stateSideEffect,below = of l4] (l5) {C: \state{Load} $\mathit{rcx}+8$ to $\mathit{tmp}$};
+  \node[stateIf,below = of l5] (l6) {\state{If} $\mathit{tmp} = 0$};
+  \node[stateIf,below = of l6] (l7) {D: \state{If} $\mathit{BadPtr}(\mathit{rcx})$};
+  \node[stateSideEffect,below right = of l3] (l8) {B': \state{Load} $\mathit{rcx}$ to $\mathit{rcx}$};
+  \node[stateSideEffect,below = of l8] (l9) {C': \state{Load} $\mathit{rcx}+8$ to $\mathit{tmp}$};
+  \node[stateIf,below = of l9] (l10) {\state{If} $\mathit{tmp} = 0$};
+  \node[stateSideEffect,below right = of l1] (l11) {C'': \state{Load} $\mathit{rcx}+8$ to $\mathit{tmp}$};
+  \node[stateIf,below = of l11] (l12) {\state{If} $\mathit{tmp} = 0$};
+  \node[stateTerminal,below left = of l7] (lBeta) {\state{Crash}};
+  \node[stateTerminal,below right = of l7] (lGamma) {\state{Survive}};
+  \node[stateTerminal,right = of lGamma] (lAlpha) {\state{Unreached}};
+  \draw[->,ifTrue] (l1) -- (l2);
+  \draw[->,ifFalse] (l1) -- (l11);
+  \draw[->] (l2) -- (l3);
+  \draw[->,ifFalse] (l3) -- (l8);
+  \draw[->,ifTrue] (l3) -- (l4);
+  \draw[->] (l4) -- (l5);
+  \draw[->] (l5) -- (l6);
+  \draw[->,ifFalse] (l6) -- (lAlpha);
+  \draw[->,ifTrue] (l6) -- (l7);
+  \draw[->,ifFalse] (l7) -- (lGamma);
+  \draw[->,ifTrue] (l7) -- (lBeta);
+  \draw[->] (l8) -- (l9);
+  \draw[->] (l9) -- (l10);
+  \draw[->,ifTrue] (l10) -- (lAlpha);
+  \draw[->,ifFalse] (l10) -- (l4);
+  \draw[->] (l11) -- (l12);
+  \draw[->,ifTrue] (l12) -- (lAlpha);
+  \draw[->,ifFalse] (l12) -- (l8);
+\end{tikzpicture}
+\caption{{\STateMachine} generated from the CFG shown in
+  Figure~\ref{fig:cyclic_cfg}.}\todo{Check this very carefully.}
+\label{fig:state_machine_for_cyclic_cfg}
+\end{figure}
+
+\subsection{Conversion to SSA}
+\label{sect:ssa}
+
+\todo{Maybe move this to the section on $\Phi$ elimination?  That's
+  the only place I use the odd SSA form bits.}
+
+{\STateMachines} are, for the most part, maintained in a variant of
+static single assignment (SSA) form.  SSA is a standard compiler
+intermediate representation in which each variable has at most one
+static assignment\needCite{}\smh{Cytron et al TOPLAS 91?  or some
+  textbook from AM's class?}.  Variables which are assigned to
+multiple times are converted into families of related variables
+(usually referred to as ``versions'' or ``generations'' of the
+variable), each of which is assigned to precisely once.  This has the
+effect of breaking up the live ranges of long-lived variables, which
+can expose other useful optimisations.  Most uses of the original
+variable will be converted into references to a specific member of one
+of these families; the only case in which this is not possible is
+where the correct member to use depends on the program's control flow,
+and in that case special $\Phi$ nodes are inserted into the program
+which select an appropriate member depending on the immediately
+proceeding control flow.  These $\Phi$ nodes are themselves
+unrealisable on most hardware, and so the program must be converted
+back from SSA form after being optimised and before being lowered to
+machine code.
+
+Many of the compiler optimisations for which SSA is helpful are also
+relevant to {\technique}, and so {\technique} also converts its
+{\StateMachines} (which are analogous to a compiler's intermediate
+representation) into SSA form.  The details of the SSA form are,
+however, very slightly different to the conventional one: whereas a
+compiler-style $\Phi$ node examines the program's preceding control
+flow and maps from incoming control-flow edges to input variables, a
+{\technique} one examines the order in which variables have been
+assigned to and selects whichever was updated most recently (from a
+specified set).  This has several important implications:
+
+\begin{itemize}
+\item
+  Converting this form of SSA back into a non-SSA form can sometimes
+  requires additional temporary variables to record which version of a
+  particular variable has been most recently assigned to, whereas the
+  more conventional control-flow based form does not.  This would be
+  an additional complication in a compiler, but is not a problem for
+  SLI, which never has to perform that conversion.
+\item
+  A {\StateMachine}'s control flow graphs can be modified without
+  needing to update $\Phi$ nodes.  For example, suppose that a
+  {\StateMachine} is as shown on the left of
+  Figure~\ref{fig:ssa_cfg1}, and suppose that further analysis shows
+  that the assignment of $z$ is dead.  We would like to remove the
+  assignment and turn the {\StateMachine} into the one shown on the
+  right.  This is correct as-is using SLI's $\Phi$ semantics.  If a
+  simple control-flow based definition of $\Phi$ were used instead
+  then we would also need to convert the $\Phi$ node at l1 into $x_3 =
+  \Phi(x_1, x_2, x_2)$, as the l1 state now has three control-flow
+  predecessors.  There are, of course, many solutions to this problem
+  in the standard compiler literature\needCite{}, but all add
+  complexity which is unnecessary and unuseful in this context.
+\end{itemize}
+
+Most algorithms for converting to SSA form will work equally well with
+either form, including that used by \implementation, and so no details
+are given here; see \needCite{} for more information\editorial{blah}.
+
+\todo{I'd be surprised if I'm the first person to come up with this...}
+
+Note that while {\StateMachine}-level variables, including registers,
+are converted to single static assignment form, memory accesses are
+not.  This is because it is not always clear from the {\StateMachine}
+when two \state{Store} operations modify the same memory location,
+which makes the conversion process far more difficult.  \todo{Maybe
+  cite Van Emmerik 2007 here?}
+
+\todo{Maybe mention that LLVM and gcc do something very similar?}
+
+\todo{Not actually sure how interesting this is, now that I've written
+  it down.  It's all true, and it does make a bit of difference to the
+  symbolic execution stuff, but I could probably rewrite to drop it
+  completely without leaving a particularly obvious hole.}
+
+\begin{figure}
+\begin{tikzpicture}
+  \node (start) {start};
+  \node [below right=of start] (b) {$x_2 = 6$};
+  \node [below = of b](c) {if ($\ldots$)};
+  \node [below = of c] (d) {$y_1 = 1$};
+  \node [below right = of c] (e) {$y_2 = 2$};
+  \node [below = of d] (f) {$z = 3$};
+  \node [left = of f] (a) {$x_1 = 5$};
+  \node [below = of a] (g) {l1: $x_3 = \Phi(x_1, x_2)$};
+  \draw[->] (start) -- (a);
+  \draw[->] (start) -- (b);
+  \draw[->] (a) -- (g);
+  \draw[->] (b) -- (c);
+  \draw[->] (c) -- (d);
+  \draw[->] (c) -- (e);
+  \draw[->] (d) -- (f);
+  \draw[->] (e) -- (f);
+  \draw[->] (f) -- (g);
+\end{tikzpicture}
+\begin{tikzpicture}
+  \node (start) {start};
+  \node [below right=of start] (b) {$x_2 = 6$};
+  \node [below = of b](c) {if ($\ldots$)};
+  \node [below = of c] (d) {$y_1 = 1$};
+  \node [below right = of c] (e) {$y_2 = 2$};
+  \node [left = of d] (a) {$x_1 = 5$};
+  \node [below = of a] (g) {l1: $x_3 = \Phi(x_1, x_2)$};
+  \draw[->] (start) -- (a);
+  \draw[->] (start) -- (b);
+  \draw[->] (a) -- (g);
+  \draw[->] (b) -- (c);
+  \draw[->] (c) -- (d);
+  \draw[->] (c) -- (e);
+  \draw[->] (d) -- (g);
+  \draw[->] (e) -- (g);
+\end{tikzpicture}
+\caption{Optimising an SSA-form machine}
+\label{fig:ssa_cfg1}
+\end{figure}
+
+\subsection{Stack canonicalisation}
+
+The aim of the {\StateMachine} building algorithm is to share work
+between different contexts in which the crashing instruction is found
+by combining the contexts into a single {\StateMachine}.  This is much
+easier if the we can arrange for the stack pointer to always have the
+same value at the end of the {\StateMachine}, regardless of where the
+{\StateMachine} starts, so that local variable accesses in the
+function containing the purported crashing instruction match up
+properly\footnote{Of course, this means that stack references near the
+  start of the {\StateMachine} will be less likely to match up.  This
+  is usually a reasonable trade-off, as all paths through the
+  {\StateMachine} end in the same way but might start in completely
+  different function contexts.}.  This is not completely trivial if
+the starting points are themselves in different functions with
+different inlining contexts.  This problem can be solved by examining
+the generated {\StateMachine} and determining, for each entry point,
+how the stack pointer changes between that entry point and the end and
+then inserting an opposite change immediately before the entry point.
+Most of the time, the only change to the stack pointer is adding or
+subtracting a constant, and so this is easy.  Otherwise, it fails.
+The fact that the stack has been massaged in this way is recorded in
+the {\StateMachine} structure so that it can be undone later when
+building data-dependent crash enforcers.
+
+\todo{Possibly interesting: this means that once you've converted to
+  SSA, the initial generation of the stack pointer refers to its value
+  at the \emph{end} of the machine, whereas for every other register
+  it refers to the value at the \emph{beginning}.}
+
+
+\subsection{Extracting a call stack from a core dump}
+
+The algorithm presented above starts from the assumption that the call
+stack and crashing instruction pointer are available.  A core dump
+contains all of the necessary information, but not in a convenient
+format.  In particular, it is not trivial to extract the call stack
+from a core dump without access to compiler debug symbols.  The only
+important part of the call stack is the sequence of function calls
+which have started but not returned\footnote{Some tools refer to this
+  as the backtrace \todo{cite?}.}, and {\technique} has two strategies
+for extracting it:
+
+\begin{itemize}
+\item
+  A static analysis, run on the binary before attempting to analyse
+  the core dump, which attempts to map from instruction addresses to
+  the offset between the current stack pointer and the address of the
+  current function's return address.  When this analysis succeeds it
+  makes it easy to determine from the core dump where the function
+  will return to, and hence where it was called from, but it will not
+  always succeed.  In particular, the \verb|alloca| function can cause
+  that offset to change at run-time, and so no static analysis will
+  ever succeed.
+\item
+  An abstract interpreter, which attempts to interpret the program's
+  machine code forwards from the point of the crash to determine what
+  it would have done if it hadn't crashed.  This proceeds until it
+  reaches a \verb|ret| instruction, at which point determining the
+  return address is again straightforward.
+\end{itemize}
+
+\todo{Need to talk about when you use each, and why you need both.
+  Which is potentially awkward, because I've forgotten myself.}
+
+Knowing the contents of the call stack at the time of the crash
+effectively tells us what the correct inlining context to use is,
+which can then be used to constrain the backing-out-of-function case
+discussed above.
+
+\subsection{Finding unknown bugs}
+\label{sect:derive:unknown_bugs}
+
+\todo{I don't really have anything clever to say here.}
+
+When being used to find previously unknown bugs, {\technique} does not
+have the assistance of being told the crashing instruction and call
+stack and must instead discover them for itself.  The scheme used is
+quite simple: enumerate all of the instructions in a program which
+might crash due to a bug of the class being investigated and then
+consider each independently in turn.  This is obviously only feasible
+if the majority of instructions can be dismissed quickly.
+Fortunately, they can be: {\implementation} takes, on average, a few
+tens of milliseconds per instruction on fairly modest hardware,
+allowing even large programs with millions of instructions to be
+analysed in a few days\editorial{Put some actual numbers in here.}.
+Parallelisation would allow this time to be reduced further if
+necessary.
+
+Identifying instructions which might crash depends on the type of bug
+which is to be investigated, but is generally straightforwards.
+{\Implementation} considers three types of crash:
+
+\begin{itemize}
+\item Assertion-failure type crashes.  These are caused by the program
+  calling a function such as \verb|__assert_fail| or \verb|abort|
+  provided by an operating system library.  Finding such functions is
+  generally straightforward given the usual dynamic linker
+  information, and the initial whole-program static analysis phase can
+  then find all callers of those functions.
+\item Double free errors.  These are caused by the program calling
+  \verb|free| in an incorrect manner.  Again, the dynamic linker
+  information allows {\implementation} to quickly find all calls to
+  \verb|free| in the program, and these calls are used as the
+  potentially-crashing instructions in the program.
+\item Bad pointer dereferences.  Any memory-accessing instruction
+  could potentially dereference a bad pointer, and so
+  {\implementation} simply enumerates all memory accessing
+  instructions discovered by the initial static analysis.
+\end{itemize}
+
+These potentially-crashing instructions are then considered
+independently in turn.\smh{aren't there still a \emph{lot} of these?
+  (i.e. it's the backwards search that's important here, not the insn
+  choice?)}
+
+\subsection{Building the interfering thread's \StateMachines}
+\label{sect:derive:write_side}
+
+At this stage, {\technique} has built the crashing thread's
+{\StateMachine} for the bug which is to be investigated.  The next
+step is to build the interfering thread's {\StateMachine}.  According
+to the bug definition in Section~\ref{sect:intro:types_of_bugs}, we
+should now consider every possible sequence of \backref{$\alpha$}
+instructions in the program, convert each to a {\StateMachine}, and
+consider every possible interleaving of the crashing thread's
+{\StateMachine} with each of these interfering {\StateMachines}.  This
+would clearly be completely impractical for all but the most trivial
+programs.  Fortunately, it is possible to significantly reduce the set
+of sequences which must be considered by using the \backref{program
+  model}.
+
+The \backref{program model} includes, for each instruction which reads
+from memory, a list of all of the instructions which might store to
+the same memory location\footnote{As usual, this list is only complete
+  when the \backref{dynamic analysis} from which the \backref{program
+    model} is built is itself complete.}.  This instructions in this
+list are referred to as the \introduction{interfering
+  stores}\editorial{Need a less generic-sounding name} for the
+crashing thread.  We can then immediately reduce the set of sequences
+which need to be considered to just those which include some
+instruction from the \backref{interfering stores} set, which is
+already a useful reduction.  Two further observations make it possible
+to reduce the set of sequences further:
+
+\begin{itemize}
+\item Any instructions in the write thread after the last
+  \backref{interfering store} cannot possible influence the behaviour
+  of the read thread, and so cannot possibly affect whether the
+  program crashes.  They can therefore be completely discarded.
+\item Instructions prior to the first \backref{interfering store} can
+  also be discarded.  This is perhaps less obvious.  Discarding these
+  instructions is safe only because of the \backref{W isolation}
+  property.  The interfering thread cannot load from any locations
+  which are stored to by the crashing thread, and so, in particular,
+  its load operations cannot race with any operations in the crashing
+  thread.  Their only possible effect is to restrict the possible
+  values of thread-local state, such as machine registers or stack
+  locations, when the write thread starts.  In the absence of such
+  restrictions, {\technique} will consider all possible initial values
+  for this state, and thus discarding these restrictions is sound.
+
+  On the other hand, it is not always desirable to do so, if the
+  restrictions would have provided useful hints to later phases of the
+  analysis.  For instance, if the bug to be investigated is a bad
+  pointer dereference, knowing that the value stored into a shared
+  structure had previously been dereferenced by the interfering
+  thread, and hence is definitely a valid pointer, is often useful.
+  The approach taken by {\implementation} is to first generate a set
+  of \backref{CFGs} which all start with an \backref{interfering
+    store} and then extend them backwards to include a modest amount
+  of the preceding context, provided that doing so does not exceed the
+  \backref{analysis window} and does not increase the number of
+  distinct paths through the \backref{CFG}.  In other words, a
+  \backref{CFG} root A will be replaced by B when B is A's only
+  possible predecessor\editorial{Not sure how clear that is.}.
+\end{itemize}
+
+The procedure for building interfering {\StateMachines} is then a
+variant of that used for building crashing ones: find all of the
+potentially interfering store instructions, build an acyclic CFG which
+includes all traces of appropriate length which start and end with an
+interfering store, potentially extend it with a small amount of extra
+context, and then compile the CFG down to a {\StateMachine}.  The
+details are, however, slightly different, and I describe them in the
+next couple of sections.
+
+\subsubsection{Finding relevant stores}
+
+The first phase of building the interfering {\StateMachines} is to
+determine which stores in the program might possibly interfere with
+the crashing {\StateMachine}.  As indicated, this is straightforward:
+simply take all \state{Load} states in the crashing thread's
+{\StateMachine} and compare them to the \backref{program model} to
+find all of the store instructions which might possibly interfere with
+them.
+
+As a minor optimisation, {\implementation} first attempts to remove
+\state{Load}s which are only required because of \state{Assert}
+states\footnote{This includes \state{Load}s which influence a
+  {\StateMachine} control-flow decision if the only difference between
+  the two control-flow paths is in their \state{Assert}ions.}.  Such
+\state{Load}s tend to be much less interesting than those which
+control the {\StateMachines} actual behaviour.  The mechanism for
+doing so is simple: remove the \state{Assert}ions from the
+{\StateMachine}, simplify the resulting {\StateMachine} as far as
+possible, and then only consider \state{Load}s which remain in the
+{\StateMachine} when building the interfering stores set.
+
+Note that \state{Store} operations in the crashing {\StateMachine} are
+not considered at this stage, even though {\technique} does handle
+some kinds of write-write races.  That is safe because of the W
+isolation property: the interfering thread can never load any
+locations written by the crashing thread, and so if the stored value
+is ever loaded it must be via a \state{Load} side-effect in the
+crashing thread, and any potentially interfering stores in remote
+threads will be detected because the dynamic aliasing model will
+report that they alias with that \state{Load} side-effect.
+
+\subsubsection{Build interfering thread CFGs}
+\todo{This has far more pages than it really deserves, although most
+  of them are diagrams, so I guess it's not too bad.}
+
+The input to this phase of the analysis is the set of
+\backref{interfering store} instructions, and the analysis must build
+a collection of acyclic CFGs which cover all possible paths through
+the program which start and end with one of those instructions and
+which contain at most \backref{$\alpha$} instructions.  This is easier
+than building the crashing thread's CFGs in the sense that both ends
+of the CFG are ``bounded'' by some well-defined instruction, whereas
+the crashing thread's CFGs potentially extend arbitrarily far
+backwards; it is harder in the sense that the interfering thread CFG
+builder must also cluster the interfering instructions, deciding which
+should be included in a single trace and which analysed independently,
+whereas the crashing thread's CFGs concern only a single instruction.
+The overall result is that the interfering thread's CFGs tend to be
+significantly smaller and easier to analyse than crashing thread ones
+but the unrolling algorithm itself is slightly more involved.
+
+The first phase of the algorithm is to build a (possibly) cyclic
+fragment of the original program's control flow graph which includes
+all instructions which might possibly be included in one of the final
+traces.  This is simple: starting from each potentially interfering
+instruction, {\technique} explores forwards for \backref{$\alpha$}
+instructions, merges the resulting CFG fragments, and then discards
+any instructions which cannot reach a potentially interfering
+instruction within \backref{$\alpha$} instructions.  These CFG
+fragments may cross function boundaries; the details are the same as
+those for the crashing thread's CFGs in most important respects, and I
+do not repeat them here\editorial{Well, the fact that you're exploring
+  forwards rather than backwards makes it a bit different, but not in
+  an interesting way.}.
+
+The next step is to remove the cycles from the CFG.  As with crashing
+thread CFGs, this is accomplished by duplicating nodes so as to unroll
+loops until any path which uses the loop more than once must be longer
+than \backref{$\alpha$} instructions, at which point the loop-closing
+edges can be safely discarded.  There is, however, one important
+difference: in the crashing thread CFG, we are interested in any path
+which terminates at a specific point, whereas in the interfering
+thread CFG we need to preserve any path which goes between any members
+of a set of interfering instructions.  This makes it more difficult to
+determine when a loop has been unrolled sufficiently, as it is no
+longer sufficient to just check the distance to a nominated target
+instruction.  {\Technique} solves this problem by labelling each node
+in the graph with information about where it might occur in an
+interesting path.  This label contains an entry for every possibly
+interfering instruction specifying:
+
+\begin{enumerate}
+\item
+  The number of instructions on the shortest path from that
+  interfering instruction to the labelled node (the ``min from''
+  distance), and
+\item
+  The number of instructions on the shortest path from the labelled
+  node to the interfering instruction or any of its duplicates (the
+  ``min to'' distance).
+\end{enumerate}
+
+\smh{Possibly define/use I = set of interfering instructions or $I_d$
+  = duplicates will make lots of text concise...}
+
+The asymmetry, taking the distance from a ``true'' interfering
+instruction and to any duplicate of an interfering instruction, is
+perhaps surprising.  The key observation is that every path which
+starts at a duplicated interfering instruction will have a matching
+path which starts at the original interfering instruction, and so the
+ones which start at the duplicate instruction are
+redundant\footnote{The symmetrical statement is also true: every path
+  which ends in a duplicate interfering instruction has a matching
+  path which ends at a true interfering instruction.  It would
+  therefore also be correct to discard paths which \emph{end} at a
+  duplicate interfering instruction.  It would not, however, be
+  correct to combine the two observations and discard all paths which
+  either start or end with duplicate instructions, as there would then
+  be little point in having those duplicate instructions.}  It is
+therefore safe to discard any nodes $r$ where
+
+\begin{displaymath}
+\min_{s \in I}\mathit{min\_from}(s, r) + \min_{s \in I_d}\mathit{min\_to}(s, r)
+\end{displaymath}
+
+exceeds \backref{$\alpha$}, where $I$ is the set of
+\backref{interfering stores} and $I_d$ the set of \backref{interfering
+  stores} and their duplicates.  The complete algorithm is then as
+shown in Figure~\ref{fig:derive:store_cfg_unroll_alg}.
+
+\begin{figure}
+\begin{algorithmic}
+  \State {Compute initial labelling of graph}
+  \For {$t$ in the set of potentially-relevant stores}
+    \While {graph rooted at $t$ is not cycle-free}
+       \State $\mathit{edge} \gets \textsc{findEdgeToBeBroken}(t, \{\})$
+       \State $\mathit{newLabel} \gets \textsc{combineLabels}(\text{current label of } \mathit{edge}.\mathit{start}, \text{current label of } \mathit{edge}.\mathit{end})$
+       \If {$\min_s(\mathit{newLabel}.\mathit{minFrom}(s)) + \min_s(\mathit{newLabel}.\mathit{minTo}(s)) > N_w$}
+           \State {remove $\mathit{edge}$}
+       \Else
+           \State $\mathit{newNode} \gets \text{duplicate } \mathit{edge}.\mathit{end}$
+           \For {Edges $e$ leaving $\mathit{edge}.\mathit{end}$}
+              \State {Create a new edge from $\mathit{newNode}$ to $e.\mathit{end}$}
+           \EndFor
+           \State {Set label of $\mathit{newNode}$ to $\mathit{newLabel}$}
+           \State {Replace $\mathit{edge}$ with an edge from $\mathit{edge}.\mathit{start}$ to $\mathit{newNode}$}
+           \State {Recalculate $\mathit{min\_from}$ for $\mathit{edge}.\mathit{end}$ and its successors, if necessary}
+       \EndIf
+    \EndWhile
+  \EndFor
+\end{algorithmic}
+\caption{Loop unrolling algorithm for interfering thread CFGs.
+  \textsc{findEdgeToBeBroken} and \textsc{combineLabels} are described
+  in the text below.}
+\label{fig:derive:store_cfg_unroll_alg}
+\end{figure}
+
+Note that in this algorithm duplicating a node duplicates its
+\emph{outgoing} edges, whereas when building a crashing thread CFG the
+\emph{incoming} edges are duplicated.  This reflects the fact that
+interfering thread CFGs are built up forwards from the interfering
+instructions while crashing thread CFGs are built up backwards from
+the target instruction.
+
+The algorithm relies on two utility functions:
+
+\begin{itemize}
+\item \textsc{findEdgeToBeBroken} just finds the closing edge of some
+  cycle in the graph.  The precise choice of edge is not
+  important\editorial{I \emph{think} it'll converge on the same thing
+    regardless, but it might be nice to show that.  It's certainly
+    guaranteed to be correct, but confluence would also be a nice
+    property.}.  In {\implementation}'s implementation, this is a
+  breadth-first search starting from some arbitrarily chosen root of
+  the CFG and reporting the first edge to close a cycle.  If the graph
+  reachable from that root is acyclic then {\implementation} moves on
+  to the next root.  If the sub-graph reachable from every root is
+  acyclic then the whole graph is acyclic and nothing more needs to be
+  done.
+\item \textsc{combineLabels} is also simple, and is responsible for
+  computing the label for the new node which would be produced by
+  duplicating $\mathit{edge}.\mathit{end}$.  This node will have the
+  same outgoing edges as $\mathit{edge}.\mathit{end}$, and so the same
+  $min\_to$ label, and a single incoming edge from
+  $\mathit{edge}.\mathit{start}$, and hence a $\mathit{min\_from}$
+  label which is just $\mathit{edge}.\mathit{start}$'s
+  $\mathit{min\_from}$ with one added to every value.
+\end{itemize}
+
+The resulting CFG can then be compiled to a {\StateMachine} in the
+same way as a crashing thread's CFG is.  The only major difference is
+that the interfering thread's CFGs can sometimes contain disjoint
+components, in which case each such component is compiled to a
+separate {\StateMachine}.
+
+As an example, consider this cyclic CFG:
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B} edge [in=30,out=-30,loop] ();
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \draw[->] (A) -- (B);
+  \draw[->] (B) -- (C);
+  \draw[->] (C) to [bend left=90] (A) node (edge1) [right,midway] {~~~~~~~~};
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (B) (C) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lccccc}
+      labels & \multicolumn{2}{c}{min to} & \multicolumn{2}{c}{min from} & overall min\\
+             & A & C & A & C \\
+      A & 0 & 2 & 0 & 1 & 0\\
+      B & 2 & 1 & 1 & 2 & 2\\
+      C & 1 & 0 & 2 & 0 & 0\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+\todo{All of these diagrams need checking over carefully.  I
+  rearranged the column headings, need to make sure that I rearranged
+  the data to match.}
+
+Blue nodes indicate the interfering instructions.  The overall min
+column is the minimum min\_to value plus the minimum min\_from one; it
+gives the number of edges on the shortest path involving a given node
+which starts at a true interfering instruction and ends at any
+interfering instruction, whether true or a duplicate.  Assume, for the
+purposes of the example, that $N_w$ is five.  A depth-first search
+starting at A will find the cycle from B back to itself and attempt to
+break that cycle by duplicating B.  The resulting graph will look like
+this:
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B} edge [in=210,out=150,loop,killEdge] ();
+  \node (B1) [NewCfgInstr, right=of B] {B1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \draw[->] (A) -- (B);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) to [bend left=10] (B1);
+  \draw[->,swungEdge] (B1) to [bend left=10] (B);
+  \draw[->] (B1) -- (C);
+  \draw[->] (C) to [bend left=90] (A) node (edge1) [right,midway] {~~~~~~~~};
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (B) (B1) (C) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lccccc}
+      labels & \multicolumn{2}{l}{min to} & \multicolumn{2}{l}{min from} & overall min\\
+         & A & C & A & C \\
+      A  & 0 & 2 & 0 & 1 & 0\\
+      B  & 2 & 1 & 1 & 2 & 2\\
+      C  & 1 & 0 & 2 & 0 & 0\\
+      B1 & 2 & 1 & 2 & 3 & 3\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+New nodes are shown in red, as is the edge which is modified, and
+edges which have been removed are shown crossed through.  Notice that
+whereas the shortest cyclic path starting at A was previously A,B,B,
+of length 3, it is now A, B, B1, B1, of length 4.  Suppose that the
+next depth-first iteration discovers the edge from C to A.  The
+algorithm will then break this edge by duplicating A:
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (A1) [NewCfgInstr,right=of C] {A1};
+  \draw[->] (A) -- (B);
+  \draw[->,swungEdge] (A1) -- (B);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) to [bend left=10] (B1);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B1) to [bend left=10] (B);
+  \draw[->] (C) -- (A1);
+  \draw[->,killEdge] (C) to [bend left=90] (A) node (edge1) [right,midway] {~~~~~~~~};
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (B) (B1) (C) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lccccc}
+      labels & \multicolumn{2}{l}{min to} & \multicolumn{2}{l}{min from} & overall min\\
+         & A & C & A & C\\
+      A  & 0 & 2 & 0 & $\infty$ & 0\\
+      A1 & 0 & 2 & 3 & 1 & 1\\
+      B  & 2 & 1 & 1 & 2 & 2\\
+      C  & 1 & 0 & 2 & 0 & 0\\
+      B1 & 2 & 1 & 2 & 3 & 3\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+Suppose it now selects the B1 to B edge as the cycle-completing edge.
+It will then duplicate B:
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [NewCfgInstr, right=of B1] {B2};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) to [bend left=10] (B1);
+  \draw[->,killEdge] (B1) to [bend left=10] (B);
+  \draw[->,swungEdge] (B1) to [bend left=10] (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) to [bend left=10] (B1);
+  \draw[->] (B2) -- (C);
+  \draw[->] (C) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (B) (B1) (B2) (C) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lccccc}
+      labels & \multicolumn{2}{l}{min to} & \multicolumn{2}{l}{min from} & overall min\\
+         & A & C & A & C\\
+      A  & 0 & 2 & 0 & $\infty$ & 0\\
+      A1 & 0 & 2 & 3 & 1 & 1\\
+      B  & 2 & 1 & 1 & 2 & 2\\
+      C  & 1 & 0 & 2 & 0 & 0\\
+      B1 & 2 & 1 & 2 & 3 & 3\\
+      B2 & 2 & 1 & 3 & 4 & 4\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+The length of the shortest cyclic path start at A has again increased,
+this time from four to five.  Now duplicate B because of the A1 to B
+cycle-completing edge:
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [NewCfgInstr, below=of A1] {B3};
+  \draw[->] (A) -- (B);
+  \draw[->,killEdge] (A1) -- (B);
+  \draw[->,swungEdge] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) to [bend left=10] (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) to [bend left=10] (B1);
+  \draw[->] (B2) -- (C);
+  \draw[->] (B3) -- (C);
+  \draw[->] (B3) to [bend right=45] (B1);
+  \draw[->] (C) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (B) (B1) (B2) (B3) (C) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lccccc}
+      labels & \multicolumn{2}{l}{min to} & \multicolumn{2}{l}{min from} & overall min\\
+         & A & C & A & C\\
+      A  & 0 & 2 & 0 & $\infty$ & 0\\
+      A1 & 0 & 2 & 3 & 1        & 1\\
+      B  & 2 & 1 & 1 & $\infty$ & 2\\
+      C  & 1 & 0 & 2 & 0        & 0\\
+      B1 & 2 & 1 & 2 & 3        & 3\\
+      B2 & 2 & 1 & 3 & 4        & 4\\
+      B3 & 2 & 1 & 4 & 2        & 3\\
+    \end{tabular}
+  };\smh{overall min hangs over right hand margin}
+\end{tikzpicture}
+
+The next cycle-completing edge considered is that from B2 to B1.  In
+this case, the new label would have an overall minimum of 5, matching
+$N_w$, and so there can be no paths through the new node which start
+with an interfering instruction and which end at an interfering
+instruction or a duplicate of it, and so the edge is simply deleted:
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) to [bend left=10] (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) to [bend left=10] (B1);
+  \draw[->,killEdge] (B2) to [bend left=10] (B1);
+  \draw[->] (B2) -- (C);
+  \draw[->] (B3) -- (C);
+  \draw[->] (B3) to [bend right=45] (B1);
+  \draw[->] (C) -- (A1);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (B) (B1) (B2) (B3) (C) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lccccc}
+      labels & \multicolumn{2}{l}{min to} & \multicolumn{2}{l}{min from} & overall min\\
+         & A & C & A & C\\
+      A  & 0 & 2 & 0 & $\infty$ & 0\\
+      A1 & 0 & 2 & 3 & 1        & 1\\
+      B  & 2 & 1 & 1 & $\infty$ & 2\\
+      C  & 1 & 0 & 2 & 0        & 0\\
+      B1 & 2 & 1 & 2 & 3        & 3\\
+      B2 & 2 & 1 & 3 & 4        & 4\\
+      New label & 2 & 1 & 4 & 5 & 5\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+This process iterates, removing one cycle-completing edge at a time,
+until the graph is completely acyclic\editorial{I used to have more
+  intermediate steps in here, but they were really boring.}:
+
+\begin{tikzpicture}
+  \node (A) at (0,2) [TrueCfgInstr] {A};
+  \node (B) [CfgInstr, below=of A] {B};
+  \node (B1) [CfgInstr, right=of B] {B1};
+  \node (B2) [CfgInstr, right=of B1] {B2};
+  \node (A1) [DupeCfgInstr,right=of C] {A1};
+  \node (C) [TrueCfgInstr, below=of B] {C};
+  \node (B3) [CfgInstr, below=of A1] {B3};
+  \node (C1) [DupeCfgInstr, below=of B3] {C1};
+  \node (B4) [CfgInstr, right=of B3] {B4};
+  \node (A2) [DupeCfgInstr, left=of C1] {A2};
+  \node (C2) [DupeCfgInstr, below=of B4] {C2};
+  \node (C3) [DupeCfgInstr, right=of A1] {C3};
+  \draw[->] (A) -- (B);
+  \draw[->] (A1) -- (B3);
+  \draw[->] (B) -- (C);
+  \draw[->] (B) -- (B1);
+  \draw[->] (B1) -- (B2);
+  \draw[->] (B1) -- (C);
+  \draw[->] (B2) -- (C3);
+  \draw[->] (B3) -- (B4);
+  \draw[->] (C) -- (A1);
+  \draw[->] (C1) -- (A2);
+  \draw[->] (B3) -- (C1);
+  \draw[->] (B4) -- (C2);
+  \begin{pgfonlayer}{bg}
+    \node(box1) [fill=black!10,fit=(A) (A1) (A2) (B) (B1) (B2) (B3) (C) (C1) (C2) (C3) (edge1)] {};
+  \end{pgfonlayer}
+  \draw node [right=of box1] {
+    \begin{tabular}{lccccc}
+      labels & \multicolumn{2}{l}{min to} & \multicolumn{2}{l}{min from} & overall min\\
+         & A & C & A & C\\
+      A  & 0 & 2 & 0 & $\infty$ & 0\\
+      A1 & 0 & 2 & 3 & 1        & 1\\
+      A2 & 0 & $\infty$ & 6 & 4 & 4\\
+      B  & 2 & 1 & 1 & $\infty$ & 2\\
+      B1 & 2 & 1 & 2 & $\infty$ & 3\\
+      B2 & $\infty$ & 1 & 3 & $\infty$ & 4\\
+      B3 & 2 & 1 & 4 & 2        & 3\\
+      B4 & $\infty$ & 1 & 5 & 3        & 4\\
+      C  & 1 & 0 & 2 & 0        & 0\\
+      C1 & 1 & 0 & 5 & 3        & 4\\
+      C2 & $\infty$ & 0 & 6 & 4        & 4\\
+      C3 & $\infty$ & 0 & 4 & $\infty$ & 4\\
+    \end{tabular}
+  };
+\end{tikzpicture}
+
+As desired, the graph has been rendered acyclic while preserving all
+paths of length up to five instructions.  As a minor optimisation,
+{\implementation} will merge node B2 with B4 and C3 with C2 before
+converting the CFG to a \StateMachine, as the nodes are semantically
+identical and this results in a slightly simpler \StateMachine.
+
+\smh{This is pretty good, though could be improved somewhat (layout at
+  least!)}

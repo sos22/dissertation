@@ -8,9 +8,6 @@
 \todo{The main thing missing here is a well-defined thesis.  Need to come
   up with one pretty damn quickly.}
 
-\smh{Probably want to explain a bit about (a) Happens-Before
-  (e.g. Boehm) and (b) program slicing before using the terms freely.}
-
 
 \section{Motivation and overview}
 
@@ -28,7 +25,7 @@ techniques which can, first, slice a binary program to find parts
 which are relevant to a specific bug; second, analyse those slices to
 determine whether the bug might actually happen in real executions;
 and, third, automatically generate a fix for the bug.  \smh{Very
-  strong} The same analysis can also be used to find all possible bugs
+strong} The same analysis can also be used to find all possible bugs
 of a specific class in the program.  The approach used requires
 minimal programmer involvement; in some interesting cases it is
 completely automated.
@@ -48,15 +45,17 @@ way.\todo{Need a bit more here.}
     [block/.style = rectangle,draw,fill=blue!20,
       line/.style = draw, -latex']
     \node [block,draw] (dynamic) {Running program};
-    \node [block,draw, below right = of dynamic] (model) {\introduction{Program model}};
-    \node [block,draw, above right = of model] (static) {Program binary};
-    \node [block,draw, below = of model] (candidates) {\introduction{Candidate bugs}};
+    \node [block,draw, below = of dynamic] (model) {\introduction{Program model}};
+    \node [block,draw, below = of model] (statemachines) {\introduction{\StateMachines}};
+    \node [block,draw, below = of statemachines] (candidates) {\introduction{Candidate bugs}};
     \node [block,draw, below = of candidates] (repro) {Reproduction};
     \node [block,draw, below = of repro] (fix) {Fixes};
-    \path [line,->] (dynamic) to node [left] {\introduction{Dynamic analysis}} (model);
-    \path [line,->] (static) to node [right] {\introduction{Static analysis}} (model);
-    \path [line,->] (model) to node [right] {Bug generation} (candidates);
-    \path [line,->] (candidates) to node [right] {\introduction{Enforcement}} (repro);
+    \path [line,->] (dynamic) to node [right] {\introduction{Dynamic analysis}} (model);
+    \path [line,->] (model) to node [right] {\introduction{Program abstraction}} (statemachines);
+    \path [line,->] (statemachines.west) to node [left] {\introduction{{\StateMachine} simplification}} (statemachines.west);
+    \path [line,->] (statemachines) to node [right] {\introduction{Symbolic execution}} (candidates);
+    \path [line,->] (candidates) to node [right] {\introduction{Bug enforcers}} (repro);
+    \path [line,->] (dynamic.west) to (repro.west);
     \path [line,->] (repro) to node [right] {\introduction{Fix generation}} (fix);
   \end{tikzpicture}
   \caption{Basic pipeline}
@@ -64,36 +63,30 @@ way.\todo{Need a bit more here.}
 \label{fig:basic_pipeline}
 \end{figure}
 
-In its simplest mode, \technique{} uses a multi-stage pipeline to find
-and fix concurrency bugs in arbitrary binary programs, as shown in
-Figure~\ref{fig:basic_pipeline}.  The pipeline starts by building up a
-\backref{model} of the program's behaviour using a combination of
-static analysis, applied to the program's binary, and dynamic
-analysis, applied while the program is operating normally.  This model
-can then be used, via a mixture of symbolic execution and further
-static analysis, to generate a set of \backref{candidate bugs}.  These
-represent all of the places in the program which might possibly suffer
-from a bug of the type being investigated, if the program ever reaches
-a particular configuration.  This set is usually quite large for
-realistic programs, and often contains a very high proportion of false
-positives, and so the next stage is to trim it back to bugs which
-might actually occur.  The approach used here is somewhat unusual:
-rather than applying a succession of more powerful analysis,
-{\technique} instead modifies the program so as to make the bug
-reproduce more easily in a process called
-\backref{enforcement}\editorial{Ugly phrasing.} and then runs the
-program through its existing test suite.  This step eliminates all
-false positives from the set of candidate bugs.  Finally, the
-remaining confirmed bugs are passed to the \backref{fix generation}
-phase, which produces a modified version of the original program
-containing additional synchronisation which is guaranteed to eliminate
-the bug.
+The basic structure of {\technique} is shown in
+Figure~\ref{fig:basic_pipeline}.  The process starts by building a
+\backref{model} of the program's behaviour using \backref{dynamic
+  analysis} (Section~\ref{sect:dynamic_analysis}).  This
+\backref{model} is then used to locate potentially relevant fragments
+of the program and to build {\StateMachines} which model their
+behaviour (Section~\ref{sect:derive}).  {\Technique} then uses a
+variety of analysis passes to simplify the {\StateMachines} and to
+remove any information which is not relevant to the bug under
+investigation (Section~\ref{sect:simplify}).  These simplified
+{\StateMachines} are then \backref{symbolically executed} to determine
+whether they might exhibit the bug under investigation, and, if so,
+under what circumstances; the results are summarised as a set of
+candidate bugs (Section~\ref{sect:symbolic_execution}).  This set
+usually contains a large number of false positives, and so the next
+step is to prune it back down using \backref{bug enforcers}: special
+schedulers which, when applied to the running program, make it far
+more likely that the bug will reproduce quickly
+(Section~\ref{sect:bug_enforcers}).  Any bugs which do reproduce can
+then be passed to the final \backref{fix generation} phase which
+binary patches the program to introduce synchronisation which
+eliminates the bug (Section~\ref{sect:fix_generation}).
 
 \smh{c/f RX?}
-
-In addition to this basic mode of operation, \technique{} can also
-take as input a core dump or the log from a deterministic replay
-system and use that to produce a fix for a specific bug.
 
 I give a detailed description of \technique{} and some results
 obtained using \implementation, my implementation of it.  These
@@ -112,179 +105,6 @@ small set of experiments intended to show that \implementation{} is a
 correct implementation of \technique{}.\editorial{Does this really
   belong here?}
 
-The basic analysis technique used, in all of these modes, is to take
-some small fragment of a binary program and approximate it using a
-\introduction{\StateMachine}\editorial{Desperately need a better name
-  for these.}\smh{``sketch''? (What's in it?  What does it look
-  like?)}: a simplified version of part of the program which contains
-all of the information which is relevant to the bug being investigated
-but very little irrelevant information.  This makes them far easier to
-analyse than the raw machine code.  They have a number of important
-properties:
-
-\begin{itemize}
-\item
-  They can cross function boundaries, and so can be used to model
-  cross-function properties of the program.
-\item
-  {\STateMachines} are themselves completely deterministic, aiding
-  simple analysis, but can contain information from multiple program
-  threads, and so can accurately capture all of the threads relevant
-  to a particular race, but are themselves completely deterministic,
-  aiding simple analysis.  In particular, the \StateMachine for a
-  particular bug can be used to build the happens-before graph
-  necessary for that bug to reproduce (including when that
-  happens-before graph is data-dependent).
-\item
-  \STateMachines can incorporate information obtained by the initial
-  static and dynamic analysis passes in a reasonably straightforward
-  way.
-\item
-  Control-flow within a \StateMachine is not necessarily the same as
-  control flow within the original program, and memory accesses within
-  a \StateMachine do not necessarily correspond to specific memory
-  accesses in the original program.  This means that intermediate
-  analysis steps have a great deal of flexibility to rewrite
-  \StateMachines and hence to remove unnecessary information.  On the
-  other hand, it also means that translating the results of the
-  analysis back from \StateMachines to the original program requires a
-  little bit of care.  This is discussed in more detail in later
-  sections.
-\item
-  They can be interpreted, given a snapshot of the program's state,
-  its future happens-before graph, and some information about its
-  control flow, to make a prediction about whether the program might,
-  starting from that state, suffer the bug which is being
-  investigated.  Alternatively, they can be symbolically executed to
-  determine what initial states might lead to the bug.
-
-  \todo{The information about the control flow is kind of subtle: it's
-    not to do with which branches the program takes, but to do with
-    how the CFG gets unrolled while building the machine.  Probably
-    don't want to try to describe that just yet.}
-\item
-  Individual \StateMachines must complete in a finite, bounded, number
-  of operations; equivalently, \StateMachines are acyclic and finite.
-  This makes them far easier to analyse, but at the expense of
-  somewhat limiting their expressive power.  In the particular case of
-  \technique{}, we are only interested in bugs related to fairly small
-  fragments of the program (those which should have been critical
-  sections, but aren't) and so this is a tolerable limitation; it
-  might be more of a concern in other applications.
-  Section~\todo{...} briefly discusses some possible ways of removing
-  this restriction.
-\end{itemize}
-
-\STateMachines are in many respects similar to executable program
-slices of the original program, with the key difference that, unlike a
-program slice, a \StateMachine is not expressed in the same language
-as the original program.  This is to some extent a forced decision
-({\technique} operates on binaries, whereas most program slicing
-systems operate on source code; programming languages are not usually
-particularly convenient intermediate forms, but machine code is far
-worse), but the extra flexibility can sometimes make this more
-convenient than more conventional source-level program
-slices\editorial{Should maybe have a forward ref here?}.
-
-A somewhat closer analogy is with the abstract models commonly used in
-formal verification systems such as Promela\needCite{}.  The
-difference here is in the semantic structure of the program to be
-modelled: \technique{} models machine-code programs, and hence has no
-knowledge of higher-level constructs such as variables, arrays, or
-compound structures, whereas tools like Promela or SAL\needCite{} work
-with source code and hence (mostly) assume that such information is
-available.
-
-Once a {\StateMachine} for a bug has been obtained, it is converted
-into a \introduction{verification condition}.  This is a predicate
-which is true precisely when the bug being investigated reproduces,
-expressed in terms of the program's state (its memory contents,
-registers, etc.), its happens-before graph (the order in which memory
-accesses are interleaved), and its control flow (which exit is taken
-from branch instructions).  These could be passed to existing model
-checking tools such as \needCite{} or \needCite{} \editorial{Probably;
-  I haven't really thought about the details.} to check whether the
-bug might actually exist, or a programmer could simply manually
-inspect them.  More interestingly, {\technique} can use them to
-generate ``\backref{bug enforcers}'': modified versions of the program
-with additional delays and synchronisation which make the bug more
-likely to reproduce.  The original program's original test suite is
-then used to exercise it, thus confirming that the bug actually does
-(or does not) exist.
-
-Finally, the now-confirmed bug can be converted into a fix.  In this
-mode, {\technique} examines the happens-before graph in the
-verification condition and uses it to extract a set of critical
-sections of the original program.  With these in hand, {\technique}
-can produce a modified version of the original program which ensures
-that no critical sections ever execute in parallel with each other,
-hence eliminating the original bug.
-
-\todo{Cite Holzmann and Smith, 2001.}
-
-\begin{sidewaystable}
-\begin{tabular}{lllp{4.5cm}p{10.5cm}}
-\multicolumn{2}{l}{State}       & \multicolumn{2}{l}{Fields} & Meaning \\
-\hline
-\multicolumn{2}{l}{\state{If}}  & \state{cond} & BBDD        & Conditional branch with two successor states.  Evaluates \state{cond}, branching to one successor if it is true and the other if it is false. \\
-\hline
-\multicolumn{2}{l}{Terminal states} &          &             & Terminal states.  The {\StateMachine} execution finishes when it reaches one of these. \\
- & \state{Survive}              &              &             & The bug has been avoided. \\
- & \state{Crash}                &              &             & The bug will definitely happen. \\
- & \state{Unreached}            &              &             & A contradiction has been reached, or this path through the {\StateMachine} is otherwise uninteresting. \\
-\hline
-\multicolumn{2}{l}{Side-effect states}\\
- & \state{Load}                 & \state{addr} & Expression BDD & \multirow{2}{10.5cm}{Load from program memory.  \state{addr} is evaluated to an address and the current contents of memory at that address copied to the {\StateMachine} temporary \state{tmp}.} \\
- &                              & \state{tmp}  & {\StateMachine} temporary \\
-\\
- & \state{Store}                & \state{addr} & Expression BDD & \multirow{2}{10.5cm}{Store to program memory.  \state{data} and \state{addr} are evaluated to concrete values and the value of \state{data} stored to the address \state{addr}.} \\
- &                              & \state{data} & Expression BDD \\
-\\
- & \state{Copy}                 & \state{data} & Expression BDD & \multirow{2}{10.5cm}{Evaluate an expression and store the result in a {\StateMachine} temporary.} \\
- &                              & \state{tmp}  & {\StateMachine} temporary \\
- & $\Phi$                       & \state{input}& Set of {\StateMachine} temporaries & \multirow{2}{10.5cm}{Examine the temporaries in \state{input}, select whichever has been assigned to most recently, and copy its value to \state{tmp}.  See \S\ref{sect:ssa}.} \\
- &                              & \state{tmp}  & {\StateMachine} temporary \\
-\end{tabular}
-\end{sidewaystable}
-
-\begin{sidewaystable}
-\begin{tabular}{lllp{4.5cm}p{10.5cm}}
- & \state{ImportRegister}       & \state{tid}  & Thread ID       & \multirow{4}{10.5cm}{Copy the value of register \state{reg} in program thread \state{tid} into {\StateMachine} temporary \state{tmp}.  \state{pts} gives the points-to set for the register, as derived by the initial static analysis pass; see \S\ref{sect:alias_analysis}.} \\
- &                              & \state{reg}  & Register ID \\
- &                              & \state{tmp}  & {\StateMachine} temporary \\
- &                              & \state{pts}  & Points-to set \\
- & \state{StartAtomic}, \state{EndAtomic} &    &                 & Mark the start and end of atomic blocks, used to constrain the set of schedules which must be considered; see \S\ref{sect:usin:build_cross_product}. \\
-\hline
-\multicolumn{2}{l}{Annotation states}\\
- & \state{Assert}               & \state{cond} & BBDD            & Note that a particular condition is guaranteed to be true at a particular point in the {\StateMachine}'s execution. \\
- & \state{StartFunction}        & \state{frame}& Stack frame ID  & \multirow{3}{10.5cm}{Note that thread \state{tid} has just create stack frame \state{frame}, and that the boundary between this frame and the previous one is \state{rsp}.} \\
- &                              & \state{tid}  & Thread ID \\
- &                              & \state{rsp}  & Expression BDD \\
- & \state{EndFunction}          & \state{frame}& Stack frame ID  & \multirow{3}{10.5cm}{Inverse of \state{StartFunction}.  Indicates that a thread has destroyed a stack frame.} \\
- &                              & \state{tid}  & Thread ID \\
- &                              & \state{rsp}  & Expression BDD \\
- & \state{StackLayout}          & \state{tid}  & Thread Id       & \multirow{2}{10.5cm}{Specifies the set of frames which are on the initial stack for some thread and, for each frame, whether the frame might contain a pointer to itself and whether it might be pointed at from elsewhere in memory.}\\
- &                              & \state{frames}& Set of frame IDs \\
- &                              & \state{pointsAtSelf} & Mapping from frame ID to flags \\
- &                              & \state{pointedAt} & Mapping from frame ID to flags\\
-\end{tabular}
-\caption{Types of {\StateMachine} states}
-\label{table:intro:state_machine_states}
-\end{sidewaystable}
-
-\begin{table}
-\begin{tabular}{lp{11.5cm}}
-Expression & Meaning \\
-\hline
-$\smTmp{A}$ & The value of {\StateMachine} temporary $A$. \\
-$\happensBefore{A}{B}$ & True if event $A$ happens before event $B$, false if $B$ happens before $A$.  See section~\ref{sect:implementation_hacks:hb_ordering} for definition if either $A$ or $B$ does not happen. \\
-$\entryExpr{\mai{tid}{instr}}$ & True if thread $tid$ starts with instruction $instr$, and false otherwise. \\
-$\controlEdge{tid}{A}{B}$ & True if thread $tid$ executed instruction $B$ immediately after instruction $A$. False if it executed some other instruction after $A$ and undefined if it did not execute $A$ at all.\\
-$\smLoad{expr}$ & The initial value of the memory at location $expr$. \\
-\end{tabular}
-\caption{Types of expressions supported by the {\StateMachine} language.  The usual arithmetic operators, such as addition, multiplication, bit shift, etc., are also supported.}
-\label{table:intro:state_machine_exprs}
-\end{table}
 
 \section{Contributions}
 
@@ -311,27 +131,6 @@ $\smLoad{expr}$ & The initial value of the memory at location $expr$. \\
 
 \todo{Maybe include explicit comparisons to related work in
   here?}\smh{Maybe in intro, but not right here.}
-
-\section{Structure of this dissertation}
-
-\begin{description}
-\item[Chapter~\ref{chapter:derive_manip}] Description of
-  \StateMachines: how to derive and manipulate them.
-\item[Chapter~\ref{chapter:using_machines}] Uses of \StateMachines:
-  how to use them to derive the verification condition, build bug
-  enforcers, and generate bug fixes.
-\item[Chapter~\ref{chapter:eval}] Evaluation: demonstration that it
-  works well for small bugs, discussion of some slightly more
-  realistic ones, and demonstration that the analysis scales to more
-  realistic programs will tolerable cost.  I also explore the
-  effectiveness of the {\StateMachine} simplification strategies given
-  in Chapter~\ref{chapter:derive_manip}.  Finally, I give some
-  evidence that {\implementation} is a correct implementation of
-  {\technique}.
-\item[Chapter~\ref{chapter:related_work}] Related work: I give an
-  overview of existing work in the field and highlight the differences
-  and similarities between {\technique} and previous approaches.
-\end{description}
 
 \section{Background}
 \subsection{BDDs}
@@ -368,71 +167,11 @@ tested\editorial{Cite Bryant 1986.}.
     \draw [BddTrue] (y) -- (true);
     \draw [BddFalse] (y) -- (z);
     \draw [BddTrue] (z) -- (true);
-    \draw [bddFalse] (z) -- (false);
+    \draw [BddFalse] (z) -- (false);
   \end{tikzpicture}
   \caption{Example BDD, representing the expression $x \wedge (y \vee z)$}
   \label{fig:intro:example_bdd}
 \end{figure}
-
-There is an important complication when using BDDs to represent
-properties of a program, which is that the boolean input variables
-must be related back to the registers and memory locations of the
-original program.  It might, for instance, be that in the example $x =
-(A < 5)$, $y = (A > 7)$ and $z = (A == 6)$, where $A$ is some variable
-in the original program.  {\Technique} defines a simple expression
-language, outlined in Table~\ref{table:intro:state_machine_exprs}, for
-defining these primitive expressions, and nodes in the BDD are
-labelled with expressions in this language rather than with boolean
-variables.  This has two important implications: first, that the input
-variables to the BDD are not necessarily independent, and, second,
-that the BDDs are only canonicalised to the extent that the input
-primitive expressions can be canonicalised.  {\Implementation}
-includes some rules which attempt to canonicalise these primitive
-expressions (by, for instance, lifting simple boolean operators like
-$\wedge$ or $\vee$ into the BDD, and by sorting the arguments to
-commutative operators like $+$), but such canonicalisation can never
-hope to be complete\editorial{Cite G\"odel's theorem. :)}.  This is,
-in practice, very rarely an issue, and the minor inconvenience is more
-than justified by the ability to efficiently represent arbitrary
-predicates over the original program's state.
-
-There is an obvious generalisation of BDDs to graphs with more than
-two terminal nodes, representing functions which evaluate to some
-domain more complex than simple booleans.  These generalised BDDs are
-known as multi-terminal BDDs or MTBDDs\needCite{}.  Most BDDs used by
-{\Technique} are multi-terminal; to avoid ambiguity, BDDs with only
-two terminals will be referred to as boolean BDDs, or BBDDs.  In
-pseudocode, the type of a BDD whose terminals are values of type $t$
-will be written as $BDD(t)$.
-
-There are two particularly important special cases of multi-terminal
-BDDs: expression BDDs and composition BDDs.  Expression BDDs, or
-$BDD(expr)$, are BDDs in which the terminals are themselves
-expressions over the original program's state.  Expression BDDs allow
-arbitrary functions of the program state to be represented in a way
-which is canonical (up to the canonicalisation of primitive
-expressions) and reasonably efficient.  They are used, for instance,
-to represent the address field of a {\StateMachine} \state{Load}
-state.
-
-Composition BDDs, $BDD(BDD(k))$, are BDDs whose terminals are
-themselves BDDs.  In other words, there is a layer of ``outer'' BDDs
-which is used to select one of a number of possible ``inner'' BDDs.
-This is a generalisation of $BDD(k)$ because it allows the variable
-ordering to be violated at the transition from the outer to the inner
-BDD.  These composition BDDs are used primarily to represent
-control-flow dependent properties of the {\StateMachine}, where the
-outer BDD expresses the constraint for a particular control-flow path
-to be followed and the inner one gives the value of the
-control-dependent property when it is.  See, for instance, the $\Phi$
-elimination pass discussed in section~\ref{sect:phi_elimination}.
-
-\todo{I should probably say somewhere what variable ordering I'm using
-  for these, but it won't make any sense here because I've not defined
-  enough terms to hook the description off.}
-
-\todo{Maybe mention that my BDD implementation uses a kind of operator
-  node?  Or maybe defer that to an implementation details chapter?}
 
 \subsection{Memory model}
 
@@ -548,15 +287,11 @@ recognisably.  In slightly more detail:
 \item The tool\editorial{What tool?} must be able to \emph{recognise}
   that the program has crashed.  For the purposes of my prototype
   {\implementation}, this means that it must suffer either a fatal
-  page fault or an assertion failure.  This could be extended to more
-  general classes of crash using techniques such as TESLA\needCite{}
-  or invariant inference\needCite{}.
+  page fault, or trigger an assertion failure, or free the same block
+  of memory twice.  This could be extended to more general classes of
+  crash using techniques such as TESLA\needCite{} or invariant
+  inference\needCite{}.
 
-  \todo{I could maybe hack up a double-free detector as well, so the
-    prototype would work for three classes of error.  That's kind of
-    rhetorically useful, although the detector would be sufficiently
-    limited to be little practical value.}
-    
   \todo{It occurs to me that it'd actually be fairly easy to add at
     least one test which uses a programmer-provided invariant, which'd
     make this a little bit more convincing.  The invariant language
@@ -582,10 +317,14 @@ performing the analysis.  \editorial{I don't actually show that
   that requiring a recognisable crash reduces cost, since the thing
   wouldn't even work if you didn't have that.} \todo{Need more here.}
 
+For clarity, this dissertation will, for the most part, only discuss
+this class of bugs.  Section~\ref{sect:future_work:generalising}
+considers possible ways of relaxing some of these restrictions.
+
+\todo{Might be worth explaining how to expression double-free bugs in
+  this form?}
+
 \smh{Ok -- generally decent intro missing some structure, and still
   missing the high level story in a para -- maybe fix up fig 2.1 with
   annotations?}
 
-For clarity, this dissertation will, for the most part, only discuss
-this class of bugs.  Section~\ref{sect:future_work:generalising}
-considers possible ways of relaxing some of these restrictions.
