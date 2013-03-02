@@ -1,7 +1,5 @@
 \section{Overview of the {\StateMachine} abstraction}
 
-\todo{Redundancy between this section and next one.}
-
 The core data structure used by {\technique}'s initial analysis phases
 is the {\StateMachine}.  This can be viewed as a simplified version of
 a fragment of the original program which contains all of the
@@ -18,24 +16,24 @@ machine code.  They have a number of important properties:
   simple analysis, but can contain information from multiple program
   threads, and so can accurately capture all of the threads relevant
   to a particular race, but are themselves completely deterministic,
-  aiding simple analysis.  In particular, the \StateMachine for a
+  aiding simple analysis.  In particular, the {\StateMachine} for a
   particular bug can be used to build the happens-before graph
   necessary for that bug to reproduce (including when that
   happens-before graph is data-dependent).
 \item
-  \STateMachines can incorporate information obtained by the initial
+  {\STateMachines} can incorporate information obtained by the initial
   static and dynamic analysis passes in a reasonably straightforward
   way.
 \item
-  Control-flow within a \StateMachine is not necessarily the same as
+  Control-flow within a {\StateMachine} is not necessarily the same as
   control flow within the original program, and memory accesses within
-  a \StateMachine do not necessarily correspond to specific memory
+  a {\StateMachine} do not necessarily correspond to specific memory
   accesses in the original program.  This means that intermediate
   analysis steps have a great deal of flexibility to rewrite
-  \StateMachines and hence to remove unnecessary information.  On the
-  other hand, it also means that translating the results of the
-  analysis back from \StateMachines to the original program requires a
-  little bit of care.  This is discussed in more detail in later
+  {\StateMachines} and hence to remove unnecessary information.  On
+  the other hand, it also means that translating the results of the
+  analysis back from {\StateMachines} to the original program requires
+  a little bit of care.  This is discussed in more detail in later
   sections.
 \item
   They can be interpreted, given a snapshot of the program's state,
@@ -45,21 +43,22 @@ machine code.  They have a number of important properties:
   investigated.  Alternatively, they can be symbolically executed to
   determine what initial states might lead to the bug.
 \item
-  Individual \StateMachines must complete in a finite, bounded, number
-  of operations; equivalently, \StateMachines are acyclic and finite.
-  This makes them far easier to analyse, but at the expense of
-  somewhat limiting their expressive power.  In the particular case of
-  \technique{}, we are only interested in bugs related to fairly small
-  fragments of the program (those which should have been critical
-  sections, but aren't) and so this is a tolerable limitation; it
-  might be more of a concern in other applications.
-  Section~\todo{...} briefly discusses some possible ways of removing
-  this restriction.
+  Individual {\StateMachines} must complete in a finite, bounded,
+  number of operations; equivalently, {\StateMachines} are acyclic and
+  finite.  This makes them far easier to analyse, but at the expense
+  of somewhat limiting their expressive power.  In the particular case
+  of {\technique}, we are only interested in bugs related to fairly
+  small fragments of the program (those which should have been
+  critical sections, but aren't) and so this is a tolerable
+  limitation; it might be more of a concern in other applications.
+  Section~\ref{sect:future_work:generalising} briefly discusses some
+  possible ways of removing this restriction.
 \end{itemize}
 
-\STateMachines are in many respects similar to executable program
+\todo{Redundant with background section on program slicing.}
+{\STateMachines} are in many respects similar to executable program
 slices of the original program, with the key difference that, unlike a
-program slice, a \StateMachine is not expressed in the same language
+program slice, a {\StateMachine} is not expressed in the same language
 as the original program.  This is to some extent a forced decision
 ({\technique} operates on binaries, whereas most program slicing
 systems operate on source code; programming languages are not usually
@@ -71,7 +70,7 @@ slices\editorial{Should maybe have a forward ref here?}.
 A somewhat closer analogy is with the abstract models commonly used in
 formal verification systems such as Promela\needCite{}.  The
 difference here is in the semantic structure of the program to be
-modelled: \technique{} models machine-code programs, and hence has no
+modelled: {\technique} models machine-code programs, and hence has no
 knowledge of higher-level constructs such as variables, arrays, or
 compound structures, whereas tools like Promela or SAL\needCite{} work
 with source code and hence (mostly) assume that such information is
@@ -83,7 +82,7 @@ concurrency issues.
 
 \todo{Cite Holzmann and Smith, 2001.}
 
-\section{Semantics of {\StateMachines}}
+\subsection{Semantics of {\StateMachines}}
 
 A {\StateMachine} is, at its core, a simplified version of a fragment
 of the program expressed in a simple (non-Turing complete) analysis
@@ -156,7 +155,7 @@ any temporary.
  & \state{EndAtomic}            \\
  & \state{Assert}               & \state{cond} & BBDD            & Note that a particular condition is guaranteed to be true at a particular point in the {\StateMachine}'s execution. \\
 \end{tabular}
-\caption{Types of {\StateMachine} states}
+\caption{Types of {\StateMachine} states.  \todo{StartFunction, EndFunction, StackLayout, alias set on ImportRegister?}}
 \label{table:state_machine_states}
 \end{sidewaystable}
 
@@ -186,16 +185,20 @@ language which is described in Table~\ref{table:state_machine_exprs}.
 This language is, for most part, quite conventional, and includes
 simple mechanisms for querying the program's behaviour and state and
 for obtaining the values of {\StateMachine} temporaries, or for
-evaluating simple arithmetic operators.
+evaluating simple arithmetic operators.  Note that $\smLoad{}$
+expressions always evaluate to the initial value of the selected
+memory location, and not to the current value, which may be different
+if the {\StateMachine} has executed a \state{Store} operation.  This
+means that $\smLoad{}$ is a pure function and can be re-ordered freely
+across side-effecting operations, simplifying analysis.
 
-One important feature is, however, missing: any scheme for evaluating
-logical connectives such as $\wedge$ or $\vee$.  These operators are
-not represented using the expression language, but are instead encoded
-into generalised binary decision diagrams, or BDDs, which are
-themselves expressed in terms of the expression language.  These BDDs
-allow much more efficient implementations of many common operations
-than would be possible with a scheme based entirely on unconstrained
-expressions.
+This language is missing one important feature: logical connectives
+such as $\wedge$ or $\vee$.  These operators are not represented using
+the expression language, but are instead encoded into generalised
+binary decision diagrams, or BDDs\needCite{}, which are themselves
+expressed in terms of the expression language.  These BDDs allow much
+more efficient implementations of many common operations than would be
+possible with a scheme based entirely on unconstrained expressions.
 
 \begin{figure}
   \begin{tikzpicture}
@@ -307,11 +310,11 @@ the first and using the result of the second.  It is trivial to read
 off from this diagram that the program might crash if some other
 thread modifies \verb|global_ptr| in between the two loads, and that
 it will otherwise survive.  Notice that \verb|4006a7|, the instruction
-which crashes, is not itself represented in the \backref{CFG}: by the
-time that instruction executes, the program is either doomed to crash
-or has definitely avoided the bug, and so that instruction is
+which crashes, is not itself represented in the {\StateMachine}: by
+the time that instruction executes, the program is either doomed to
+crash or has definitely avoided the bug, and so that instruction is
 irrelevant to determining when (and whether) the bug can actually
-happen, and so it is not included in the {\StateMachine}.
+happen.
 
 \begin{figure}[t]
 \begin{verbatim}
@@ -335,8 +338,6 @@ happen, and so it is not included in the {\StateMachine}.
 \end{figure}
 
 \begin{sidewaysfigure}
-  \todo{Redo this to get rid of the \state{Unreached} states, because
-    I don't want to talk about them quite yet.}
   \begin{tikzpicture}
     \node (lA) [stateIf] { \state{If} $\happensBefore{\mai{cfg6}{thread1}}{\mai{cfg8}{thread2}}$ };
     \node (lB) [stateSideEffect, below = of lA] { l1: \state{Load} tmp1 $\leftarrow$ global\_ptr AT cfg6:thread1 };
@@ -364,10 +365,9 @@ happen, and so it is not included in the {\StateMachine}.
     \draw[->,ifTrue] (lK) -- (lL);
     \draw[->,ifFalse] (lK) -- (lM);
   \end{tikzpicture}
-  \caption{\backref{Summary} component of the cross-product of the
-    {\StateMachine} shown in
-    Figures~\ref{fig:derive:single_threaded_machine} and~
-    \ref{fig:derive:single_threaded_machine_write}.}
+  \caption{Cross-product of the {\StateMachines} shown in
+    Figures~\ref{fig:derive:single_threaded_machine}
+    and~\ref{fig:derive:single_threaded_machine_write}.}
   \label{fig:derive:cross_thread}
 \end{sidewaysfigure}
 
@@ -381,14 +381,14 @@ happen, and so it is not included in the {\StateMachine}.
     \draw [->,ifTrue] (lB) -- (lC);
     \draw [->,ifFalse] (lB) -- (lD);
   \end{tikzpicture}
-  \caption{\STateMachine from figure~\ref{fig:derive:cross_thread}
+  \caption{{\STateMachine} from figure~\ref{fig:derive:cross_thread}
     after {\StateMachine} simplification.}
   \label{fig:derive:cross_thread_opt}
 \end{figure}
 
-\STateMachines become somewhat more interesting when they capture the
-results of multiple threads.  Figure~\ref{fig:derive:cross_thread}
-shows an example of such a {\StateMachine}.  It is the
+{\STateMachines} become more interesting when they capture the results
+of multiple threads.  Figure~\ref{fig:derive:cross_thread} shows an
+example of such a {\StateMachine}.  It is the
 \introduction{cross-product} of the {\StateMachines} shown in
 Figures~\ref{fig:derive:single_threaded_machine}
 and~\ref{fig:derive:single_threaded_machine_write_inp}.  Note that
@@ -397,32 +397,25 @@ behaviour of the two {\StateMachines}, it is itself completely
 deterministic, and hence is relatively easy to simplify.  The result
 of these simplifications is shown in
 Figure~\ref{fig:derive:cross_thread_opt}.  Simplification is generally
-much cheaper than symbolic execution, and so this can provide a very
+cheaper than symbolic execution, and so this can provide a very
 worthwhile performance improvement.
-
-\subsection{Things I chose not to do}
-
-\begin{itemize}
-\item
-  Didn't replace the \state{If} with a BDD over states, because the
-  canonicalisation rules get kind of complicated.  The problem is that
-  as we simplify the {\StateMachine} the contents of individual states
-  changes, and so it's not clear how to maintain the reduced property
-  of the BDD when doing so.
-\item
-  I used \state{ImportRegister} side effects rather than an
-  initial-register-value expression in the expression language.
-  That turns out to make the \state{Phi} semantics a bit easier.
-\end{itemize}
 
 \section{Building the crashing thread's \StateMachine}
 
-The input to this phase of the analysis is the raw instruction pointer
-for the thread which crashed, at the time of the crash, plus the
-program binary and \backref{program model}.  It must use these to
-build a {\StateMachine} representing the final \backref{$\alpha$}
-instructions executed by the crashing thread.  The approach used has
-several stages:
+The first step in any of {\Technique}'s analyses, once the
+\backref{program model} has been built, is to build a {\StateMachine}
+representing the crashing thread.  Depending on the precise mode of
+operation, the amount of information available about the crash will
+vary from nothing at all, when looking for a currently-unknown bug, to
+a full snapshot of the program's memory at the time of the crash.  The
+simplest case is when the only information available is the
+instruction pointer at the time of the crash, and so I describe that
+first; later sections will explain how to generalise this.
+
+The aim of this phase is to take this crashing instruction pointer and
+the \backref{program model} and use them build a {\StateMachine}
+representing the final \backref{$\alpha$} instructions executed by the
+crashing thread.  The approach used has several stages:
 
 \begin{itemize}
 \item First, determine which instructions need to be included in the
@@ -455,15 +448,6 @@ framework.
 \subsection{Building the crashing thread's static control-flow graph}
 \label{sect:derive:build_static_cfg}
 
-The first step in building the crashing thread's {\StateMachine} is to
-find it's CFG.  I assume here that the bug to be investigated has
-already been reproduced and that the call stack and instruction
-pointer at the time of the crash are readily available\footnote{These
-  might, for instance have been extracted from a windows minidump
-  \todo{cite} or a Unix-style core-dump \todo{cite?}.};
-Section~\ref{sect:derive:unknown_bugs} generalises this to finding
-previously-unknown bugs.
-
 \begin{figure}
 \begin{algorithmic}[1]
 \State $\mathit{depth} \gets 0$
@@ -491,9 +475,11 @@ previously-unknown bugs.
 \label{fig:derive:static_read_cfg_single_function}
 \end{figure}
 
-The simple case is that all of the needed instructions are contained
-within a single function.  In that case, the algorithm is as shown in
-Figure~\ref{fig:derive:static_read_cfg_single_function}.  This simply
+The first step in building the crashing thread's {\StateMachine} is to
+find its CFG.  The simplest case is that all of the needed
+instructions are contained within a single function.  In that case,
+the algorithm is as shown in
+Figure~\ref{fig:derive:static_read_cfg_single_function}.  This
 implements a depth-limited breadth-first search starting at the
 crashing instruction and exploring backwards through the program's
 control flow.  Note that this can result in a CFG with multiple roots.
@@ -537,13 +523,12 @@ called by the operating system or by library functions\footnote{Shared
 program, plus all branches within the main program, is sufficient for
 a simple static analysis to enumerate every instruction in the main
 program, and this then allows the second and third problems to be
-solved as well.\editorial{I want to mention the \backref{program
-    model} in there somewhere, but can't quite fit it in.}
+solved as well.
 
 \todo{But that doesn't quite work for types of run-time generated code
   other than shared libraries.  Might need to say something about
   that.}\smh{Hmm -- perhaps .. (this would matter e.g. for obfuscated
-  code like burnintest)... But maybe could defer to end f the
+  code like burnintest)... But maybe could defer to end of the
   section/or chapter or dissertation?}
 
 \subsection{Handling loops in the crashing thread's CFG}
@@ -732,9 +717,30 @@ duplicating all of $edge.source$'s incoming edges to $newNode$.  At
 the same time, no additional paths will be introduced, because every
 path to $newNode$ has a matching path to $edge.source$.
 
-\todo{Is it worth doing a proof of termination as well?}\smh{No,
-  although you might comment on the expected running time...}
+This might appear, on the face of it, to be a rather expensive
+algorithm: it must explore every path of length \backref{$\alpha$}
+ending at the target instruction, and the number of such paths is
+potentially exponential in \backref{$\alpha$}.  This is true, but
+there are some important mitigating factors:
 
+\begin{itemize}
+\item In practice, most code is not particularly branch-heavy, so that
+  relatively few instructions have more than one predecessor and the
+  base of the exponential is small.
+\item With careful implementation, the constant factor can be made
+  small.
+\item This is not the only analysis performed by {\technique} which
+  has exponential cost in \backref{$\alpha$}.  For instance, later
+  phases must determine which memory accesses might alias with which
+  other accesses; in the worst case, this might involve considering
+  all $2^n$ aliasing pairs individually.
+\end{itemize}
+
+The overall result is that, despite having cost $O(n^{\alpha})$, this
+phase of the analysis rarely accounts for more than a small percentage
+of {\implementation}'s total running time (see
+Section~\ref{eval:time_breakdowns} for more details).
+  
 \subsection{Handling cross-function CFGs.}
 
 \label{sect:derive:cross_function_cfgs}
@@ -766,8 +772,9 @@ simple: the analysis finds the functions which are to be
 called\footnote{There might be more than one function if the
   instruction is a dynamic call.  In that case, the \backref{program
     model} is used to find the set of all possibly-called functions
-  and they are all treated as possible predecessors.}, finds all of
-the return instructions in those functions, and treats those as the
+  and they are all treated as possible predecessors; see
+  Section~\ref{chapt:program_model:dyn:call_graph}.}, finds all of the
+return instructions in those functions, and treats those as the
 predecessor of the current instruction with an appropriately extended
 inlining context.
 
@@ -820,28 +827,46 @@ which require special care:
   correspond to anything in the original program.  In the example in
   Figure~\ref{fig:unrolled_cyclic_cfg}, instruction A had a single
   successor, B, in the original program, but has multiple successors
-  in the unrolled \backref{CFG}.  {\Technique} handles these by
+  in the unrolled \backref{CFG}.  Each of the Bi \backref{CFG} nodes
+  will be represented by a separate {\StateMachine} state, but there
+  is no condition on the original program's state which can be
+  evaluated at A which could determine which of Bi states the
+  {\StateMachine} must execute next.  {\Technique} handles these by
   converting them into \StateMachine-level control flow using
-  $ControlFlow$ expressions, so that the {\StateMachine} fragment for
-  A will be something like ``\state{If} ($\controlEdge{threadId}{A}{B}$)
-  \{fragment for B\} else \{fragment for B'\}''.
+  $\controlEdge{}{}{}$ expressions, so that the {\StateMachine}
+  fragment for A will be something like ``\state{If}
+  ($\controlEdge{threadId}{A}{B}$) \{fragment for B\} else \{fragment
+  for B'\}''.
+
+  Note that the $\controlEdge{}{}{}$ expression tests control flow
+  within the unrolled \backref{CFG} rather than control flow within
+  the original program CFG.  This can sometimes complicate the design
+  of crash enforcers; see Section~\ref{sect:enforcers:control_flow}
+  for more details.
 
 \item
-  The \backref{CFG} can sometimes have multiple roots.  In this case,
-  the first state of the {\StateMachine} will be a test on special
-  $Entry()$ expressions which will select an appropriate fragment of
-  {\StateMachine} to start with.  In the example, the first state will
-  be something like
+  The \backref{CFG} can sometimes have multiple roots, each
+  represented by a separate {\StateMachine} state, but the
+  {\StateMachine} itself must have a single entry state.  The most
+  obvious way of handling this would be to build an initial prefix of
+  the {\StateMachine} which examines the program state and selects an
+  appropriate starting state, but this would be quite awkward.  In
+  particular, checking that the calling context is correct would
+  require loading a number of stack locations, which would place a
+  completely unnecessary additional burden on the alias analysis.
+  {\Technique} instead uses special $\entryExpr{}$ expressions which
+  are booleans reflecting where the thread entered the CFG.
+
+  For instance, the example \backref{CFG} has two roots, A and C''.
+  The entry state of the {\StateMachine} is therefore a test
+  of $\entryExpr{\mai{threadId}{A}}$, as shown:
 
   \state{If} $(\entryExpr{\mai{threadId}{A}})$ \\
   \{fragment for A\} \\
   else \\
   \{fragment for C''\}\editorial{Ugly ugly ugly}
 
-  The \backref{CFG} has two roots, A and C'', and this selects an
-  appropriate place from which to start the \backref{summary}
-  according to where the thread entered the \backref{CFG} (as
-  indicated by the Entry expression).\editorial{Gah.}
+  \todo{This should really be a figure rather than inline.}
 
 \end{itemize}
 
@@ -865,7 +890,7 @@ Figure~\ref{fig:state_machine_for_cyclic_cfg}.
 
 \begin{figure}
 \begin{tikzpicture}
-  \node[stateIf,initial] (l1) {\state{If} $Entry(A)$};
+  \node[stateIf,initial] (l1) {\state{If} $\entryExpr(\mai{threadId}{A})$};
   \node[stateSideEffect,below left = of l1] (l2) {A: \state{Copy} $\mathit{rdx}$ to $\mathit{rcx}$};
   \node[stateIf,below = of l2] (l3) {\state{If} $\controlEdge{threadId}{A}{B}$};
   \node[stateSideEffect,below = of l3] (l4) {B: \state{Load} $\mathit{rcx}$ to $\mathit{rcx}$};
@@ -900,7 +925,7 @@ Figure~\ref{fig:state_machine_for_cyclic_cfg}.
   \draw[->,ifFalse] (l12) -- (l8);
 \end{tikzpicture}
 \caption{{\STateMachine} generated from the CFG shown in
-  Figure~\ref{fig:cyclic_cfg}.}\todo{Check this very carefully.}
+  Figure~\ref{fig:cyclic_cfg}. \todo{Check this very carefully.}}
 \label{fig:state_machine_for_cyclic_cfg}
 \end{figure}
 
@@ -1138,10 +1163,17 @@ which is to be investigated, but is generally straightforwards.
 \end{itemize}
 
 These potentially-crashing instructions are then considered
-independently in turn.\smh{aren't there still a \emph{lot} of these?
-  (i.e. it's the backwards search that's important here, not the insn
-  choice?)}
-
+independently in turn.  This is, again, potentially rather expensive,
+as there can be a very large number of these candidate instructions.
+On the other hand, many can be dismissed very quickly (90\% of the
+instructions in mysql, for instance, can be analysed in under 250ms;
+see Section~\ref{sect:eval:analysis_time} for details), and, because
+each instruction is considered independently, the main phase of the
+analysis is embarrassingly parallel.  This means that the total cost
+of the analysis remains high but tolerable, and that it is likely to
+become faster as hardware becomes increasingly parallel, which is
+precisely the scenario in which it would be most useful.
+x
 \subsection{Building the interfering thread's \StateMachines}
 \label{sect:derive:write_side}
 
@@ -1163,8 +1195,7 @@ from memory, a list of all of the instructions which might store to
 the same memory location\footnote{As usual, this list is only complete
   when the \backref{dynamic analysis} from which the \backref{program
     model} is built is itself complete.}.  This instructions in this
-list are referred to as the \introduction{interfering
-  stores}\editorial{Need a less generic-sounding name} for the
+list are referred to as the \introduction{interfering stores} for the
 crashing thread.  We can then immediately reduce the set of sequences
 which need to be considered to just those which include some
 instruction from the \backref{interfering stores} set, which is
@@ -1172,21 +1203,26 @@ already a useful reduction.  Two further observations make it possible
 to reduce the set of sequences further:
 
 \begin{itemize}
-\item Any instructions in the write thread after the last
+\item Any instructions in the interfering thread after the last
   \backref{interfering store} cannot possible influence the behaviour
-  of the read thread, and so cannot possibly affect whether the
+  of the crashing thread, and so cannot possibly affect whether the
   program crashes.  They can therefore be completely discarded.
 \item Instructions prior to the first \backref{interfering store} can
   also be discarded.  This is perhaps less obvious.  Discarding these
   instructions is safe only because of the \backref{W isolation}
-  property.  The interfering thread cannot load from any locations
-  which are stored to by the crashing thread, and so, in particular,
-  its load operations cannot race with any operations in the crashing
-  thread.  Their only possible effect is to restrict the possible
-  values of thread-local state, such as machine registers or stack
-  locations, when the write thread starts.  In the absence of such
-  restrictions, {\technique} will consider all possible initial values
-  for this state, and thus discarding these restrictions is sound.
+  property.
+
+  \todo{Need to think much harder about this; I don't want to discuss
+    W isolation yet.}
+
+  The interfering thread cannot load from any locations which are
+  stored to by the crashing thread, and so, in particular, its load
+  operations cannot race with any operations in the crashing thread.
+  Their only possible effect is to restrict the possible values of
+  thread-local state, such as machine registers or stack locations,
+  when the write thread starts.  In the absence of such restrictions,
+  {\technique} will consider all possible initial values for this
+  state, and thus discarding these restrictions is sound.
 
   On the other hand, it is not always desirable to do so, if the
   restrictions would have provided useful hints to later phases of the
@@ -1235,6 +1271,8 @@ doing so is simple: remove the \state{Assert}ions from the
 possible, and then only consider \state{Load}s which remain in the
 {\StateMachine} when building the interfering stores set.
 
+\todo{W isolation again; need to figure out what I'm doing about
+  that.}
 Note that \state{Store} operations in the crashing {\StateMachine} are
 not considered at this stage, even though {\technique} does handle
 some kinds of write-write races.  That is safe because of the W
@@ -1331,8 +1369,8 @@ therefore safe to discard any nodes $r$ where
 
 exceeds \backref{$\alpha$}, where $I$ is the set of
 \backref{interfering stores} and $I_d$ the set of \backref{interfering
-  stores} and their duplicates.  The complete algorithm is then as
-shown in Figure~\ref{fig:derive:store_cfg_unroll_alg}.
+  stores} and their duplicates.  The complete algorithm is shown in
+Figure~\ref{fig:derive:store_cfg_unroll_alg}.
 
 \begin{figure}
 \begin{algorithmic}
@@ -1431,10 +1469,10 @@ column is the minimum min\_to value plus the minimum min\_from one; it
 gives the number of edges on the shortest path involving a given node
 which starts at a true interfering instruction and ends at any
 interfering instruction, whether true or a duplicate.  Assume, for the
-purposes of the example, that $N_w$ is five.  A depth-first search
-starting at A will find the cycle from B back to itself and attempt to
-break that cycle by duplicating B.  The resulting graph will look like
-this:
+purposes of the example, that \backref{$\alpha$} is five.  A
+depth-first search starting at A will find the cycle from B back to
+itself and attempt to break that cycle by duplicating B.  The
+resulting graph will look like this:
 
 \begin{tikzpicture}
   \node (A) at (0,2) [TrueCfgInstr] {A};
@@ -1580,9 +1618,10 @@ cycle-completing edge:
 
 The next cycle-completing edge considered is that from B2 to B1.  In
 this case, the new label would have an overall minimum of 5, matching
-$N_w$, and so there can be no paths through the new node which start
-with an interfering instruction and which end at an interfering
-instruction or a duplicate of it, and so the edge is simply deleted:
+\backref{$\alpha$}, and so there can be no paths through the new node
+which start with an interfering instruction and which end at an
+interfering instruction or a duplicate of it, and so the edge is
+simply deleted:
 
 \begin{tikzpicture}
   \node (A) at (0,2) [TrueCfgInstr] {A};
@@ -1682,3 +1721,3303 @@ identical and this results in a slightly simpler \StateMachine.
 
 \smh{This is pretty good, though could be improved somewhat (layout at
   least!)}
+
+\section{Checking whether a given bug is actually real}
+\label{sect:using:check_realness}
+
+Previous sections have described how to generate pairs of
+{\StateMachines} representing fragments of the program which might
+interact in interesting ways when run concurrently.  The next step is
+take each of those pairs and, for each, determine whether running the
+two {\StateMachines} in parallel might lead to a crash, and if so
+determine under what circumstances it might do so.
+
+The core of the approach is to take a pair of {\StateMachines}, one
+representing the crashing thread and the other representing the
+interfering one, and convert them into a verification condition using
+symbolic execution.  This verification condition is satisfiable
+precisely when running the fragments of program represented by the two
+{\StateMachines} in parallel might cause to the bug being investigated
+to reproduce.  This technique is complete in the sense that if it
+reports that the program has no bugs then it definitely does not,
+provided that the dynamic analysis is complete and no part of the
+analysis times out \todo{I kind of contradict this a bit later.}.  It
+is not, however, sound, in the sense that some of the bugs reported
+might not actually be reproducible, because it ignores most of the
+program's existing synchronisation, and this can lead to a significant
+number of false positives.  Section~\ref{sect:reproducing_bugs}
+describes one possible way of making it sound, at the expense of a
+significant loss of completeness.
+
+In addition to the verification condition itself, this phase also
+generates an \introduction{inferred assumption}: a condition which
+expresses when the {\StateMachines} would not predict a crash if run
+atomically, in either order.  A potential crash is only reported if
+both the \backref{inferred assumption} and the \backref{verification
+  condition} might be true simultaneously.  For instance, it might be
+that the crashing thread will dereference a pointer stored in a
+particular stack location, regardless of the actions of the
+interfering thread.  The inferred assumption will then show that that
+stack location must contain a valid pointer, and so {\technique} will
+not report any potential crashes which depend on it containing an
+invalid pointer.  This is consistent with the goal of only reporting
+concurrency bugs, and not simply any kind of bug in the program.
+
+\begin{figure}
+\begin{tabular}{ll}
+Crashing thread:               & Interfering thread: \\
+\\
+1: Load $t_0$ from loc1        & 6: Load $t_3$ from loc1 \\
+2: Store $t_0$ to loc2         & 7: Store $t_3$ to loc2 \\
+\textit{Something complicated} & 8: Store $t_3 + 1$ to loc2 \\
+3: Load $t_1$ from loc1        & \\
+4: Load $t_2$ from loc2        & \\
+5: Crash if $t_1 == t_2$ & \\
+\end{tabular}
+\caption{Example of threads with mandatory concurrency.}\smh{Centre/space}
+\label{fig:mandatory_concurrency1}
+\end{figure}
+
+\begin{figure}
+\begin{tabular}{ll}
+Crashing thread:          & Interfering thread: \\
+\\
+3: Load $t_1$ from loc1   & 6: Load $t_3$ from loc1 \\
+4: Load $t_2$ from loc2   & 7: Store $t_3$ to loc2 \\
+5: Crash if $t_1 == t_2$  & 8: Store $t_3 + 1$ to loc2
+\end{tabular}
+\caption{Truncation of the example in Figure~\ref{fig:mandatory_concurrency1}.}
+\label{fig:mandatory_concurrency2}
+\end{figure}
+
+This rule has one non-obvious implication: the ``quality'' of the
+results is not monotonically increasing with $\alpha$
+\todo{formalise}.  Consider, for instance, the example in
+Figure~\ref{fig:mandatory_concurrency1}\editorial{This is a simplified
+  version of a real bug; should go and dig up the reference for
+  that.}.  The crashing thread copies the contents of loc1 to loc2,
+performs some complex local calculation, and then asserts that loc1
+and loc2 are no longer equal.  Meanwhile, the interfering thread sets
+loc1 and loc2 to $t_3$, then sets loc2 to $t_3$.  Running the crashing
+thread atomically is guaranteed to lead to a crash, and so the
+inferred assumption will be simply $\mathit{false}$ and {\technique}
+will not report any candidate bugs from this thread pair.  On the
+other hand, if the threads were truncated as shown in
+Figure~\ref{fig:mandatory_concurrency2} a candidate bug would be
+reported.  The crashing thread will survive when run atomically in
+isolation if the initial content of loc1 is not equal to the initial
+content of loc2, and will always survive if run after the interfering
+thread completes, and so the inferred assumption will be
+$\smLoad{\mathit{loc1}} \not= \smLoad{\mathit{loc2}}$.  Starting from
+a state which satisfies that assumption and interleaving the two
+threads in the order 3, 6, 7, 4, 5 will result in a crash, and so
+{\technique} will generate a candidate bug for the reduced threads.
+The original two threads clearly did contain a concurrency bug, and so
+increasing $\alpha$ has caused a real bug to be omitted from the set
+of candidate bugs.
+
+Note that this is not, strictly speaking, a problem with {\technique}
+itself, but rather an unfortunate property of the class of bug
+considered.  As discussed in Section~\ref{sect:intro:bugs_considered},
+{\technique} only considers bugs which are caused by interleaving
+threads which would have been safe if they had run without
+interleaving.  The truncated program has a bug of that form but the
+full program does not, and so it is unsurprising that {\technique}
+will report a bug in the truncated program but not the full one.
+
+This is nevertheless an irritating property for {\technique} to have.
+Fortunately, one could reasonably expect that it is rare for this to
+cause problems in practice.  In general, real programs will only
+contain this type of bug if the complicated local computation in the
+crashing thread takes long enough that the interfering thread will
+almost certainly intercede, as otherwise the programmer will find the
+bug quickly and eliminate it.  At the same time, {\technique} will
+rarely be able to support an \backref{analysis window} larger than a
+few hundred instructions, and on modern hardware the time taken to run
+a few hundred instructions will generally be small relative to
+scheduler jitter.  It is therefore highly unlikely that the program
+will be written such that the interfering thread runs in that part of
+the analysis window with high enough probability to make the bug
+difficult for a programmer to isolate and fix.  \todo{Not sure how
+  convincing that is.}
+
+
+\subsection{Symbolically executing {\StateMachines}}
+
+SLI uses a simple symbolic execution engine to evaluate
+{\StateMachines} and determine when they will crash.  The details of
+this are fairly standard, and I give only a brief overview
+here\editorial{\emph{Should} only give a brief overview; this ended up
+  much more detailed than I'd expected.}.  The core data structure
+used by the execution engine is a queue of (mostly) symbolic
+configurations which the {\StateMachine} might occupy, and the main
+operation is to take a state out of this queue, determine what the
+\StateMachine might do next, and possibly add some additional
+configurations to the queue to explore further.  Each configuration
+contains:
+
+\begin{itemize}
+\item
+  A mapping from {\StateMachine} variables to the (symbolic) values of
+  those variables.
+\item
+  A reference to the {\StateMachine}'s current (non-symbolic) state.
+\item
+  The order in which temporary values in that state were assigned to.
+  As discussed in \S\ref{sect:ssa}, SLI uses a slightly unusual form
+  of single static assignment in which $\Phi$ nodes select their input
+  variable based on which was assigned to most recently, rather than
+  based on the preceding control flow, and keeping track of that
+  ordering allows that semantics to be implemented simply.
+\item
+  A log of all of the memory stores issued by the {\StateMachine} so
+  far.
+\item
+  The current path constraint $p$.  This is simply the conjunction of
+  all of the conditions which are known to be true at this point in
+  the execution.
+\end{itemize}
+
+The core of the symbolic execution engine is a set of rules for
+advancing from one symbolic state to another.  Most of these are
+standard (see, for instance, \editorial{cite one of the early KLEE
+  papers}) and I give only a brief overview of the most important
+parts here.
+
+\begin{itemize}
+\item The symbolic execution engine considers only a single
+  {\StateMachine} at a time, even when investigating the parallel
+  behaviour of two threads.  Rather than trying to enumerate all
+  possible interleavings during symbolic execution, {\technique}
+  instead encodes them into special \introduction{cross-product}
+  {\StateMachines}; see Section~\ref{sect:derive:cross_product}.
+
+\item The program's memory is represented by the sequence of update
+  operations, rather than attempting to maintain separate models for
+  particular objects or memory locations.  This is because it is not
+  always possible to identify precisely which memory location a
+  particular memory accessing operation accesses.  Tracking the entire
+  list of operations avoids that issue.
+
+  \state{Store} operations are then very easy to implement by just
+  adding them to the memory log.  \state{Load} operations, on the
+  other hand, are more expensive, and must walk the entire list of
+  memory updates and test for aliasing with each one.
+
+  This is equivalent to treating the whole of memory as a single array
+  and then using functional updates, as in \needCite{}.  \todo{Say
+    more}
+
+  \todo{That really is a completely bloody ridiculous way of doing
+    this.  Should be partitioning using the dynamic aliasing model.
+    Wouldn't actually \emph{help}, in any useful sense, but I'd feel
+    less stupid describing it.}
+
+\item Aliasing queries are resolved lazily.  This means that if the
+  engine must execute a \state{Load} operation and cannot immediately
+  determine which \state{Store} operation to use, it does not cause an
+  immediate state fork, but instead causes the \state{Load} to return
+  an expression BDD (\todo{backref here}) describing the aliasing
+  query and selecting the appropriate result.  \todo{I want to say
+    that's faster, and I genuinely believe that it is, but I don't
+    have a great deal of evidence to back it up.}  \todo{Also, might
+    need a better explanation of that.}
+
+\item Memory operations, in addition to their main function of
+  accessing memory, are also used to infer that certain pointers are
+  definitely valid.  For instance, if the engine executes a
+  \state{Load} operation which loads from memory with a location given
+  by $\mathit{expr}$ it will conclude that $\mathit{expr}$ is a valid
+  pointer and add ${\neg}\smBadPtr{expr}$ to the current path
+  constraint.  This means that if {\technique} is investigating a bad
+  pointer dereference and it can show that either thread dereferenced
+  the pointer prior to the crashing instruction then it can assume
+  that the crashing instruction will not crash.
+
+  \todo{Ugly ugly ugly}
+
+\item In addition to the obvious state such as the contents of memory
+  and the value of all {\StateMachine} temporaries, the symbolic
+  execution configurations also include a log showing the order in
+  which variables have been assigned to.  The allows \state{$\Phi$}
+  side effects to be implemented trivially.  Recall from
+  Section~\ref{sect:ssa} that a {\technique} \state{$\Phi$} state
+  selects whichever {\StateMachine}-level variable has been assigned
+  to most recently from some set.  The symbolic execution engine can
+  therefore implement these semantics by simply looking through the
+  assignment log until it finds one of these input variables and copy
+  in the appropriate value.
+
+  \todo{That's a moronic way of implementing this.  Should just use
+    $\Phi$ pseudo-variables.  Should probably also find a ref for
+    them.}
+
+\item The engine does not attempt to detect when it revisits a
+  previously visited configuration.  This is because revisiting
+  configurations is extremely rare, and the minimal amounts of
+  redundant work which would be avoided by not doing so cannot justify
+  the costs of checking for cycles.  There are several reasons for
+  revisiting being rare:
+
+  \begin{itemize}
+  \item {\STateMachines} are acyclic, and so any single path through
+    the {\StateMachine} will definitely not revisit any
+    states\footnote{This is also the property which makes not
+      detecting cycles safe: there cannot be any infinite loops in the
+      execution engine because every path is guaranteed to be finite,
+      and there are a finite, if large, number of paths.}.
+  \item {\Technique} applies extensive simplification passes to the
+    {\StateMachine} before attempting to symbolically execute it (see
+    Section~\ref{sect:simplifying}), and these simplifications have
+    the effect of removing redundancy from the {\StateMachines}.
+  \item The decision to model memory as a sequence of updates, rather
+    than as a collection of objects, means that identifying equal
+    states is often difficult.  \todo{That was on my list, but I don't
+      remember what it means any more.  Think harder.}
+  \end{itemize}
+\end{itemize}
+
+\subsection{Deriving the inferred assumption}
+
+The inferred assumption is a condition on the program's state which
+ensures that the crashing and interfering threads do not crash when
+run atomically, in either order.  It has two parts: the
+\introduction{CI atomic} constraint, which gives the conditions under
+which running the crashing {\StateMachine} and then the interfering
+{\StateMachine} survives, and \introduction{IC atomic}, which gives
+the conditions under which running the interfering {\StateMachine} and
+then the crashing one survives.  Each sub-condition is formed by
+concatenating the two input {\StateMachines} in two appropriate order,
+symbolically executing them, and then taking the disjunction of all
+paths which end in the \state{Survive} state\editorial{i.e. taking all
+  paths which definitely survive, and excluding those which crash and
+  which reach \state{Unreached}.}.  The inferred assumption itself is
+then formed from the conjunction of these two sub-constraints.
+
+Concatenating {\StateMachines} is straightforward: simply take the
+first {\StateMachine} and replace all of its \state{Survive} states
+with branches to the start of the second {\StateMachine}.
+
+One might reasonably therefore ask why building the composite machine
+is superior to simply symbolically executing one {\StateMachine} until
+it reaches the \state{Survive} state and then starting the other
+{\StateMachine} in the resulting configuration.  This would correctly
+implement the desired behaviour, and would be somewhat simpler to
+implement.  The great advantage of building a composite
+{\StateMachine} is that the composite {\StateMachine} can be
+simplified using the standard {\StateMachine} simplification passes,
+which usually reduces the complexity of symbolic execution by a useful
+amount, even when the input {\StateMachines} were themselves
+simplified as far as possible.  This is because the composite
+{\StateMachine} is ``closed'': it contains all potentially relevant
+operations, and so the simplification passes can assume that there are
+no potentially interfering operations in another thread.  This gives
+the simplification passes far more scope to eliminate memory accesses.
+The result is that symbolically executing the simplified composite
+{\StateMachine} is almost always much faster than executing the input
+{\StateMachines} in turn.
+
+\todo{I would really like to say at this point that deriving the IC
+  atomic constraint is the single most expensive part of the analysis
+  pipeline.}
+
+\subsection{Building cross-product {\StateMachines}}
+\label{sect:using:build_cross_product}
+
+The symbolic execution engine is only capable of exploring one
+{\StateMachine} at a time, and so if cross-thread behaviours are to be
+investigated then the two single-threaded {\StateMachines} must be
+combined into a single multi-threaded one.  This new {\StateMachine}
+must capture the complete behaviour of every possible interaction the
+two input {\StateMachines}, so that any possible interleaving of their
+states is represented by a path through the combined {\StateMachine}.
+The approach used by {\technique} is essentially to take a
+cross-product of the two {\StateMachines}.  This is a new
+{\StateMachine} whose states correspond to pairs of states in the
+input {\StateMachine} and whose transitions correspond to advancing
+one or other of the two input {\StateMachines}.
+
+There is a close analogy here with the finite state machine
+cross-product operation, which is a new FSM whose states correspond to
+pairs of states in the input FSMs and whose transitions correspond to
+advancing one or other of the input FSMs.  The important difference is
+that, in an FSM cross-product, the two FSMs are independent and cannot
+influence each other's behaviour, whereas in a {\StateMachine} cross
+product they can do, and those influences are precisely what the cross
+product is intended to capture.
+
+There are some important subtleties involved in building the
+cross-product {\StateMachine}:
+
+\begin{itemize}
+\item The input {\StateMachines} might contain \state{StartAtomic} and
+  \state{EndAtomic} blocks, which are intended to indicate that some
+  fragment of the {\StateMachine} executes atomically.  It is
+  important that the output {\StateMachine} is constructed in a way
+  which respects those blocks.
+\item There will be many pairs of states in the two input
+  {\StateMachines} which cannot interact with each other in any way,
+  and so can be re-ordered without influencing any interesting
+  behaviour.  The output {\StateMachine} would ideally be constructed
+  in a way which avoids forcing later analyses to consider both
+  orderings.  In general, there may be many partial-order redundancies
+  between the two {\StateMachines}, and, for efficiency reasons, we
+  would like to remove as many of these as possible as early as
+  possible.
+\item In the case of {\technique}, the cross-product machine is only
+  used to investigate cases in which the two input {\StateMachines}
+  are interleaved, as the cases where they execute atomically will
+  have already been considered in the inferred assumption.  The
+  cross-product {\StateMachine} should therefore be built in a way
+  which excludes paths where the input {\StateMachines} run
+  atomically.
+\end{itemize}
+
+The algorithm used is actually rather simple.  The core idea is to
+identify each state of the output {\StateMachine} with a particular
+configuration of the two input {\StateMachines}, where the
+configuration contains all of the necessary information about the
+concurrent interleaving of the two {\StateMachines} and nothing else.
+More concretely, a configuration consists of two fields for each input
+{\StateMachine}: the state which it is to execute next, and a flag
+indicating whether it has issued any memory-accessing operations yet.
+The output machine starts in a configuration with both input
+{\StateMachines} in their initial state, neither in an atomic block,
+and neither having issued any memory accesses.  The algorithm then
+exhaustively explores every configuration reachable from this one,
+building the output {\StateMachine} as it goes.  The rules for
+advancing from a configuration are quite simple, and are best
+explained by means of an example.  Consider, for instance, the
+{\StateMachines} shown in Figure~\ref{fig:cross_product_input}.  $y$
+here is supposed to indicate some value which is local to the
+interfering thread {\StateMachine} and $x$ some global variable in
+memory.  These produce the cross-product {\StateMachine} shown in
+Figure~\ref{fig:cross_product_output}\footnote{These {\StateMachines}
+  have no atomic blocks, and so the state related to atomic blocks is
+  not shown.}.  I highlight a couple of the more important features of
+this diagram:
+
+\begin{itemize}
+\item The {\StateMachine} starts in the configuration (\{A, false,
+  false\}, \{E, false, false\}), indicating that the crashing thread
+  {\StateMachine} is in state A, is not in an atomic block, and has
+  not issued any memory accesses, and that the interfering thread
+  {\StateMachine} is in state $E$, is not in an atomic block, and has
+  not issued any memory accesses.  The first state in the interfering
+  thread is an \state{If}, which is always thread-local, and so it is
+  able to advance immediately.  The resulting state in the output
+  {\StateMachine} is therefore an \state{If} state testing the same
+  condition as the input \state{If}.  The successor states in the
+  output state are then the starting output state with the interfering
+  thread's state updated to reflect the result of the conditional test.
+  In other words, when the condition is true, the output {\StateMachine}
+  moves to configuration (\{A, false, false\}, \{I, false, false\}),
+  because the interfering thread {\StateMachine} will move from state E
+  to state I, and when the condition is false the output {\StateMachine}
+  moves to configuration (\{A, false, false\}, \{F, false, false\}),
+  because the interfering thread {\StateMachine} moves from E to F.
+
+  There is a slight ambiguity here which occurs if both input
+  {\StateMachines} are at purely local states.  In that case,
+  {\technique} prefers to advance the {\StateMachine} whose current
+  state has the smallest number of successor states, as this tends to
+  result in the smallest possible output {\StateMachine}.  When both
+  input {\StateMachines} have the same number of successor states it
+  advances the crashing thread {\StateMachine}.
+
+\item One of the successors of the initial configuration is (\{A,
+  false, false\}, \{I, false, false\}).  The interfering thread
+  {\StateMachine} has now reached a terminal state, I, without either
+  input {\StateMachine} issuing any memory accesses.  This indicates
+  that both {\StateMachines} have completed atomically, which is not
+  an interesting case to investigate, and so {\technique} instantiates
+  this output state as \state{Unreached}.  The later analysis phases
+  will therefore not investigate this path.  In general, any time one
+  of the input {\StateMachines} reaches a terminal state and either
+  input {\StateMachine} has failed to issue an access the output state
+  should be \state{Unreached}.
+
+\item In the other successor of the initial state, (\{A, false,
+  false\}, \{F, false, false\}), both {\StateMachines} have reached a
+  memory accessing state.  {\Technique} now looks ahead in both input
+  {\StateMachines} to determine whether the accesses might involve
+  some cross-{\StateMachine} interaction (see below for more details
+  of this process).  In this case, they can interact, and so the
+  cross-product algorithm uses a happens-before test
+  $\happensBeforeEdge{}$ to consider both possible orderings of the
+  accesses.  If $\happensBefore{A}{F}$ then the memory access in state
+  A should happen before that in state F, and so the output
+  {\StateMachine} issues the state A access and moves to configuration
+  (\{B, true, false\}, \{F, false, false\}).  Otherwise, F should
+  happen before A, and so it issues the state F access and moves to
+  (\{A, false, false\}, \{I, true, false\}).  Other
+  potentially-interfering memory accesses are handled similarly.
+
+\item In the configuration (\{C, true\}, \{I, true\}), the crashing
+  thread {\StateMachine} is at a memory accessing state C while the
+  interfering thread {\StateMachine} is at a terminal state I.  There
+  can therefore be no interaction between the access at C and any
+  future accesses issued by the interfering thread, and so the output
+  {\StateMachine} can issue the C access without needing any further
+  $\happensBeforeEdge$ tests.
+
+\item The F state has been duplicated into two places in the output
+  {\StateMachine}.  In this case, this is not actually a problem, but
+  if F had been a variable-defining state such as \state{Load} or
+  \state{Copy} then this would have broken the SSA form.  {\Technique}
+  uses a further post-processing step to restore the SSA invariant,
+  introducing additional variables and \state{$\Phi$} side-effects as
+  necessary.
+\end{itemize}
+
+\begin{figure}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node[stateSideEffect,initial] (lA) {lA: \state{Load} $x \rightarrow tmp$ };
+      \node[stateIf,below = of lA] (lB) {lB: \state{If} $tmp = 0$ };
+      \node[stateSideEffect,below = of lB] (lC) {lC: \state{Load} $x \rightarrow tmp'$ };
+      \node[stateIf,below = of lC] (lD) {lD: \state{If} $BadPtr(tmp')$ };
+      \node[stateTerminal,below = of lD] (lH) {lH: \state{Crash} };
+      \node[stateTerminal,right = of lC] (lG) {lG: \state{Survive} };
+      \draw[->] (lA) -- (lB);
+      \draw[->,ifTrue] (lB) -- (lG);
+      \draw[->,ifFalse] (lB) -- (lC);
+      \draw[->] (lC) -- (lD);
+      \draw[->,ifTrue] (lD) -- (lH);
+      \draw[->,ifFalse] (lD) -- (lG);
+    \end{tikzpicture}
+    \caption{Crashing thread {\StateMachine} }
+  \end{subfloat}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node[stateIf,initial] (lE) {lE: \state{If} $y \not= 0$};
+      \node[stateSideEffect,below right = of lE] (lF) {lF: \state{Store} $0 \rightarrow x$};
+      \node[stateTerminal,below left = of lF] (lI) {lI: \state{Survive} };
+      \draw[->,ifTrue] (lE) -- (lI);
+      \draw[->,ifFalse] (lE) -- (lF);
+      \draw[->] (lF) -- (lI);
+    \end{tikzpicture}
+    \caption{Interfering thread {\StateMachine} }
+  \end{subfloat}
+  \caption{A pair of {\StateMachines}.  $x$ is a global memory
+    location.  Figure~\ref{fig:cross_product_output} shows their
+    cross-product.}\smh{Hangs off right margin.}
+  \label{fig:cross_product_input}
+\end{figure}
+
+\begin{figure}
+  \begin{tikzpicture}[align=center]
+    \node[stateIf, initial] (A) {(\{A, false\}, \{E, false\})\\\state{If} $y \not= 0$ };
+    \node[stateTerminal, right = of A] (B) {(\{A, false\}, \{I, false\})\\\state{Unreached} };
+    \node[stateIf, below = of A] (C) {(\{A, false\}, \{F, false\})\\\state{If} $\happensBefore{A}{F}$ };
+    \node[stateSideEffect, below = of C] (D) {A\\\state{Load} $x \rightarrow tmp$};
+    \node[stateSideEffect, right = of C] (E) {F\\\state{Store} $0 \rightarrow x$};
+    \node[stateIf, below = of D] (F) {(\{B, true\}, \{E, false\})\\\state{If} $tmp = 0$ };
+    \node[stateTerminal, below = of E] (G) {(\{A, false\}, \{I, true\})\\\state{Unreached} };
+    \node[stateTerminal, right = of F] (H) {(\{G, true\}, \{E, false\})\\\state{Unreached} };
+    \node[stateIf, below = of F] (I) {(\{C, true\}, \{E, false\})\\\state{If} $\happensBefore{C}{F}$ };
+    \node[stateSideEffect, below = of I] (J) {C\\\state{Load} $x \rightarrow tmp'$};
+    \node[stateSideEffect, right = of I] (K) {F\\\state{Store} $0 \rightarrow x$};
+    \node[stateIf, below = of J] (L) {(\{D, true\}, \{E, false\})\\\state{If} $BadPtr(tmp')$ };
+    \node[stateSideEffect, right = of K] (M) {(\{C, true\}, \{I, true\})\\\state{Load} $x \rightarrow tmp'$ };
+    \node[stateTerminal, below = of L] (N) {(\{H, true\}, \{E, false\})\\\state{Unreached} };
+    \node[stateTerminal, below right = of L] (O) {(\{G, true\}, \{E, false\})\\\state{Unreached} };
+    \node[stateIf, below = of M] (P) {(\{D, true\}, \{I, true\})\\\state{If} $BadPtr(tmp')$ };
+    \node[stateTerminal, left = of P] (Q) {(\{G, true\}, \{I, true\})\\\state{Survive} };
+    \node[stateTerminal, below = of P] (R) {(\{G, true\}, \{I, true\})\\\state{Crash} };
+    \draw[->,ifTrue] (A) -- (B);
+    \draw[->,ifFalse] (A) -- (C);
+    \draw[->,ifTrue] (C) -- (D);
+    \draw[->,ifFalse] (C) -- (E);
+    \draw[->] (D) -- (F);
+    \draw[->] (E) -- (G);
+    \draw[->,ifTrue] (F) -- (H);
+    \draw[->,ifFalse] (F) -- (I);
+    \draw[->,ifTrue] (I) -- (J);
+    \draw[->,ifFalse] (I) -- (K);
+    \draw[->] (J) -- (L);
+    \draw[->] (K) -- (M);
+    \draw[->,ifTrue] (L) -- (N);
+    \draw[->,ifFalse] (L) -- (O);
+    \draw[->] (M) -- (P);
+    \draw[->,ifTrue] (P) -- (Q);
+    \draw[->,ifFalse] (P) -- (R);
+  \end{tikzpicture}
+  \caption{Cross product of the {\StateMachines} shown in
+    Figure~\ref{fig:cross_product_input}. \todo{redo
+      layout}}\smh{Ack!}
+  \label{fig:cross_product_output}
+\end{figure}
+
+\todo{I've not actually said what the algorithm \emph{is} anywhere,
+  but that's mostly because, given the example, it should be pretty
+  obvious, and it'd take a lot of space to explain properly.}
+
+Importantly, the cross-product {\StateMachine} can itself be
+simplified using the usual {\StateMachine} simplification passes, and
+this can often lead to useful simplifications even when the input
+{\StateMachines} have already been simplified as far as possible.
+Simplifying the example cross-product {\StateMachine} will produce the
+simplified {\StateMachine} shown in
+Figure~\ref{fig:cross_product_output_opt}.  In this case, the actual
+symbolic execution step will be trivial, and will report that the
+program will reach a \state{Crash} state precisely when $y = 0 \wedge
+\happensBefore{A}{F} \wedge LD(x) \not= 0 \wedge
+\happensBefore{F}{C}$; in other words, if $y$ is nonzero, the initial
+value of $x$ is non-zero, and statement F intercedes between
+statements A and C, precisely as desired.
+
+\begin{figure}
+  \begin{tikzpicture}[align=center]
+    \node[stateSideEffect, initial] (A) {\state{Assert} $y = 0 \wedge \happensBefore{A}{F} \wedge LD(x) \not= 0 \wedge \happensBefore{F}{C}$ };
+    \node[stateTerminal, below = of A] (B) {\state{Crash} };
+    \draw[->] (A) -- (B);
+  \end{tikzpicture}
+  \caption{Result of simplifying {\StateMachine} shown in
+    Figure~\ref{fig:cross_product_output}.}\smh{Cool! maybe also show
+    original code + write out figure's textural representation
+    (i.e. use English too!)}
+  \label{fig:cross_product_output_opt}
+\end{figure}
+
+For the example, only three simplifications are necessary:
+
+\begin{itemize}
+\item If a state is guaranteed to eventually reach \state{Unreached}
+  then the state can itself be replaced by \state{Unreached}.
+\item If a branch has one target which is \state{Unreached} then
+  it can be replaced by an \state{Assert}.
+\item A chain of successive \state{Assert}s can be replaced by a
+  single \state{Assert}.
+\end{itemize}
+
+These are not particularly complicated simplifications, and could
+equally easily be applied as part of the symbolic execution process
+itself.  More complex simplifications would be much more difficult to
+incorporate into the symbolic execution engine, though, for two main
+reasons:
+
+\begin{itemize}
+\item Simplification passes can easily look ahead in the
+  {\StateMachine}, whereas symbolic execution primarily considers a
+  single state at a time.  Dead code elimination, for example, is much
+  easier to implement as a simplification to the {\StateMachine}
+  than as a change to the symbolic execution engine.
+\item The results of a simplification pass are inherently shared
+  across all paths which reach a particular state, whereas the
+  symbolic execution engine needs to perform additional work in
+  order to share results.
+\end{itemize}
+
+There is also an engineering consideration which argues in favour of
+building and simplifying the cross-product {\StateMachine}, rather
+than integrating equivalent optimisations into the symbolic execution
+engine: {\technique} already needs all of the simplifiers in order to
+build the input {\StateMachines} to begin with, and so re-using them
+here halves the implementation effort.
+
+\subsubsection{Identifying cross-{\StateMachine} accesses}
+
+The cross-product algorithm given here assumes that it can identify
+accesses which might have cross-{\StateMachine} effects, so as to only
+introduce happens-before $\happensBeforeEdge$ tests for cross-thread
+accesses.  This is not completely trivial.  In particular, it is
+\emph{not} sufficient to simply ask whether a given access might
+communicate with the next access to be issued in the other
+{\StateMachine}, and the cross-product algorithm must instead look
+ahead through the {\StateMachines} to find any possible future
+accesses which might interact with the current one.
+
+To understand why, consider
+Figure~\ref{fig:cross_product:example_aliasing}.  This is supposed to
+indicate that both {\StateMachines} have two memory accessing
+operations, that the first operation of the first {\StateMachine}
+aliases with the second operation of the second {\StateMachine}, and
+that the second operation of the first {\StateMachine} aliases with
+the first operation of the second {\StateMachine}.  The cross-product
+building algorithm will start in configuration (L1, S1), indicating
+that both input {\StateMachines} are in their initial state.  These
+two accesses do not alias, but must still be considered to have
+cross-{\StateMachine} effects.  Otherwise, the cross-product building
+algorithm will only consider one possible (arbitrarily chosen)
+ordering of the two accesses, which would clearly be inadequate here.
+For instance, if it chose to issue L1 before S1 it would produce the
+cross-product {\StateMachine} shown in
+Figure~\ref{fig:incorrect_cross_product}\footnote{Assume for the
+  purposes of the example that both {\StateMachines} have already
+  issued some memory accesses, so that the part of the algorithm which
+  avoids considering paths where one {\StateMachine} completes
+  atomically are not relevant.}, which does not model the valid memory
+access sequence S1, L1, L2, S2 (or any sequence which can be obtained
+from that one by exchanging non-interfering operations).  This is
+clearly incorrect.  Conversely, if it had chosen to issue S1 before L1
+then it would have omitted L1, S1, L2, S2.
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node[draw] (L1) {A: L1};
+    \node[draw, below = of L1] (L2) {B: L2};
+    \node[draw, right = of L1] (S1) {C: S1};
+    \node[draw, below = of S1] (S2) {D: S2};
+    \draw[->] (L1) -- (L2);
+    \draw[->] (S1) -- (S2);
+    \draw[<->, dashed] (L1) -- (S2);
+    \draw[<->, dashed] (L2) -- (S1);
+  \end{tikzpicture}
+  \caption{An example aliasing and control flow graph.}
+  \label{fig:cross_product:example_aliasing}
+\end{figure}
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node[stateSideEffect, initial] (AC) {(A, C)\\L1 };
+    \node[stateSideEffect, right = of AC] (BC) {(B, C)\\\state{If} $\happensBefore{B}{C}$ };
+
+    \node[stateSideEffect, above right = of BC] (B) {B\\L2};
+    \node[stateSideEffect, right = of B] (0C) {($\varnothing$, C)\\S1};
+    \node[stateSideEffect, right = of 0C] (0D) {($\varnothing$, D)\\S2};
+    \node[stateSideEffect, right = of 0D] (001) {$\varnothing$\\$\happensBefore{L1}{S2}$\\$\happensBefore{L2}{S1}$};
+
+    \node[stateSideEffect, below right = of BC] (C) {B\\S1};
+    \node[stateSideEffect, right = of C] (BD) {(B, D)\\L2};
+    \node[stateSideEffect, right = of BD] (0D2) {($\varnothing$, D)\\S2};
+    \node[stateSideEffect, right = of 0D2] (002) {$\varnothing$\\$\happensBefore{L1}{S2}$\\$\happensBefore{S1}{L2}$};
+
+    \draw[->] (AC) -- (BC);
+    \draw[->,ifTrue] (BC) -- (B);
+    \draw[->] (B) -- (0C);
+    \draw[->] (0C) -- (0D);
+    \draw[->] (0D) -- (001);
+
+    \draw[->,ifFalse] (BC) -- (C);
+    \draw[->] (C) -- (BD);
+    \draw[->] (BD) -- (0D);
+    \draw[->] (0D) -- (002);
+  \end{tikzpicture}
+  \caption{An incorrect cross-product of the {\StateMachines} in
+    Figure~\ref{fig:cross_product:example_aliasing}.}
+  \label{fig:incorrect_cross_product}
+\end{figure}
+
+Fortunately, this problem is easy to fix: the cross-product algorithm
+must look ahead through the {\StateMachines} to find possible future
+aliasing accesses before concluding that the current accesses are
+thread-local.  In the example, from configuration (L1, S1), it could
+look ahead through the second {\StateMachine} to find that L1 aliases
+with S2, and is therefore not thread-local, or it could look ahead
+through the first {\StateMachine} to find that S1 aliases with L2.  In
+either case, it will have to generate a happens-before test for L1 and
+S1, producing the cross-product {\StateMachine} shown in
+Figure~\ref{fig:correct_cross_product}.  This {\StateMachine}
+correctly captures all interesting interleavings of accesses of the
+memory accesses.
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node[stateSideEffect, initial] (AC) {(A, C)\\\state{If} $\happensBefore{A}{C}$ };
+    \node[stateSideEffect, below left = of AC] (A1) {A\\L1};
+    \node[stateSideEffect, below = of A1] (BC) {(B, C)\\\state{If} $\happensBefore{B}{C}$ };
+    \node[stateSideEffect, below left = of BC] (B) {B\\L2};
+    \node[stateSideEffect, below = of B] (0C) {($\varnothing$, C)\\S1};
+    \node[stateSideEffect, below = of 0C] (0D) {($\varnothing$, D)\\S2};
+    \node[stateSideEffect, below right = of BC] (C1) {C\\S1};
+    \node[stateSideEffect, below = of C1] (BD) {(B, D)\\L2};
+    \node[stateSideEffect, below = of BD] (0D) {($\varnothing$, D)\\S2};
+
+    \node[stateSideEffect, below right = of AC] (C0) {C\\S1};
+    \node[stateSideEffect, below = of C0] (AD) {(A, D)\\\state{If} $\happensBefore{A}{D}$ };
+    \node[stateSideEffect, below left = of AD] (A2) {A\\L1};
+    \node[stateSideEffect, below right = of A2] (D) {D\\S2};
+    \node[stateSideEffect, below = of D] (A0) {(A, $\varnothing$)\\L1};
+    \node[stateSideEffect, below = of A0] (B0) {(B, $\varnothing$)\\L2};
+
+    \draw[->, ifTrue] (AC) -- (A1);
+    \draw[->, ifTrue] (BC) -- (B);
+    \draw[->, ifTrue] (AD) -- (A2);
+    \draw[->, ifFalse] (AC) -- (C0);
+    \draw[->, ifFalse] (BC) -- (C1);
+    \draw[->, ifFalse] (AD) -- (D);
+
+    \draw[->] (A1) -- (BC);
+    \draw[->] (B0) -- (0C);
+    \draw[->] (0C) -- (0D);
+    \draw[->] (C1) -- (BD);
+    \draw[->] (BD) -- (0D);
+    \draw[->] (C0) -- (AD);
+    \draw[->] (A2) -- (BD);
+    \draw[->] (D) -- (A0);
+    \draw[->] (A0) -- (B0);
+  \end{tikzpicture}
+  \caption{Correct cross-product of the {\StateMachines} shown in
+    Figure~\ref{fig:cross_product:example_aliasing}.}
+  \label{fig:correct_cross_product}
+\end{figure}
+
+\subsubsection{Other important features of the algorithm}
+
+The cross-product building algorithm used in $\implementation$ has a
+number of other features not illustrated in the example:
+
+\begin{itemize}
+\item
+  Atomic blocks are correctly maintained.  The output {\StateMachine}
+  configurations have a further field not discussed above which
+  indicates which, if either, of the two input {\StateMachines} are
+  currently executing within atomic blocks.  When one {\StateMachine}
+  is in an atomic block then only that {\StateMachine} is allowed to
+  issue operations in the output {\StateMachine}, regardless of what
+  the rules illustrated above would suggest.  Implementing
+  \state{StartAtomic} and \state{EndAtomic} side-effects is then a
+  simple matter of updating this field.
+
+\item The output {\StateMachine} is not necessarily tree-structure,
+  but forms a DAG of states.  For instance, in
+  Figure~\ref{fig:correct_cross_product}, the (B, D) configuration is
+  referenced from two memory orderings.  This means that the number of
+  states in the output {\StateMachine} grows as roughly $O(nm)$, where
+  $n$ is the number of states in the crashing thread {\StateMachine}
+  and $m$ the number in the interfering thread one, rather than in
+  proportion to the number of potential interleavings, which is
+  $O(2^{\mathrm{min}(n,m)})$.  This makes it much easier to scale
+  {\technique} to larger {\StateMachines}.
+
+\item The output {\StateMachine} includes a large number of
+  \state{Unreached} states.  The {\StateMachine} simplification passes
+  are quite effective at removing these, but for efficiency reasons we
+  would prefer to not generate them at all.  {\Implementation}
+  includes a few simple rules to eliminate some of the more egregious
+  ones.  For instance, in the example, no state after C in the
+  crashing thread {\StateMachine} can issue any memory accesses, and
+  so if the crashing thread ever reaches C before the interfering
+  thread has issued any accesses then the crashing thread will
+  definitely complete as-if atomically and be replaced by an
+  \state{Unreached} state, and so state C in the output
+        {\StateMachine} will itself be replaced by an
+        \state{Unreached} state.  There is therefore no need to
+        actually generate any of (\{D, true\}, \{E, false\}), (\{H,
+        true\}, \{E, false\}), or (\{G, true\}, \{E, false\}).  These
+        rules are generally quite obvious and unenlightening and so
+        are not discussed in detail here.
+\end{itemize}
+
+\subsection{Path explosion}
+
+One common problem in symbolic execution systems is path explosion:
+the number of paths through a program rises exponentially in the size
+of the program, and this can prevent na\"ive symbolic execution
+systems from being applied to realistically large programs.  In the
+case of \technique, there are two main causes of path explosion:
+
+\begin{itemize}
+\item
+  Aliasing.  If the various simplification passes and the dynamic
+  analysis cannot determine how memory accessing instructions alias
+  then the symbolic execution engine must consider every possible
+  aliasing pattern, of which there are $O(n^m)$, where $n$ is number
+  of \state{Load} operations and $m$ the number of \state{Store} ones.
+  This grows rather quickly in the number of unsolvable aliasing
+  problems, especially when the number of \state{Store}s in the
+  {\StateMachine} rises.  This represents one of the major limitations
+  to \technique's scalability.
+\item
+  Thread interleaving.  The cross-product {\StateMachine} will have
+  $O(nm)$ states, where $n$ is number of states in the read-side
+  {\StateMachine} and $m$ the number in the write-side one.  The
+  number of paths through the combined {\StateMachine} then grows as
+  $O(2^{(nm)})$, which again grows rather quickly.
+\end{itemize}
+
+The result is that, in the common case where the read-side
+{\StateMachine} consists mostly of \state{Load} operations and
+write-side one mostly of \state{Store} ones, the symbolic execution
+engine might have to consider up to $O((2n)^m)$ distinct paths when
+evaluating the cross-product {\StateMachine}.  This is obviously
+completely infeasible for even moderate values of $n$ and $m$.  For
+good performance, {\technique} relies on the various simplification
+and analysis techniques to reduce $n$ and $m$ to manageably small
+values.  Fortunately, as discussed in the evaluation, they are able to
+do so in a useful set of cases.
+
+\section{Reproducing bugs}
+\label{sect:reproducing_bugs}
+
+\todo{I'm kind of tempted to pull this out into its own chapter.}
+
+Given a pair of {\StateMachines} and a verification condition it is
+possible to build a ``crash enforcer'': a patch to the program which
+will insert delays into the program's execution in a way which will
+make the bug more likely to reproduce.  This can then be used to
+determine which of the many bugs reported by the prior analysis are
+actually reproducible, and hence to appropriately target efforts in
+fixing them.  As an example, consider these two threads:
+
+\begin{verbatim}
+int *global_ptr[];
+void crashing(int idx1) {
+    if (global_ptr[idx1])
+        *global_ptr[idx1] = 7;
+} 
+void interfering(int idx2) {
+    global_ptr[idx2] = NULL;
+}
+\end{verbatim}
+
+Suppose further that they compile to this machine code:
+
+\begin{verbatim}
+crashing:
+
+l1:   ADD global_ptr + idx1 -> reg1
+l2:   LOAD *reg1 -> reg2
+l3:   CMP 0, reg2
+l4:   jmp_if_eq l7
+l5:   LOAD *reg1 -> reg3
+l6:   STORE 7 -> *reg3
+l7:
+
+interfering:
+
+l8:   ADD global_ptr + idx2 -> reg4
+l9:   STORE 0 -> *reg4
+\end{verbatim}
+
+(This is essentially the bug indexed\_toctou\smh{?} discussed in
+Section~\ref{sect:eval:indexed_toctou}).  There is a risk here that
+the crashing thread might crash if \verb|l9| is interleaved between
+\verb|l2| and \verb|l5| and \verb|idx1 == idx2|.  The previous
+analysis phase will detect this bug and produce the verification
+condition $idx1 = idx2 \wedge \happensBefore{l2}{l9} \wedge
+\happensBefore{l9}{l5}$.  This can then be used to augment the control
+flow graph of the program with happens-before edges, as shown in
+Figure~\ref{fig:using:example_hb_graph}.
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node[CfgInstr] (l1) {l1: ADD global\_ptr + idx1 $\rightarrow$ reg1};
+    \node[CfgInstr, below=of l1] (l2) {l2: LOAD ${\ast}reg1 \rightarrow reg2$};
+    \node[CfgInstr, below=of l2] (l3) {l3: CMP $0, reg2$};
+    \node[CfgInstr, below=of l3] (l4) {l4: JMP\_IF\_EQ };
+    \node[CfgInstr, below=of l4] (l5) {l5: LOAD ${\ast}reg1 \rightarrow reg3$ };
+    \node[CfgInstr, below=of l5] (l6) {l6: STORE $7 \rightarrow {\ast}reg3$ };
+    \node[CfgInstr, below=of l6] (l7) {};
+    \node[CfgInstr, right=of l1] (l8) {l8: ADD $global\_ptr + idx2 \rightarrow reg4$};
+    \node[CfgInstr, below=30mm of l8] (l9) {l9: STORE $0 \rightarrow {\ast}reg4$};
+    \draw[->] (l1) -- (l2);
+    \draw[->] (l2) -- (l3);
+    \draw[->] (l3) -- (l4);
+    \draw[->,ifFalse] (l4) -- (l5);
+    \draw[->,ifTrue] (l4.west) to [bend right=70] (l7);
+    \draw[->] (l5) -- (l6);
+    \draw[->] (l6) -- (l7);
+    \draw[->] (l8) -- (l9);
+    \draw[->,happensBeforeEdge] (l2) -- (l9);
+    \draw[->,happensBeforeEdge] (l9) -- (l5);
+  \end{tikzpicture}
+  \caption{CFG with happens-before edges for the example.}
+  \label{fig:using:example_hb_graph}
+\end{figure}
+
+The task is then to modify the program so as to make it more likely
+that this happen-before graph will be satisfied when the program runs,
+while leaving its behaviour otherwise unchanged.  This can be
+accomplished by inserting small delays into the program's execution.
+In this case, all that needs to happen is for some thread to execute
+\texttt{l9} while another thread is between \texttt{l2} and
+\texttt{l5}, and so inserting a delay anywhere between \texttt{l2} and
+\texttt{l5} would be sufficient.  The longer the delay, the more
+likely it becomes that some other thread will execute \texttt{l9}
+during it, and hence the more easily the bug will reproduce.  This
+strategy would be appropriate if \texttt{l9} executes more frequently
+than \texttt{l2} and \texttt{l5}.
+
+Alternatively, the program could be modified such that \texttt{l9}
+waits for some other thread to execute \texttt{l2}, so that
+\texttt{l9} can be issued as soon as \texttt{l2} completes, which
+would again make it easier to reproduce the bug.  This would be more
+appropriate when \texttt{l2} is executed more frequently than
+\texttt{l9}.
+
+Of course, for this bug, simply reproducing the happens-before graph
+is not guaranteed to reproduce the bug, because the two threads will
+only interact at all when $\mathit{idx1} = \mathit{idx2}$.  An ideal
+enforcer would only impose delays when there is some possibility of
+this side-condition being satisfied, so as to minimise the overheads
+of the enforcer when the bug is not reproduced.  This is not just a
+performance requirement: inserting delays often means that the buggy
+code will run less often, and so inserting delays when the bug has no
+chance of reproducing will often cause the bug to reproduce
+\emph{less} frequently; precisely the opposite of the desired effect.
+One important complication here is that the side-condition will often
+involve thread-local state from multiple threads (in this case,
+$\mathit{idx1}$ is local to the crashing thread and $\mathit{idx2}$ to
+the interfering one), so that no single thread can evaluate the
+condition by itself.  
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node[draw] (A) {A};
+    \node[draw, above right = of A] (X) {X};
+    \node[draw, below right = of X] (B) {B};
+    \node[draw, above right = of B] (Y) {Y};
+    \node[draw, below right = of Y] (C) {C};
+    \draw[->] (A) -- (B);
+    \draw[->] (B) -- (C);
+    \draw[->] (X) -- (Y);
+    \draw[->,happensBeforeEdge] (A) -- (X);
+    \draw[->,happensBeforeEdge] (X) -- (B);
+    \draw[->,happensBeforeEdge] (B) -- (Y);
+    \draw[->,happensBeforeEdge] (Y) -- (C);
+  \end{tikzpicture}
+  \caption{A happens-before graph which cannot be reproduced by
+    inserting a simple delay.  The bug of interest reproduces only for
+    the access ordering A, X, B, Y, C.}
+  \label{fig:enforce_crash:complex_hb}
+\end{figure}
+
+Figure~\ref{fig:enforce_crash:complex_hb} shows a more complex
+example.  The graph would be difficult to enforce by simply inserting
+fixed delays between instructions within a given thread.  Consider,
+for instance, the delay between X and Y.  This must be sized so as to
+increase the probability of Y happening after B, but without overly
+increasing the probability of Y happening after C.  Similarly, the
+delay between A and B must be sized such that B occurs after X but
+before Y.  Solving that kind of constraint requires detailed
+information about the program's timing, and this information is both
+difficult to collect and highly configuration-specific\editorial{Cite,
+  maybe?}.
+
+{\Technique} solves these problems by modelling the program as a
+message-passing system.  The core idea is to model a happens-before
+ordering X before Y as a message which is sent by X, after it
+completes, and collected by Y, before it starts.  In the first
+example, there will be two messages, on from \texttt{l2} to
+\texttt{l9} and one from \texttt{l9} to \texttt{l5}.  The desired
+happens-before graph will be achieved precisely when all of these
+message operations succeed.
+
+These messages are synchronous, in the sense that a message operation
+cannot complete unless both the sender and the receiver are
+simultaneously at the relevant instructions.  This provides a
+convenient place in which to evaluate side-conditions.
+Figure~\ref{fig:message_petri_net} gives a Petri net semantics for the
+message operation.  One way of reading this diagram is to say that the
+process starts with two threads, in the two before locations, which
+are then merged into a single thread in the message operation place,
+and which then split apart into separate threads in the two after
+places.  This suggests an obvious strategy for evaluating the
+side-condition: if the message operation place represents the merging
+of the two threads, then it should be able to access both threads'
+local state, and so should be able to evaluate the $\mathit{idx1} = \mathit{idx2}$
+side-condition.  This is the strategy adopted by
+{\implementation}\footnote{There is an alternative design for the
+  message passing-operation in which the message operations are
+  asynchronous, so the threads never merge, but carry some of the
+  sending thread's local state as a kind of payload, so that the
+  side-condition can be evaluated in the receiving thread before it
+  receives the message.  That would potentially allow greater
+  parallelism, and hence might reduce the overhead of the enforcers,
+  but at the expense of greater implementation complexity.  I have not
+  investigated this alternative strategy in detail.}.
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node[place,tokens=1,label=above:{before receive}] (beforeRx) {};
+    \node[transition,below right=of beforeRx, label=right:{message operation}] (trans) {};
+    \node[place,tokens=1,above right = of trans, label=above:{before transmit}] (beforeTx) {};
+    \node[place,tokens=0,below left = of trans, label=below:{after receive}] (afterRx) {};
+    \node[place,tokens=0,below right = of trans, label=below:{after transmit}] (afterTx) {};
+    \draw[->] (beforeRx) -- (trans);
+    \draw[->] (beforeTx) -- (trans);
+    \draw[->] (trans) -- (afterRx);
+    \draw[->] (trans) -- (afterTx);
+  \end{tikzpicture}\smh{Center}
+  \caption{Petri net for the message operation.}
+  \label{fig:message_petri_net}
+\end{figure}
+
+One problem remains to be solved: how is a thread to determine which
+thread it is supposed to be communicating with?  In the example, there
+might be many program threads running the \texttt{crashing} and
+\texttt{interfering} functions at the same time, and so many instances
+of \texttt{l2}, \texttt{l9}, and \texttt{l5}, and the verification
+condition gives no indication of which \texttt{l2} must occur before
+which \texttt{l9}, or which \texttt{l9} must occur before which
+\texttt{l5}.  Indeed, it cannot reasonably be expected to: the
+verification condition generation process deals with an abstract model
+of threads, in which it simply assumes that some hypothetical thread
+is running \texttt{crashing} while some other hypothetical thread is
+running \texttt{interfering}, whereas the enforcers must deal with a
+collection of concrete threads running some collection of functions.
+These concrete threads only exist at run-time, and so the very concept
+of a fixed mapping between the analysis-time hypothetical threads and
+concrete threads is meaningless\editorial{That's possibly making this
+  sound more complicated than it really is.}.  The run-time enforcer
+must therefore build this mapping as it runs.
+
+The approach taken by {\technique} is to defer this decision as far as
+possible.  The enforcer maintains, at run-time, a mapping from the
+program's concrete threads to sets of hypothetical threads which it
+might possibly be executing, and, for each hypothetical thread, a set
+of states which that hypothetical thread might occupy.  These sets are
+trimmed as message operations or side-conditions fail, and expanded as
+concrete threads encounter the starting points of the various
+hypothetical threads.  In particular, if two hypothetical threads both
+start at point A and require different side-conditions at a later
+point B then the enforcer will attempt to start both threads at A and
+then discard one or both of them when it eventually reaches B.  This
+means that the enforcer can sometimes enforce multiple bugs at the
+same time, even when they need incompatible happens-before graphs, if
+the side-conditions are strong enough.
+
+Of course, sometimes the side-conditions are not strong enough, and
+the enforcer must decide which happens-before graph to enforce.  In
+that case, it makes a decision completely arbitrarily, discarding some
+hypothetical threads so as to make the ordering consistent.
+
+\subsection{Outline of algorithm}
+
+At a high level, the algorithm used has the following phases:
+
+\begin{itemize}
+\item
+  ``Slice'' the verification condition according to the possible
+  happens-before graphs. As discussed in
+  Section~\ref{sect:intro:overview}, {\technique} can correctly
+  capture the happens-before graph necessary for a bug to reproduce
+  even when that happens-before graph is data-dependent.
+  Unfortunately, those data-dependencies make it difficult to encode
+  the happens-before graph into a simple message passing system.
+  {\Technique} therefore re-expresses the verification condition as a
+  function of the happens-before graph, effectively eliminating the
+  dependency.  This is discussed in more detail in
+  Section~\ref{sect:enforce:slice_hb_graph}.
+\item
+  The algorithm now considers each possible happens-before graph in
+  turn and, for each one, decides where to evaluate the graph's
+  side-condition.  The side-condition will be split into a number of
+  sub-conditions according to what parts of program state they depend
+  on, and these sub-conditions will then be placed at the appropriate
+  places in the happens-before and control-flow graphs.  This is
+  discussed in Section~\ref{sect:enforce:place_vcs}.
+\item
+  If appropriate, multiple enforcers can be combined at this point,
+  which can sometimes make it easier to discover bugs if the initial
+  analyses have produced a very large pool of candidates.  More
+  details are given in Section~\ref{sect:enforce:combine_enforcers}.
+\item
+  Decide on a strategy for gaining control of the program at
+  appropriate points.  The crash enforcement plan only imposes
+  constraints on instructions which are likely to be involved in the
+  target bug, which is usually a tiny fragment of the entire program.
+  It would be deeply unfortunate if the entire program had to be
+  rewritten to insert the necessary modifications; quite aside from
+  the greater risk of bugs in {\implementation}, the performance would
+  probably be quite poor.  As such, it is necessary to modify the
+  original program so that {\technique} can gain control when the
+  program reaches one of the interesting fragments of code.
+  Section~\ref{label:sect:assign_entry_points} discusses how this is
+  done.
+
+\item
+  The results of the previous phases are then combined with the plan
+  interpreter, discussed in Section~\ref{sect:enforce:interpreting},
+  to produce an ELF shared object which can be loaded into the target
+  program to enforce the plan.
+\end{itemize}
+
+\subsection{Slicing the verification condition by happens-before graph}
+\label{sect:enforce:slice_hb_graph}
+
+{\STateMachines} and verification conditions are capable of
+representing data and control flow dependent happens-before graphs,
+but the message passing mechanism used in the crash enforcement phase
+is not capable of enforcing such things.  It is now therefore
+necessary to remove these dependencies.  The approach taken by
+{\implementation} is to just re-express the verification condition as
+a function of the happens-before graph, deriving a new verification
+condition for each possible graph.  These new conditions can then be
+treated independently and recombined as if they were enforcers for
+completely independent bugs, as discussed in
+Section~\ref{sect:enforce:combine_enforcers}.
+
+This re-expression is itself straightforward: enumerate all of the
+$\happensBeforeEdge$ expressions in the verification condition and
+then consider all combinations of those expressions in turn,
+generating a new verification condition for each.  This could
+potentially generate $2^n$ new verification conditions, and hence
+might appear to be computationally unpleasant.  In practice, it is
+usually tolerable, for two main reasons:
+
+\begin{itemize}
+\item
+  Most bugs do not involve a particularly large number of
+  happens-before edges, and so $n$ is usually small (\todo{Cite
+    preemption bounding and CHESS papers}, for instance, obtained good
+  results while limiting the number of happens-before edges to at most
+  2).
+\item
+  Most bugs do not have a data-dependent happens-before pattern, and
+  so usually all but one of the potentially verification conditions
+  can be eliminated very quickly.  Those which do have data-dependent
+  happens-before requirements will usually only have a very small
+  number of interesting graphs (although it is possible to design
+  artificial bugs which require an arbitrarily large number).
+\end{itemize}
+
+Even better, most of the time, behaviours which require a large number
+of happens-before edges will be quite restricted in when they
+reproduce, and so avoiding one easy case is negatively correlated with
+avoiding the other.
+
+\todo{Somewhat surprisingly, this is quite a long way from being the
+  most expensive part of the analysis.  Should really try to get some
+  numbers on what the expensive part actually is.}
+
+Treating the different graphs as completely independent does not,
+therefore, lead to an excessive increase in the cost of generating the
+enforcer.  It does, however, lead to some inefficiency in the enforcer
+itself, as it is not possible to shared common expressions between the
+different bugs.  When combining completely unrelated enforcers this is
+not usually a problem, as there are unlikely to be many common
+expressions anyway, but this is not true when combining closely
+related enforcers.  A more elegant approach would be to allow
+enforcers to share a common prefix and then only have them diverge
+once they encounter the data-dependent happens-before components.  I
+have not implemented such an optimisation.
+
+\subsection{Placing the evaluation of verification conditions}
+\label{sect:enforce:place_vcs}
+
+The verification condition has now been factored into a happens-before
+graph and a side-condition, such that if the happens-before graph is
+enforced while the side-condition holds then the bug is highly likely
+to reproduce.  The next step is to decide how to evaluate the
+side-condition.  This amounts to factoring the side-condition $p$ into
+a set of sub-conditions $p_0, p_1, {\ldots}, p_n$ such that $p =
+\wedge_i p_i$ and then attaching the $p_i$ to either nodes in the
+control-flow graph or edges in the happens-before graph.  The $p_i$
+are chosen such that each depends on a different subset of the
+program's state, and they are placed as early as possible in the two
+graphs such that all of the necessary state is available.  The intent
+is to ensure that if a side-condition is ultimately going to fail,
+that is detected as soon as possible, so that the enforcer avoids
+imposing unnecessary delays and avoids running the program in the
+interpreter for longer than is strictly necessary.
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node (t1) {Thread 1};
+    \node[right = of t1] (t2) {Thread 2};
+    \node[below = of t1] (A) {A};
+    \node[below = of A] (B) {B};
+    \node[below = of B] (C) {C};
+    \node[below = of C] (D) {D};
+    \node[below = 1.6cm of t2] (X) {X};
+    \node[below = of X] (Y) {Y};
+    \node[below = of Y] (Z) {Z};
+
+    \draw[->] (A) -- (B);
+    \draw[->] (B) -- (C);
+    \draw[->] (C) -- (D);
+    \draw[->] (X) -- (Y);
+    \draw[->] (Y) -- (Z);
+
+    \draw[->,happensBeforeEdge] (B) -- (Y);
+    \draw[->,happensBeforeEdge] (Z) -- (D);
+  \end{tikzpicture}
+  \center{Side condition: $\mathrm{RAX:1} = 93 \wedge \mathrm{RBX:2} =
+    72 \wedge \mathrm{RCX:1} = \mathrm{RCX:2}$}
+  \caption{Example control-flow and happens-before graphs.}
+  \label{fig:place_conditions_example}
+\end{figure}
+\begin{figure}
+  \begin{tikzpicture}
+    \node (t1) {Thread 1};
+    \node[right = 7cm of t1] (t2) {Thread 2};
+    \node[below = of t1] (A) {A; RAX:1, RCX:1};
+    \node[below = of A] (B) {B; RAX:1, RCX:1};
+    \node[below = 1.8cm of B] (C) {C; RAX:1, RCX:1, RBX:2, RCX:2};
+    \node[below = 2cm of C] (D) {D; RAX:1, RCX:1, RBX:2, RCX:2};
+    \node[below = 1.6cm of t2] (X) {X; RBX:2, RCX:2};
+    \node[below = 2cm of X] (Y) {Y; RAX:1, RCX:1, RBX:2, RCX:2};
+    \node[below = of Y] (Z) {Z; RAX:1, RCX:1, RBX:2, RCX:2};
+
+    \draw[->] (A) -- (B);
+    \draw[->] (B) -- (C);
+    \draw[->] (C) -- (D);
+    \draw[->] (X) -- (Y);
+    \draw[->] (Y) -- (Z);
+
+    \draw[->,happensBeforeEdge] (B) -- node [sloped,anchor=south] {RAX:1, RCX:1} node [sloped,anchor=north] {RBX:2, RCX:2} (Y);
+    \draw[->,happensBeforeEdge] (Z) -- node [sloped,anchor=south] {RAX:1, RCX:1} node [sloped,anchor=north] {RBX:2, RCX:2} (D);
+  \end{tikzpicture}
+  \center{Side condition: $\mathrm{RAX:1} = 93 \wedge \mathrm{RBX:2} =
+    72 \wedge \mathrm{RCX:1} = \mathrm{RCX:2}$}
+  \caption{Figure~\ref{fig:place_conditions_example} augmented to show
+    expression availability.}
+  \label{fig:place_conditions_example:avail}
+\end{figure}
+
+As a simple example, consider the diagram in
+Figure~\ref{fig:place_conditions_example}, which shows the
+happens-before edges to be enforced for some bug.  Suppose that the
+side-condition is $\mathrm{RAX:1} = 93 \wedge \mathrm{RBX:2} = 72
+\wedge \mathrm{RCX:1} = \mathrm{RCX:2}$, where $\mathrm{RAX:1}$ is the
+initial value of RAX in thread 1 (i.e. the value at instruction A),
+$\mathrm{RBX:2}$ the initial value of RBX in thread 2 (at instruction
+X), and RCX:1 and RCX:2 the initial values of RCX in threads 1 and 2,
+respectively.  The first step in placing this side-condition is then
+to determine where the various inputs to the side-condition become
+available; this is shown in
+Figure~\ref{fig:place_conditions_example:avail}.  Consider the input
+RCX:2, which is available at instruction X, Y, Z, C, and D.
+
+\begin{itemize}
+
+\item It is trivially available at instruction X, because it is
+  defined to be the value of register RCX at instruction X.
+\item It is available at instruction Y, either trivially if
+  instruction X does not modify RCX or because the enforcer will copy
+  it to its per-thread state.
+\item It is available on the first happens-before edge, because it is
+  available at Y which is one end of the edge (recall that messages
+  are synchronous, and so both the sender and receiver thread-local
+  state is available when processing the edge).
+\item It is available at instruction C, because it is available on
+  the edge, and the enforcer will copy it from one thread state to
+  the other as part of the message operation if necessary.
+\item It is \emph{not} available at instruction B.  This is because
+  message send operations are treated as the very last thing in the
+  instruction, so values which are acquired as part of the message
+  operation are not available in the instruction.  Message receive
+  operations, on the other hand, are processed at the start of the
+  instruction sequence, and so values acquired by receiving a message
+  are available in the instruction; this is why RAX:1 and RCX:1 are
+  available at Y.
+\end{itemize}
+
+Calculating this availability map is a simple matter of programming
+and I do not give a full algorithm here.
+
+Once the availability map has been calculated, the side-condition can
+be factorised into sub-conditions and placed on the control-flow and
+happens-before graphs.  In this case, that is easy: the side-condition
+$\mathrm{RAX:1} = 93 \wedge \mathrm{RBX:2} = 72 \wedge \mathrm{RCX:1}
+= \mathrm{RCX:2}$ factorises into $\mathrm{RAX:1} = 93$,
+$\mathrm{RBX:2} = 72$, and $\mathrm{RCX:1} = \mathrm{RCX:2}$, and the
+first can be placed at A, the second at X, and the final one on the
+first happens-before edge.
+
+\begin{figure}
+  \begin{center}
+  \begin{tikzpicture}
+    \node (t1) {Thread 1};
+    \node[right = 4cm of t1] (t2) {Thread 2};
+    \node[below = of t1] (A) {A; $\mathrm{RAX:1} = 93$};
+    \node[below = of A] (B) {B};
+    \node[below = of B] (C) {C};
+    \node[below = of C] (D) {D};
+    \node[below = 1.6cm of t2] (X) {X; $\mathrm{RBX:2} = 72$};
+    \node[below = of X] (Y) {Y};
+    \node[below = of Y] (Z) {Z};
+
+    \draw[->] (A) -- (B);
+    \draw[->] (B) -- (C);
+    \draw[->] (C) -- (D);
+    \draw[->] (X) -- (Y);
+    \draw[->] (Y) -- (Z);
+
+    \draw[->,happensBeforeEdge] (B) -- node [sloped,anchor=south] {$\mathrm{RCX:1} = \mathrm{RCX:2}$} (Y);
+    \draw[->,happensBeforeEdge] (Z) -- (D);
+  \end{tikzpicture}
+  \end{center}
+  \caption{Placement of side-conditions on the graphs in
+    Figure~\ref{fig:place_conditions_example}.}
+  \label{fig:place_conditions_example:placed}
+\end{figure}
+
+The algorithm used to perform this factorisation is reasonably simple.
+The core idea is to use BDD re-ordering to find the individual
+factors.  For instance, the side-condition in the example might be
+represented by either of the BDDs shown in
+Figure~\ref{fig:place_conditions_example:bdd1}.  The representations
+are equivalent, and will always evaluate to the same result, but the
+order can affect how much of the BDD can be evaluated when only some
+variables are available.  In particular, the BDD on the left cannot be
+evaluated at all at A, because the first thing it tests involves
+RBX:2, which is unavailable, whereas in the BDD on the right the first
+test in the sequence can be evaluated, as it only tests RAX:1, which
+is available.  The BDD can then be factorised into the two components
+shown in Figure~\ref{fig:place_conditions_example:bdd2}.  The first
+components shows the part of the side-condition which can be evaluated
+at A and the second shows the part which cannot be.  The first
+component is attached to instruction A, and will be checked there at
+run time, and the algorithm then tries to enforce the second component
+at A's successor B.  This will repeat until either the side-condition
+has been completely placed.
+
+\begin{figure}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (x) [BddNode] {$\mathrm{RBX:2} = 72$};
+      \node (y) [BddNode, below = of x] {$\mathrm{RAX:1} = 93$};
+      \node (z) [BddNode, below = of y] {$\mathrm{RCX:1} = \mathrm{RCX:2}$};
+      \node (true) [BddLeaf, below = of z] {true};
+      \node (false) [BddLeaf, right = 2cm of true] {false};
+      
+      \draw [BddTrue] (x) -- (y);
+      \draw [BddFalse] (x.east) to [bend left=45] (false);
+      \draw [BddTrue] (y) -- (z);
+      \draw [BddFalse] (y.east) to [bend left=45] (false);
+      \draw [BddTrue] (z) -- (true);
+      \draw [BddFalse] (z.east) to [bend left=45] (false);
+    \end{tikzpicture}
+  \end{subfloat}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (x) [BddNode] {$\mathrm{RAX:1} = 72$};
+      \node (y) [BddNode, below = of x] {$\mathrm{RBX:2} = 93$};
+      \node (z) [BddNode, below = of y] {$\mathrm{RCX:1} = \mathrm{RCX:2}$};
+      \node (true) [BddLeaf, below = of z] {true};
+      \node (false) [BddLeaf, right = 2cm of true] {false};
+      
+      \draw [BddTrue] (x) -- (y);
+      \draw [BddFalse] (x.east) to [bend left=45] (false);
+      \draw [BddTrue] (y) -- (z);
+      \draw [BddFalse] (y.east) to [bend left=45] (false);
+      \draw [BddTrue] (z) -- (true);
+      \draw [BddFalse] (z.east) to [bend left=45] (false);
+    \end{tikzpicture}
+  \end{subfloat}
+  \caption{BDD representations of $\mathrm{RAX:1} = 93 \wedge
+    \mathrm{RBX:2} = 72 \wedge \mathrm{RCX:1} = \mathrm{RCX:2}$.}
+  \label{fig:place_conditions_example:bdd1}
+\end{figure}
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node (x) [BddNode] {$\mathrm{RAX:1} = 72$};
+    \node (true) [BddLeaf, below left = of x] {true};
+    \node (false) [BddLeaf, below right = of x] {false};
+    \draw [BddTrue] (x) -- (true);
+    \draw [BddFalse] (x) -- (false);
+  \end{tikzpicture}$\bigwedge$%
+  \begin{tikzpicture}
+    \node (y) [BddNode] {$\mathrm{RBX:2} = 93$};
+    \node (z) [BddNode, below = of y] {$\mathrm{RCX:1} = \mathrm{RCX:2}$};
+    \node (true) [BddLeaf, below = of z] {true};
+    \node (false) [BddLeaf, right = of true] {false};
+      
+    \draw [BddTrue] (y) -- (z);
+    \draw [BddFalse] (y.east) to [bend left=45] (false);
+    \draw [BddTrue] (z) -- (true);
+    \draw [BddFalse] (z.east) to [bend left=45] (false);
+  \end{tikzpicture}
+  \caption{Factorisation of the BDD on the right of
+    Figure~\ref{fig:place_conditions_example:bdd1}.}
+  \label{fig:place_conditions_example:bdd2}
+\end{figure}
+
+
+\begin{figure}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (a) [BddNode, blue] {a};
+      \node (d0) [BddNode, below left = of a] {d};
+      \node (d1) [BddNode, below right = of a] {d};
+      \node (b0) [BddNode, below = of d0, blue] {b};
+      \node (b1) [BddNode, below = of d1, blue] {b};
+      \node (c0) [BddNode, below = of b0, blue] {c};
+      \node (c1) [BddNode, below = of b1, blue] {c};
+      \node (true) [BddLeaf, below = of c0] {true};
+      \node (false) [BddLeaf, below = of c1] {false};
+      \draw [BddTrue] (a) -- (d0);
+      \draw [BddTrue] (d0) -- (b0);
+      \draw [BddTrue] (d1) to [bend left=45] (false);
+      \draw [BddTrue] (b0) to [bend right=45] (true);
+      \draw [BddTrue] (b1) to [bend left=45] (false);
+      \draw [BddTrue] (c0) -- (true);
+      \draw [BddTrue] (c1) -- (false);
+      \draw [BddFalse] (a) -- (d1);
+      \draw [BddFalse] (d0) -- (b1);
+      \draw [BddFalse] (d1) -- (c0);
+      \draw [BddFalse] (b0) -- (c1);
+      \draw [BddFalse] (b1) -- (c0);
+      \draw [BddFalse] (c0) -- (false);
+      \draw [BddFalse] (c1) -- (true);
+    \end{tikzpicture}
+    \caption{Before reordering}
+  \end{subfloat}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (a) [BddNode, blue] {a};
+      \node (b) [BddNode, below left = of a, blue] {b};
+      \node (dummy) [below right = of a] {};
+      \node (c0) [BddNode, below = of b, blue] {c};
+      \node (c1) [BddNode, below = of dummy, blue] {c};
+      \node (d0) [BddNode, below = of c0] {d};
+      \node (d1) [BddNode, below = of c1] {d};
+      \node (true) [BddLeaf, below = of d0] {true};
+      \node (false) [BddLeaf, below = of d1] {false};
+
+      \draw [BddTrue] (a) -- (b);
+      \draw [BddTrue] (b) to [bend right=45] (d0);
+      \draw [BddTrue] (c0) -- (d1);
+      \draw [BddTrue] (c1) -- (d1);
+      \draw [BddTrue] (d0) -- (true);
+      \draw [BddTrue] (d1) -- (false);
+
+      \draw [BddFalse] (a) -- (c1);
+      \draw [BddFalse] (b) -- (c0);
+      \draw [BddFalse] (c0) -- (d0);
+      \draw [BddFalse] (c1) to [bend left=45] (false);
+      \draw [BddFalse] (d0) -- (false);
+      \draw [BddFalse] (d1) -- (true);
+    \end{tikzpicture}
+    \caption{After reordering}
+  \end{subfloat}
+  \caption{A more complex example of BDD reordering.}
+  \label{fig:place_conditions_example2:bdd1}
+\end{figure}
+
+This example is perhaps too simple to make the factorisation algorithm
+clear.  Consider, then, the example in
+Figure~\ref{fig:place_conditions_example2:bdd1}.  a, b, c, and d are
+the input expressions.  Assume that at the current node in the
+control-flow graph, a, b, and c are available but that d is not; this
+is indicated by colouring available variables blue in the figure.  It
+is now possible to construct the evaluatable sub-condition by
+replacing all of the unevaluatable variables with a true leaf and the
+applying the usual BDD reduction rules; the results are shown in
+Figure~\ref{fig:place_conditions_example2:evalable}.  This condition
+can then be evaluated at the current node.  Similarly, the
+unevaluatable component can be generated by removing all of the edges
+from an evaluatable variable to false and reducing; this is
+illustrated in Figure~\ref{fig:place_conditions_example2:unevalable}.
+This condition will need to be evaluated later in the control-flow
+graph.
+
+\todo{Do I need a proof of correctness for this?  Proving that it's
+  correct in the sense of being a proper conjunction is easy, but
+  showing that it's optimal, in any sense, is going to be a pain.}
+
+\begin{figure}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (a) [BddNode, blue] {a};
+      \node (b) [BddNode, below left = of a, blue] {b};
+      \node (dummy) [below right = of a] {};
+      \node (c0) [BddNode, below = of b, blue] {c};
+      \node (c1) [BddNode, below = of dummy, blue] {c};
+      \node (true) [BddLeaf, below = of d0] {true};
+      \node (false) [BddLeaf, below = of d1] {false};
+
+      \draw [BddTrue] (a) -- (b);
+      \draw [BddTrue] (b) to [bend right=45] (d0);
+      \draw [BddTrue] (c0) -- (true);
+      \draw [BddTrue] (c1) -- (true);
+      \draw [BddTrue] (d0) -- (true);
+      \draw [BddTrue] (d1) -- (false);
+
+      \draw [BddFalse] (a) -- (c1);
+      \draw [BddFalse] (b) -- (c0);
+      \draw [BddFalse] (c0) -- (true);
+      \draw [BddFalse] (c1) to [bend left=45] (false);
+    \end{tikzpicture}
+    \caption{Before reduction}
+  \end{subfloat}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (a) [BddNode, blue] {a};
+      \node (dummy) [below = of a] {};
+      \node (c) [BddNode, blue, below right = of a] {c};
+      \node (true) [BddNode, below = of dummy] {true};
+      \node (false) [BddNode, below = of c] {false};
+      \draw [BddTrue] (a) -- (true);
+      \draw [BddTrue] (c) -- (true);
+      \draw [BddFalse] (c) -- (false);
+      \draw [BddFalse] (a) -- (c);
+    \end{tikzpicture}
+    \caption{After reduction}
+  \end{subfloat}
+  \caption{The evaluatable portion of the BDD in
+    Figure~\ref{fig:place_conditions_example2:bdd1}.}
+  \label{fig:place_conditions_example2:evalable}
+\end{figure}
+
+\begin{figure}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (a) [BddNode, blue] {a};
+      \node (b) [BddNode, below left = of a, blue] {b};
+      \node (dummy) [below right = of a] {};
+      \node (c0) [BddNode, below = of b, blue] {c};
+      \node (c1) [BddNode, below = of dummy, blue] {c};
+      \node (d0) [BddNode, below = of c0] {d};
+      \node (d1) [BddNode, below = of c1] {d};
+      \node (true) [BddLeaf, below = of d0] {true};
+      \node (false) [BddLeaf, below = of d1] {false};
+
+      \draw [BddTrue] (a) -- (b);
+      \draw [BddTrue] (b) to [bend right=45] (d0);
+      \draw [BddTrue] (c0) -- (d1);
+      \draw [BddTrue] (c1) -- (d1);
+      \draw [BddTrue] (d0) -- (true);
+      \draw [BddTrue] (d1) -- (false);
+
+      \draw [BddFalse] (a) -- (c1);
+      \draw [BddFalse] (b) -- (c0);
+      \draw [BddFalse] (c0) -- (d0);
+      \draw [BddFalse] (c1) to [bend left=45] (d1);
+      \draw [BddFalse] (d0) -- (false);
+      \draw [BddFalse] (d1) -- (true);
+    \end{tikzpicture}
+    \caption{Before reduction}
+  \end{subfloat}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (a) [BddNode, blue] {a};
+      \node (b) [BddNode, below left = of a, blue] {b};
+      \node (dummy) [below right = of a] {};
+      \node (c0) [BddNode, below = of b, blue] {c};
+      \node (d0) [BddNode, below = of c0] {d};
+      \node (d1) [BddNode, below = of c1] {d};
+      \node (true) [BddLeaf, below = of d0] {true};
+      \node (false) [BddLeaf, below = of d1] {false};
+
+      \draw [BddTrue] (a) -- (b);
+      \draw [BddTrue] (b) to [bend right=45] (d0);
+      \draw [BddTrue] (c0) -- (d1);
+      \draw [BddTrue] (d0) -- (true);
+      \draw [BddTrue] (d1) -- (false);
+
+      \draw [BddFalse] (a) -- (d1);
+      \draw [BddFalse] (b) -- (c0);
+      \draw [BddFalse] (c0) -- (d0);
+      \draw [BddFalse] (d0) -- (false);
+      \draw [BddFalse] (d1) -- (true);
+    \end{tikzpicture}
+    \caption{After reduction}
+  \end{subfloat}
+  \caption{Unevaluatable component of the BDD in
+    Figure~\ref{fig:place_conditions_example2:bdd1}.}
+  \label{fig:place_conditions_example2:unevalable}
+\end{figure}
+
+\todo{Say something about figuring out where we need to stash values?
+  It's pretty boring, but I guess it might be worth mentioning.}
+
+\subsection{Enforcing the plan}
+
+Previous sections described how to find the desired happens-before
+graph, how to turn that into a message-passing system, and how to
+place the components of the side-condition on the control-flow graph.
+Collectively, these form the crash enforcement plan.  It remains to
+show how to actually use this plan to trigger the bug.
+
+One way to think about this problem is to treat the plan as a program
+which does the same thing as the original program, but with additional
+operations which make it more likely that the bug will reproduce.
+Consider, for example the bug shown in
+Figure~\ref{fig:enforcement:example_bug}, and its crash enforcement
+plan shown in
+Figure~\ref{fig:enforcement:example_bug:plan}\footnote{In this case,
+  the plan is quite simple and does not need to record any expressions
+  for later use or to enforce any side-conditions on happens-before
+  edges.}.  The plan can be regarded as a replacement for instructions
+{\tt a} and {\tt c} in the original program.  The replacement for {\tt
+  a} will behave like this:
+
+\begin{itemize}
+\item Check that $\mathtt{loc1} \not= 7$.  If this condition fails,
+  the replacement returns to the original version of instruction {\tt
+    a} and the program can then return to its normal operation.
+\item Emulate the program's instruction {\tt a}.  In this case, that
+  means loading from {\tt loc1} and storing the result in local
+  variable {\tt x}.
+\item Send a message to the other thread, so as to implement the first
+  happens-before edge.  Message operations are synchronous in
+  {\implementation}, and so this means waiting for some other thread
+  to arrive at the other side of the message passing operation, which
+  in this case means executing instruction {\tt c}.  If no other
+  thread turns up to complete the message operation then the operation
+  fails, so the whole plan fails and the thread can return to normal
+  operation.
+\item If the thread manages to send its first message, it must
+  immediately wait to receive its second one.  This time, the message
+  operation is the last step of the plan for this thread, and so
+  regardless of whether it succeeds or fails the thread will resume
+  normal operation at instruction {\tt b}.
+\end{itemize}
+
+The replacement for {\tt c} is similar:
+
+\begin{itemize}
+\item The replacement starts by receiving the first message.  This
+  will, again, involve waiting for another thread to arrive to
+  synchronise with, and might fail.
+\item Assuming the message operation succeeds, the replacement will
+  then move on to emulating the original program instruction by
+  setting {\tt loc1} to 7.
+\item The thread can then complete its part of the enforcement plan by
+  sending the second message.  Once again, this will involve waiting
+  for the other thread to reach its side of the message operation.
+\item The thread can then resume normal operation at whatever
+  instruction comes after {\tt c}.
+\end{itemize}
+
+\begin{figure}
+  \begin{subfloat}
+    \parbox{4cm}{
+      \begin{tabular}{ll}
+        {\tt a:} & {\tt x = loc1;}\\
+        {\tt b:} & {\tt y = loc1;}\\
+        & {\tt assert(x == y);}
+      \end{tabular}
+    }
+    \caption{Crashing thread}
+  \end{subfloat}
+  \begin{subfloat}
+    \parbox{4cm}{\tt c: loc1 = 7;}\\
+    \caption{Interfering thread}
+  \end{subfloat}
+  \begin{subfloat}
+    \parbox{4cm}{$\happensBefore{a}{c} \wedge \happensBefore{c}{b} \wedge \mathtt{loc1} \not= 7$}\\
+    \caption{Generated verification condition}
+  \end{subfloat}
+  \caption{An example bug}
+  \label{fig:enforcement:example_bug}
+\end{figure}
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node (n0m) {Crashing thread};
+    \node (n00) [CfgInstr, below = of n0m] {\shortstack{Gain control at\\instruction {\tt a}}};
+    \node (n01) [CfgInstr, below = of n00] {Require $loc1 \not= 7$};
+    \node (nm1) [CfgInstr, left = of n01] {\shortstack{Return to\\instruction {\tt a}}};
+    \node (n02) [CfgInstr, below = of n01] {\tt a: x = loc1};
+    \node (n03) [CfgInstr, below = of n02] {Send message 1};
+    \node (n04) [below = of n03] {};
+    \node (n05) [below = of n04] {};
+    \node (n06) [below = of n05] {};
+    \node (n07) [below = of n06, CfgInstr] {Receive message 2};
+    \node (n08) [below = of n07, CfgInstr] {\shortstack{Return to\\instruction {\tt b}}};
+    \node (n1m) [right = of n0m] {Interfering thread};
+    \node (n10) [CfgInstr, right = of n00] {\shortstack{Gain control at\\instruction {\tt b}}};
+    \node (n11) [below = of n10] {};
+    \node (n12) [below = of n11] {};
+    \node (n13) [below = of n12] {};
+    \node (n14) [below = of n13, CfgInstr] {Receive message 1};
+    \node (n24) [right = of n14, CfgInstr] {\shortstack{Return to\\instruction {\tt c}}};
+    \node (n15) [below = of n14, CfgInstr] {\tt c: log1 = 7};
+    \node (n16) [below = of n15, CfgInstr] {Send message 2};
+    \node (n17) [below = of n16] {};
+    \node (n18) [below = of n17, CfgInstr] {\shortstack{Return to instruction\\after {\tt c}}};
+
+    \draw[->] (n00) -- (n01);
+    \draw[->] (n01) -- (n02);
+    \draw[->] (n02) -- (n03);
+    \draw[->] (n03) -- (n07);
+    \draw[->] (n07) -- (n08);
+    \draw[->] (n10) -- (n14);
+    \draw[->] (n14) -- (n15);
+    \draw[->] (n15) -- (n16);
+    \draw[->] (n16) -- (n18);
+
+    \draw[->,ifFalse] (n01) -- (nm1);
+    \draw[->,ifFalse] (n03.west) to [bend right = 45] (n08.west);
+    \draw[->,ifFalse] (n07.west) to [bend right = 45] (n08.west);
+    \draw[->,ifFalse] (n14) -- (n24);
+    \draw[->,ifFalse] (n16.east) to [bend left = 45] (n18);
+
+    \draw[happensBeforeEdge,->] (n03) -- (n14);
+    \draw[happensBeforeEdge,->] (n16) -- (n07);
+  \end{tikzpicture}
+  \caption{Crash enforcement plan for the bug in
+    Figure~\ref{fig:enforcement:example_bug}.  Dashed lines indicate
+    message passing operations, and dotted ones indicate error paths.}
+  \label{fig:enforcement:example_bug:plan}
+\end{figure}
+
+At the highest level of abstraction, this is precisely what
+{\implementation}'s enforcers will do if asked to enforce that crash
+enforcement plan.  There are, however, two important complications.
+
+Most obviously, the enforcer must somehow identify the crashing and
+interfering threads.  When building the plan, {\technique} assumes
+that there are precisely two threads in the program, and that those
+threads are easily identified.  The enforcers operate on a real
+program, which might contain an arbitrary number of threads, and must
+somehow select which of these concrete threads correspond to which of
+the two abstract threads in the plan.  Note that this is only a
+concern for the \emph{first} message operation performed by any
+(abstract) thread.  For the second and subsequent messages it is easy
+to determine which concrete thread to synchronise with: it is just
+whichever thread the first message synchronised with.  This means that
+the first message is implemented in a quite different way from the
+other ones; see later for details.
+
+Less obviously, the happens-before edges in the plan are expressed
+between nodes in the unrolled CFG (see
+Section~\ref{sect:derive:handling_loops}), and do not necessarily
+correspond closely to instructions in the actual program.  When the
+loop unrolling algorithm unrolls a loop it will duplicate the first
+instruction $I$ in the loop and arrange that where an instruction $J$
+in the program branches to $I$, the instruction $J$ in the CFG could
+branch to any of the duplicates of $I$.  Usually, there will be one
+duplicate of $I$ which corresponds to running the loop once, one which
+corresponds to running it twice, and so on, and so choosing the
+successor of $J$ in the CFG amounts to choosing how many times the
+loop will run.  It is not always possible to determine this before the
+loop starts, and so it is not always possible to determine, at $J$,
+which of the $I$s the program needs to execute next.  This is
+unfortunate if the plan requires different actions at each.
+
+The solution to both problems is similar: to decide as much as
+possible lazily.  When {\implementation} encounters a branch in the
+unrolled CFG which does not correspond to one in the program CFG, for
+instance, it does not try to figure out which way it should go
+immediately, but instead defers the decision for as long as possible
+by forking its state, with one fork taking one branch of the unrolled
+CFG and the other taking the other, and maintains both forks until it
+becomes clear which fork was correct.  Similarly, if it has a choice
+of synchronising between several possible threads, it creates
+sufficient forks of its internal state to represent synchronising with
+each of them, and then decides later on which fork is correct.
+
+The result is conceptually similar to the power-set construction used
+to simulate non-deterministic finite state automata using
+deterministic ones\needCite{}.  A non-deterministic FSA can contain
+branches which are ambiguous at the point where they occur, but can be
+resolved by looking ahead through the automaton to discover which ones
+will eventually succeed.  These semantics can be implemented in a
+deterministic FSA, where every branch must be immediately unambiguous,
+using the power-set construction.  This construction constructs a
+deterministic FSA from a non-deterministic one by mapping sets of
+states in the non-deterministic FSA into states in the output FSA.
+
+In effect, there are then two languages being simulated: a low-level
+one, which has non-deterministic choices, and a higher level one,
+which does not.  The state for an interpreter of the higher-level
+language consists of sets of states of the lower-level one.
+{\Implementation}'s plan interpreter is structured in a similar way.
+The lower-level interpreter implements the obvious plan semantics
+discussed in the example above, using an operator similar to
+non-deterministic choice when it does not have enough information to
+immediately implement an operation, and the higher-level interpreter
+then implements the choice operator by maintain sets of the
+lower-level interpreter.
+
+Following the analogy, I start by describing what the lower-level
+interpreter does, using the non-deterministic choice operator, and
+then explain how the higher-level interpreter implements that
+operator.
+
+\subsubsection{The low-level interpreter}
+\label{sect:enforce:llis}
+
+The low-level interpreter, or LLI, runs some simple stages in a tight
+loop:
+
+\begin{itemize}
+\item \textbf{Sample} Look at the thread's registers, determine which
+  ones might be needed to evaluate later side-conditions, and copy the
+  appropriate registers to the LLI's local state.
+
+\item \textbf{RX} Receive any messages required by the plan.  Message
+  operations are discussed below.
+
+\item \textbf{Emul} Emulate the instruction in the original program.
+  Implementing this is moderately subtle, as it is the only phase in
+  the LLI loop which has effects which are visible to the original
+  program (beyond adjusting the timing).  This means that the enforcer
+  must be careful to emulate instructions the right number of times,
+  regardless of how many LLIs happen to be active at the time.
+  {\Technique}'s design ensures that every LLI in a program thread
+  will reach the \textbf{Emul} state at the same time, and will be
+  executing the same program instruction\footnote{They might, however,
+    be executing at different points in the unrolled CFG, as a single
+    program instruction can correspond to multiple CFG nodes.}, and so
+  this is straightforward to arrange
+
+\item \textbf{TX} Send any messages required by the plan.
+
+\item \textbf{Succ} Determine which node in the unrolled CFG the
+  thread is going to execute next.  In the low-level interpreter, this
+  is very easy: compare the instruction pointer of the next
+  instruction (generated by the \textbf{Emul} phase) to the
+  instruction pointers of all of the potential successor nodes in the
+  unrolled CFG and select one using the non-deterministic choice
+  operator.  If there are no possible successors then the plan has
+  failed and the low-level interpreter exits.
+\end{itemize}
+
+The LLI message operation is illustrated in
+Figure~\ref{fig:enforce:lli_message}.  The operation starts by
+selecting a remote LLI with which to perform the message operation.
+If this is the first message operation performed by this LLI then it
+will select its peer using a non-deterministic choice operator,
+described in Section~\ref{sect:enforce:hli_messages}, and bind to it.
+Otherwise, the LLI will just select its bound LLI.  In either case,
+the LLI will then wait for its remote LLI to arrive.  The two LLIs are
+then merged together to perform the message operation itself, by
+evaluating the side condition and copying state between the two LLIs,
+after which they are unmerged and continue at the appropriate place in
+the LLI loop.
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node (n1m) {\textbf{RX}};
+    \node (n10) [below = of n1m] {$t \leftarrow$ select remote LLI};
+    \node (n11) [below = of n10] {Wait for t};
+    \node (n01) [left = of n11] {fail};
+    \node (n22) [below right = of n11] {Merge LLIs};
+    \node (n31) [above right = of n22] {Wait for $t'$};
+    \node (n41) [right = of n31] {fail};
+    \node (n30) [above = of n31] {$t' \leftarrow$ select remote LLI};
+    \node (n3m) [above = of n30] {\textbf{TX}};
+    \node (n23) [below = of n22] {Evaluate side condition};
+    \node (n43) [right = of n23] {fail};
+    \node (n24) [below = of n23] {Copy state between LLIs};
+    \node (n24b) [below = of n24] {Unmerge LLIs};
+    \node (n15) [below left = of n24] {Advance to \textbf{Emul}};
+    \node (n35) [below right = of n24] {Advance to \textbf{Succ}};
+
+    \draw[->] (n1m) -- (n10);
+    \draw[->] (n10) -- (n11);
+    \draw[->] (n11) -- (n22);
+    \draw[->] (n3m) -- (n30);
+    \draw[->] (n30) -- (n31);
+    \draw[->] (n31) -- (n22);
+    \draw[->] (n22) -- (n23);
+    \draw[->] (n23) -- (n24);
+    \draw[->] (n24) -- (n24b);
+    \draw[->] (n24b) -- (n15);
+    \draw[->] (n24b) -- (n35);
+    \draw[->,ifFalse] (n11) -- (n01);
+    \draw[->,ifFalse] (n31) -- (n41);
+    \draw[->,ifFalse] (n23) -- (n43);
+    \draw[->,style={dashed}] (n11) -- (n15);
+    \draw[->,style={dashed}] (n31) -- (n35);
+  \end{tikzpicture}
+  \caption{Message operation in the low-level interpreter.}
+  \label{fig:enforce:lli_message}
+\end{figure}
+
+There are two ways for this algorithm to fail.  The simplest is that
+the side-condition might evaluate to false, in which case both LLIs
+fail and return the program to normal operation.  The timeouts are
+more interesting.  There are several reasons why one of the wait steps
+might time out:
+
+\begin{itemize}
+\item
+  If this is the first message operation in the LLI, a timeout usually
+  indicates that, for whatever reason, the program is not going to run
+  the two desired fragments of code in parallel.  {\Technique}
+  responds by having the LLI which timed out exit, allowing the
+  program thread to return to normal operation.
+
+\item
+  If this is not the first message operation, a timeout usually
+  indicates that the program has some existing synchronisation which
+  will prevent the bug from reproducing.  The \textbf{Emul} step in
+  the LLI cycle includes running any synchronisation operations which
+  were present in the original program, which might cause there to be
+  additional edges in the happens-before graph beyond those which
+  {\technique} is aware of.  If these additional edges complete a
+  cycle\footnote{Which is the expected case, if the program
+    synchronisation is sufficient to prevent the bug.} then attempting
+  to enforce the bug-causing ordering will lead to a deadlock, which
+  is then detected as a timeout in a message
+  operation\footnote{{\Technique} has some knowledge of simple
+    synchronisation operations such as \texttt{pthread\_mutex\_lock},
+    and will avoid trying to enforce bugs if this knowledge is
+    sufficient to show that the HB graph contains a cycle, but this is
+    incomplete (in particular, it does not know about locks acquired
+    before the enforcer starts), and cannot hope to cover all
+    programmer-implemented synchronisation operations\editorial{Cite
+      one of the papers on inferring program-specific sync
+      structures.}, and so there will always be a risk of one of these
+    cycles forming.}.
+
+  When a timeout does happen, the LLI which suffered the time out
+  must, of course, exit.  Less obviously, the LLI which it had
+  previously communicated with should also exit: any future message
+  operations which that LLI attempts will definitely fail, and so
+  there is no point continuing to run it in the enforcer.
+\end{itemize}
+
+
+\subsubsection{Implementing the \textbf{Succ} phase in the high-level interpreter}
+
+The low-level interpreter described in Section~\ref{sect:enforce:llis}
+is both correct and conceptually simple, but impossible to implement
+directly due to the non-deterministic choice operators.  This section
+describes how to emulate those operators in a realisable fashion.  As
+discussed previously, the basic approach is to switch from emulating
+the LLI itself to emulating sets of LLIs, so that the choice operators
+can be implemented by adding more LLIs to these sets and an LLI exit
+can be implemented by removing one.  The resulting interpreter is
+referred to as the high-level interpreter, or HLI.
+
+The simplest use of the operator is in the \textbf{Succ} phase.  The
+aim of this phase in the LLI is to determine which node in the
+unrolled CFG a given program thread is going to execute next.  The
+equivalent operation in the HLI is to convert the current set of LLIs
+into a new set of LLIs, where each of the new LLIs is formed by taking
+one of the old LLIs and updating its location in the unrolled CFG in a
+way which is consistent with the results of the \textbf{Emul} phase.
+This is easier than it sounds.  The new set of LLIs is given by
+
+\begin{displaymath}
+\{l' | l \in \mathit{llis}, n'.\mathrm{RIP} = \mathbf{Emul}.\mathrm{RIP}, (l.n, n') \in \mathit{CFG}, l' = l[n = n'] \}
+\end{displaymath}
+
+This perhaps deserves further explanation:
+
+\begin{itemize}
+\item $\mathit{llis}$ is the current set of LLIs, and $l$ is a member of it.
+  $l'$ is a member of the new set of LLIs.
+\item $n'$ is a node in the unrolled CFG.
+\item $l.n$ is LLI $l$'s current node in the unrolled CFG.  $l[n =
+  n']$ is a new LLI constructed by taking the LLI $l$ and setting its
+  current CFG node to $n'$.
+\item $n'.\mathrm{RIP}$ is the raw instruction pointer associated with
+  the CFG node $n'$.  $\mathbf{Emul}.\mathrm{RIP}$ is the raw
+  instruction pointer which was generated by the $\mathbf{Emul}$
+  phase.
+\item $(l.n, n') \in \mathit{CFG}$ is true precisely when $n'$ is one
+  of the successors of $l.n$ in the unrolled CFG.
+\end{itemize}
+
+In other words, the resulting set will contain one LLI for every
+combination of existing LLI and CFG node, provided that the new CFG
+node is a successor of the current CFG node and provided that the new
+CFG node's raw instruction pointer matches that produced by the
+\textbf{Emul} phase.  It is important to note that all of the
+successors will have the same raw instruction pointer; this is
+necessary to correctly implement the \textbf{Emul} phase.
+
+It is perhaps informative to consider what happens to the individual
+LLIs in the input set.  There are four interesting cases:
+
+\begin{itemize}
+\item The LLI has reached the end of the unrolled CFG, as indicated by
+  a special marker on the CFG node, and has hence completed its part
+  of the plan.  The LLI's node in the CFG will have no successors, and
+  so the LLI will not contribute anything to the new set of LLIs.  If
+  another LLI has completed the other part of the plan then the bug
+  should reproduce soon.
+
+\item The CFG is not finished, but none of this node's successors
+  match up with the raw address of the next instruction to be
+  executed.  In this case, the plan has failed.  Again, this LLI has
+  no successors, but this time the bug is unlikely to reproduce.  The
+  enforcer must continue running the program in the hope that some
+  other LLI will complete the plan.
+
+\item The CFG node has precisely one successor node which matches the
+  raw address of the next instruction.  The LLI has a single
+  successor.  In effect, all that has happened is that the LLI has
+  moved from its current node in the CFG to one of that node's
+  successors.  This is the common case.
+
+\item The CFG node has multiple matching successors.  The LLI will
+  have multiple successors, one for each possible successor, allowing
+  the enforcer to determine lazily which successor was ``correct''.
+\end{itemize}
+
+\subsubsection{Implementing message operations in the high-level interpreter}
+\label{sect:enforce:hli_messages}
+
+As discussed previously, the first message operation in a low-level
+interpreter must select which remote LLI it will communicate with.
+This is referred to as binding, and all subsequent message operations
+in that LLI will be with the bound LLI.  The low-level message
+operation described above leaves it unspecified precisely how this
+selection is to be made.  The intended behaviour is that each
+\textbf{RX} and a \textbf{TX} operation defines an interval in the
+program's execution such that communication happens whenever these
+intervals overlap; this is illustrated in
+Figure~\ref{fig:enforce:message_windows}.
+
+\begin{figure}
+  \subfigure[][Intervals overlap; message is sent]{
+    \begin{tikzpicture}
+      \draw[->,decorate,decoration={snake,segment length=2mm, amplitude=1mm}]
+        (0mm,0mm) -- (0,-5mm)
+        (0mm,-8mm) node (TX) {\textbf{TX}} (0,-10mm) --
+        (0mm,-40mm);
+      \draw (-4mm,-8mm) -- (-6mm,-8mm) -- (-6mm,-23mm) -- (-4mm,-23mm);
+      \draw (-20mm,-16mm) node {TX interval};
+
+      \draw[->,decorate,decoration={snake,segment length=2mm, amplitude=1mm}]
+        (13mm,0mm) -- (13mm,-16mm)
+        (13mm,-19mm) node (RX) {\textbf{RX}} (13mm,-23mm) --
+        (13mm,-40mm);
+      \draw (19mm,-19mm) -- (21mm,-19mm) -- (21mm,-34mm) -- (19mm,-34mm);
+      \draw (33mm,-26mm) node {RX interval};
+      \draw[->] (TX) -- (RX);
+    \end{tikzpicture}
+    \label{fig:enforce:message_windows:tx_first}
+  }
+  \subfigure[][Intervals overlap; message is sent]{
+    \begin{tikzpicture}
+      \draw[->,decorate,decoration={snake,segment length=2mm, amplitude=1mm}]
+        (0mm,0mm) -- (0,-16mm)
+        (0mm,-19mm) node (TX) {\textbf{TX}} (0,-23mm) --
+        (0mm,-40mm);
+      \draw (-4mm,-19mm) -- (-6mm,-19mm) -- (-6mm,-34mm) -- (-4mm,-34mm);
+
+      \draw[->,decorate,decoration={snake,segment length=2mm, amplitude=1mm}]
+        (13mm,0mm) -- (13mm,-5mm)
+        (13mm,-8mm) node (RX) {\textbf{RX}} (13mm,-10mm) --
+        (13mm,-40mm);
+      \draw (19mm,-8mm) -- (21mm,-8mm) -- (21mm,-23mm) -- (19mm,-23mm);
+      \draw[->] (TX) -- (RX);
+    \end{tikzpicture}
+    \label{fig:enforce:message_windows:rx_first}
+  }
+  \subfigure[][Intervals do not overlap; no message can be sent.]{
+    \begin{tikzpicture}
+      \draw[->,decorate,decoration={snake,segment length=2mm, amplitude=1mm}]
+        (0mm,0mm) -- (0,-5mm)
+        (0mm,-8mm) node (TX) {\textbf{TX}} (0,-10mm) --
+        (0mm,-40mm);
+      \draw (-4mm,-8mm) -- (-6mm,-8mm) -- (-6mm,-15mm) -- (-4mm,-15mm);
+
+      \draw[->,decorate,decoration={snake,segment length=2mm, amplitude=1mm}]
+        (13mm,0mm) -- (13mm,-25mm)
+        (13mm,-28mm) node (RX) {\textbf{RX}} (13mm,-30mm) --
+        (13mm,-40mm);
+      \draw (19mm,-28mm) -- (21mm,-28mm) -- (21mm,-34mm) -- (19mm,-34mm);
+
+      \draw[->,dashed] (TX) -- (RX);
+    \end{tikzpicture}
+    \label{fig:enforce:message_windows:failed}
+  }
+  \caption{Overlapping TX and RX intervals allow the message to be
+    sent, regardless of which operation is ordered first.  If the
+    intervals do not overlap then no message can be sent. \todo{Fix diagram}}
+  \label{fig:enforce:message_windows}
+\end{figure}
+
+Suppose, for instance, that the interval were set at 20ms.  A
+\textbf{TX} operation were to occur at time 512ms would then be able
+to communicate with an \textbf{RX} operation at 520ms.  This would
+involve delaying the transmitting thread by 8ms so that the two
+operations occur at the same time.  Similarly, the \textbf{TX}
+operation could communicate with an \textbf{RX} at 498ms by delaying
+the receiving thread by 14ms.  It would not, however, be possible for
+the \textbf{TX} operation to communicate with \textbf{RX} operations
+at 490ms or 540ms, because those fall outside of the interval.
+
+There are two complications in implementing this behaviour.  First, it
+is difficult for a \textbf{TX} operation to look ahead through the
+execution to determine how long it should wait for the \textbf{RX}
+operation to arrive, or vice versa.  Second, it might be that several
+possible partner operations happen during the interval, and the LLI
+must decide which to bind to.  In practice, it is not possible to
+completely solve these problems and get precisely the desired
+behaviour, but it is possible to approximate it reasonably accurately.
+{\Implementation} uses the following algorithm to implement the peer
+selection part of the \textbf{TX} algorithm; the \textbf{RX} algorithm
+is symmetric:
+
+\begin{itemize}
+\item[1] Iterate over the global \texttt{rx\_thread} table.  All of
+  the entries in this table will be LLIs which are currently at the
+  \textbf{RX} state.  Compare the message which this LLI wants to
+  transmit to the message which the other LLI wants to receive.  If
+  they match, and if any side-condition on the message passes, the
+  local LLI completes both message operations.  This means that it
+  duplicates both LLIs, copies the necessary state between the two new
+  LLIs, advances them past the message operation, and adds them back
+  to the appropriate HLIs.
+\item[2] Register the current LLI in the global \texttt{tx\_thread}
+  table.
+\item[3] Sleep for the interval.
+\item[4] De-register the current LLI from the \texttt{tx\_thread}
+  table.
+\item[5] The current LLI now corresponds to the situation where no
+  other threads arrived during the interval, and so it has failed and
+  should exit.
+\end{itemize}
+
+The intent is that when a new \textbf{TX} operation starts, it first
+looks for any existing \textbf{RX} operations which are waiting for
+it, corresponding to
+Figure~\ref{fig:enforce:message_windows:rx_first}.  If it finds any,
+it completes both operations, creating new LLIs on both the receive
+and transmit side to store its results.  It then goes to sleep waiting
+for any further \textbf{RX} operations, corresponding to
+Figure~\ref{fig:enforce:message_windows:tx_first}.  If any \textbf{RX}
+operations arrive during this window then they will complete both the
+\textbf{TX} and \textbf{RX} operations, and so when the sleep
+completes the current LLI has no more to do and should exit,
+corresponding to
+Figure~\ref{fig:enforce:message_windows:failed}\footnote{{\Implementation}
+  actually includes an optimisation to avoid creating and destroying
+  LLIs unnecessarily in the common case where precisely one peer
+  operation is available, but this does not fundamentally alter the
+  algorithm and is not shown here.  Likewise, this discussion omits
+  the enforcer-internal synchronisation necessary to implement this
+  algorithm in a race-free way, to avoid unnecessarily complicating
+  the presentation.}.
+
+This algorithm solves the problem of not knowing how long to wait by
+always waiting for the maximum possible time, and the problem of not
+knowing which of many possible peers to synchronise with by simply
+synchronising with all of them.  That is similar to but not quite
+identical to the desired behaviour.  In particular, in the desired
+semantics, when a message operation is destined to fail, it should not
+wait at all, whereas here failing operations wait for the maximum
+possible time.  In other words, the non-deterministic part of the
+desired behaviour is correctly implemented, but the non-causal part is
+not.  In practice, the only effect of this is to sometimes cause poor
+performance, by introducing completely redundant delays.  If it were
+necessary, the correct behaviour could be achieved using a
+deterministic replay system\needCite{} and techniques similar to a
+time-travelling debugger\needCite{}, but doing so would almost
+certainly not fix the performance problems.  I have not investigate
+this at all.
+
+Observant readers will have noticed that this algorithm is itself
+unimplementable.  It is common for a single HLI, and hence a single
+concrete program thread to run multiple LLIs, and it is not possible
+to delay one LLI in a thread without delay all of the others.  What,
+then, should the enforcer do if the different LLIs need to perform
+different message operations?  There are several interesting cases:
+
+\begin{itemize}
+\item Multiple LLIs need to perform unbound message operations at the
+  same time.  In that case, they will all need to delay, and so the
+  enforcer can just run steps one and two of the algorithm for each
+  LLI, then perform a single delay step three, and then run steps four
+  and five for each LLI.
+\item One LLI $l_1$ needs to perform an unbound message operation
+  while another $l_2$ has already completed a message operation.
+  $l_2$ will have a bound thread, $l_3$.  In order to delay $l_1$ we
+  must also delay $l_2$, and there is a risk that it will then miss
+  its next deadline for communicating with $l_3$, causing both $l_2$
+  and $l_3$ to fail.
+
+  The problem here is type of timeout used by $l_3$.  In the simple
+  low-level interpreter described in Section~\ref{sect:enforce:llis},
+  $l_3$ considers $l_2$ to have failed to reach its message operation
+  if $l_3$ has to wait more than fixed time for $l_2$ to arrive.  An
+  equally valid definition would be to say that $l_2$ has some fixed
+  amount of time to move from its $n$th message operation to its
+  $(n+1)$th.  In that case, it is easy\editorial{This is a lie.  It
+    was actually a complete pain in the arse, but I don't want to go
+    into the details, so I'm going to wave my hands a bit and pretend
+    it was easy.} to arrange that time spent waiting because of $l_1$
+  does not count towards $l_2$'s deadline, hence allowing $l_3$ to
+  eventually complete its message operation.
+\item One LLI $l_1$ needs to perform an unbound message operation,
+  while another LLI $l_2$ has yet to reach its first message
+  operation.  In this case, an ideal enforcer would delay $l_1$ but
+  not $l_2$ but, as already discussed, this is impossible in a real
+  system.  Fortunately, delaying $l_2$ is unlikely to cause
+  significant problems here, as it does not yet have a bound LLI, and
+  there are therefore no enforcer-level constructs waiting for it in
+  any other program threads.
+\end{itemize}
+    
+All\editorial{All I've thought of, anyway} other cases can be reduced
+to some combination of these.
+
+The interactions with the \textbf{Succ} phase present a further
+complication.  The \textbf{Succ} thread will sometimes need to
+duplicate an LLI in order to handle ambiguities in the CFG.  If done
+na\"ively, this might lead to a single LLI being bound to multiple
+other LLIs.  For instance, if $l_1$ and $l_2$ are bound together and
+$l_1$ is duplicated to $l_1'$, the obvious implementation would bind
+$l_2$ to both $l_1$ and $l_1'$, which would then cause problems the
+next time $l_2$ attempts a message operation.  At the same time,
+it is clearly incorrect for $l_1'$ to be created unbound.
+The solution is simple: duplicate $l_2$ at the same time as $l_1$
+is duplicated, so that $l_1$ remains bound to $l_2$ and $l_1'$ is
+bound to $l_2'$.
+
+\subsubsection{Selecting the size of the timeout}
+\label{sect:using:timeout_balancing}
+
+Up to now, the discussion has assumed that all timeouts are the same,
+fixed, size.  This is not always the best possible strategy.  In
+particular, it is not always necessary or useful to delay both the
+transmit and receive halves of a message operation.  I now show that
+one of these delays can usually be omitted, and give a brief
+discussion of how to decide which to omit.
+
+Unbound timeouts are generally far more important than bound ones, in
+terms of both their effects on the time taken to reproduce the bug and
+their effects on the program's performance while running under the
+enforcer, as the construction of the plan, and in particular the
+selection of side-conditions, ensures that bound messages will only
+happen when the target bug has a very high chance of reproducing.
+Assume, then, that only unbound delays matter.  Assume further that
+the enforcer is only trying to enforce one happens-before graph, that
+there are only two threads in the program, and that the delay is small
+enough that it does not meaningfully affect the program's behaviour.
+There will then be only two message operations to consider, one
+\textbf{TX} and one \textbf{RX}, and they will both occur with some
+fixed frequency.  Call these frequencies $f_{\mathbf{TX}}$ and
+$f_{\mathbf{RX}}$ and call the delays imposed by each operation
+$D_{\mathbf{TX}}$ and $D_{\mathbf{RX}}$.
+
+We can then easily estimate the performance cost of the enforcer.  The
+fraction of program time spent in those delays is then
+$f_{\mathbf{TX}}.D_{\mathbf{TX}} + f_{\mathbf{RX}}.D_{\mathbf{RX}}$,
+and that is a reasonable proxy for the overhead $\omega$.
+
+Next, estimate the expected time before the bug is reproduced.  One
+way for the bug to reproduce is if the \textbf{TX} might occurs within
+$D_{\mathbf{RX}}$ after a \textbf{RX} operation.  In effect, each
+\textbf{RX} operation defines a window of size $D_{\mathbf{RX}}$ in
+the program's timeline and the bug reproduces if a \textbf{TX} effect
+lands in that window.  These windows will cover a fraction
+$f_{\mathbf{RX}}.D_{\mathbf{RX}}$ of the timeline, and so, assuming
+\textbf{TX}s occur randomly, each will have a probability of
+$f_{\mathbf{RX}}.D_{\mathbf{RX}}$ of triggering the bug, giving a bug
+reproduction rate of
+$f_{\mathbf{TX}}.f_{\mathbf{RX}}.D_{\mathbf{RX}}$.  Symmetrically, the
+bug might be reproduced if a \textbf{RX} operation occurs
+$D_{\mathbf{TX}}$ after a \textbf{TX} one, giving a reproduction rate
+of $f_{\mathbf{TX}}.f_{\mathbf{RX}}.D_{\mathbf{TX}}$.  These are the
+only ways in which the bug can reproduce, and so the total
+reproduction rate $\rho$ is
+$f_{\mathbf{TX}}.f_{\mathbf{RX}}.(D_{\mathbf{RX}} + D_{\mathbf{TX}})$.
+
+The task is now to choose $D$ so as to maximise the reproduction
+rate whilst minimising the overhead.  Some simple algebra is
+sufficient to show that
+
+\begin{displaymath}
+\rho = {\omega}.f_{\mathbf{RX}} + f_{\mathbf{RX}}.D_{\mathbf{RX}}(f_{\mathbf{TX}} - f_{\mathbf{RX}})
+\end{displaymath}
+
+In other words, if $f_{\mathbf{TX}} > f_{\mathbf{RX}}$ then the
+reproduction rate for a given level of overhead is maximised by
+setting $D_{\mathbf{RX}}$ as large as possible and $D_{\mathbf{TX}}$
+to zero, and conversely when $f_{\mathbf{TX}} < f_{\mathbf{RX}}$.
+{\Implementation} therefore keeps a counter of how many times the send
+and receive sides of each message operation are attempted; if the send
+operation has been attempted more times than the receive one then the
+send operation delay is set to zero, and otherwise the receive delay
+is set to zero.  The other delay is set to some user-configured
+constant.
+
+\subsection{Run-time considerations}
+
+Evaluating side conditions is not always completely trivial, even once
+all of the inputs are available.  In particular, $LD(addr)$
+expressions require a moderate amount of care.  These are defined to
+return the contents of memory at a particular address.  The problem is
+that the address might turn out to be a bad pointer, and it is
+important for the enforcer not to cause the program to crash in that
+case.  {\Implementation} solves this problem by simply catching page
+faults generated while evaluating side conditions.  If any such faults
+occur then the relevant LLI is considered to have failed.  This is not
+always ideal from the point of view of reproducing the bug, but avoids
+spuriously crashing the program under test.
+
+\todo{Why do we sometimes end up dereferencing pointers which the
+  program never does? Answer: because the placement stuff sometimes
+  ends up pulling validation over program control flow, which makes it
+  easier to implement and easier to fast-out of the enforcer, but
+  risks introducing these bad dereferences.}
+
+Another approximation is that $LD$ expressions are defined to return
+the ``initial'' contents of memory, but in {\implementation} they
+instead return the contents of memory as soon as the address to be
+loaded becomes evaluatable.  This might be different if the address
+depends on some piece of program state which only becomes available to
+the interpreter some time after the plan has started, as some other
+program thread might modify memory in the meantime.  This is not
+usually a serious issue, as the interpreter usually becomes able to
+evaluate the address before the program itself is, and so can capture
+the contents of a memory location at the first point where the code
+being investigated might possibly have observed it.  That is usually
+sufficient to evaluate the side-condition\editorial{Not sure how clear
+  that really is.}.
+
+\section{Gaining control of a running program}
+\label{sect:enforce:gain_control}
+
+Regardless of whether the plan is to be interpreted or compiled, the
+next step is to arrange to gain control of the program at appropriate
+points, meaning any instruction which might be the start of one of the
+CFG fragments.  For clarity of exposition, I here assume that the plan
+is to be interpreted rather than compiled; the algorithm used for
+compiled enforcers is essentially identical. {\Implementation} does so
+by modifying the original program to contain branches into either the
+plan interpreter where necessary.  This has very low runtime overhead
+and avoids excessively permuting the program's state, but has one
+critical disadvantage: the instruction at which {\implementation}
+needs to gain control might be smaller than a branch instruction, and
+so inserting the branch might cause additional instructions in the
+program binary to be corrupted.  {\Implementation} must then ensure
+that the program never attempts to execute one of these corrupted
+instructions.  For performance reasons, we would also like to minimise
+the number of instructions which must be run in the interpreter.
+
+This is most easily understood as a kind of search problem.  The
+algorithm starts in a state in which the original program is not
+modified at all, but with a list of instructions at which it must gain
+control; it must then find a path to a state in which it is guaranteed
+to gain control at all necessary points and the program is guaranteed
+never to branch to a corrupted instruction.  More explicitly, these
+states consist of three sets:
+
+\begin{itemize}
+\item $Patch$ --- instructions at which we have decided to place a
+  branch instruction.
+\item $Cont$ --- instructions which might not themselves be patched,
+  but which must be processed in the interpreter.  The program will
+  not branch to the interpreter when it encounters one of these
+  instructions, but if the interpreter has already started when one
+  needs to be run then the interpreter will continue, even if that
+  means leaving the CFG fragments described in the main plan.
+\item $MustInterpret$ --- instructions where the plan requires us to
+  gain control, but where the patches described in this state would be
+  insufficient to do so.
+\end{itemize}
+
+The search process then generates additional states according to two
+rules:
+
+\begin{itemize}
+\item
+  \textbf{PatchDirect} An instruction is removed from $MustInterpret$
+  and added to $Patch$.  The analysis then examines the instructions
+  which would be corrupted by that new entry point to determine
+  whether there are any potential branches to them and, if so, adds
+  those branches to $MustInterpret$.  The corrupted instructions are
+  themselves added to $Cont$.
+
+  This rule is only valid when the existing $Patch$ set does not
+  itself contain any patch operations which would overlap with the new
+  patch point, as these branch instructions would otherwise corrupt
+  each other and lead to an unrealisable solution.
+\item
+  \textbf{Prefix} As with \textbf{PatchDirect}, an instruction is
+  removed from $MustInterpret$, but in this case it is added to $Cont$
+  and any instruction which might branch to it added to
+  $MustInterpret$.  The idea here is that if we can ensure that all
+  instructions which execute immediately prior to an instruction $i$
+  are executed in the interpreter and if the interpreter continues
+  interpreting when it sees a branch to $i$ then that is sufficient
+  to ensure that $i$ is also run in the interpreter.
+\end{itemize}
+
+Any state with an empty $MustInterpret$ set then represents a valid
+solution to the patching problem.  The number of instructions in
+$Cont$ is a rough proxy for the number of additional instructions
+which will have to be interpreted due to the corrupted instructions
+problem, and hence for the overheads of the patching process, and so
+the search process aims to minimise the $Cont$ set.  Usefully, both
+rules increase the size of $Cont$ and so a simple exploration strategy
+which always selects the state in the queue with the smallest $Cont$
+set, applies both rules to that state, and places the two new states
+in the queue is guaranteed to always find the minimal result, and this
+is the strategy adopted by {\implementation}.
+
+One complication here is that the algorithm needs to be able to find
+the predecessors of an instruction.  In the fully general case this is
+an impossible thing to determine for an arbitrary binary.
+{\Technique} makes two key assumptions in order to solve it:
+
+\begin{itemize}
+\item
+  Functions are only ever entered at their entry point, as determined
+  by the analysis described in Section~\ref{sect:function_head}.  In
+  particular, any branches from dynamically generated or library code
+  back into the main program must branch to a function head.
+\item
+  For any dynamic branch within a function, the dynamic analysis
+  observes all possible targets of that branch.
+\end{itemize}
+
+Given those assumptions, the static analyses already discussed can
+determine all of the branches to any instruction in the program except
+for a function head, and can detect whether an instruction is a
+function head.  {\Technique} then simply disables any rule which
+requires it to calculate the predecessors of a function head.
+
+This can sometimes lead to the patch problem being unsolvable if the
+entire function is smaller than a single branch instruction, as in
+that case it is possible that neither rule might be enabled at the
+function head.  In that case, {\implementation} simply gives up and
+reports an error.  This is rarely a problem in practice, as very few
+functions are that small without very aggressive compiler
+optimisations, and most compilers, including gcc and LLVM\needCite{},
+will at high optimisation levels pad functions to a multiple of 16
+bytes for performance reasons.
+
+The assumption that the dynamic analysis is complete is more of a
+problem.  This can sometimes lead to the program executing one of the
+corrupted instructions if its behaviour deviates significantly from
+that observed during dynamic analysis.  That is just about tolerable
+in a tool such as {\technique}'s crash enforcers, which are only
+intended as a debugging aid for knowledgeable programmers, but is more
+of a concern when {\technique} is being used to fix bugs. \todo{I'm
+  going to need to say something clever here.}
+
+This problem was also tackled by the AutoPaG project, and the solution
+they developed is similar. \todo{Similar but not the same.  They use a
+  dominator-based scheme, and hence avoid needing the global branch
+  information but can end up with much larger patches and a higher
+  risk of deadlocks/starvation problems.  The original version of SLI
+  used basically the same algorithm (although I did it first); should
+  probably explain why I had to switch.}
+
+An alternative approach would be to take control of the program using
+debug breakpoints rather than jump instructions.  These are either a
+single byte (for the \verb|int3| instruction) or no bytes at all (for
+debug registers), and so avoid the instruction clobbering problem.
+This would work, but would have a couple of important disadvantages:
+
+\begin{itemize}
+\item
+  Debug breakpoints are far slower than branches.  This might be
+  important if the critical section is to be inserted on a
+  particularly hot code path and has a side-condition which usually
+  fails.
+\item
+  Using debug breakpoints in this way would interfere with any other
+  debugger which the developer might want to use.  With a branch-style
+  patch, standard debuggers work without modification for any part of
+  the program which has not been patched, whereas a breakpoint-style
+  patch requires extensive coordination between the debugger and the
+  patch mechanism for either to work at all.
+\item
+  Breakpoint registers are of strictly limited number on most
+  architectures (four, on x86).  This means that they can never
+  provide a complete solution by themselves.
+\item
+  On most UNIX-type operating systems, including Linux and FreeBSD,
+  catching debug breakpoints requires modifying the program's signal
+  handling configuration, which requires some level of coordination
+  with the program to be modified.  It would be possible to use an
+  alternative API, but this would require kernel modifications,
+  complicating the use of the generated patches.
+\end{itemize}
+
+SLI therefore generates exclusively branch-style patches.
+
+\todo{I did implement a breakpoint-based scheme, so it might be
+  interesting to actually include some numbers on their relative
+  effectiveness.}
+
+\todo{Placing patch points is actually the most computationally
+  expensive step of building the enforcer, once you've got the VC.  I
+  might need to do some implementation work to make that a bit less
+  crazy.}
+
+Of course, a patch strategy which ensures that the interpreter gains
+control at appropriate instructions is not quite the same as one which
+ensures that the interpreter gains control at appropriate CFG nodes,
+because {\technique} CFG nodes are identified by stack context in
+addition to their raw instruction pointer.  The interpreter must
+therefore be able to check this call stack.  The mechanisms used in
+the interpreter and the compiler are slightly different and here I
+only describe the one used in the interpreter; the compiler variant is
+deferred to the rest of the compiler discussion.
+
+\todo{Already given this algorithm once, in the stack normalisation
+  section!}
+
+\label{sect:using:find_return_address}
+The interpreter has access to all of the process registers and the
+stack when it gains control.  The challenge here is to locate the
+return addresses on the stack, without access to either debug symbols
+or a frame pointer, so that the function calling context can be
+properly checked.  SLI uses a static analysis, performed when
+generating the crash enforcement plan, to solve this problem.  The
+static analyses already described are sufficient to determine the
+entry point of the function containing a given RIP\smh{undef -- I
+  think}, and so it is easy to perform a simple abstract
+interpretation forwards from that point to the given RIP and hence
+find the number of bytes which the function will push onto the stack
+on the way\footnote{This is generally fixed for all possible paths,
+  due to the way in which most compilers are implemented.}.  The first
+entry in the call stack is trivially true because of the way the jumps
+are patched in.  The second one is the return address of the current
+function, which can be found using that offset.  The third one is the
+return address of the calling function, and the offset there is just
+the previous offset plus the offset in the calling function.  In this
+way all necessary offsets can be found and the entry-point stack
+checked completely.
+
+
+
+\section{Fixing bugs using global locks}
+\label{sect:fix_global_lock}
+
+In addition to finding bugs, SLI can also be used to fix them.  The
+basic approach here is to binary patch the program to introduce a new
+global lock covering the program's relevant instructions, preventing
+them from executing in parallel and hence preventing the bug from
+occurring (assuming that the relevant instructions have been correctly
+identified).  The relevant instructions are duplicated into a binary
+patch, unrolling loops and tracing across function boundaries in a way
+which reflects the function inlining and loop unrolling performed
+during the initial CFG generation phase, and the duplicates modified
+to acquire and release the lock at appropriate points.  The original
+program is then patched to branch to the duplicates when necessary.
+
+The first step in producing such a fix is correctly identifying the
+instructions which must be included in the critical sections.  These
+will be roughly a subset of the instructions involved in the
+control-flow graphs associated with \StateMachines; a ``subset''
+because some instructions in the CFG do not need to be protected, and
+``roughly'' because some instructions not in the CFG will also be
+included in the critical section.
+
+\todo{Already explained this once in the context of building crash
+  summaries and enforcers!}
+
+As an example of the former, consider a program like this:
+
+\begin{verbatim}
+read_side() {
+    ptr = complicated_local_calculation();
+    dptr = *ptr;
+    if (dptr != NULL) {
+       dptr = *ptr;
+       *dptr = 5;
+    }
+}
+write_side() {
+    ptr = complicated_local_calculation();
+    *ptr = NULL;
+}
+\end{verbatim}
+
+Here, the read thread computes some pointer using entirely local
+operations, loads from it once and then, if the result is
+non-\verb|NULL|, loads from it again and uses the resulting pointer.
+Meanwhile, the store thread sets a potentially coincident memory
+location to \verb|NULL|.  The read thread clearly has a potential
+time-of-check, time-of-use race bug.  The {\StateMachines} generated
+by {\technique} will include the buggy code itself but might also
+include part or all of \verb|complicated_local_calculation()| and a
+side-condition which requires the two pointers to match up.  This
+extra information is useful when analysing the bug
+(\S\ref{sect:using:check_realness}) or when attempting to reproduce it
+(\S\ref{sect:using:reproducing_bugs}) but cannot be used by this kind
+of instruction-level fix\footnote{But see future work for a possible
+  alternative scheme which would make use of it.}, so including it in
+the fix is unhelpful and would tend to lead to unnecessarily large
+critical sections.  The fix generating process must therefore select a
+useful subset of the instructions in the control-flow graph.
+
+The approach taken here is simple:
+
+\begin{itemize}
+\item
+  Extract all of the happens-before edges from the bug summary's
+  verification condition.  These entirely capture the
+  instruction-interleaving parts of the bug to be fixed, and, since
+  instruction-interleaving is the only thing which can be influenced
+  by this type of patch\smh{As opposed to?}, the resulting set of
+  edges contains all of the useful information in the condition.
+\item
+  Identify all of the CFG nodes which are mentioned in one of those
+  happens-before edges.
+\item
+  Trim the CFG such that every path starts and ends in one of those
+  mentioned nodes.  All such paths will be included in a critical
+  section, and so no such paths will be permitted to execute in
+  parallel.
+\end{itemize}
+
+In this way the CFG is restricted to just those instructions which are
+involved in the interleaving which is to be prevented.
+
+Note that this is not guaranteed to produce an optimal selection of
+critical sections, in the sense that sections can sometimes be larger
+than is strictly necessary.  Consider, for example, a program with the
+same read side as the previous example but a write side in which the
+pointer is assigned to twice:
+
+\begin{verbatim}
+write_side() {
+    ptr = complicated_local_calculation();
+    *ptr = NULL;
+    *ptr = NULL;
+}
+\end{verbatim}
+    
+There are now two obvious ways of protecting this program:
+
+\begin{itemize}
+\item
+  Place both loads in the read side in a single critical section and
+  both stores in the write side in another one.
+\item
+  Place both loads in the read side in a single critical section, but
+  give each store in the write side its own critical section.  In
+  other words, drop and re-acquire the lock in between the two stores.
+\end{itemize}
+
+Both approaches correctly eliminate the bug, but they will have
+different performance characteristics.  In particular, dropping and
+re-acquiring the lock reduces the size of the critical section, which
+might improve concurrency and reduce starvation, but imposes higher
+overheads due to the greater number of lock operations.  In principle
+the happens-before graph implicit in the verification condition
+contains enough information to determine whether dropping the lock is
+safe, but, in this mode\smh{??You mean ``bug fixing mode''??}, SLI
+does not make use of this information, and always uses the former
+strategy\footnote{But see~\ref{sect:fix_from_drs} for a mode in which
+  it can use the other approach.}.
+
+Once the relevant fragments of CFG have been identified, {\technique}
+must examine the machine code of the original program and effectively
+re-compile it so as to introduce the necessary synchronisation
+operations.  This is more complicated than it might at first appear,
+most importantly because the CFG fragments to be protected are taken
+from the {\StateMachines} rather than from the original program, and
+the two graphs do not match up precisely.  There are two interesting
+cases:
+
+\begin{itemize}
+\item
+  The program CFG might include edges which are not present in the CFG
+  to be protected.  In that case, the patch must ensure that the lock
+  is correctly released when one of these edges is traversed before
+  returning to the unmodified program.
+\item
+  The CFG to be protected might include edges which are not present in
+  the program CFG, due to loop unrolling.  In that case, the patch
+  must, in effect, consider every possible path through the graph and
+  ensure that the lock is not dropped until they have all completed.
+\end{itemize}
+
+As a further complication, the patch might need to protect multiple
+CFG fragments, and these fragments might in some cases overlap.  It
+must then ensure that the lock is held until every fragment has
+completed, without ever allowing a thread to acquire the lock twice
+and hence deadlock against itself.  Finally, the patch might also need
+to include additional instructions which are not part of any CFG
+fragment if the patch strategy (discussed in
+Section~\ref{sect:enforce:assign_entry_points}) added extra
+instructions to the $Cont$ set\smh{blurk!}.  The result is that the
+code in the duplicated patch fragment is not quite an exact match for
+that in the original program, even ignoring the additional lock
+acquire and release operations.
+
+The simplest way of thinking about this is to first augment the
+machine code semantics so as to include the necessary additional
+information, so that enforcing the necessary locking discipline is
+simply a matter of interpreting this enhanced semantics, and to then
+partially evaluate this interpreter to produce machine code in the
+original semantics.  The output of this partial evaluator then forms
+the bulk of the fix.
+
+\smh{This is a strange way of thinking about it (to me at least).}
+
+The state of a thread in the augmented semantics consists of all of
+the state of a thread in the original semantics, including things like
+the per-thread processor registers and instruction pointer, plus a
+small amount of additional state:
+
+\begin{itemize}
+\item $checkForEntry$ -- a flag indicating whether the thread needs to
+  check whether it has entered any additional CFG fragments.
+\item $locked$ -- a flag indicating whether the thread currently holds
+  the patch lock.\smh{Ugly}
+\item $\mathit{cfgNodes}$ -- a set of nodes taken from the CFG fragments
+  indicating which instructions the thread might currently be
+  executing.  This might be empty if the thread is currently executing
+  one of the additional instructions in the patch strategy's $Cont$
+  set.
+\end{itemize}
+
+The $Patch$ instructions in the patch strategy are then treated as
+transitions from the normal program semantics into the augmented
+semantics.  The initial augmented state is then the state of the
+original program at the entry point, plus:
+
+\begin{itemize}
+\item $checkForEntry$ is true.
+\item $locked$ is clear.
+\item The set of CFG nodes is empty.
+\end{itemize}
+
+Conceptually, the patch then takes control of the program and
+interprets it using the augmented semantics.  Such an interpreter
+would be quite simple:
+
+\begin{itemize}
+\item[\textbf{CheckForEntry}] If the $checkForEntry$ flag is set then the
+  interpreter would examine the current call stack and the possible
+  set of CFG fragment entry points to determine whether any new CFG
+  fragments have started.  If so, the relevant CFG nodes added to
+  $\mathit{cfgNodes}$.  In either case, $checkForEntry$ is cleared.
+\item[\textbf{Return}] The interpreter would then consider returning
+  to the program's normal semantics.  This is safe if $\mathit{cfgNodes}$ is
+  empty and the instruction pointer is not part of the $Cont$
+  set\footnote{Note that the thread is guaranteed not to be holding
+    the lock at this point.}  The transfer itself is quite simple:
+  just branch to the relevant instruction pointer in the original
+  program.
+\item[\textbf{Lock}] The interpreter now acquires the lock, provided
+  that $\mathit{cfgNodes}$ is non-empty and $locked$ is currently clear,
+  setting $locked$ as it does so.
+\item[\textbf{Issue}] The interpreter emulates the program's original
+  instruction, using the un-augmented semantics, writing back any
+  required changes to memory or the process registers.  This will
+  include updating the thread's instruction pointer, and the
+  interpreter can then easily use this to determine which CFG nodes
+  the thread might execute next and hence the new value of $\mathit{cfgNodes}$.
+\item[\textbf{Unlock}] Finally, the interpreter would check whether it
+  needs to release the lock.  It should do so whenever $locked$ is set
+  and $\mathit{cfgNodes}$ is empty, clearing $locked$ as it does so.  The
+  interpreter then returns to the \textbf{CheckForEntry} state and the
+  cycle begins again.
+\end{itemize}
+  
+Such an interpreter would correctly enforce the desired lock
+discipline, in the sense that the lock would always be held whenever
+the program executes one of the CFG fragments which are to be
+protected, but would have two major disadvantages:
+
+\begin{itemize}
+\item Emulating machine code instructions is usually quite slow, which
+  could lead to unnecessarily high performance overhead.
+\item Instruction emulators are extremely complex pieces of code, and
+  so it is difficult to have complete confidence that the fix does not
+  change the program's behaviour in unintended ways.
+\end{itemize}
+
+Both of these disadvantages are shared with the use of an interpreter
+in crash enforcers, but are far more serious here, as crash enforcers
+are intended as temporary debug aids whereas the generated fixes might
+be deployed in production environments for significant amounts of time
+before a real fix becomes available.  {\Technique} therefore refines
+on this interpreter scheme by partially evaluating the
+interpreter\needCite{} back into machine code in the unaugmented
+semantics, and it is the result of this partial evaluation which forms
+the body of the patch.  In effect, the augmented state is encoded into
+the instruction pointer, allowing the patch to emulate the interpreter
+without it ever needing to be present.  Updating part of the augmented
+state then becomes a simple branch instruction.  None of the augmented
+interpreter state is ever stored in memory or processor registers,
+minimising the unnecessary perturbation of the program.
+
+In a little more detail:
+
+\begin{itemize}
+\item The \textbf{CheckForEntry} state partially evaluates to a stack
+  context validation tree, as discussed in \todo{...}.  The leaves of
+  this validation tree will contain branches to augmented instructions
+  in the \textbf{Return} state with an appropriately-augmented
+  $\mathit{cfgNodes}$ set\editorial{The \textbf{Return} state will then
+    immediately discover that $\mathit{cfgNodes}$ is non-empty and move to
+    \textbf{Lock}, but actually saying that makes the parallels with
+    the interpreter a bit less obvious.}.
+
+  The current (unaugmented) instruction pointer and current $\mathit{cfgNodes}$
+  set usually place significant constraints on the set of entry points
+  which the thread might currently be executing, and so the validation
+  tree can often itself be partially evaluated to determine precisely
+  which CFG nodes must be executed next.  In that case, the tree is
+  replaced with a simple branch instruction.
+\item \textbf{Lock} and \textbf{Unlock} states partially evaluate to a
+  possible call to a lock acquire or release function, as appropriate,
+  followed by a simple branch to the next state.
+\item \textbf{Return} states partially evaluate to either a branch
+  back to the original program code, if $\mathit{cfgNodes}$ is empty and the
+  address to return to is not in the patch strategy's $Cont$ set, or a
+  branch to the \textbf{Issue} state otherwise.
+\item Most of the time, the \textbf{Issue} state partially evaluates
+  to the relevant instruction of the original program which can
+  execute in the augmented semantics without modification.  The main
+  exceptions are instruction pointer-relative data addressing modes,
+  which must be re-encoded to reference the correct data relative to
+  the new instruction pointer, and control flow instructions, which
+  are discussed below.  Assuming that this is not a control flow
+  operations, the state updates $\mathit{cfgNodes}$ to contain all of the CFG
+  nodes which are successors of current members of $\mathit{cfgNodes}$ and
+  whose instruction pointer matches that of the desired successor
+  instruction and then returns to state \textbf{CheckForEntry}.
+\end{itemize}
+
+Partially evaluating one augmented state produces a small fragment of
+machine code and a set of successor augmented states.  Building the
+patch then amounts to initialising a queue of states with the initial
+state and then iteratively selecting a state from the queue, partially
+evaluating it, placing the new states in the queue, and continuing
+until no further states need to be generated.  The machine code
+fragments can then be stitched together to produce the final patch.
+
+As a minor optimisation, {\implementation} eliminates branch
+instructions which target the immediately following instruction.
+
+One non-obvious complication here is that calling the lock acquire and
+release functions is not completely trivial, due to the presence of a
+stack red zone in the AMD64 ABI\needCite{}.  This is a 128 byte region
+immediately below the stack pointer which is available for program
+use.  It is important that the generated patch not corrupt values in
+this region, which means that the patch cannot save clobbered
+registers by simply pushing them on the stack as a patch to an i386
+program might.  It must instead first clear the red zone from the
+stack by adjusting the RSP register and then restore it later before
+executing any instructions from the original program which depend on
+it.  At the same time, we would like to avoid redundant clearing and
+restoring the red zone more often than is strictly necessary.
+{\Implementation} therefore extends the augmented state with an
+additional field, $redzone$, indicating whether the red zone has been
+cleared, allowing red zone clearing to be performed precisely when
+necessary.
+
+\todo{Move this para to be later.}\smh{Yes} One concern here might be
+that modifying the program's stack in this way might confuse another
+thread which is simultaneously examining the stack.  Such cross-stack
+accesses are rare in most programs anyway, and in any case are handled
+correctly for correct programs here because the modified stack pointer
+never escapes into any of the original program's code.  This means
+that the modifying thread will not be able to determine that
+additional stack space has been allocated, and so will only be able to
+tell that the stack has been modified if it is accessing what is, as
+far as it can tell, memory past the end of the stack.  This is not
+allowed by the ABI, and so correct programs will not do it.  You might
+suspect that operating system introspection services such as
+\verb|ptrace| would allow the remote thread to tell that the stack
+pointer register has been modified, but this is highly unlikely, at
+least on modern versions of Linux, which prohibit one thread in a
+program from calling \verb|ptrace| on another\needCite{}.  The remote
+thread would therefore need to coordinate the \verb|ptrace| operation
+with another process, and such an unlikely configuration is ignored
+here.  {\Technique} does not claim to be able to protect programs
+which are actively trying to avoid its protection, and so the fact
+that the generated patches misbehave on some actively malicious
+program is not a problem such behaviour is sufficiently rare in real
+programs.  \todo{Signal handlers can also leak the fact that we've
+  extended the stack.  Also need to talk about why there's no
+  realistic risk of running out of stack space here.}
+
+Control flow operations are not completely trivial to represent in
+this model.  Direct control flow, where the target of the control flow
+transfer is immediately apparent from the instruction itself, is
+relatively easy and can be handled by comparing the target address to
+the possible successors of all of the CFG nodes in $\mathit{cfgNodes}$ and
+generating a new successor state with $\mathit{cfgNodes}$ appropriately
+updated.  Indirect control flow is more difficult and requires run
+time validation of the target address.  There are three main cases to
+consider: indirect jumps, indirect calls, and return instructions.
+
+\paragraph{Indirect jump instructions,} which simply set the instruction pointer
+to a calculated value\smh{Not a sentence.}.  In order to partially
+evaluate these states {\technique} must examine all of the successors
+of nodes in the $\mathit{cfgNodes}$ set and segregate them by their instruction
+pointer.  The code generated for the state will compare the target of
+the branch instruction to each such instruction pointer in turn and,
+when one matches, jump to an augmented instruction with an appropriate
+$\mathit{cfgNodes}$ set.  If none match then the patch moves on to consider
+instructions in the patch strategy's $Cont$ set\smh{This is a detail
+  that doesn't matter at a certain level of abstraction; you need to
+  separate the idea/algorithm from the combined code you've written.},
+comparing the generated branch target to each in turn and branching to
+an appropriate augmented instruction if any match.  Finally, if none
+of those match, the patch can exit the augmented semantics by directly
+branching to the computed branch target, dropping the lock first if
+necessary.
+
+A further complication is that computing the branch target might
+itself involve reading from memory, and this access might itself race.
+It would be unfortunate if this led to the patch branching to the
+wrong place, and so the patch must first capture the computed branch
+target to a register\footnote{In more detail, the concern is that the
+  target address might change from one instruction which must be
+  protected to another instruction which must be protected, and the
+  patch must ensure that the race does not cause it to prematurely
+  drop the lock.  It does not matter which protected path the patch
+  ultimately follows, provided it follows one of them}.  This means
+that the register must first be saved somewhere, so that it can be
+restored later, which in turn means that the red zone must be cleared.
+Both of these operations must be undone later.  This is recorded by
+setting the $redzone$ field of the augmented state to the special
+$popreg$ value.
+
+Of course, setting $redzone$ does not actually help if the patch is
+about to return to the unaugmented program, as in that case $redzone$
+will never be examined.  The patch must then restore the register used
+to capture the computed branch target, restore the red zone, and
+finally branch to the computed target, without using any additional
+registers.  The scheme used by {\implementation} uses a machine code
+fragment like this:
+
+\begin{verbatim}
+xchgq %rdi, (%rsp) ; Restore rdi and set the next instruction address
+ret $0x80          ; Restore the red zone and branch to the next instruction
+\end{verbatim}
+
+\todo{Not sure how interesting this actually is, but it took me bloody
+  ages to figure out how to do it, which suggests there should
+  probably be something about it in here.}  Here, \verb|rdi| is the
+register used to store the computed branch target, the old value of
+\verb|rdi| was stored to the top of the stack before the branch was
+computed, and \verb|0x80| is the size of the red zone.  In this
+sequence, the \verb|xchgq| instruction swaps the top of the stack with
+\verb|rdi|, restoring the old value of \verb|rdi| and setting the top
+of the stack to the target of the branch and the \verb|ret|
+instruction then branches to this location and removes the top
+\verb|0x80| bytes from the stack, restoring the red zone.  The
+sequence therefore correctly implements the desired behaviour.
+
+It does, however, have some unpleasant performance implications.  In
+particular, the \verb|ret| instruction does not match with any
+\verb|call| instruction, which can be extremely difficult for
+processor branch prediction units to handle\needCite{}, and if this
+leads to a branch misprediction then performance will be quite poor.
+Unfortunately, there is no other way of achieving the desired
+behaviour with the x86 instruction set without using additional
+registers, because the instruction and stack pointers must be modified
+simultaneously and \verb|ret| is the only instruction capable of doing
+so.  Modifying the instruction pointer before the stack pointer is
+obviously unprofitable, as modifying the instruction pointer means
+that we lose control of program execution and therefore never get the
+chance to perform the stack pointer modification.  Modifying the stack
+pointer first, though, sounds like it might be an effective strategy.
+The resulting fragment of code might look like this:
+
+\begin{verbatim}
+lea 0x80(%rsp), %rsp   ; Restore the red zone
+xchgq %rdi,-0x88(%rsp) ; Save the branch target and restore rdi
+jmp -0x88(%rsp)        ; Perform the branch
+\end{verbatim}
+
+Executed in isolation, this code correctly sets all three registers
+(\verb|rdi|, the stack pointer, and the instruction pointer), and
+avoids damage to the branch prediction units.  In a program running on
+most Unix-like operating systems, however, it contains a dangerous
+race with signals.  The target of the branch instruction is stored
+\verb|0x88| bytes below the stack pointer, just outside of the red
+zone.  If the program receives a signal immediately before executing
+the \verb|jmp| instruction then this is precisely the location at
+which the signal handling stack frame will be constructed, clobbering
+the branch target.  When the signal handler returns the program will
+almost certainly crash.  Avoiding this issue is impossible without
+forcing the program to use a dedicated signal stack, which is
+extremely fragile without cooperation from the program\footnote{An
+  alternative scheme would be to just disable signals during the
+  critical section.  This does not work, as the signal disposition
+  must be restored when the program resumes, which requires a system
+  call and hence the use of registers, which brings us back to the
+  original problem.}.
+
+\smh{This is all fine, but it is a detail that probably doesn't
+  deserve the best part of a page!  Focus, select, highlight,
+  abstract.}
+
+\todo{Maybe explain why I'm happy to use the GS trick in the enforcers
+  but don't want to do so here?}
+
+\paragraph{Indirect call instructions,} which are similar to indirect jumps
+except that they also store the current instruction pointer to the
+stack\smh{Not a sentence.}.  The issues involved here are similar,
+except that the patch must store the return address in addition to
+maintaining the stack pointer and branching to an appropriate
+location.  If the interpreter is to continue then this can be
+accomplished by setting $redzone$ to another special value,
+$finishCall(return\_address)$.  Otherwise, the exit sequence can be
+modified slightly:
+
+\begin{verbatim}
+mov %rdi, 0x80(%rsp) ; Store next instruction address
+mov 0(%rsp), %rdi    ; Restore RDI
+lea 0x80(%rsp), %rsp ; Restore red zone
+call *0(%rsp)        ; Call target function
+jmp return_address   ; Return to original program
+\end{verbatim}
+
+\todo{At the moment the implementation just uses the silly ret thing.
+  I should switch it over to that sequence, because it's awesome.}
+
+This perhaps requires some additional explanation:
+
+\begin{itemize}
+\item \verb|mov %rdi, 0x80(%rsp)|.  This stores the address which we
+  need to call into \verb|0x80(%rsp)|.  \verb|0x80| is the size of the
+  red zone, and so once the red zone has been cleared this will be
+  \verb|0(%rsp)|.
+\item \verb|mov 0(%rsp), %rdi|.  This restores the value of
+  \verb|%rdi| from the top of the stack.
+\item \verb|lea 0x80(%rsp), %rsp|.  This restores the program's
+  original red zone.  The address which is to be called is now at
+  \verb|0(%rsp)|.
+\item \verb|call *0(%rsp)|.  The effect of this instruction is
+  somewhat complicated: it sets the instruction pointer to the initial
+  contents of \verb|0(%rsp)|, then sets \verb|0(%rsp)| to the address
+  of the next instruction, and then decrements \verb|%rsp| by eight
+  bytes.  This means that the target function will be invoked with the
+  desired stack pointer and its return address set to the \verb|jmp|
+  instruction.
+\item \verb|jmp return_address|.  This runs once the called function
+  returns and immediately branches to the instruction after the
+  indirect call instruction.
+\end{itemize}
+
+This means that the indirect branch is correctly emulated, provided
+that the program never explicitly examines return address addresses on
+its stack, and the processor's branch predictor state is correctly
+maintained.  The potential race with signals is avoided completely
+because the address which is to be branched to is stored within the
+program's red zone.  Modifying the red zone is safe because we know
+that the \verb|call| instruction is itself about to overwrite the
+modified location\footnote{The exception is if another thread is
+  simultaneously examining this thread's call stack, in which case we
+  have potentially introduced an additional race condition.  Such a
+  race condition is implausible given common programming practices and
+  I ignore the possibility here.}.
+
+\paragraph{Return instructions,} which pop an address off of the stack
+and return to it\smh{Not a sentence}.  If the $cfgNode$ set is
+currently non-empty then this is very simple because, by construction,
+when the $cfgNode$ set is non-empty the program's call stack must
+match the call stack in the CFG nodes.  That means that the return
+instruction can be partially evaluated without needing to examine the
+actual contents of the stack, and the only instruction which actually
+needs to be emitted is \verb|lea 8(%rsp), %rsp|, which pops the return
+address off of the stack and discards the result.  \todo{Actually need
+  a couple more side-conditions on that, but they're not terribly
+  interesting and would just confuse things a bit.}
+
+\todo{But that branch means that you end a function with a jump rather
+  than a ret, which is going to screw your branch predictor despite
+  our best efforts.  That's particularly sad given that if the match
+  call was part of the patch then the address on the top of the stack
+  will be the address which we're branch to anyway.  Need to think
+  harder about that.}
+
+An empty $cfgNode$ set is slightly more difficult to handle, but only
+slightly.  In this case, the generated code must examine the stack to
+determine the actual return address and compare it to the $Cont$ set,
+with any matches branching to an appropriate augmented state in the
+usual way.  These states will have $redzone$ set to $ret$, to cause
+appropriate handling of the return address.
+
+If the return address does not match in $Cont$ then the patch returns
+to the unaugmented program.  The exit fragment is very simple:
+
+\begin{verbatim}
+pop %rdi
+lea 0x80(%rsp), %rsp
+ret
+\end{verbatim}
+
+This restores \verb|rdi|, used to store the return address, then
+restores the red zone, and finally issues a normal return instruction
+to return to the original program.  No particular special handling is
+required.
+
+
+The result of all of these manipulations is that {\technique} is able
+to maintain control of the program when necessary, and transfer back
+to the original program seamlessly when control is no longer
+necessary, without causing excessive damage to the processor's branch
+predictor in the common case.\smh{How important is this?  Is a fixed
+  prog that's 10\% slower suckey?  ok?}
+
+These control-flow considerations somewhat complicate the partial
+evaluator.  The complete thing looks like this:
+
+\begin{itemize}
+\item Certain kinds of \textbf{Redzone} handling are performed early
+  in the partial evaluation process.  In particular:
+  
+  \begin{itemize}
+  \item If $redzone = popreg$, the partial evaluator emits the
+    instruction \verb|pop %rdi| and sets $redzone$ to $simple$.  The
+    value of \verb|rdi| is restored and the patch is left outside the
+    red zone.
+  \item If $redzone = finishCall(ra)$, the partial evaluator emits the
+    sequence \verb|pop %rdi; lea 0x80(%rsp), %rsp; pushq $ra| and sets
+    $redzone$ to $none$.  \verb|rdi| is restored, the red zone is
+    restored, and the return address is pushed.  The patch is now in
+    the red zone.  An alternative design would have been to leave the
+    patch outside of the red zone and track that eight bytes of the
+    zone have been consumed by the return address, which might
+    simplify some patches; {\implementation} does not do so purely to
+    keep the implementation reasonably simple.
+  \item If $redzone = ret$, the partial evaluator emits the sequence
+    \verb|lea 0x88(%rsp), %rsp| and sets $redzone$ to $none$.  The red
+    zone is restored and the return address popped.  As with the
+    $finishCall$ case, it would be possible to keep the patch out of
+    the red zone here at the expense of slightly greater complexity,
+    but {\implementation} does not attempt to do so.
+  \item $redzone = simple$ is left unchanged.
+  \end{itemize}
+\item \textbf{CheckForEntry}, \textbf{Lock}, \textbf{Unlock} and
+  \textbf{Return} are unchanged, beyond avoiding clearing the red zone
+  if $redzone = simple$ and setting $redzone$ to $simple$ when it does
+  need to clear the zone.
+\item \textbf{Issue} has to be extended with the final component of
+  red zone handling.  In particular, if $redzone \not= none$ and the
+  instruction to be issued might access the stack then the red zone
+  must be restored before the instruction executes.  At this stage,
+  the only possible values of $redzone$ are $none$ and $simple$, so
+  this can be accomplished with a simple \verb|lea 0x80(%rsp), %rsp|
+  instruction.  Also, the state now branches to \textbf{Redzone}
+  rather than \textbf{CheckForEntry}.  Apart from that, the handling
+  of the \textbf{Issue} state is unchanged.
+\end{itemize}
+
+Once all of the necessary augmented states have been partially
+evaluated the resulting machine code fragments can be stitched back
+together to form the final patch body.  The original program is then
+modified to branch to this patch body at all of the instructions given
+in the patch strategy's $Patch$ set.  The ultimate result is that the
+CFG fragments never execute in parallel, completely fixing the bug
+with, usually, acceptably low overhead.
+
+
+\todo{Might want another example here.}
+
+\todo{I've avoided talking about the flags register here, because that
+  makes everything much more complicated and this is pretty fiddly as
+  it is.  Not sure if I can get away with that.}\smh{In general you
+  can mention something at a reasonable level of abstraction without
+  needing to provide every detail.}
+
+\subsection{Building context validation trees}
+\todo{This is a bit of a mess.}
+
+One important component of the \textbf{CheckForEntryState} which is
+not discussed above is checking whether the current thread's call
+stack matches up with that of any CFG entry points, and hence whether
+additional nodes need to be added to the $\mathit{cfgNodes}$ set.
+{\Technique} must generate machine code which will perform this check
+and branch to an appropriate augmented label according to the result.
+
+The first step of building the validation tree is to convert the set
+of entry points into a mapping from stack contexts to CFG nodes.  A
+stack context here is a list of $(offset, value)$ pairs which give an
+offset from the current stack pointer and a value which must be
+present at that offset.  This is straightforward given the call stack
+in the entry point and the algorithm for extracting the return address
+of a function given in Section~\ref{sect:using:find_return_address}.
+
+The next step is to emit machine code to compare the current stack to
+these sets of stack contexts and branch to an appropriate label in the
+augmented context.  This is less straightforward, for several reasons:
+
+\begin{itemize}
+\item
+  It might be that several contexts match at the same time.
+\item
+  The validator must be careful not to access any memory outside of
+  the stack.  In particular, if one context pushes a ten megabyte
+  frame on the stack, say, the validator should not blindly access
+  memory at RSP plus ten megabytes until it is confident that the
+  stack actually extends that far.
+\item
+  Ideally, the validation logic would also be reasonably efficient and
+  avoid validating a single stack location more than once.
+\end{itemize}
+
+As usual, I first present an interpreter-style solution to this
+problem before explaining how to convert it a compiler.  The
+interpreter-style version is quite easy:
+
+\begin{algorithmic}[1]
+  \Function{validate}{$inp$: \{(stack context, node)\}, $start$: label $\rightarrow$ label}
+    \State {$start.cfgNodes \gets start.cfgNodes \cup \{n \mid (\varnothing, n) \in inp\}$}
+    \State {$inp \gets$ all members of inp with a non-empty context}
+    \If {$inp$ is empty}
+      \State \Return $start$
+    \EndIf
+    \State {$nextOffset \gets \min \{e.ctxt[0].offset \mid e \in inp\}$}
+    \For {$\{nextVal \mid (nextOffset, nextVal) \in inp\}$}
+      \If {$\textrm{memory at } rsp + nextOffset = nextVal$}
+        \State {$inp \gets \{(ctxt,label) \mid (ctxt,label) \in inp,$}
+        \Statex {\hspace{58mm}$ctxt[0].offset \not= nextOffset\} \cup$}
+        \Statex {\hspace{31mm}$\{(ctxt[1:], label) \mid (ctxt,label) \in inp,$}
+        \Statex {\hspace{64mm}$ctxt[0].offset = nextOffset,$}
+        \Statex {\hspace{64mm}$ctxt[0].value = nextVal\}$}
+        \State \Return $\textsc{validate}(inp, start)$
+      \EndIf
+    \EndFor
+    \State {$inp \gets \{(ctxt,label) \mid (ctxt,label) \in inp,ctxt[0].offset \not= nextOffset\}$}
+    \State \Return $\textsc{validate}(inp, start)$
+  \EndFunction
+\end{algorithmic}
+
+The arguments to \textsc{validate} are a set of pairs of stack
+contexts and nodes, specifying which CFG nodes should be started for
+in which stack contexts, and a starting label which is a state in the
+augmented semantics.  The result is a new state in the augmented
+semantics.  The function starts by starting any CFG nodes whose
+context is empty (line 2).  If this means that no more nodes need to
+be checked, the algorithm is finished and returns (line 5).
+Otherwise, it picks the next offset to validate (line 7) and iterates
+over every possible value of that offset (line 8).  For each one, it
+compares the actual contents of the stack to the expected value (line
+9) and, if it matches, advances the relevant contexts (line 10) and
+recurses (line 11).  If none of the contexts match then $inp$ is
+restricted to only those contexts which do not test this offset (line
+14) and the function again recurses (line 15).
+
+Line 10 perhaps needs further explanation.  The intended notation here
+is that $ctxt[0]$ is the first entry in the context list while
+$ctxt[1:]$ is the context list with the first entry
+removed\footnote{This notation is taken from Python\needCite{}.}.  The
+line therefore selects all of the entries in $inp$ which do not need
+to perform any checks on offset $nextOffset$ unchanged and all of the
+entries which require $nextOffset$ to be $nextVal$ with that part of
+the context removed.  Any entries which require $nextOffset$ to be
+something other than $nextVal$ are discarded.
+
+The only place in which this algorithm touches program memory, and
+hence the only place in which it might touch bad memory and cause a
+crash, is line 9.  This is safe because $nextOffset$ is the smallest
+offset in some context.  This means that it is the location of the
+return address of some function and, by construction, the algorithm
+has already validated that that function is on the stack, and so the
+return address definitely exists.
+
+Converting this interpreter to a compiler is then very simple.  The
+idea is to build a mapping from values of the arguments to
+\textsc{validate} to fragments of machine code such that the fragment
+implements \textsc{validate} and to then stitch these fragments
+together:
+
+\begin{itemize}
+\item The \textbf{return} statement on line 5 emits a branch to a
+  branch to the instruction $start$ in the augmented semantics.
+\item The \textbf{if} block from lines 9 to 12 emits a conditional
+  branch to the validation fragment given by the new values of $start$
+  and $inp$.
+\item The tail call on line 15 is likewise emits an unconditional
+  branch to the validation fragment given by the new values of $start$
+  and $inp$.
+\end{itemize}
+
+The resulting machine code is structured as a tree whose internal
+nodes are tests of locations on the stack and whose leaves are
+branches into the augmented semantics.
+
+\todo{Example, maybe?}\smh{Hell yes!! (or just leave out the whole
+  section?)}
+
+\subsection{Other ways of fixing the bugs}
+\todo{I've come up with an algorithm for doing this using a message
+  passing network, like we do for crash enforcement but with the
+  delays in slightly different places, but I really don't have time to
+  implement it.  It is kind of cool, though; I'd like to include it
+  somewhere, even if it's just a future work-type thing.}
+
+\todo{Should probably also discuss some ways of using the VC
+  side-conditions to avoid acquiring the lock when we don't really
+  need to.}
+
+\todo{Might also be worth saying a few words about possibly fixing the
+  bugs by using STM-like techniques?  I've not implemented any of
+  them, either, but they are kind of interesting.  Probably worth a
+  paragraph or two.}
+

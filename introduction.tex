@@ -15,29 +15,12 @@ Commodity hardware is becoming increasingly concurrent, whether due to
 more packages per machine, per cores per package, or more threads per
 core, and software is adapting to make use of this greater
 concurrency.  This promises greater performance, but at the same time
-introduces a greater risk of serious concurrency bugs.  Even worse,
-concurrency bugs often depend on details of the program which are only
-apparent at the machine code level, rather than at source level.
-There is therefore a need for tools to help discover and fix
-concurrency bugs by directly analysing program binaries.  This
-dissertation presents one possible approach to doing so: a set of
-techniques which can, first, slice a binary program to find parts
-which are relevant to a specific bug; second, analyse those slices to
-determine whether the bug might actually happen in real executions;
-and, third, automatically generate a fix for the bug.  \smh{Very
-strong} The same analysis can also be used to find all possible bugs
-of a specific class in the program.  The approach used requires
-minimal programmer involvement; in some interesting cases it is
-completely automated.
-
-This is a demanding goal.  To make it feasible, {\technique} considers
-only a restricted class of concurrency bug: two threads interacting,
-with one modifying some shared structures while a second reads it,
-causing the reading thread to crash quickly in a recognisable
-way.\todo{Need a bit more here.}
-
-\section{Overview of approach}
-\label{sect:intro:overview}
+introduces a greater risk of serious concurrency bugs.  Concurrency
+bugs are particularly difficult to fix, due to their inherent
+non-determinism, and so it would be useful to have some tools to
+assist in this.  This dissertation presents automated techniques to
+discover, characterise, reproduce, and then fix a certain class of
+concurrency bugs.
 
 \begin{figure}
 \begin{center}
@@ -63,8 +46,8 @@ way.\todo{Need a bit more here.}
 \label{fig:basic_pipeline}
 \end{figure}
 
-The basic structure of {\technique} is shown in
-Figure~\ref{fig:basic_pipeline}.  The process starts by building a
+The basic approach is shown in Figure~\ref{fig:basic_pipeline}.  The
+process starts by building a
 \backref{model} of the program's behaviour using \backref{dynamic
   analysis} (Section~\ref{sect:dynamic_analysis}).  This
 \backref{model} is then used to locate potentially relevant fragments
@@ -86,27 +69,71 @@ then be passed to the final \backref{fix generation} phase which
 binary patches the program to introduce synchronisation which
 eliminates the bug (Section~\ref{sect:fix_generation}).
 
-\smh{c/f RX?}
+{\Technique} only considers only a subset of concurrency bugs: those
+where one thread, referred to as the ``crashing thread'', is reading
+from shared data structure while another thread, the ``interfering
+thread'', simultaneously modifies it, and these concurrent updates
+cause the crashing thread to crash quickly.  In a little more detail:
 
-I give a detailed description of \technique{} and some results
-obtained using \implementation, my implementation of it.  These
-include details of the fixes generated for a selection of bugs, both
-artificial ones and some from real programs, and a demonstration that
-the analysis scales to realistically large programs with acceptable
-computational cost.  This includes bugs which were unknown to the
-author before writing the tool\editorial{Or, more precisely, one bug
-  which was unknown to me before writing the tool but which was known
-  to the program's original developers, and which is a trivial
-  variation of a bug which I did know about.  But, you know, take your
-  victories where you can get them.}.  I also show that the fixes
-generated often have sufficiently low overhead to be useful; usually a
-few percent in more realistic tests.  Finally, I give the results of a
-small set of experiments intended to show that \implementation{} is a
-correct implementation of \technique{}.\editorial{Does this really
-  belong here?}
+\begin{itemize}
+\item The threads must be operating on a data structure located
+  somewhere in shared memory.  The data structure does not need to be
+  in contiguous memory, and does not need to correspond to any
+  higher-level concept of a data structure such as a C++
+  \texttt{class} or \texttt{struct}, but it does need to be in
+  process-accessible memory.  Structures on the filesystem, for
+  instance, are not considered.
+\item The crashing thread must crash in a detectable way.  The
+  simplest case is a hardware-detected fault such as referencing bad
+  memory or dividing by zero, but more complex types of fault could
+  also be supported, if a suitable detector can be implemented.
+  {\Implementation} includes detectors for hardware-detected faults,
+  assertion-failure type errors, and some types of double-free error.
+  \todo{Should maybe have a ref here?}
+\item The crash must be caused by the concurrent updates.  There must
+  be some regions of the crashing and interfering threads such that
+  running those regions in parallel can crash but running them
+  atomically, in either order, will not.
+\item The crashing thread must crash quickly.  {\Technique} uses a
+  finite \introduction{analysis window} \introduction{$\alpha$} and
+  will only consider reordering concurrent operations which occur at
+  most \backref{$\alpha$} instructions before the crash.  Bugs which
+  require knowledge of the program behaviour beyond that window cannot
+  be analysed.  Equivalently, {\technique} only considers bugs which
+  can be fixed by small critical sections containing fewer than
+  $\alpha$ dynamic instructions.  \backref{$\alpha$} can, in
+  principle, be arbitrarily large, but computational constraints mean
+  that in practice it will be limited to a few dozen to a few hundred
+  instructions, depending on the program to be analysed and how much
+  information about the bug is available before analysis starts.
+\end{itemize}
 
+This clearly does not include every possible type of concurrent bug
+(it does not, for instance, include any but the most trivial deadlock
+bugs, and complicated memory corruption bugs are difficult to handle),
+but it does include some interesting bugs.
+Section~\ref{sect:future_work:generalising} considers some possible
+ways of relaxing some of these restrictions.
+
+One important decision which must be made when designing this kind of
+tool is how much higher-level semantic information to use, and in
+particular whether to operate at the level of machine code or source
+code.  Working with machine code gives a tool the most precise
+description of the program's behaviour, as concurrency bugs often
+depend on the precise details of compiler optimisations, and is
+inherently language-independent; on the other hand, source code
+provides far more useful information, and so is usually far easier to
+analyse.  {\Technique} takes the extreme position of operating on
+machine code as far as possible, only relying on access to source code
+when absolutely necessary.  For some non-trivial programs, including
+Thunderbird and pbzip2, the technique can produce useful results
+without any access to source code at all, and for most others very
+little information is needed (MySQL, for instance, required two
+functions related to memory allocation to be manually annotated).
 
 \section{Contributions}
+
+This dissertation makes several contributions:
 
 \begin{itemize}
 \item
@@ -114,217 +141,84 @@ correct implementation of \technique{}.\editorial{Does this really
   only a binary program and some way of running it.
 \item
   Describe how the bug description produced when trying to find a bug
-  can be used to automatically fix the same bug.
-\item
-  Propose several techniques for simplifying cross-function and
-  cross-thread slices of binary programs.
+  can be used to automatically fix the same bug or to make the bug
+  more easily reproducible.
 \item
   Evaluate these techniques, showing that they can find and fix bugs
-  in simple programs quickly, and that the analysis techniques
-  \todo{(just about)} scale up to find real bugs in realistic
-  programs.
-\item
-  I further give some evidence that my implementation of these
-  techniques is itself correct, so that the other parts of the
-  evaluation are likely to be correct.
+  in simple programs quickly, and that the analysis techniques scale
+  up to find real bugs in realistic programs.
 \end{itemize}
 
-\todo{Maybe include explicit comparisons to related work in
-  here?}\smh{Maybe in intro, but not right here.}
+I give a detailed description of {\technique} and some results
+obtained using \implementation, my implementation of it.  These
+include details of the fixes generated for a selection of bugs, both
+artificial ones and some from real programs (including one which was
+unknown to the author before writing the tool), and a demonstration
+that the analysis scales to realistically large programs with
+acceptable computational cost.  I also show that the fixes generated
+often have sufficiently low overhead to be useful; usually a few
+percent in more realistic tests.  Finally, I give the results of a
+small set of experiments intended to show that \implementation{} is a
+correct implementation of \technique{}, so that the other results are
+likely to reflect true properties of {\technique} and not simply bugs
+in {\implementation}.
 
-\section{Background}
-\subsection{BDDs}
+\section{Memory model}
 
-A binary decision diagram, or BDD, is an efficient graphical
-representation of a function from a finite set of boolean input
-variables to a single boolean result.  An example is shown in
-Figure~\ref{fig:intro:example_bdd}.  The graph can be evaluated from
-the root downwards, with each node representing a test of one of the
-input variables.  If the variable is true, evaluation follows the
-solid edge to the next node, and if it is false evaluation follows the
-dashed edge.  Eventually, evaluation reaches one of the two leaf
-nodes, $\mathit{true}$ and $\mathit{false}$, which gives the final
-result of the function.  \todo{Cite Lee 1995, maybe?}  While not shown
-in the example, BDDs can share sub-graphs, often allowing more complex
-functions to be represented compactly.  Indeed, the BDDs used by
-{\implementation} (and most other systems) always share nodes whenever
-it is possible to do so.  This makes the BDD representation of a
-function canonical up to the order in which the variables are
-tested\editorial{Cite Bryant 1986.}.
+{\Technique} assumes that the processor implements a strongly-ordered
+memory model, so that accesses issued by a single are never reordered.
+It therefore cannot precisely model the behaviour of any processor in
+widespread use today.  On the other hand, this is a reasonable
+approximation for the behaviour of the widely-used AMD64
+architecture\needCite{}, where memory reordering is a rare and highly
+constrained event.  This limitation is not, therefore, completely
+crippling.
 
-\todo{BDDs allow efficient implementation of many important
-  operators...}
-
-\begin{figure}
-  \begin{tikzpicture}
-    \node (x) [BddNode] {$x$};
-    \node (y) [BddNode, below right = of x] {$y$};
-    \node (z) [BddNode, below left = of y] {$z$};
-    \node (true) [BddLeaf, below left = of z] {$\mathit{true}$};
-    \node (false) [BddLeaf, below right = of z] {$\mathit{false}$};
-    \draw [BddTrue] (x) -- (y);
-    \draw [BddFalse] (x) -- (false);
-    \draw [BddTrue] (y) -- (true);
-    \draw [BddFalse] (y) -- (z);
-    \draw [BddTrue] (z) -- (true);
-    \draw [BddFalse] (z) -- (false);
-  \end{tikzpicture}
-  \caption{Example BDD, representing the expression $x \wedge (y \vee z)$}
-  \label{fig:intro:example_bdd}
-\end{figure}
-
-\subsection{Memory model}
-
-{\Technique} makes several important simplifying assumptions about the
-program's memory model:
-
-\begin{itemize}
-\item
-  {\Technique} assumes that all memory accesses are issued
-  immediately, and are immediately visible to all other threads and
-  processors.  In other words, it assumes a strongly ordered memory
-  model.  This is a reasonable approximation for the AMD64
-  architecture targeted by {\implementation}\footnote{The only
-    permissible behaviour which is not modelled is that stores can be
-    reordered to after loads, and even this is extremely rare.}, but
-  would need to be reconsidered if an implementation were desired for
-  less weakly ordered systems such as IA64 or the Alpha.
-\item
-  {\Technique} assumes that the program does not use misaligned memory
-  accesses.  These are extremely rare in most programs, due to their
-  very poor performance\editorial{Cite, maybe?}, and so this is not a
-  major limitation.
-\item
-  {\Implementation} assumes that if a memory location is initialised
-  with a write of size $n$ then any subsequent loads from that
-  location will be of size $m \le n$.  In other words, it assumes that
-  any load will consume data from at most one store.  \todo{It might
-    actually be easier to remove that limitation than to justify it.}
-\end{itemize}
-
-\subsection{The happens-before graph}
-
-The happens-before graph for a parallel execution is a partial
-ordering over events in the execution, showing which events occur
-before which other events\needCite{}.  For {\technique}, these events
-are the memory-accessing states of the {\StateMachine}, and it is
-assumed that there is some total order on them
-
-
-Just say what a happens-before graph is, and give the syntax I've used
-for querying it.  Discuss full-transitive versus transitively-reduced
-graph (probably only needs a sentence).  Mention that we sometimes
-have to query happens-before edges for memory accesses which never
-actually happened, and explain what that means.
+{\Technique} also assumes that the program does not make use of any
+unaligned memory accesses.  For many architectures this would be a
+sound assumption, as most processors do not support such accesses;
+even where they are supported, they are generally very slow, and so
+most programs will avoid them wherever possible, and so this is not a
+major source of unsoundness.
 
 \subsection{Program slicing}
 
-\emph{Very} brief discussion of what program slicing actually is.  I
-don't think it's a particularly useful way of thinking about things,
-but it's what all the related work does.
+Program slicing\editorial{Cite Weiser 1984} is a family of techniques
+for extracting the parts of a program which are relevant to some
+particular behaviour.  A slice might, for instance, include all
+statements which might be involved in computing the value of some
+variable, or all of those which modify some data structure.  The core
+technique used is a form of dependency-chasing: some initial set of
+program statements are marked as necessary, then everything which
+influences one of the necessary statements is marked as necessary, and
+the process repeats until the set of necessary statements reaches a
+fixed point.  The slice then consists of all of the statements in the
+necessary set, combined so that they form a valid program.  There are
+many variants of this basic algorithm, using different definitions of
+``influence'' and different approaches for recombining the statements,
+but the intent in all cases is to form a simplified version of the
+program which can be used to more easily investigate some aspect of
+its behaviour.
 
-\section{Type of bug considered}
-\label{sect:intro:types_of_bugs}
+Program slices are conceptually very similar to {\StateMachines},
+which also approximate a program so as to allow some aspect to be more
+easily explored.  The key difference is that a classical program slice
+will be expressed in the same language as the original program,
+whereas as a {\StateMachine} translates the program's machine code
+into an analysis language.  This makes them much easier to analyse,
+but at the expense of making them more difficult to derive.
 
-While {\StateMachines} are themselves a reasonably general mechanism
-for modelling fragments of a program, {\implementation} considers only
-a restricted class of possible bugs: those where two threads are
-accessing the same structure, with one reading and one writing, and
-this concurrency causes the reading thread to crash quickly and
-recognisably.  In slightly more detail:
+\todo{This makes no sense.} The nature of the aspects to be explored
+also differs.  Most program slicing techniques slice programs
+according to simple single-threaded data flow properties, and hence
+are primarily useful for exploring single-threaded behaviour.
+{\Technique} {\StateMachines}, by contrast, are primarily useful for
+investigating cross-thread behaviour.
 
-\begin{itemize}
-\item The bug must be reproducible with only \emph{two} threads
-  interacting.  Bugs which require three or more threads are not
-  considered.  There might, of course, be additional threads in the
-  program, and this is acceptable provided that those other threads
-  are not needed to reproduce the bug.
-\item The \emph{structure} is defined quite loosely: it is the (often
-  non-contiguous) collection of memory locations which are accessed by
-  both threads.  There is no requirement that it match up with any
-  language- or programmer- level definition of structure such as
-  \verb|struct| in C or a \verb|class| in C++ (and in fact such
-  higher-level constructs do not exist in the binaries which
-  {\technique} analyses).
-\item One thread $R$ must be \emph{reading} from the structure while
-  another $W$ is \emph{writing} to it.  Bugs in which both threads are
-  simultaneously updating the same structure are not considered\smh{Is
-    this a big restriction?  Can we not frame many bugs into this
-    shape?}.  {\Technique} also assumes that the two threads
-  communicate only via memory.  These two assumptions mean that the
-  $R$ thread cannot influence the $W$ thread's behaviour in any way;
-  this is referred to as the \introduction{W isolation} property
-\item Only \emph{concurrency} bugs are considered: there must be some
-  critical sections in the $R$ and $W$ threads such that running those
-  sections atomically with respect to each other is guaranteed not to
-  crash but interleaving them might.  In a little more detail:
+\subsection{The happens-before graph}
 
-  \begin{itemize}
-  \item Running the $R$ thread's critical section atomically before
-    the $W$ thread's critical section starts must not result in a
-    crash.  This is the \introduction{R atomic} property.
-  \item Similarly, running the $R$ thread's critical section
-    atomically after the $W$ thread's critical section has completed
-    must also not crash.  This is the \introduction{W atomic}
-    property.
-  \item There must be some interleaving of the two critical sections
-    which does lead to a crash.  This is the \introduction{Crash
-      possible} property.
-  \end{itemize}
-\item The reading threads must crash \emph{quickly}.  {\Technique}
-  uses a finite \introduction{analysis window} \introduction{$\alpha$}
-  and will only consider reordering concurrent operations which occur
-  at most $\alpha$ instructions before the crash.  Bugs which require
-  knowledge of the program behaviour beyond that window cannot be
-  analysed.  Another way of thinking about this is to say that
-  {\technique} only considers bugs which can be fixed by small
-  critical sections containing fewer than $\alpha$ dynamic
-  instructions.  $\alpha$ can, in principle, be arbitrarily large, but
-  computational constraints mean that in practice it will be limited
-  to a few dozen to a few hundred instructions, depending on the
-  program to be analysed and how much information about the bug is
-  available before analysis starts.
-\item The tool\editorial{What tool?} must be able to \emph{recognise}
-  that the program has crashed.  For the purposes of my prototype
-  {\implementation}, this means that it must suffer either a fatal
-  page fault, or trigger an assertion failure, or free the same block
-  of memory twice.  This could be extended to more general classes of
-  crash using techniques such as TESLA\needCite{} or invariant
-  inference\needCite{}.
-
-  \todo{It occurs to me that it'd actually be fairly easy to add at
-    least one test which uses a programmer-provided invariant, which'd
-    make this a little bit more convincing.  The invariant language
-    would have to be fairly weak, so it wouldn't be particularly
-    *useful*, but it'd be rhetorically handy.}
-
-\end{itemize}
-
-\smh{Why is this important (or not)?  i.e. can we reduce other bugs to
-  this or extend the technique?}
-
-\todo{I did have a reference saying that some reasonable proportion of
-  real concurrency bugs falls into that category (like 30\% or so),
-  but (a) I've lost the reference, and (b) having actually played with
-  this a bit, I \emph{really} don't believe that any more.}\smh{hmm}
-
-This is clearly only a subset of possible concurrency bugs.
-Nevertheless, it does include some interesting bugs in real programs,
-and the restrictions imposed significantly reduce the cost of
-performing the analysis.  \editorial{I don't actually show that
-  restricting to two threads helps reduce cost, and doing so would be
-  a pain in the backside.  It's not even clear what it means to say
-  that requiring a recognisable crash reduces cost, since the thing
-  wouldn't even work if you didn't have that.} \todo{Need more here.}
-
-For clarity, this dissertation will, for the most part, only discuss
-this class of bugs.  Section~\ref{sect:future_work:generalising}
-considers possible ways of relaxing some of these restrictions.
-
-\todo{Might be worth explaining how to expression double-free bugs in
-  this form?}
-
-\smh{Ok -- generally decent intro missing some structure, and still
-  missing the high level story in a para -- maybe fix up fig 2.1 with
-  annotations?}
-
+\todo{I define an HB graph to be a DAG whose nodes are program events
+  and where there's an edge from A to B if A happens before B.  I
+  thought that was the standard definition, but Steve has a different
+  and more complicated one.  I should chase that to make sure I'm
+  using the term correctly.}
