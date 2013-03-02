@@ -661,7 +661,7 @@ maintaining all paths which terminate at D and which contain
 \backref{$\alpha$} or fewer instructions.  The algorithm starts by
 performing a depth-first traversal backwards through the graph from D
 until it finds an edge which closes a cycle.  In this case, that is
-the edge from C to B.  SLI will therefore break this edge by
+the edge from C to B.  {\Technique} will therefore break this edge by
 duplicating the instruction at the start of the edge, C, along with
 all of its incoming edges (in this case, just the B to C edge).  The C
 to B edge can then be redirected to be from C' to B, producing the
@@ -973,7 +973,7 @@ specified set).  This has several important implications:
   particular variable has been most recently assigned to, whereas the
   more conventional control-flow based form does not.  This would be
   an additional complication in a compiler, but is not a problem for
-  SLI, which never has to perform that conversion.
+  {\technique}, which never has to perform that conversion.
 \item
   A {\StateMachine}'s control flow graphs can be modified without
   needing to update $\Phi$ nodes.  For example, suppose that a
@@ -981,13 +981,13 @@ specified set).  This has several important implications:
   Figure~\ref{fig:ssa_cfg1}, and suppose that further analysis shows
   that the assignment of $z$ is dead.  We would like to remove the
   assignment and turn the {\StateMachine} into the one shown on the
-  right.  This is correct as-is using SLI's $\Phi$ semantics.  If a
-  simple control-flow based definition of $\Phi$ were used instead
-  then we would also need to convert the $\Phi$ node at l1 into $x_3 =
-  \Phi(x_1, x_2, x_2)$, as the l1 state now has three control-flow
-  predecessors.  There are, of course, many solutions to this problem
-  in the standard compiler literature\needCite{}, but all add
-  complexity which is unnecessary and unuseful in this context.
+  right.  This is correct as-is using {\technique}'s $\Phi$ semantics.
+  If a simple control-flow based definition of $\Phi$ were used
+  instead then we would also need to convert the $\Phi$ node at l1
+  into $x_3 = \Phi(x_1, x_2, x_2)$, as the l1 state now has three
+  control-flow predecessors.  There are, of course, many solutions to
+  this problem in the standard compiler literature\needCite{}, but all
+  add complexity which is unnecessary and unuseful in this context.
 \end{itemize}
 
 Most algorithms for converting to SSA form will work equally well with
@@ -1844,7 +1844,7 @@ difficult for a programmer to isolate and fix.  \todo{Not sure how
 
 \subsection{Symbolically executing {\StateMachines}}
 
-SLI uses a simple symbolic execution engine to evaluate
+{\Implementation} uses a simple symbolic execution engine to evaluate
 {\StateMachines} and determine when they will crash.  The details of
 this are fairly standard, and I give only a brief overview
 here\editorial{\emph{Should} only give a brief overview; this ended up
@@ -1864,11 +1864,12 @@ contains:
   A reference to the {\StateMachine}'s current (non-symbolic) state.
 \item
   The order in which temporary values in that state were assigned to.
-  As discussed in \S\ref{sect:ssa}, SLI uses a slightly unusual form
-  of single static assignment in which $\Phi$ nodes select their input
-  variable based on which was assigned to most recently, rather than
-  based on the preceding control flow, and keeping track of that
-  ordering allows that semantics to be implemented simply.
+  As discussed in \S\ref{sect:ssa}, {\technique} uses a slightly
+  unusual form of single static assignment in which $\Phi$ nodes
+  select their input variable based on which was assigned to most
+  recently, rather than based on the preceding control flow, and
+  keeping track of that ordering allows that semantics to be
+  implemented simply.
 \item
   A log of all of the memory stores issued by the {\StateMachine} so
   far.
@@ -3650,6 +3651,7 @@ might time out:
 
 
 \subsubsection{Implementing the \textbf{Succ} phase in the high-level interpreter}
+\label{sect:enforce:succ}
 
 The low-level interpreter described in Section~\ref{sect:enforce:llis}
 is both correct and conceptually simple, but impossible to implement
@@ -4170,9 +4172,9 @@ This problem was also tackled by the AutoPaG project, and the solution
 they developed is similar. \todo{Similar but not the same.  They use a
   dominator-based scheme, and hence avoid needing the global branch
   information but can end up with much larger patches and a higher
-  risk of deadlocks/starvation problems.  The original version of SLI
-  used basically the same algorithm (although I did it first); should
-  probably explain why I had to switch.}
+  risk of deadlocks/starvation problems.  The original version of
+  {\technique} used basically the same algorithm (although I did it
+  first); should probably explain why I had to switch.}
 
 An alternative approach would be to take control of the program using
 debug breakpoints rather than jump instructions.  These are either a
@@ -4206,7 +4208,7 @@ This would work, but would have a couple of important disadvantages:
   complicating the use of the generated patches.
 \end{itemize}
 
-SLI therefore generates exclusively branch-style patches.
+{\Implementation} therefore generates exclusively branch-style patches.
 
 \todo{I did implement a breakpoint-based scheme, so it might be
   interesting to actually include some numbers on their relative
@@ -4228,7 +4230,7 @@ The interpreter has access to all of the process registers and the
 stack when it gains control.  The challenge here is to locate the
 return addresses on the stack, without access to either debug symbols
 or a frame pointer, so that the function calling context can be
-properly checked.  SLI uses a static analysis, performed when
+properly checked.  {\Technique} uses a static analysis, performed when
 generating the crash enforcement plan, to solve this problem.  The
 static analyses already described are sufficient to determine the
 entry point of the function containing a given instruction pointer,
@@ -4248,17 +4250,20 @@ checked completely.  \todo{Rewrite para}
 \section{Fixing bugs using global locks}
 \label{sect:fix_global_lock}
 
-In addition to finding bugs, SLI can also be used to fix them.  The
-basic approach here is to binary patch the program to introduce a new
-global lock covering the program's relevant instructions, preventing
-them from executing in parallel and hence preventing the bug from
-occurring (assuming that the relevant instructions have been correctly
-identified).  The relevant instructions are duplicated into a binary
-patch, unrolling loops and tracing across function boundaries in a way
-which reflects the function inlining and loop unrolling performed
-during the initial CFG generation phase, and the duplicates modified
-to acquire and release the lock at appropriate points.  The original
-program is then patched to branch to the duplicates when necessary.
+In addition to finding bugs, {\technique} can also be used to fix
+them.  The basic approach here is to binary patch the program to
+introduce a new global lock covering the program's relevant
+instructions, preventing them from executing in parallel and hence
+preventing the bug from occurring (assuming that the relevant
+instructions have been correctly identified).  The relevant
+instructions are duplicated into a binary patch, unrolling loops and
+tracing across function boundaries in a way which reflects the
+function inlining and loop unrolling performed during the initial CFG
+generation phase, and the duplicates modified to acquire and release
+the lock at appropriate points.  The original program is then patched
+to branch to the duplicates when necessary.
+
+\subsection{Identifying the instructions which must be protected}
 
 The first step in producing such a fix is correctly identifying the
 instructions which must be included in the critical sections.  These
@@ -4268,13 +4273,10 @@ because some instructions in the CFG do not need to be protected, and
 ``roughly'' because some instructions not in the CFG will also be
 included in the critical section.
 
-\todo{Already explained this once in the context of building crash
-  summaries and enforcers!}
-
 As an example of the former, consider a program like this:
 
 \begin{verbatim}
-read_side() {
+crashing_thread() {
     ptr = complicated_local_calculation();
     dptr = *ptr;
     if (dptr != NULL) {
@@ -4282,24 +4284,24 @@ read_side() {
        *dptr = 5;
     }
 }
-write_side() {
+interfering_thread() {
     ptr = complicated_local_calculation();
     *ptr = NULL;
 }
 \end{verbatim}
 
-Here, the read thread computes some pointer using entirely local
+Here, the crashing thread computes some pointer using entirely local
 operations, loads from it once and then, if the result is
-non-\verb|NULL|, loads from it again and uses the resulting pointer.
-Meanwhile, the store thread sets a potentially coincident memory
-location to \verb|NULL|.  The read thread clearly has a potential
-time-of-check, time-of-use race bug.  The {\StateMachines} generated
-by {\technique} will include the buggy code itself but might also
-include part or all of \verb|complicated_local_calculation()| and a
-side-condition which requires the two pointers to match up.  This
-extra information is useful when analysing the bug
+non-\texttt{NULL}, loads from it again and uses the resulting pointer.
+Meanwhile, the interfering thread sets a potentially coincident memory
+location to \texttt{NULL}.  The crashing thread clearly has a
+potential time-of-check, time-of-use race bug.  The {\StateMachines}
+generated by {\technique} will include the buggy code itself but might
+also include part or all of \texttt|complicated\_local\_calculation()|
+and a side-condition which requires the two pointers to match up.
+This extra information is useful when analysing the bug
 (\S\ref{sect:using:check_realness}) or when attempting to reproduce it
-(\S\ref{sect:using:reproducing_bugs}) but cannot be used by this kind
+(\S\ref{sect:using:reproducing_bugs}), but cannot be used by this kind
 of instruction-level fix\footnote{But see future work for a possible
   alternative scheme which would make use of it.}, so including it in
 the fix is unhelpful and would tend to lead to unnecessarily large
@@ -4314,8 +4316,8 @@ The approach taken here is simple:
   verification condition.  These entirely capture the
   instruction-interleaving parts of the bug to be fixed, and, since
   instruction-interleaving is the only thing which can be influenced
-  by this type of patch\smh{As opposed to?}, the resulting set of
-  edges contains all of the useful information in the condition.
+  by inserting locks, the resulting set of edges contains all of the
+  useful information in the condition.
 \item
   Identify all of the CFG nodes which are mentioned in one of those
   happens-before edges.
@@ -4332,11 +4334,11 @@ involved in the interleaving which is to be prevented.
 Note that this is not guaranteed to produce an optimal selection of
 critical sections, in the sense that sections can sometimes be larger
 than is strictly necessary.  Consider, for example, a program with the
-same read side as the previous example but a write side in which the
-pointer is assigned to twice:
+same crashing thread as the previous example but an interfering thread
+in which the pointer is assigned to twice:
 
 \begin{verbatim}
-write_side() {
+interfering_thread() {
     ptr = complicated_local_calculation();
     *ptr = NULL;
     *ptr = NULL;
@@ -4347,12 +4349,13 @@ There are now two obvious ways of protecting this program:
 
 \begin{itemize}
 \item
-  Place both loads in the read side in a single critical section and
-  both stores in the write side in another one.
+  Place both loads in the crashing thread in a single critical section and
+  both stores in the interfering thread in another one.
 \item
-  Place both loads in the read side in a single critical section, but
-  give each store in the write side its own critical section.  In
-  other words, drop and re-acquire the lock in between the two stores.
+  Place both loads in the crashing side in a single critical section,
+  but give each store in the interfering thread its own critical
+  section.  In other words, drop and re-acquire the lock in between
+  the two stores.
 \end{itemize}
 
 Both approaches correctly eliminate the bug, but they will have
@@ -4360,248 +4363,394 @@ different performance characteristics.  In particular, dropping and
 re-acquiring the lock reduces the size of the critical section, which
 might improve concurrency and reduce starvation, but imposes higher
 overheads due to the greater number of lock operations.  In principle
-the happens-before graph implicit in the verification condition
-contains enough information to determine whether dropping the lock is
-safe, but, in this mode\smh{??You mean ``bug fixing mode''??}, SLI
-does not make use of this information, and always uses the former
-strategy\footnote{But see~\ref{sect:fix_from_drs} for a mode in which
-  it can use the other approach.}.
+the verification condition contains enough information to determine
+whether dropping the lock is safe, but {\technique} does not make use
+of this information, and always uses the former strategy.
 
-Once the relevant fragments of CFG have been identified, {\technique}
-must examine the machine code of the original program and effectively
-re-compile it so as to introduce the necessary synchronisation
-operations.  This is more complicated than it might at first appear,
-most importantly because the CFG fragments to be protected are taken
-from the {\StateMachines} rather than from the original program, and
-the two graphs do not match up precisely.  There are two interesting
-cases:
+\subsection{The interpreter}
 
+\todo{Rewrite paragraph.} The input to this phase of {\technique} is a
+fix plan, which consists of a set of CFG fragments such that the bug
+will be fixed if {\technique} can arrange that two fragments never run
+in parallel with each other.  The output of the phase is a modified
+version of the program which ensures just that.  To explain how this
+works, I first show how to modify a hypothetical machine-code
+interpreter to enforce the fix and then show how to convert such an
+interpreter into a compiler.  The resulting compiler generates a
+modified version of the program which enforces the plan with very low
+run-time overhead.
+
+The goal of the interpreter is to emulate the original program's
+machine code in a way which ensures that if one thread enters a
+protected CFG then no other thread is able to enter a protected CFG
+until the original thread has left the protected CFG.  There are two
+important complications here:
+                                                                                                                                                                             
 \begin{itemize}
-\item
-  The program CFG might include edges which are not present in the CFG
-  to be protected.  In that case, the patch must ensure that the lock
-  is correctly released when one of these edges is traversed before
-  returning to the unmodified program.
-\item
-  The CFG to be protected might include edges which are not present in
-  the program CFG, due to loop unrolling.  In that case, the patch
-  must, in effect, consider every possible path through the graph and
-  ensure that the lock is not dropped until they have all completed.
+\item The CFG to be protected is a fragment of the unrolled CFG used
+  when building state machines, rather than the program's actual CFG.
+  This means that one program instruction might potentially be
+  represented by several CFG nodes, and given a simple instruction
+  pointer it is not always possible to determine where in the CFG a
+  thread is currently executing.
+
+\item CFG fragments might sometimes overlap, and the interpreter must
+  ensure that the program does not allow concurrent execution until
+  every relevant fragment has finished.  At the same time, it must
+  also ensure that the program cannot acquire the same lock multiple
+  times, to avoid the risk of self-deadlocks.
 \end{itemize}
 
-As a further complication, the patch might need to protect multiple
-CFG fragments, and these fragments might in some cases overlap.  It
-must then ensure that the lock is held until every fragment has
-completed, without ever allowing a thread to acquire the lock twice
-and hence deadlock against itself.  Finally, the patch might also need
-to include additional instructions which are not part of any CFG
-fragment if the patch strategy (discussed in
-Section~\ref{sect:enforce:assign_entry_points}) added extra
-instructions to the $Cont$ set\smh{blurk!}.  The result is that the
-code in the duplicated patch fragment is not quite an exact match for
-that in the original program, even ignoring the additional lock
-acquire and release operations.
+Solving these issues is relatively simple.  The interpreter simply
+keeps track of the set of CFG nodes which each thread might
+potentially be executing and arranges to acquire the lock whenever
+this set goes from empty to non-empty and to release it whenever it
+goes from non-empty to empty.  This is analogous to the way in which
+enforcers handle ambiguity in the \textbf{Succ} phase (see
+Section~\ref{sect:enforce:succ}).
 
-The simplest way of thinking about this is to first augment the
-machine code semantics so as to include the necessary additional
-information, so that enforcing the necessary locking discipline is
-simply a matter of interpreting this enhanced semantics, and to then
-partially evaluate this interpreter to produce machine code in the
-original semantics.  The output of this partial evaluator then forms
-the bulk of the fix.
+I now give a little more detail of the interpreter.  At this stage,
+assume that the entire program is run in the interpreter; later
+sections show how to reduce the amount of the program which must be
+interpreted and eventually eliminate the interpreter completely.
 
-\smh{This is a strange way of thinking about it (to me at least).}
-
-The state of a thread in the augmented semantics consists of all of
-the state of a thread in the original semantics, including things like
-the per-thread processor registers and instruction pointer, plus a
-small amount of additional state:
+When running, the interpreter cycles repeatedly through these phases:
 
 \begin{itemize}
-\item $checkForEntry$ -- a flag indicating whether the thread needs to
-  check whether it has entered any additional CFG fragments.
-\item $locked$ -- a flag indicating whether the thread currently holds
-  the patch lock.\smh{Ugly}
-\item $\mathit{cfgNodes}$ -- a set of nodes taken from the CFG fragments
-  indicating which instructions the thread might currently be
-  executing.  This might be empty if the thread is currently executing
-  one of the additional instructions in the patch strategy's $Cont$
-  set.
+\item \textbf{CheckForEntry} The interpreter checks whether the
+  current instruction is the entry point of any other CFG fragments.
+  If it is, the relevant CFG node is added to the current set of
+  active CFG nodes.  Note that this potentially involves checking the
+  thread's function call stack in addition to its current instruction
+  pointer.  \todo{This does have an analogy in the enforcer, but I've
+    not described it.  Whoops.}
+
+\item \textbf{Lock} The interpreter now acquires the patch lock,
+  provided that it does not currently own it and the set of active CFG
+  nodes is non-empty.
+
+\item \textbf{Emul} The interpreter runs the instruction from the
+  original program, performing any necessary memory accesses or
+  register updates.  This includes calculating the new instruction
+  pointer, which then makes it trivial to calculate the new set of
+  active CFG nodes.  This is analogous to the phase of the same name
+  in the enforcer's LLI loop (see Section~\ref{sect:enforce:llis}).
+
+\item \textbf{Unlock} Finally, the interpreter can now consider
+  releasing the patch lock.  It does so if it currently holds the lock
+  and the set of active CFG nodes has become empty.  The instruction
+  cycle then restarts at \textbf{CheckForEntry}.
 \end{itemize}
 
-The $Patch$ instructions in the patch strategy are then treated as
-transitions from the normal program semantics into the augmented
-semantics.  The initial augmented state is then the state of the
-original program at the entry point, plus:
+This scheme ensures that the lock is always held when instructions
+from the original program execute if there is any possibility that the
+thread is currently executing one of the CFG fragments.  At the same
+time, it correctly ensures that the lock is never double-acquired or
+double-released.  It therefore correctly implements the desired fix,
+but at the expense of potentially very high overhead due to running
+the entire program in an interpreter.
+
+\subsection{Running unprotected code without an interpreter}
+
+The most important source of undesired overhead in this scheme is that
+the entire program must run in the interpreter, even the parts which
+are not being protected by the fix.  The common case is that the fix
+protects a very small fraction of the total instructions in the
+program, and so this is extremely inefficient.  Fortunately, it is
+also reasonably easy to fix.  Section~\ref{sect:enforce:gain_control}
+has already described a scheme for binary patching a program to gain
+control at a defined set of instructions, and this can be used
+unmodified here.  The interpreter starts in the \textbf{CheckForEntry}
+phase with an empty set of active CFG nodes and not holding the lock.
+It is then only necessary to introduce an additional \textbf{Return}
+phase in between \textbf{CheckForEntry} and \textbf{Lock} which
+transfers control from the interpreter back to the original program if
+the active CFG node set has become empty.
+
+One slight complication here is that the patch strategy might need to
+modify the program in places other than the instructions at which it
+must gain control, and so might have to extend the set of instructions
+which are to be interpreted; in the terminology of
+Section~\ref{sect:enforce:gain_control}, it might have a non-empty
+$\mathit{Cont}$ set.  If so, the implementation of the \textbf{Return}
+phase must be careful not to return to an instruction in the
+$\mathit{Cont}$ set and must instead continue interpreting.  This is
+straightforward to arrange.
+
+One possibly surprising property of this design is that, even with
+this refinement, the interpreter can still sometimes run while not
+holding the lock if the program is executing $\mathit{Cont}$
+instructions.  An alternative approach would be to simply acquire the
+lock when the interpreter starts running and release it when the
+interpreter exits.  This would be a valid approach, and would perhaps
+result in a very slightly simpler implementation, but at the expense
+of enlarging the size of the critical sections slightly.  In practice
+this decision very rarely makes any meaningful difference.  The main
+exception occurs if protecting the $\mathit{Cont}$ set would cause the
+critical section to span an entire loop rather than just a single
+iteration of it, which could potentially aggravate the liveness and
+fairness issues which are inherent to any lock-based scheme.
+
+\subsection{Recompiling the protected code with additional protection}
+
+This scheme allows the program to run at native speed when executing
+code which does not have to be protected, but still requires it to be
+interpreted when in the critical sections.  This can sometimes be an
+issue if the bug to be fixed is a rare one in a very hot path.
+{\Implementation} therefore includes a mechanism to recompile the
+protected code back into machine code with the necessary additional
+synchronisation added.  One productive way of thinking of this is to
+say that the interpreter has been supercompiled or partially evaluated
+so as to fix both the fix plan and the original program's machine
+code, leaving only the original program's external inputs unspecified.
+
+The main complication here is that the compiled fix has no good way of
+storing its state: registers and the stack are unavailable, as they
+are used by the program to be protected; main memory does not work,
+because most of the state needs to be thread-local; and anything based
+on system calls is undesirable because the state needs to be accessed
+so frequently, sometimes multiple times per instruction.  The approach
+taken by {\implementation} is to, in effect, encode the per-thread
+state into the program's instruction pointer, creating a duplicate of
+each program instruction for each interpreter state which that program
+instruction might execute in.  This is practical because the number of
+interpreter states per program instruction is usually very small,
+often just one, and so the number of duplicates is manageable.
+
+One major advantage of this instruction duplication approach is that
+the supercompiler knows, when emitting an instruction, precisely what
+state the interpreter is in, and so a quite na\"ive implementation can
+still generate reasonably efficient machine code for the interpreter
+operations.  Further, most instructions in the original program can be
+copied across without modification, and so most compiler optimisations
+applied to the original program continue to be effective in the
+patched version.
+
+One way of thinking about this is to say that the program's
+instruction pointer is replaced with a more complicated structure
+containing both the original pointer and the state of the interpreter.
+The state of the interpreter is itself a three-tuple containing the
+current set of active CFG nodes, a flag saying whether the lock is
+currently held, and the instruction cycle phase.  The interpreter
+described above shows how the original program's CFG can be combined
+with the fix plan to give a new CFG expressed in terms of these
+extended instruction pointers, and the compiler then lowers this
+extended CFG back into ordinary machine code.  The lowering process
+itself is easiest to think about as a kind of partial evaluation:
 
 \begin{itemize}
-\item $checkForEntry$ is true.
-\item $locked$ is clear.
-\item The set of CFG nodes is empty.
+\item \textbf{Lock} phases partially evaluate to either the machine
+  code for a lock operation (if the lock is not currently held and the
+  set of active CFG nodes is non-empty) or a no-op (otherwise).
+
+\item \textbf{Unlock} phases likewise evaluate to either the machine
+  code for an unlock operation or a no-op.
+\item \textbf{Return} partially evaluates to either a no-op (usually)
+  or a branch back to the original program (if the set of active CFG
+  nodes is empty and the current instruction pointer is not in
+  $\mathit{Cont}$).
+
+\item \textbf{CheckForEntry} evaluates to a context validation tree,
+  discussed below.
+
+\item \textbf{Issue} will usually partially evaluate to the program's
+  original instruction, which can be emitted unchanged into the final
+  patch.  The two exceptions are instruction pointer-relative
+  addressing modes, which must be re-encoded to still refer to the
+  same data after moving the instruction, and control flow transfer
+  instructions, which are discussed below.
 \end{itemize}
 
-Conceptually, the patch then takes control of the program and
-interprets it using the augmented semantics.  Such an interpreter
-would be quite simple:
+The result of partially evaluating the nodes in the extended CFG is a
+set of fragments of machine code which can then be stitched back
+together to form the core of the new patch.
+
+\subsection{Context validation trees}
+
+The \textbf{CheckForEntry} phase is responsible for checking whether
+the program thread has just entered the start of a new protected CFG
+fragment and extending the set of active CFG nodes if appropriate.
+This obviously involves checking whether the current instruction
+pointer matches with any of those entry-point CFG nodes, and that part
+of the check is very easy.  More difficult is checking the
+instruction's calling context.  {\Technique} can handle some
+cross-function bug behaviour, which can sometimes lead to instructions
+being protected in different ways depending on which function called
+them.  This calling context is expressed as a list of return addresses
+$ra_1$, $ra_2$, $\ldots$, $ra_n$, where $ra_1$ is the return address
+of the current function, $ra_2$ the return address of the calling
+function, $ra_3$ the return address of that function's caller, and so
+forth.  The \textbf{CheckForEntry} phase must check that the context
+matches in addition to checking the raw instruction pointer.  There
+are a number of important complications in doing so:
 
 \begin{itemize}
-\item[\textbf{CheckForEntry}] If the $checkForEntry$ flag is set then the
-  interpreter would examine the current call stack and the possible
-  set of CFG fragment entry points to determine whether any new CFG
-  fragments have started.  If so, the relevant CFG nodes added to
-  $\mathit{cfgNodes}$.  In either case, $checkForEntry$ is cleared.
-\item[\textbf{Return}] The interpreter would then consider returning
-  to the program's normal semantics.  This is safe if $\mathit{cfgNodes}$ is
-  empty and the instruction pointer is not part of the $Cont$
-  set\footnote{Note that the thread is guaranteed not to be holding
-    the lock at this point.}  The transfer itself is quite simple:
-  just branch to the relevant instruction pointer in the original
-  program.
-\item[\textbf{Lock}] The interpreter now acquires the lock, provided
-  that $\mathit{cfgNodes}$ is non-empty and $locked$ is currently clear,
-  setting $locked$ as it does so.
-\item[\textbf{Issue}] The interpreter emulates the program's original
-  instruction, using the un-augmented semantics, writing back any
-  required changes to memory or the process registers.  This will
-  include updating the thread's instruction pointer, and the
-  interpreter can then easily use this to determine which CFG nodes
-  the thread might execute next and hence the new value of $\mathit{cfgNodes}$.
-\item[\textbf{Unlock}] Finally, the interpreter would check whether it
-  needs to release the lock.  It should do so whenever $locked$ is set
-  and $\mathit{cfgNodes}$ is empty, clearing $locked$ as it does so.  The
-  interpreter then returns to the \textbf{CheckForEntry} state and the
-  cycle begins again.
+\item The program to be modified might lack frame pointers and debug
+  information, and this can make it non-trivial to locate the return
+  address on the stack.  This has already been discussed on pages 24
+  and 25, in the context of extracting call stacks from core dumps,
+  and essentially the same algorithm works here as well.  This allows
+  SLI to determine, for each return address in a call context, where
+  on the stack that return address is expected to be found, as an
+  offset from the current stack pointer.
+\item It is not necessarily safe to access every stack location
+  involved in a calling context.  In particular, if a particularly
+  deep context is checked while the program is actually in a
+  particularly shallow one then the addresses at the top of the deep
+  context might be beyond the limit of the processor stack, and so
+  accessing them would risk causing a segmentation violation (XXX or
+  whatever the platform equivalent is).  This problem can be avoided
+  if \textbf{CheckForEntry} is careful to always check call contexts
+  starting at the bottom (i.e. the return address location nearest to
+  the current stack pointer).  This is safe because if $ra_i$ matches
+  the desired value then that ensures that all of the functions up to
+  $i$ in the call chain, which means that $ra_{i+1}$ will be in the
+  expected place on the stack and can be accessed without fear of a
+  segmentation fault\footnote{The only exception here is if there is
+    some function on the stack which cannot return without immediately
+    underflowing the stack.  The only common functions of that form,
+    at least on Linux, are \texttt{\_\_libc\_start\_main} and
+    \texttt{start\_thread}, both of which are in libc, and SLI will
+    not attempt to fix bugs in system libraries.}
+
+  \todo{This is a really obvious point which I'm explaining really
+    badly.}
+\item It might sometimes be that one calling context is a subset of
+  another.  For example, it might be that instruction A should always
+  start CFG node X, and should in addition start CFG node Y if its
+  return address is B.  \textbf{CheckForEntry} must correctly handle
+  this case.
+\item And, of course, we would like the context checking to itself
+  have minimal overhead.  In particular, if the currently-active CFG
+  node set is empty then that will constrain the call contexts which
+  the thread might currently occupy, and it would be useful to avoid
+  redundantly testing stack locations whose values are already fixed
+  by these constraints.
 \end{itemize}
+
+The algorithm used by the interpreter is then reasonably simple:                                                                                                             
+
+\begin{enumerate}
+\item Collect up all of the possible entry point CFG nodes for this
+  instruction, along with their call contexts.  For each return
+  address in each call context, calculate the location on the stack at
+  which the return address is expected to be found.
+
+  Note that all of the entry points in this set will be for the same
+  instruction, and hence the immediate return address will be in the
+  same stack location.
+
+\item Calculate the context which is implied by the currently-active
+  CFG node set.  The design of the interpreter ensures that all of the
+  contexts associated with nodes in the active set will match the
+  current context, in the sense that all of the return addresses which
+  are mentioned will match the current contents of the stack, but they
+  will not all necessarily be the same, as some contexts might include
+  more return addresses than others.  The context implied by the
+  active set is then the longest context associated with any node in
+  the set (i.e. the one with the most return addresses).
   
-Such an interpreter would correctly enforce the desired lock
-discipline, in the sense that the lock would always be held whenever
-the program executes one of the CFG fragments which are to be
-protected, but would have two major disadvantages:
+  Note that the implied context is for the same instruction as the
+  possible entry point contexts, and so its immediate return address
+  will be in the same stack location as the immediate return address
+  of the entry point contexts.
+  
+\item This implied context is used to filter the set of possible entry
+  points.  Each return address in the implied context is considered in
+  turn and compared to the first return address in each entry point
+  context.  If they match then that return address of the entry point
+  context will definitely match with the contents of the run-time
+  stack, and can hence be discarded.  If they do not match then it
+  will definitely not match, and so the entry point must be discarded.
 
-\begin{itemize}
-\item Emulating machine code instructions is usually quite slow, which
-  could lead to unnecessarily high performance overhead.
-\item Instruction emulators are extremely complex pieces of code, and
-  so it is difficult to have complete confidence that the fix does not
-  change the program's behaviour in unintended ways.
-\end{itemize}
+  Note that all of the addresses which are discard must match, across
+  all possible entry point contexts and the implied context.  This
+  means that they refer (\todo{in some sense}) to the same
+  instruction, and hence have the same offset to the next stack
+  location to test, and so inductively it continues to be the case
+  that the first entry in each context tests the same stack location.
+  \todo{That's possibly harder to understand than is justified by its
+    importance.}
 
-Both of these disadvantages are shared with the use of an interpreter
-in crash enforcers, but are far more serious here, as crash enforcers
-are intended as temporary debug aids whereas the generated fixes might
-be deployed in production environments for significant amounts of time
-before a real fix becomes available.  {\Technique} therefore refines
-on this interpreter scheme by partially evaluating the
-interpreter\needCite{} back into machine code in the unaugmented
-semantics, and it is the result of this partial evaluation which forms
-the body of the patch.  In effect, the augmented state is encoded into
-the instruction pointer, allowing the patch to emulate the interpreter
-without it ever needing to be present.  Updating part of the augmented
-state then becomes a simple branch instruction.  None of the augmented
-interpreter state is ever stored in memory or processor registers,
-minimising the unnecessary perturbation of the program.
+  If any possible entry point contexts become empty then that implies
+  that the entire context would match completely, and so the relevant
+  CFG node is added to the active CFG nodes set.  If the possible
+  entry points set itself becomes empty then the
+  \textbf{CheckForEntry} phase is finished and the interpreter moves
+  on to the |Return| phase.
 
-In a little more detail:
+\item At this point it is necessary to check the program's actual
+  stack.  The interpreter fetches the stack location for the next
+  return address to check and uses the value of that location to
+  refine the set of possible entry points in exactly the same way as
+  it would for stack locations in the implied context.  This repeats
+  until the set of possible entry points becomes empty, at which point
+  the interpreter can move on to the \textbf{Return} phase.
+\end{enumerate}
+  
+As advertised, this algorithm walks the call stack in the correct
+order and avoids redundantly testing stack locations whose value is
+implied by the active node set.  It can also be easily supercompiled,
+specialising it for the set of currently-active nodes and the set of
+possible entry points.  The first three steps in the algorithm are
+completely unchanged, except that they run at compile time rather than
+at runtime.  The final step is replaced with a tree of machine code
+fragments where the internal nodes are n-way tests on a stack location
+and the leaves are branches to the relevant \textbf{Return} phase.
+\todo{Might need some more detail there?  It's pretty much just a SMOP
+  at this point, but perhaps that's non-obvious.}
 
-\begin{itemize}
-\item The \textbf{CheckForEntry} state partially evaluates to a stack
-  context validation tree, as discussed in \todo{...}.  The leaves of
-  this validation tree will contain branches to augmented instructions
-  in the \textbf{Return} state with an appropriately-augmented
-  $\mathit{cfgNodes}$ set\editorial{The \textbf{Return} state will then
-    immediately discover that $\mathit{cfgNodes}$ is non-empty and move to
-    \textbf{Lock}, but actually saying that makes the parallels with
-    the interpreter a bit less obvious.}.
+\subsection{The stack red zone}
 
-  The current (unaugmented) instruction pointer and current $\mathit{cfgNodes}$
-  set usually place significant constraints on the set of entry points
-  which the thread might currently be executing, and so the validation
-  tree can often itself be partially evaluated to determine precisely
-  which CFG nodes must be executed next.  In that case, the tree is
-  replaced with a simple branch instruction.
-\item \textbf{Lock} and \textbf{Unlock} states partially evaluate to a
-  possible call to a lock acquire or release function, as appropriate,
-  followed by a simple branch to the next state.
-\item \textbf{Return} states partially evaluate to either a branch
-  back to the original program code, if $\mathit{cfgNodes}$ is empty and the
-  address to return to is not in the patch strategy's $Cont$ set, or a
-  branch to the \textbf{Issue} state otherwise.
-\item Most of the time, the \textbf{Issue} state partially evaluates
-  to the relevant instruction of the original program which can
-  execute in the augmented semantics without modification.  The main
-  exceptions are instruction pointer-relative data addressing modes,
-  which must be re-encoded to reference the correct data relative to
-  the new instruction pointer, and control flow instructions, which
-  are discussed below.  Assuming that this is not a control flow
-  operations, the state updates $\mathit{cfgNodes}$ to contain all of the CFG
-  nodes which are successors of current members of $\mathit{cfgNodes}$ and
-  whose instruction pointer matches that of the desired successor
-  instruction and then returns to state \textbf{CheckForEntry}.
-\end{itemize}
+Some ABIs, including that used in AMD64 Linux, allow programs to use a
+small region immediately below the stack for temporary values.  This
+region is known as the red zone.  In order to use the stack (e.g. when
+calling into lock acquire or release functions) the patch must first
+adjust the stack pointer so as to leave this red zone, and must ensure
+that it restores the red zone before returning to normal operation.
+At the same time, we would like to avoid redundantly clearing and
+restoring the red zone when not necessary.  {\Implementation}
+therefore extends the interpreter state with an additional field
+indicating any manipulations which the patch has made to the program
+stack, with the obvious matching changes to the compiler.  This makes
+it trivial to arrange to clear and restore the red zone precisely when
+necessary.  Saving and restoring the flags register is handled in a
+similar way.
 
-Partially evaluating one augmented state produces a small fragment of
-machine code and a set of successor augmented states.  Building the
-patch then amounts to initialising a queue of states with the initial
-state and then iteratively selecting a state from the queue, partially
-evaluating it, placing the new states in the queue, and continuing
-until no further states need to be generated.  The machine code
-fragments can then be stitched together to produce the final patch.
+This is not, by itself, a particularly important optimisation,
+although it can sometimes save a few instructions.  More important is
+that correct stack handling is critical to correctly handling indirect
+control flow operations, discussed in the next section.
 
-As a minor optimisation, {\implementation} eliminates branch
-instructions which target the immediately following instruction.
+\subsection{Control flow instructions}
 
-One non-obvious complication here is that calling the lock acquire and
-release functions is not completely trivial, due to the presence of a
-stack red zone in the AMD64 ABI\needCite{}.  This is a 128 byte region
-immediately below the stack pointer which is available for program
-use.  It is important that the generated patch not corrupt values in
-this region, which means that the patch cannot save clobbered
-registers by simply pushing them on the stack as a patch to an i386
-program might.  It must instead first clear the red zone from the
-stack by adjusting the RSP register and then restore it later before
-executing any instructions from the original program which depend on
-it.  At the same time, we would like to avoid redundant clearing and
-restoring the red zone more often than is strictly necessary.
-{\Implementation} therefore extends the augmented state with an
-additional field, $redzone$, indicating whether the red zone has been
-cleared, allowing red zone clearing to be performed precisely when
-necessary.
+\todo{Say explicitly that this is only an issue for the compiler;
+  trivial in the interpreter.}
 
-\todo{Move this para to be later.}\smh{Yes} One concern here might be
-that modifying the program's stack in this way might confuse another
-thread which is simultaneously examining the stack.  Such cross-stack
-accesses are rare in most programs anyway, and in any case are handled
-correctly for correct programs here because the modified stack pointer
-never escapes into any of the original program's code.  This means
-that the modifying thread will not be able to determine that
-additional stack space has been allocated, and so will only be able to
-tell that the stack has been modified if it is accessing what is, as
-far as it can tell, memory past the end of the stack.  This is not
-allowed by the ABI, and so correct programs will not do it.  You might
-suspect that operating system introspection services such as
-\verb|ptrace| would allow the remote thread to tell that the stack
-pointer register has been modified, but this is highly unlikely, at
-least on modern versions of Linux, which prohibit one thread in a
-program from calling \verb|ptrace| on another\needCite{}.  The remote
-thread would therefore need to coordinate the \verb|ptrace| operation
-with another process, and such an unlikely configuration is ignored
-here.  {\Technique} does not claim to be able to protect programs
-which are actively trying to avoid its protection, and so the fact
-that the generated patches misbehave on some actively malicious
-program is not a problem such behaviour is sufficiently rare in real
-programs.  \todo{Signal handlers can also leak the fact that we've
-  extended the stack.  Also need to talk about why there's no
-  realistic risk of running out of stack space here.}
+Most of the program's original instructions are copied into the patch
+verbatim as part of the \textbf{Issue} phase.  The main exceptions are
+control flow instructions, which set the instruction pointer to some
+other value.  If these were included verbatim in the patch then
+{\implementation} would lose control of the program's execution,
+preventing it from applying the necessary concurrency protections.
 
-Control flow operations are not completely trivial to represent in
-this model.  Direct control flow, where the target of the control flow
-transfer is immediately apparent from the instruction itself, is
-relatively easy and can be handled by comparing the target address to
-the possible successors of all of the CFG nodes in $\mathit{cfgNodes}$ and
-generating a new successor state with $\mathit{cfgNodes}$ appropriately
-updated.  Indirect control flow is more difficult and requires run
-time validation of the target address.  There are three main cases to
-consider: indirect jumps, indirect calls, and return instructions.
+The important part here is determining which CFG nodes should be in
+the active set after the control flow instruction executes.  For
+direct branches, this is reasonably straightforward, as the target of
+the branch is apparent in the instruction itself and can be easily
+compared to the active node set and the CFG fragment to be protected
+in order to find the new set of active nodes.  Indirect branches are
+more difficult, as the target of the branch is not available until
+runtime.
+                                                                                                                                                                                                                                 
+\todo{Discussion about how to handle the various types of computed
+  branches goes here.  Basically, pages 113 to 117.  I could probably
+  drop the bits about the branch predictor, but there definitely needs
+  to be something about indirect branches.  If nothing else, it was by
+  quite a margin the part of the fix generating tool which required
+  the most thought to implement, and it was certainly the most fun bit
+  of code to write.}
+                                                 
 
 \paragraph{Indirect jump instructions,} which simply set the instruction pointer
 to a calculated value\smh{Not a sentence.}.  In order to partially
@@ -4808,194 +4957,102 @@ restores the red zone, and finally issues a normal return instruction
 to return to the original program.  No particular special handling is
 required.
 
+%% \todo{Move this para to be later.}\smh{Yes} One concern here might be
+%% that modifying the program's stack in this way might confuse another
+%% thread which is simultaneously examining the stack.  Such cross-stack
+%% accesses are rare in most programs anyway, and in any case are handled
+%% correctly for correct programs here because the modified stack pointer
+%% never escapes into any of the original program's code.  This means
+%% that the modifying thread will not be able to determine that
+%% additional stack space has been allocated, and so will only be able to
+%% tell that the stack has been modified if it is accessing what is, as
+%% far as it can tell, memory past the end of the stack.  This is not
+%% allowed by the ABI, and so correct programs will not do it.  You might
+%% suspect that operating system introspection services such as
+%% \verb|ptrace| would allow the remote thread to tell that the stack
+%% pointer register has been modified, but this is highly unlikely, at
+%% least on modern versions of Linux, which prohibit one thread in a
+%% program from calling \verb|ptrace| on another\needCite{}.  The remote
+%% thread would therefore need to coordinate the \verb|ptrace| operation
+%% with another process, and such an unlikely configuration is ignored
+%% here.  {\Technique} does not claim to be able to protect programs
+%% which are actively trying to avoid its protection, and so the fact
+%% that the generated patches misbehave on some actively malicious
+%% program is not a problem such behaviour is sufficiently rare in real
+%% programs.  \todo{Signal handlers can also leak the fact that we've
+%%   extended the stack.  Also need to talk about why there's no
+%%   realistic risk of running out of stack space here.}
 
-The result of all of these manipulations is that {\technique} is able
-to maintain control of the program when necessary, and transfer back
-to the original program seamlessly when control is no longer
-necessary, without causing excessive damage to the processor's branch
-predictor in the common case.\smh{How important is this?  Is a fixed
-  prog that's 10\% slower suckey?  ok?}
 
-These control-flow considerations somewhat complicate the partial
-evaluator.  The complete thing looks like this:
 
-\begin{itemize}
-\item Certain kinds of \textbf{Redzone} handling are performed early
-  in the partial evaluation process.  In particular:
+%% The result of all of these manipulations is that {\technique} is able
+%% to maintain control of the program when necessary, and transfer back
+%% to the original program seamlessly when control is no longer
+%% necessary, without causing excessive damage to the processor's branch
+%% predictor in the common case.\smh{How important is this?  Is a fixed
+%%   prog that's 10\% slower suckey?  ok?}
+
+%% These control-flow considerations somewhat complicate the partial
+%% evaluator.  The complete thing looks like this:
+
+%% \begin{itemize}
+%% \item Certain kinds of \textbf{Redzone} handling are performed early
+%%   in the partial evaluation process.  In particular:
   
-  \begin{itemize}
-  \item If $redzone = popreg$, the partial evaluator emits the
-    instruction \verb|pop %rdi| and sets $redzone$ to $simple$.  The
-    value of \verb|rdi| is restored and the patch is left outside the
-    red zone.
-  \item If $redzone = finishCall(ra)$, the partial evaluator emits the
-    sequence \verb|pop %rdi; lea 0x80(%rsp), %rsp; pushq $ra| and sets
-    $redzone$ to $none$.  \verb|rdi| is restored, the red zone is
-    restored, and the return address is pushed.  The patch is now in
-    the red zone.  An alternative design would have been to leave the
-    patch outside of the red zone and track that eight bytes of the
-    zone have been consumed by the return address, which might
-    simplify some patches; {\implementation} does not do so purely to
-    keep the implementation reasonably simple.
-  \item If $redzone = ret$, the partial evaluator emits the sequence
-    \verb|lea 0x88(%rsp), %rsp| and sets $redzone$ to $none$.  The red
-    zone is restored and the return address popped.  As with the
-    $finishCall$ case, it would be possible to keep the patch out of
-    the red zone here at the expense of slightly greater complexity,
-    but {\implementation} does not attempt to do so.
-  \item $redzone = simple$ is left unchanged.
-  \end{itemize}
-\item \textbf{CheckForEntry}, \textbf{Lock}, \textbf{Unlock} and
-  \textbf{Return} are unchanged, beyond avoiding clearing the red zone
-  if $redzone = simple$ and setting $redzone$ to $simple$ when it does
-  need to clear the zone.
-\item \textbf{Issue} has to be extended with the final component of
-  red zone handling.  In particular, if $redzone \not= none$ and the
-  instruction to be issued might access the stack then the red zone
-  must be restored before the instruction executes.  At this stage,
-  the only possible values of $redzone$ are $none$ and $simple$, so
-  this can be accomplished with a simple \verb|lea 0x80(%rsp), %rsp|
-  instruction.  Also, the state now branches to \textbf{Redzone}
-  rather than \textbf{CheckForEntry}.  Apart from that, the handling
-  of the \textbf{Issue} state is unchanged.
-\end{itemize}
+%%   \begin{itemize}
+%%   \item If $redzone = popreg$, the partial evaluator emits the
+%%     instruction \verb|pop %rdi| and sets $redzone$ to $simple$.  The
+%%     value of \verb|rdi| is restored and the patch is left outside the
+%%     red zone.
+%%   \item If $redzone = finishCall(ra)$, the partial evaluator emits the
+%%     sequence \verb|pop %rdi; lea 0x80(%rsp), %rsp; pushq $ra| and sets
+%%     $redzone$ to $none$.  \verb|rdi| is restored, the red zone is
+%%     restored, and the return address is pushed.  The patch is now in
+%%     the red zone.  An alternative design would have been to leave the
+%%     patch outside of the red zone and track that eight bytes of the
+%%     zone have been consumed by the return address, which might
+%%     simplify some patches; {\implementation} does not do so purely to
+%%     keep the implementation reasonably simple.
+%%   \item If $redzone = ret$, the partial evaluator emits the sequence
+%%     \verb|lea 0x88(%rsp), %rsp| and sets $redzone$ to $none$.  The red
+%%     zone is restored and the return address popped.  As with the
+%%     $finishCall$ case, it would be possible to keep the patch out of
+%%     the red zone here at the expense of slightly greater complexity,
+%%     but {\implementation} does not attempt to do so.
+%%   \item $redzone = simple$ is left unchanged.
+%%   \end{itemize}
+%% \item \textbf{CheckForEntry}, \textbf{Lock}, \textbf{Unlock} and
+%%   \textbf{Return} are unchanged, beyond avoiding clearing the red zone
+%%   if $redzone = simple$ and setting $redzone$ to $simple$ when it does
+%%   need to clear the zone.
+%% \item \textbf{Issue} has to be extended with the final component of
+%%   red zone handling.  In particular, if $redzone \not= none$ and the
+%%   instruction to be issued might access the stack then the red zone
+%%   must be restored before the instruction executes.  At this stage,
+%%   the only possible values of $redzone$ are $none$ and $simple$, so
+%%   this can be accomplished with a simple \verb|lea 0x80(%rsp), %rsp|
+%%   instruction.  Also, the state now branches to \textbf{Redzone}
+%%   rather than \textbf{CheckForEntry}.  Apart from that, the handling
+%%   of the \textbf{Issue} state is unchanged.
+%% \end{itemize}
 
-Once all of the necessary augmented states have been partially
-evaluated the resulting machine code fragments can be stitched back
-together to form the final patch body.  The original program is then
-modified to branch to this patch body at all of the instructions given
-in the patch strategy's $Patch$ set.  The ultimate result is that the
-CFG fragments never execute in parallel, completely fixing the bug
-with, usually, acceptably low overhead.
+%% Once all of the necessary augmented states have been partially
+%% evaluated the resulting machine code fragments can be stitched back
+%% together to form the final patch body.  The original program is then
+%% modified to branch to this patch body at all of the instructions given
+%% in the patch strategy's $Patch$ set.  The ultimate result is that the
+%% CFG fragments never execute in parallel, completely fixing the bug
+%% with, usually, acceptably low overhead.
 
 
-\todo{Might want another example here.}
+%% \todo{Might want another example here.}
 
-\todo{I've avoided talking about the flags register here, because that
-  makes everything much more complicated and this is pretty fiddly as
-  it is.  Not sure if I can get away with that.}\smh{In general you
-  can mention something at a reasonable level of abstraction without
-  needing to provide every detail.}
+%% \todo{I've avoided talking about the flags register here, because that
+%%   makes everything much more complicated and this is pretty fiddly as
+%%   it is.  Not sure if I can get away with that.}\smh{In general you
+%%   can mention something at a reasonable level of abstraction without
+%%   needing to provide every detail.}
 
-\subsection{Building context validation trees}
-\todo{This is a bit of a mess.}
-
-One important component of the \textbf{CheckForEntryState} which is
-not discussed above is checking whether the current thread's call
-stack matches up with that of any CFG entry points, and hence whether
-additional nodes need to be added to the $\mathit{cfgNodes}$ set.
-{\Technique} must generate machine code which will perform this check
-and branch to an appropriate augmented label according to the result.
-
-The first step of building the validation tree is to convert the set
-of entry points into a mapping from stack contexts to CFG nodes.  A
-stack context here is a list of $(offset, value)$ pairs which give an
-offset from the current stack pointer and a value which must be
-present at that offset.  This is straightforward given the call stack
-in the entry point and the algorithm for extracting the return address
-of a function given in Section~\ref{sect:using:find_return_address}.
-
-The next step is to emit machine code to compare the current stack to
-these sets of stack contexts and branch to an appropriate label in the
-augmented context.  This is less straightforward, for several reasons:
-
-\begin{itemize}
-\item
-  It might be that several contexts match at the same time.
-\item
-  The validator must be careful not to access any memory outside of
-  the stack.  In particular, if one context pushes a ten megabyte
-  frame on the stack, say, the validator should not blindly access
-  memory at RSP plus ten megabytes until it is confident that the
-  stack actually extends that far.
-\item
-  Ideally, the validation logic would also be reasonably efficient and
-  avoid validating a single stack location more than once.
-\end{itemize}
-
-As usual, I first present an interpreter-style solution to this
-problem before explaining how to convert it a compiler.  The
-interpreter-style version is quite easy:
-
-\begin{algorithmic}[1]
-  \Function{validate}{$inp$: \{(stack context, node)\}, $start$: label $\rightarrow$ label}
-    \State {$start.cfgNodes \gets start.cfgNodes \cup \{n \mid (\varnothing, n) \in inp\}$}
-    \State {$inp \gets$ all members of inp with a non-empty context}
-    \If {$inp$ is empty}
-      \State \Return $start$
-    \EndIf
-    \State {$nextOffset \gets \min \{e.ctxt[0].offset \mid e \in inp\}$}
-    \For {$\{nextVal \mid (nextOffset, nextVal) \in inp\}$}
-      \If {$\textrm{memory at } rsp + nextOffset = nextVal$}
-        \State {$inp \gets \{(ctxt,label) \mid (ctxt,label) \in inp,$}
-        \Statex {\hspace{58mm}$ctxt[0].offset \not= nextOffset\} \cup$}
-        \Statex {\hspace{31mm}$\{(ctxt[1:], label) \mid (ctxt,label) \in inp,$}
-        \Statex {\hspace{64mm}$ctxt[0].offset = nextOffset,$}
-        \Statex {\hspace{64mm}$ctxt[0].value = nextVal\}$}
-        \State \Return $\textsc{validate}(inp, start)$
-      \EndIf
-    \EndFor
-    \State {$inp \gets \{(ctxt,label) \mid (ctxt,label) \in inp,ctxt[0].offset \not= nextOffset\}$}
-    \State \Return $\textsc{validate}(inp, start)$
-  \EndFunction
-\end{algorithmic}
-
-The arguments to \textsc{validate} are a set of pairs of stack
-contexts and nodes, specifying which CFG nodes should be started for
-in which stack contexts, and a starting label which is a state in the
-augmented semantics.  The result is a new state in the augmented
-semantics.  The function starts by starting any CFG nodes whose
-context is empty (line 2).  If this means that no more nodes need to
-be checked, the algorithm is finished and returns (line 5).
-Otherwise, it picks the next offset to validate (line 7) and iterates
-over every possible value of that offset (line 8).  For each one, it
-compares the actual contents of the stack to the expected value (line
-9) and, if it matches, advances the relevant contexts (line 10) and
-recurses (line 11).  If none of the contexts match then $inp$ is
-restricted to only those contexts which do not test this offset (line
-14) and the function again recurses (line 15).
-
-Line 10 perhaps needs further explanation.  The intended notation here
-is that $ctxt[0]$ is the first entry in the context list while
-$ctxt[1:]$ is the context list with the first entry
-removed\footnote{This notation is taken from Python\needCite{}.}.  The
-line therefore selects all of the entries in $inp$ which do not need
-to perform any checks on offset $nextOffset$ unchanged and all of the
-entries which require $nextOffset$ to be $nextVal$ with that part of
-the context removed.  Any entries which require $nextOffset$ to be
-something other than $nextVal$ are discarded.
-
-The only place in which this algorithm touches program memory, and
-hence the only place in which it might touch bad memory and cause a
-crash, is line 9.  This is safe because $nextOffset$ is the smallest
-offset in some context.  This means that it is the location of the
-return address of some function and, by construction, the algorithm
-has already validated that that function is on the stack, and so the
-return address definitely exists.
-
-Converting this interpreter to a compiler is then very simple.  The
-idea is to build a mapping from values of the arguments to
-\textsc{validate} to fragments of machine code such that the fragment
-implements \textsc{validate} and to then stitch these fragments
-together:
-
-\begin{itemize}
-\item The \textbf{return} statement on line 5 emits a branch to a
-  branch to the instruction $start$ in the augmented semantics.
-\item The \textbf{if} block from lines 9 to 12 emits a conditional
-  branch to the validation fragment given by the new values of $start$
-  and $inp$.
-\item The tail call on line 15 is likewise emits an unconditional
-  branch to the validation fragment given by the new values of $start$
-  and $inp$.
-\end{itemize}
-
-The resulting machine code is structured as a tree whose internal
-nodes are tests of locations on the stack and whose leaves are
-branches into the augmented semantics.
-
-\todo{Example, maybe?}\smh{Hell yes!! (or just leave out the whole
-  section?)}
 
 \subsection{Other ways of fixing the bugs}
 \todo{I've come up with an algorithm for doing this using a message
