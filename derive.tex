@@ -4046,22 +4046,20 @@ sufficient to evaluate the side-condition\editorial{Not sure how clear
 \section{Gaining control of a running program}
 \label{sect:enforce:gain_control}
 
-Regardless of whether the plan is to be interpreted or compiled, the
-next step is to arrange to gain control of the program at appropriate
-points, meaning any instruction which might be the start of one of the
-CFG fragments.  For clarity of exposition, I here assume that the plan
-is to be interpreted rather than compiled; the algorithm used for
-compiled enforcers is essentially identical. {\Implementation} does so
-by modifying the original program to contain branches into either the
-plan interpreter where necessary.  This has very low runtime overhead
-and avoids excessively permuting the program's state, but has one
-critical disadvantage: the instruction at which {\implementation}
-needs to gain control might be smaller than a branch instruction, and
-so inserting the branch might cause additional instructions in the
-program binary to be corrupted.  {\Implementation} must then ensure
-that the program never attempts to execute one of these corrupted
-instructions.  For performance reasons, we would also like to minimise
-the number of instructions which must be run in the interpreter.
+Section~\ref{sect:reproducing_bugs} describes how to make bugs more
+likely to reproduce, assuming that it can gain control of the program
+at any point.  This section describes one possible way of doing so.
+{\Implementation} does so by modifying the original program to contain
+branches into the plan interpreter where necessary.  This has very low
+runtime overhead and avoids excessively permuting the program's state,
+but has one critical disadvantage: the instruction at which
+{\implementation} needs to gain control might be smaller than a branch
+instruction, and so inserting the branch might cause additional
+instructions in the program binary to be corrupted.  {\Implementation}
+must then ensure that the program never attempts to execute one of
+these corrupted instructions.  For performance reasons, we would also
+like to minimise the number of instructions which must be run in the
+interpreter.
 
 This is most easily understood as a kind of search problem.  The
 algorithm starts in a state in which the original program is not
@@ -4072,17 +4070,17 @@ never to branch to a corrupted instruction.  More explicitly, these
 states consist of three sets:
 
 \begin{itemize}
-\item $Patch$ --- instructions at which we have decided to place a
+\item $\mathit{Patch}$ --- instructions at which we have decided to place a
   branch instruction.
-\item $Cont$ --- instructions which might not themselves be patched,
-  but which must be processed in the interpreter.  The program will
-  not branch to the interpreter when it encounters one of these
-  instructions, but if the interpreter has already started when one
-  needs to be run then the interpreter will continue, even if that
-  means leaving the CFG fragments described in the main plan.
-\item $MustInterpret$ --- instructions where the plan requires us to
-  gain control, but where the patches described in this state would be
-  insufficient to do so.
+\item $\mathit{Cont}$ --- instructions which might not themselves be
+  patched, but which must be processed in the interpreter.  The
+  program will not branch to the interpreter when it encounters one of
+  these instructions, but if the interpreter has already started when
+  one needs to be run then the interpreter will continue, even if the
+  enforcement plan itself does not require that.
+\item $\mathit{MustInterpret}$ --- instructions where the enforcement
+  plan requires us to gain control, but where the patches described in
+  this state would be insufficient to do so.
 \end{itemize}
 
 The search process then generates additional states according to two
@@ -4090,39 +4088,42 @@ rules:
 
 \begin{itemize}
 \item
-  \textbf{PatchDirect} An instruction is removed from $MustInterpret$
-  and added to $Patch$.  The analysis then examines the instructions
-  which would be corrupted by that new entry point to determine
-  whether there are any potential branches to them and, if so, adds
-  those branches to $MustInterpret$.  The corrupted instructions are
-  themselves added to $Cont$.
+  \textbf{PatchDirect} An instruction is removed from
+  $\mathit{MustInterpret}$ and added to $\mathit{Patch}$.  The
+  analysis then examines the instructions which would be corrupted by
+  that new entry point to determine whether there are any potential
+  branches to them and, if so, adds those branches to
+  $\mathit{MustInterpret}$.  The corrupted instructions are themselves
+  added to $\mathit{Cont}$.
 
-  This rule is only valid when the existing $Patch$ set does not
-  itself contain any patch operations which would overlap with the new
-  patch point, as these branch instructions would otherwise corrupt
-  each other and lead to an unrealisable solution.
+  This rule is only valid when the existing $\mathit{Patch}$ set does
+  not itself contain any patch operations which would overlap with the
+  new patch point, as these branch instructions would otherwise
+  corrupt each other and lead to an unrealisable solution.
 \item
   \textbf{Prefix} As with \textbf{PatchDirect}, an instruction is
-  removed from $MustInterpret$, but in this case it is added to $Cont$
-  and any instruction which might branch to it added to
-  $MustInterpret$.  The idea here is that if we can ensure that all
-  instructions which execute immediately prior to an instruction $i$
-  are executed in the interpreter and if the interpreter continues
-  interpreting when it sees a branch to $i$ then that is sufficient
-  to ensure that $i$ is also run in the interpreter.
+  removed from $\mathit{MustInterpret}$, but in this case it is added
+  to $\mathit{Cont}$ and any instruction which might branch to it
+  added to $\mathit{MustInterpret}$.  The idea here is that if we can
+  ensure that all instructions which execute immediately prior to an
+  instruction $i$ are executed in the interpreter and if the
+  interpreter continues interpreting when it sees a branch to $i$ then
+  that is sufficient to ensure that $i$ is also run in the
+  interpreter.
 \end{itemize}
 
-Any state with an empty $MustInterpret$ set then represents a valid
-solution to the patching problem.  The number of instructions in
-$Cont$ is a rough proxy for the number of additional instructions
-which will have to be interpreted due to the corrupted instructions
-problem, and hence for the overheads of the patching process, and so
-the search process aims to minimise the $Cont$ set.  Usefully, both
-rules increase the size of $Cont$ and so a simple exploration strategy
-which always selects the state in the queue with the smallest $Cont$
-set, applies both rules to that state, and places the two new states
-in the queue is guaranteed to always find the minimal result, and this
-is the strategy adopted by {\implementation}.
+Any state with an empty $\mathit{MustInterpret}$ set then represents a
+valid solution to the patching problem.  The number of instructions in
+$\mathit{Cont}$ is a rough proxy for the number of additional
+instructions which will have to be interpreted due to the corrupted
+instructions problem, and hence for the overheads of the patching
+process, and so the search process aims to minimise the
+$\mathit{Cont}$ set.  Usefully, both rules increase the size of
+$\mathit{Cont}$ and so a simple exploration strategy which always
+selects the state in the queue with the smallest $\mathit{Cont}$ set,
+applies both rules to that state, and places the two new states in the
+queue is guaranteed to always find the minimal result, and this is the
+strategy adopted by {\implementation}.
 
 One complication here is that the algorithm needs to be able to find
 the predecessors of an instruction.  In the fully general case this is
@@ -4182,8 +4183,8 @@ This would work, but would have a couple of important disadvantages:
 \begin{itemize}
 \item
   Debug breakpoints are far slower than branches.  This might be
-  important if the critical section is to be inserted on a
-  particularly hot code path and has a side-condition which usually
+  important if the critical section\editorial{?} is to be inserted on
+  a particularly hot code path and has a side-condition which usually
   fails.
 \item
   Using debug breakpoints in this way would interfere with any other
@@ -4221,15 +4222,8 @@ control at appropriate instructions is not quite the same as one which
 ensures that the interpreter gains control at appropriate CFG nodes,
 because {\technique} CFG nodes are identified by stack context in
 addition to their raw instruction pointer.  The interpreter must
-therefore be able to check this call stack.  The mechanisms used in
-the interpreter and the compiler are slightly different and here I
-only describe the one used in the interpreter; the compiler variant is
-deferred to the rest of the compiler discussion.
+therefore be able to check this call stack.  
 
-\todo{Already given this algorithm once, in the stack normalisation
-  section!}
-
-\label{sect:using:find_return_address}
 The interpreter has access to all of the process registers and the
 stack when it gains control.  The challenge here is to locate the
 return addresses on the stack, without access to either debug symbols
@@ -4237,21 +4231,19 @@ or a frame pointer, so that the function calling context can be
 properly checked.  SLI uses a static analysis, performed when
 generating the crash enforcement plan, to solve this problem.  The
 static analyses already described are sufficient to determine the
-entry point of the function containing a given RIP\smh{undef -- I
-  think}, and so it is easy to perform a simple abstract
-interpretation forwards from that point to the given RIP and hence
-find the number of bytes which the function will push onto the stack
-on the way\footnote{This is generally fixed for all possible paths,
-  due to the way in which most compilers are implemented.}.  The first
-entry in the call stack is trivially true because of the way the jumps
-are patched in.  The second one is the return address of the current
+entry point of the function containing a given instruction pointer,
+and so it is easy to perform a simple abstract interpretation forwards
+from that point to the given instruction pointer and hence find the
+number of bytes which the function will push onto the stack on the
+way\footnote{This is generally fixed for all possible paths, due to
+  the way in which most compilers are implemented.}.  The first entry
+in the call stack is trivially true because of the way the jumps are
+patched in.  The second one is the return address of the current
 function, which can be found using that offset.  The third one is the
 return address of the calling function, and the offset there is just
 the previous offset plus the offset in the calling function.  In this
 way all necessary offsets can be found and the entry-point stack
-checked completely.
-
-
+checked completely.  \todo{Rewrite para}
 
 \section{Fixing bugs using global locks}
 \label{sect:fix_global_lock}
