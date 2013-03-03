@@ -1,3 +1,5 @@
+\chapter{Deriving and using \StateMachines}
+
 \section{Overview of the {\StateMachine} abstraction}
 
 The core data structure used by {\technique}'s initial analysis phases
@@ -201,19 +203,21 @@ more efficient implementations of many common operations than would be
 possible with a scheme based entirely on unconstrained expressions.
 
 \begin{figure}
+  \begin{center}
   \begin{tikzpicture}
     \node (x) [BddNode] {$\smTmp{A} = 72$};
-    \node (y) [BddNode, below right = of x] {$\smLoad{\smTmp{B}} = 9$};
-    \node (z) [BddNode, below left = of y] {$\smTmp{B} > 912$};
+    \node (y) [BddNode, below = of x] {$\smLoad{\smTmp{B}} = 9$};
+    \node (z) [BddNode, below = of y] {$\smTmp{B} > 912$};
     \node (true) [BddLeaf, below left = of z] {$715$};
     \node (false) [BddLeaf, below right = of z] {$\smTmp{C}$};
     \draw [BddTrue] (x) -- (y);
-    \draw [BddFalse] (x) -- (false);
+    \draw [BddFalse] (x.east) to [bend left=30] (false);
     \draw [BddTrue] (y) -- (true);
     \draw [BddFalse] (y) -- (z);
     \draw [BddTrue] (z) -- (true);
     \draw [BddFalse] (z) -- (false);
   \end{tikzpicture}
+  \end{center}
   \caption{An example expression BDD.  This can evaluate to either
     $715$ or $\smTmp{C}$, depending on the values of $\smTmp{A}$,
     $\smTmp{B}$ and the initial contents of program memory.}
@@ -265,20 +269,37 @@ canonical.
 \subsection{Example}
 
 \begin{figure}
-\begin{verbatim}
-400694: mov    global_ptr,%rax
-40069b: test   %rax,%rax
-40069e: je     4006ad
-4006a0: mov    global_ptr,%rax
-4006a7: movl   $0x5,(%rax)
-\end{verbatim}
-\caption{A fragment of machine code.  The {\StateMachine} for this
-  fragment is shown in
-  Figure~\ref{fig:derive:single_threaded_machine}}
-\label{fig:derive:single_threaded_machine_inp}
+  \subfigure[][Crashing thread]{
+    \texttt{
+    \begin{tabular}{rlll}
+              & \multicolumn{3}{l}{crashing\_thread:} \\
+      400694: & mov & global\_ptr, &\%rax\\
+      40069b: & test & \%rax, &\%rax \\
+      40069e: & je   & \multicolumn{2}{l}{4006ad}\\
+      4006a0: & mov  & global\_ptr, & \%rax\\
+      4006a7: & movl & \$0x5, & (\%rax)\\
+    \end{tabular}
+    }
+    \label{fig:derive:single_threaded_machine_inp:crashing}
+  }
+  \subfigure[][Interfering thread]{
+    \texttt{
+      \begin{tabular}{rlll}
+        & \multicolumn{3}{l}{interfering\_thread:} \\
+        4008fb: & movq & \$0x0, &global\_ptr\\
+      \end{tabular}
+      }
+    \label{fig:derive:single_threaded_machine_inp:interfering}
+    }
+  \caption{Two fragments of machine code which, when run in parallel,
+    have a bug.  The {\StateMachines} for these fragment are shown in
+    Figures~\ref{fig:derive:single_threaded_machine}
+    and~\ref{fig:derive:single_threaded_machine_write}.}
+  \label{fig:derive:single_threaded_machine_inp}
 \end{figure}
 
 \begin{figure}
+  \begin{center}
   \begin{tikzpicture}
     \node (l1) at (0,2) [stateSideEffect] {l1: \state{Load} tmp1 $\leftarrow$ global\_ptr AT cfg6 };
     \node (l2) [stateIf, below=of l1] {l2: \state{If} (0 == tmp1)};
@@ -293,10 +314,11 @@ canonical.
     \draw[->,ifFalse] (l5) -- (l3);
     \draw[->,ifTrue] (l5) -- (l6);
   \end{tikzpicture}
+  \end{center}
   \caption{{\StateMachine} generated from the machine code in
-    Figure~\ref{fig:derive:single_threaded_machine_inp}, assuming that
-    the bug to be investigated is a crash at 4006a7.}\smh{Captions in
-    italics?}
+    Figure~\ref{fig:derive:single_threaded_machine_inp:crashing},
+    assuming that the bug to be investigated is a crash at
+    4006a7.}\smh{Captions in italics?}
   \label{fig:derive:single_threaded_machine}
 \end{figure}
 
@@ -316,22 +338,15 @@ crash or has definitely avoided the bug, and so that instruction is
 irrelevant to determining when (and whether) the bug can actually
 happen.
 
-\begin{figure}[t]
-\begin{verbatim}
-4008fb: movq   $0x0,global_ptr
-\end{verbatim}
-\caption{Other side of the race shown in
-  Figure~\ref{fig:derive:single_threaded_machine_inp}.}
-\label{fig:derive:single_threaded_machine_write_inp}
-\end{figure}
-
-\begin{figure}[t]
-  \begin{tikzpicture}
-    \node (l7) [stateSideEffect] {l7: \state{Store} 0 $\rightarrow$ global\_ptr AT cfg8 };
-  \end{tikzpicture}
+\begin{figure}
+  \begin{center}
+    \begin{tikzpicture}
+      \node (l7) [stateSideEffect] {l7: \state{Store} 0 $\rightarrow$ global\_ptr AT cfg8 };
+    \end{tikzpicture}
+  \end{center}
   \caption{{\STateMachine} generated from the code in
-    Figure~\ref{fig:derive:single_threaded_machine_write_inp}.  In
-    this case, the code to be represented has only a single
+    Figure~\ref{fig:derive:single_threaded_machine_inp:interfering}.
+    In this case, the code to be represented has only a single
     instruction, and so the {\StateMachine} is very
     simple. \todo{Looks a bit silly.}}
   \label{fig:derive:single_threaded_machine_write}
@@ -341,12 +356,14 @@ happen.
   \begin{tikzpicture}
     \node (lA) [stateIf] { \state{If} $\happensBefore{\mai{cfg6}{thread1}}{\mai{cfg8}{thread2}}$ };
     \node (lB) [stateSideEffect, below = of lA] { l1: \state{Load} tmp1 $\leftarrow$ global\_ptr AT cfg6:thread1 };
-    \node (lC) [stateSideEffect, below right = of lA] {l7: \state{Store} 0 $\rightarrow$ global\_ptr AT cfg8:thread2 };
+    \node (lCdummy) [below right = of lA] {};
+    \node (lC) [stateSideEffect, right = of lCdummy] {l7: \state{Store} 0 $\rightarrow$ global\_ptr AT cfg8:thread2 };
     \node (lD) [stateIf, below = of lB] { l2: \state{If} (0 == tmp1) };
     \node (lE) [stateTerminal, below = of lC] { \state{Unreached} };
     \node (lF) [stateIf, below left = of lD] {\state{If} $\happensBefore{\mai{cfg3}{thread1}}{\mai{cfg8}\mai{thread2}}$ };
     \node (lG) [stateTerminal, below right = of lD] {\state{Survive}};
-    \node (lH) [stateTerminal, below right = of lF] {\state{Unreached}};
+    \node (lHdummy) [below right = of lF] {};
+    \node (lH) [stateTerminal, right = of lHdummy] {\state{Unreached}};
     \node (lI) [stateSideEffect, below = of lF] {l7: \state{Store} 0 $\rightarrow$ global\_ptr AT cfg8:thread2 };
     \node (lJ) [stateSideEffect, below = of lI] {l4: \state{Load} tmp2 $\leftarrow$ global\_ptr AT cfg3:thread1 };
     \node (lK) [stateIf, below = of lJ] { l5: \state{If} $BadPtr(tmp2)$ };
@@ -372,6 +389,7 @@ happen.
 \end{sidewaysfigure}
 
 \begin{figure}
+  \begin{center}
   \begin{tikzpicture}
     \node (lA) [stateSideEffect] {\state{Assert} $0 \not= InitMemory(global\_ptr)$ and $cfg6:thread1 \happensBefore cfg7:thread2$};
     \node (lB) [stateIf, below = of lA] {\state{If} $cfg3:thread1 \happensBefore cfg7:thread2$ };
@@ -381,6 +399,7 @@ happen.
     \draw [->,ifTrue] (lB) -- (lC);
     \draw [->,ifFalse] (lB) -- (lD);
   \end{tikzpicture}
+  \end{center}
   \caption{{\STateMachine} from figure~\ref{fig:derive:cross_thread}
     after {\StateMachine} simplification.}
   \label{fig:derive:cross_thread_opt}
@@ -390,9 +409,8 @@ happen.
 of multiple threads.  Figure~\ref{fig:derive:cross_thread} shows an
 example of such a {\StateMachine}.  It is the
 \introduction{cross-product} of the {\StateMachines} shown in
-Figures~\ref{fig:derive:single_threaded_machine}
-and~\ref{fig:derive:single_threaded_machine_write_inp}.  Note that
-even though the {\StateMachine} completely captures the concurrent
+Figure~\ref{fig:derive:single_threaded_machine}.  Note that even
+though the {\StateMachine} completely captures the concurrent
 behaviour of the two {\StateMachines}, it is itself completely
 deterministic, and hence is relatively easy to simplify.  The result
 of these simplifications is shown in
@@ -683,7 +701,7 @@ rather than away from D, which would not be helpful.
 \begin{algorithmic}[1]
   \While {graph is not cycle-free}
      \State $edge \gets \textsc{findEdgeToBeBroken}(targetInstr)$
-     \If {$edge$ is at least $N_r$ instructions from target instruction}
+     \If {$edge$ is at least $\alpha$ instructions from target instruction}
         \State {Erase $edge$ from graph}
      \Else
         \State {$newNode \gets$ duplicate of $edge.source$}
@@ -703,12 +721,12 @@ rather than away from D, which would not be helpful.
 
 The complete algorithm is shown in
 Figure~\ref{fig:derive:read:unroll_cycle_break}.  This algorithm is
-guaranteed to preserve all paths of length $N_r$ which end at the
+guaranteed to preserve all paths of length $\alpha$ which end at the
 target instruction.  There are only two places in the algorithm which
 remove existing edges, so consider each in turn.  The first is the
 erasure on line 4.  This can only ever affect edges whose shortest
-path to a target is at least $N_r$ instructions long, and so cannot
-eliminate any paths to a target of length $N_r$, and is therefore
+path to a target is at least $\alpha$ instructions long, and so cannot
+eliminate any paths to a target of length $\alpha$, and is therefore
 safe.  The other is the replacement step at line 10, which replaces an
 edge from $edge.source$ to $edge.destination$ with one from $newNode$
 to $edge.destination$.  This is safe provided that every path to
@@ -773,7 +791,7 @@ called\footnote{There might be more than one function if the
   instruction is a dynamic call.  In that case, the \backref{program
     model} is used to find the set of all possibly-called functions
   and they are all treated as possible predecessors; see
-  Section~\ref{chapt:program_model:dyn:call_graph}.}, finds all of the
+  Section~\ref{sect:program_model:call_graph}.}, finds all of the
 return instructions in those functions, and treats those as the
 predecessor of the current instruction with an appropriately extended
 inlining context.
@@ -841,8 +859,8 @@ which require special care:
   Note that the $\controlEdge{}{}{}$ expression tests control flow
   within the unrolled \backref{CFG} rather than control flow within
   the original program CFG.  This can sometimes complicate the design
-  of crash enforcers; see Section~\ref{sect:enforcers:control_flow}
-  for more details.
+  of crash enforcers; see Section~\ref{sect:enforce:succ} for more
+  details.
 
 \item
   The \backref{CFG} can sometimes have multiple roots, each
@@ -891,7 +909,7 @@ Figure~\ref{fig:state_machine_for_cyclic_cfg}.
 \begin{figure}
 \begin{tikzpicture}
   \node[stateIf,initial] (l1) {\state{If} $\entryExpr(\mai{threadId}{A})$};
-  \node[stateSideEffect,below left = of l1] (l2) {A: \state{Copy} $\mathit{rdx}$ to $\mathit{rcx}$};
+  \node[stateSideEffect,below = of l1] (l2) {A: \state{Copy} $\mathit{rdx}$ to $\mathit{rcx}$};
   \node[stateIf,below = of l2] (l3) {\state{If} $\controlEdge{threadId}{A}{B}$};
   \node[stateSideEffect,below = of l3] (l4) {B: \state{Load} $\mathit{rcx}$ to $\mathit{rcx}$};
   \node[stateSideEffect,below = of l4] (l5) {C: \state{Load} $\mathit{rcx}+8$ to $\mathit{tmp}$};
@@ -902,7 +920,7 @@ Figure~\ref{fig:state_machine_for_cyclic_cfg}.
   \node[stateIf,below = of l9] (l10) {\state{If} $\mathit{tmp} = 0$};
   \node[stateSideEffect,below right = of l1] (l11) {C'': \state{Load} $\mathit{rcx}+8$ to $\mathit{tmp}$};
   \node[stateIf,below = of l11] (l12) {\state{If} $\mathit{tmp} = 0$};
-  \node[stateTerminal,below left = of l7] (lBeta) {\state{Crash}};
+  \node[stateTerminal,below = of l7] (lBeta) {\state{Crash}};
   \node[stateTerminal,below right = of l7] (lGamma) {\state{Survive}};
   \node[stateTerminal,right = of lGamma] (lAlpha) {\state{Unreached}};
   \draw[->,ifTrue] (l1) -- (l2);
@@ -921,7 +939,7 @@ Figure~\ref{fig:state_machine_for_cyclic_cfg}.
   \draw[->,ifTrue] (l10) -- (lAlpha);
   \draw[->,ifFalse] (l10) -- (l4);
   \draw[->] (l11) -- (l12);
-  \draw[->,ifTrue] (l12) -- (lAlpha);
+  \draw[->,ifTrue] (l12.east) to [bend left=45] (lAlpha);
   \draw[->,ifFalse] (l12) -- (l8);
 \end{tikzpicture}
 \caption{{\STateMachine} generated from the CFG shown in
@@ -1173,22 +1191,22 @@ analysis is embarrassingly parallel.  This means that the total cost
 of the analysis remains high but tolerable, and that it is likely to
 become faster as hardware becomes increasingly parallel, which is
 precisely the scenario in which it would be most useful.
-x
+
 \subsection{Building the interfering thread's \StateMachines}
 \label{sect:derive:write_side}
 
 At this stage, {\technique} has built the crashing thread's
 {\StateMachine} for the bug which is to be investigated.  The next
-step is to build the interfering thread's {\StateMachine}.  According
-to the bug definition in Section~\ref{sect:intro:types_of_bugs}, we
-should now consider every possible sequence of \backref{$\alpha$}
-instructions in the program, convert each to a {\StateMachine}, and
-consider every possible interleaving of the crashing thread's
-{\StateMachine} with each of these interfering {\StateMachines}.  This
-would clearly be completely impractical for all but the most trivial
-programs.  Fortunately, it is possible to significantly reduce the set
-of sequences which must be considered by using the \backref{program
-  model}.
+step is to build the interfering thread's {\StateMachine}.  In
+principle, we should now consider every possible sequence of
+\backref{$\alpha$} instructions in the program, convert each to a
+{\StateMachine}, and consider every possible interleaving of
+the crashing thread's {\StateMachine} with each of these
+interfering {\StateMachines}.  This would clearly be
+completely impractical for all but the most trivial programs.
+Fortunately, it is possible to significantly reduce the set of
+sequences which must be considered by using the
+\backref{program model}.
 
 The \backref{program model} includes, for each instruction which reads
 from memory, a list of all of the instructions which might store to
@@ -1379,7 +1397,7 @@ Figure~\ref{fig:derive:store_cfg_unroll_alg}.
     \While {graph rooted at $t$ is not cycle-free}
        \State $\mathit{edge} \gets \textsc{findEdgeToBeBroken}(t, \{\})$
        \State $\mathit{newLabel} \gets \textsc{combineLabels}(\text{current label of } \mathit{edge}.\mathit{start}, \text{current label of } \mathit{edge}.\mathit{end})$
-       \If {$\min_s(\mathit{newLabel}.\mathit{minFrom}(s)) + \min_s(\mathit{newLabel}.\mathit{minTo}(s)) > N_w$}
+       \If {$\min_s(\mathit{newLabel}.\mathit{minFrom}(s)) + \min_s(\mathit{newLabel}.\mathit{minTo}(s)) > \alpha$}
            \State {remove $\mathit{edge}$}
        \Else
            \State $\mathit{newNode} \gets \text{duplicate } \mathit{edge}.\mathit{end}$
@@ -1818,7 +1836,7 @@ of candidate bugs.
 
 Note that this is not, strictly speaking, a problem with {\technique}
 itself, but rather an unfortunate property of the class of bug
-considered.  As discussed in Section~\ref{sect:intro:bugs_considered},
+considered.  As discussed in Section~\ref{sect:intro:overview},
 {\technique} only considers bugs which are caused by interleaving
 threads which would have been safe if they had run without
 interleaving.  The truncated program has a bug of that form but the
@@ -1891,7 +1909,7 @@ parts here.
   behaviour of two threads.  Rather than trying to enumerate all
   possible interleavings during symbolic execution, {\technique}
   instead encodes them into special \introduction{cross-product}
-  {\StateMachines}; see Section~\ref{sect:derive:cross_product}.
+  {\StateMachines}; see Section~\ref{sect:using:build_cross_product}.
 
 \item The program's memory is represented by the sequence of update
   operations, rather than attempting to maintain separate models for
@@ -2803,8 +2821,7 @@ At a high level, the algorithm used has the following phases:
 \item
   If appropriate, multiple enforcers can be combined at this point,
   which can sometimes make it easier to discover bugs if the initial
-  analyses have produced a very large pool of candidates.  More
-  details are given in Section~\ref{sect:enforce:combine_enforcers}.
+  analyses have produced a very large pool of candidates.
 \item
   Decide on a strategy for gaining control of the program at
   appropriate points.  The crash enforcement plan only imposes
@@ -2816,8 +2833,7 @@ At a high level, the algorithm used has the following phases:
   probably be quite poor.  As such, it is necessary to modify the
   original program so that {\technique} can gain control when the
   program reaches one of the interesting fragments of code.
-  Section~\ref{label:sect:assign_entry_points} discusses how this is
-  done.
+  Section~\ref{sect:enforce:gain_control} discusses how this is done.
 
 \item
   The results of the previous phases are then combined with the plan
@@ -2837,9 +2853,7 @@ necessary to remove these dependencies.  The approach taken by
 {\implementation} is to just re-express the verification condition as
 a function of the happens-before graph, deriving a new verification
 condition for each possible graph.  These new conditions can then be
-treated independently and recombined as if they were enforcers for
-completely independent bugs, as discussed in
-Section~\ref{sect:enforce:combine_enforcers}.
+treated completely independently.
 
 This re-expression is itself straightforward: enumerate all of the
 $\happensBeforeEdge$ expressions in the verification condition and
@@ -3309,6 +3323,7 @@ graph.
   It's pretty boring, but I guess it might be worth mentioning.}
 
 \subsection{Enforcing the plan}
+\label{sect:enforce:interpreting}
 
 Previous sections described how to find the desired happens-before
 graph, how to turn that into a message-passing system, and how to
@@ -3552,6 +3567,10 @@ loop:
   operator.  If there are no possible successors then the plan has
   failed and the low-level interpreter exits.
 \end{itemize}
+
+A new low-level interpreter is started whenever any thread in the
+program reaches the starting point of one of the CFGs involved in one
+of the bugs which is to be enforced.
 
 The LLI message operation is illustrated in
 Figure~\ref{fig:enforce:lli_message}.  The operation starts by
@@ -4301,7 +4320,7 @@ also include part or all of \texttt|complicated\_local\_calculation()|
 and a side-condition which requires the two pointers to match up.
 This extra information is useful when analysing the bug
 (\S\ref{sect:using:check_realness}) or when attempting to reproduce it
-(\S\ref{sect:using:reproducing_bugs}), but cannot be used by this kind
+(\S\ref{sect:reproducing_bugs}), but cannot be used by this kind
 of instruction-level fix\footnote{But see future work for a possible
   alternative scheme which would make use of it.}, so including it in
 the fix is unhelpful and would tend to lead to unnecessarily large
@@ -4854,7 +4873,7 @@ this sequence to do so:
 
 \begin{verbatim}
 xchgq %rdi, (%rsp) ; Restore rdi and set the next instruction address
-ret $0x80          ; Restore the red zone and branch to the next instruction
+ret $0x80          ; Restore the red zone and branch to next instruction
 \end{verbatim}
 
 Here, \texttt{rdi} is the register used to store the computed branch
