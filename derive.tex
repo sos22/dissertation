@@ -4425,16 +4425,25 @@ When running, the interpreter cycles repeatedly through these phases:
   pointer.  \todo{This does have an analogy in the enforcer, but I've
     not described it.  Whoops.}
 
-\item \textbf{Lock} The interpreter now acquires the patch lock,
-  provided that it does not currently own it and the set of active CFG
-  nodes is non-empty.
+\item \textbf{Lock} The interpreter now acquires the patch lock, with
+  a timeout, provided that it does not currently own it and the set of
+  active CFG nodes is non-empty.  If the lock times out then the
+  interpreter gives up on trying to protect the program; this
+  introduces a risk of the bug reproduces, but is necessary to avoid a
+  potential deadlock with the program's own synchronisation strategy.
 
 \item \textbf{Emul} The interpreter runs the instruction from the
   original program, performing any necessary memory accesses or
-  register updates.  This includes calculating the new instruction
-  pointer, which then makes it trivial to calculate the new set of
-  active CFG nodes.  This is analogous to the phase of the same name
-  in the enforcer's LLI loop (see Section~\ref{sect:enforce:llis}).
+  register updates.  This is essentially the same as the phase of the
+  same name in the enforcer's LLI loop (see
+  Section~\ref{sect:enforce:llis}).
+
+\item \textbf{Succ} The \textbf{Emul} phase will have computed the
+  instruction pointer of the next instruction to be executed.  This
+  can then be compared to the set of currently active CFG nodes and to
+  the CFG fragment which is to be protected to calculate a new set of
+  active CFG nodes.  Again, this is analogous to the phase of the same
+  name in the enforcer's LLI loop.
 
 \item \textbf{Unlock} Finally, the interpreter can now consider
   releasing the patch lock.  It does so if it currently holds the lock
@@ -4724,9 +4733,6 @@ control flow operations, discussed in the next section.
 
 \subsection{Control flow instructions}
 
-\todo{Say explicitly that this is only an issue for the compiler;
-  trivial in the interpreter.}
-
 Most of the program's original instructions are copied into the patch
 verbatim as part of the \textbf{Issue} phase.  The main exceptions are
 control flow instructions, which set the instruction pointer to some
@@ -4736,138 +4742,189 @@ preventing it from applying the necessary concurrency protections.
 
 The important part here is determining which CFG nodes should be in
 the active set after the control flow instruction executes.  For
-direct branches, this is reasonably straightforward, as the target of
-the branch is apparent in the instruction itself and can be easily
+simple direct branches, this is straightforward, as the target of the
+branch is apparent in the instruction itself and can be easily
 compared to the active node set and the CFG fragment to be protected
-in order to find the new set of active nodes.  Indirect branches are
-more difficult, as the target of the branch is not available until
-runtime.
-                                                                                                                                                                                                                                 
-\todo{Discussion about how to handle the various types of computed
-  branches goes here.  Basically, pages 113 to 117.  I could probably
-  drop the bits about the branch predictor, but there definitely needs
-  to be something about indirect branches.  If nothing else, it was by
-  quite a margin the part of the fix generating tool which required
-  the most thought to implement, and it was certainly the most fun bit
-  of code to write.}
-                                                 
+in order to find the new set of active nodes.  Other types of
+branch instruction are more complicated.  For the AMD64 architecture,
+there are four main cases to consider: direct calls, indirect jumps,
+indirect calls, and returns.  I consider each in turn.
 
-\paragraph{Indirect jump instructions,} which simply set the instruction pointer
-to a calculated value\smh{Not a sentence.}.  In order to partially
-evaluate these states {\technique} must examine all of the successors
-of nodes in the $\mathit{cfgNodes}$ set and segregate them by their instruction
-pointer.  The code generated for the state will compare the target of
-the branch instruction to each such instruction pointer in turn and,
-when one matches, jump to an augmented instruction with an appropriate
-$\mathit{cfgNodes}$ set.  If none match then the patch moves on to consider
-instructions in the patch strategy's $Cont$ set\smh{This is a detail
-  that doesn't matter at a certain level of abstraction; you need to
-  separate the idea/algorithm from the combined code you've written.},
-comparing the generated branch target to each in turn and branching to
-an appropriate augmented instruction if any match.  Finally, if none
-of those match, the patch can exit the augmented semantics by directly
-branching to the computed branch target, dropping the lock first if
-necessary.
+\subsubsection{Direct call instructions}
 
-A further complication is that computing the branch target might
-itself involve reading from memory, and this access might itself race.
-It would be unfortunate if this led to the patch branching to the
-wrong place, and so the patch must first capture the computed branch
-target to a register\footnote{In more detail, the concern is that the
-  target address might change from one instruction which must be
-  protected to another instruction which must be protected, and the
-  patch must ensure that the race does not cause it to prematurely
-  drop the lock.  It does not matter which protected path the patch
-  ultimately follows, provided it follows one of them}.  This means
-that the register must first be saved somewhere, so that it can be
-restored later, which in turn means that the red zone must be cleared.
-Both of these operations must be undone later.  This is recorded by
-setting the $redzone$ field of the augmented state to the special
-$popreg$ value.
+A direct call instruction is used to call a function when the address
+of the function is known at compile time.  Their effect is to push the
+current instruction pointer\footnote{Or, more accurately, the
+  instruction pointer plus the size of the current instruction, but
+  that can be ignored here.} on the stack and to then set the current
+instruction pointer to a given target value.  {\Implementation}'s
+behaviour here depends on the function which is to be called.
 
-Of course, setting $redzone$ does not actually help if the patch is
-about to return to the unaugmented program, as in that case $redzone$
-will never be examined.  The patch must then restore the register used
-to capture the computed branch target, restore the red zone, and
-finally branch to the computed target, without using any additional
-registers.  The scheme used by {\implementation} uses a machine code
-fragment like this:
+The simplest case is that the called function might itself need to be
+protected.  These can be handled by converting the \texttt{call}
+instruction into a \texttt{push} instruction, pushing the return
+address on the stack, followed by a \texttt{jmp} instruction which
+branches to the part of the patch which implements the called
+function.
+
+Alternatively, it might be that the called function does not need to
+be protected.  In that case, the lock, if held, should be released and
+control transferred back to the original program.  Control is
+transferred back to the original program using a simple \texttt{jmp}
+instruction to the original \texttt{call}.
+
+Finally, the called function might be a library function, such as
+\texttt{malloc} or \texttt{printf}.  The main analysis
+phase of {\technique} treats library functions as if they were a
+special kind of instruction, with the result that the CFG to be
+protected will sometimes include calls to library functions even when
+the definitions of those library functions are unavailable.  The fix
+generation process has two options, both bad:
+
+\begin{itemize}
+\item It could call into the library function whilst holding the lock.
+  This ensures that the desired atomic blocks really do behave
+  atomically, but at the cost of a significant risk of deadlocks if
+  the called function is something like \texttt{pthread\_mutex\_lock}.
+\item It could release the lock while calling into the library
+  function.  This is much less likely to deadlock, but also much
+  less likely to correctly eliminate the bug.
+\end{itemize}
+
+{\Implementation} always chooses to hold the lock when calling library
+functions from a patch.  It then mitigates the damage from deadlocks
+by applying a timeout whenever it acquires the patch lock.  This
+timeout might itself lead to incomplete protection, but generally
+happens less frequently than library calls, and so is a less severe
+problem\footnote{Note that library calls are not the only possible
+  cause of deadlocks here, as the program might implement its own
+  synchronisation primitives\needCite{}, and so the timeout would
+  still be necessary even if the patch lock were dropped during
+  library calls.}.
+
+\subsubsection{Indirect jump instructions}
+
+Indirect jump instructions are those which simply set the instruction
+pointer to a calculated value.  These do not require any special
+handling, as the target of the branch is available at run time.  They
+are more difficult to handle in the compiler, as the target is not
+available at compile time and the compiler must ensure that it
+generates code for every state which might be reached, along with
+appropriate branches to activate that code at appropriate times.
+
+There are three cases which need to be considered:
+
+\begin{itemize}
+\item There might be an edge in the CFG corresponding to the branch.
+  In that case, the patch must branch to the target of the jump
+  without releasing the lock.
+\item There might not be any such edge, indicating that the lock
+  should be released, but the instruction might be in the
+  $\mathit{Cont}$ set, so the patch cannot jump directly back to the
+  program's original code.
+\item The target might not be in either the fragment to be protected
+  or in $\mathit{Cont}$, in which case the patch should release the
+  lock and return to the program's original code.
+\end{itemize}
+
+Fortunately, the set of targets which fit into the first two cases is
+finite, easily determined at compile time, and usually small, and so
+the compiler can simply generate appropriate code fragments for each
+of them.  Ignoring races, it is then easy to emit a series of
+conditional branches which select the appropriate fragment at run
+time, or perform a simple indirect jump which returns to the original
+program if none of them match.
+
+The potential for races is a minor complication.  In the AMD64
+architecture, computing the target address for an indirect jump can
+load from memory, and might therefore race.  The patch must be careful
+not to drop the lock early if such a race causes the target of the
+jump to switch between two locations which must both be protected.
+The simplest way to achieve this is to capture the result of the
+target computation into a thread-local register, but that means that
+the previous contents of that register must be saved somewhere and
+restored later.  This is easy for branches which remain within the
+patch, as the compiler controls the target of the branch and can
+restore the program's state from there, but is more difficult if the
+branch must return to the original program, as in that case the patch
+must simultaneously restore the register, the instruction pointer,
+and, if necessary, the stack red zone.  The AMD64 ABI provides very
+few instruction sequences capable of doing so.  {\Implementation} uses
+this sequence to do so:
 
 \begin{verbatim}
 xchgq %rdi, (%rsp) ; Restore rdi and set the next instruction address
 ret $0x80          ; Restore the red zone and branch to the next instruction
 \end{verbatim}
 
-\todo{Not sure how interesting this actually is, but it took me bloody
-  ages to figure out how to do it, which suggests there should
-  probably be something about it in here.}  Here, \verb|rdi| is the
-register used to store the computed branch target, the old value of
-\verb|rdi| was stored to the top of the stack before the branch was
-computed, and \verb|0x80| is the size of the red zone.  In this
-sequence, the \verb|xchgq| instruction swaps the top of the stack with
-\verb|rdi|, restoring the old value of \verb|rdi| and setting the top
-of the stack to the target of the branch and the \verb|ret|
-instruction then branches to this location and removes the top
-\verb|0x80| bytes from the stack, restoring the red zone.  The
-sequence therefore correctly implements the desired behaviour.
+Here, \texttt{rdi} is the register used to store the computed branch
+target, the old value of \texttt{rdi} was stored to the top of the
+stack before the branch was computed, and \texttt{0x80} is the size of
+the red zone.  In this sequence, the \texttt{xchgq} instruction swaps
+the top of the stack with \texttt{rdi}, restoring the old value of
+\texttt{rdi} and setting the top of the stack to the target of the
+branch and the \texttt{ret} instruction then branches to this location
+and removes the top \texttt{0x80} bytes from the stack, restoring the
+red zone.  The sequence therefore correctly implements the desired
+behaviour.
 
-It does, however, have some unpleasant performance implications.  In
-particular, the \verb|ret| instruction does not match with any
-\verb|call| instruction, which can be extremely difficult for
-processor branch prediction units to handle\needCite{}, and if this
-leads to a branch misprediction then performance will be quite poor.
-Unfortunately, there is no other way of achieving the desired
-behaviour with the x86 instruction set without using additional
-registers, because the instruction and stack pointers must be modified
-simultaneously and \verb|ret| is the only instruction capable of doing
-so.  Modifying the instruction pointer before the stack pointer is
-obviously unprofitable, as modifying the instruction pointer means
-that we lose control of program execution and therefore never get the
-chance to perform the stack pointer modification.  Modifying the stack
-pointer first, though, sounds like it might be an effective strategy.
-The resulting fragment of code might look like this:
+%% It does, however, have some unpleasant performance implications.  In
+%% particular, the \texttt{ret} instruction does not match with any
+%% \texttt{call} instruction, which can be extremely difficult for
+%% processor branch prediction units to handle\needCite{}, and if this
+%% leads to a branch misprediction then performance will be quite poor.
+%% Unfortunately, there is no way of achieving the desired behaviour
+%% which does not share this behaviour: the instruction and stack
+%% pointers must be modified simultaneously, and \texttt{ret} is the only
+%% instruction capable of doing so.
 
-\begin{verbatim}
-lea 0x80(%rsp), %rsp   ; Restore the red zone
-xchgq %rdi,-0x88(%rsp) ; Save the branch target and restore rdi
-jmp -0x88(%rsp)        ; Perform the branch
-\end{verbatim}
+%% It is perhaps worth explaining in more detail why the two pointers
+%% must be modified by the same instruction.  Modifying the instruction
+%% pointer before the stack pointer is obviously incorrect, as modifying
+%% the instruction pointer means that we lose control of program
+%% execution and therefore never get the chance to perform the stack
+%% pointer modification, but modifying the stack pointer first sounds
+%% like it might be an effective strategy.  The resulting fragment of
+%% code might look like this:
 
-Executed in isolation, this code correctly sets all three registers
-(\verb|rdi|, the stack pointer, and the instruction pointer), and
-avoids damage to the branch prediction units.  In a program running on
-most Unix-like operating systems, however, it contains a dangerous
-race with signals.  The target of the branch instruction is stored
-\verb|0x88| bytes below the stack pointer, just outside of the red
-zone.  If the program receives a signal immediately before executing
-the \verb|jmp| instruction then this is precisely the location at
-which the signal handling stack frame will be constructed, clobbering
-the branch target.  When the signal handler returns the program will
-almost certainly crash.  Avoiding this issue is impossible without
-forcing the program to use a dedicated signal stack, which is
-extremely fragile without cooperation from the program\footnote{An
-  alternative scheme would be to just disable signals during the
-  critical section.  This does not work, as the signal disposition
-  must be restored when the program resumes, which requires a system
-  call and hence the use of registers, which brings us back to the
-  original problem.}.
+%% \begin{verbatim}
+%% lea 0x80(%rsp), %rsp   ; Restore the red zone
+%% xchgq %rdi,-0x88(%rsp) ; Save the branch target and restore rdi
+%% jmp -0x88(%rsp)        ; Perform the branch
+%% \end{verbatim}
 
-\smh{This is all fine, but it is a detail that probably doesn't
-  deserve the best part of a page!  Focus, select, highlight,
-  abstract.}
+%% Executed in isolation, this code correctly sets all three registers
+%% (\texttt{rdi}, the stack pointer, and the instruction pointer), and
+%% avoids damage to the branch prediction units.  In a program running on
+%% most Unix-like operating systems, however, it contains a dangerous
+%% race with signals.  The target of the branch instruction is stored
+%% \texttt{0x88} bytes below the stack pointer, just outside of the red
+%% zone.  If the program receives a signal immediately before executing
+%% the \texttt{jmp} instruction then this is precisely the location at
+%% which the signal handling stack frame will be constructed, clobbering
+%% the branch target.  When the signal handler returns the program will
+%% almost certainly crash.  Avoiding this issue is impossible without
+%% forcing the program to use a dedicated signal stack, which is
+%% extremely fragile without cooperation from the program\footnote{An
+%%   alternative scheme would be to just disable signals during the
+%%   critical section.  This does not work, as the signal disposition
+%%   must be restored when the program resumes, which requires a system
+%%   call and hence the use of registers, which brings us back to the
+%%   original problem.}.
 
-\todo{Maybe explain why I'm happy to use the GS trick in the enforcers
-  but don't want to do so here?}
+%% \smh{This is all fine, but it is a detail that probably doesn't
+%%   deserve the best part of a page!  Focus, select, highlight,
+%%   abstract.}
 
-\paragraph{Indirect call instructions,} which are similar to indirect jumps
-except that they also store the current instruction pointer to the
-stack\smh{Not a sentence.}.  The issues involved here are similar,
-except that the patch must store the return address in addition to
-maintaining the stack pointer and branching to an appropriate
-location.  If the interpreter is to continue then this can be
-accomplished by setting $redzone$ to another special value,
-$finishCall(return\_address)$.  Otherwise, the exit sequence can be
-modified slightly:
+\subsubsection{Indirect call instructions}
+
+Indirect call instructions are similar to indirect jumps, except that,
+in addition to setting the instruction pointer, they also push the old
+value of the pointer on to the stack.  That extra stack manipulation
+somewhat complicates returning to the original program\footnote{As
+  before, the case where the call remains within the protected region
+  is straightforwards}.  {\Implementation} implements this operation
+using this instruction sequence:
 
 \begin{verbatim}
 mov %rdi, 0x80(%rsp) ; Store next instruction address
@@ -4877,85 +4934,58 @@ call *0(%rsp)        ; Call target function
 jmp return_address   ; Return to original program
 \end{verbatim}
 
-\todo{At the moment the implementation just uses the silly ret thing.
-  I should switch it over to that sequence, because it's awesome.}
-
 This perhaps requires some additional explanation:
 
 \begin{itemize}
-\item \verb|mov %rdi, 0x80(%rsp)|.  This stores the address which we
-  need to call into \verb|0x80(%rsp)|.  \verb|0x80| is the size of the
-  red zone, and so once the red zone has been cleared this will be
-  \verb|0(%rsp)|.
-\item \verb|mov 0(%rsp), %rdi|.  This restores the value of
-  \verb|%rdi| from the top of the stack.
-\item \verb|lea 0x80(%rsp), %rsp|.  This restores the program's
+\item \texttt{mov \%rdi, 0x80(\%rsp)}.  This stores the address which
+  we need to call into \texttt{0x80(\%rsp)}.  \texttt{0x80} is the
+  size of the red zone, and so once the red zone has been cleared this
+  will be stored at \texttt{0(\%rsp)}.
+\item \texttt{mov 0(\%rsp), \%rdi}.  This restores the value of
+  \texttt{\%rdi} from the top of the stack.
+\item \texttt{lea 0x80(\%rsp), \%rsp}.  This restores the program's
   original red zone.  The address which is to be called is now at
-  \verb|0(%rsp)|.
-\item \verb|call *0(%rsp)|.  The effect of this instruction is
+  \texttt{0(\%rsp)}.
+\item \texttt{call *0(\%rsp)}.  The effect of this instruction is
   somewhat complicated: it sets the instruction pointer to the initial
-  contents of \verb|0(%rsp)|, then sets \verb|0(%rsp)| to the address
-  of the next instruction, and then decrements \verb|%rsp| by eight
+  contents of \texttt{0(\%rsp)}, then sets \texttt{0(\%rsp)} to the address
+  of the next instruction, and then decrements \texttt{\%rsp} by eight
   bytes.  This means that the target function will be invoked with the
-  desired stack pointer and its return address set to the \verb|jmp|
+  desired stack pointer and its return address set to the \texttt{jmp}
   instruction.
-\item \verb|jmp return_address|.  This runs once the called function
+
+  In other words, the sequence uses the stack location which will
+  store the return address as a temporary location to store the
+  address of the function to be called.
+\item \texttt{jmp return\_address}.  This runs once the called function
   returns and immediately branches to the instruction after the
   indirect call instruction.
 \end{itemize}
 
-This means that the indirect branch is correctly emulated, provided
-that the program never explicitly examines return address addresses on
-its stack, and the processor's branch predictor state is correctly
-maintained.  The potential race with signals is avoided completely
-because the address which is to be branched to is stored within the
-program's red zone.  Modifying the red zone is safe because we know
-that the \verb|call| instruction is itself about to overwrite the
-modified location\footnote{The exception is if another thread is
-  simultaneously examining this thread's call stack, in which case we
-  have potentially introduced an additional race condition.  Such a
-  race condition is implausible given common programming practices and
-  I ignore the possibility here.}.
+This means that the indirect branch is correctly emulated.
 
-\paragraph{Return instructions,} which pop an address off of the stack
-and return to it\smh{Not a sentence}.  If the $cfgNode$ set is
-currently non-empty then this is very simple because, by construction,
-when the $cfgNode$ set is non-empty the program's call stack must
-match the call stack in the CFG nodes.  That means that the return
-instruction can be partially evaluated without needing to examine the
-actual contents of the stack, and the only instruction which actually
-needs to be emitted is \verb|lea 8(%rsp), %rsp|, which pops the return
-address off of the stack and discards the result.  \todo{Actually need
-  a couple more side-conditions on that, but they're not terribly
-  interesting and would just confuse things a bit.}
+\subsubsection{Return instructions}
 
-\todo{But that branch means that you end a function with a jump rather
-  than a ret, which is going to screw your branch predictor despite
-  our best efforts.  That's particularly sad given that if the match
-  call was part of the patch then the address on the top of the stack
-  will be the address which we're branch to anyway.  Need to think
-  harder about that.}
-
-An empty $cfgNode$ set is slightly more difficult to handle, but only
-slightly.  In this case, the generated code must examine the stack to
-determine the actual return address and compare it to the $Cont$ set,
-with any matches branching to an appropriate augmented state in the
-usual way.  These states will have $redzone$ set to $ret$, to cause
-appropriate handling of the return address.
-
-If the return address does not match in $Cont$ then the patch returns
-to the unaugmented program.  The exit fragment is very simple:
+\texttt{ret} instructions pop a pointer off the stack and set the
+current instruction pointer to be that value.  They are equivalent to
+this sequence of instructions:
 
 \begin{verbatim}
-pop %rdi
-lea 0x80(%rsp), %rsp
-ret
-\end{verbatim}
+lea 8(%rsp), %rsp
+jmp *0(%rsp)
+\end{verbatim}\footnote{The AMD64 instruction sets also includes a \texttt{ret n} instruction, which performs additional adjustments of the stack pointer; this can be emulated by adjusting the \texttt{8} and \texttt{0} offsets in this sequence.}
 
-This restores \verb|rdi|, used to store the return address, then
-restores the red zone, and finally issues a normal return instruction
-to return to the original program.  No particular special handling is
-required.
+It would, therefore, be correct to treat \texttt{ret} instructions as
+ordinary indirect branches, but it is sometimes possible to do
+slightly better by examining the interpreter state at the time of the
+\texttt{ret}.  In particular, CFG nodes include an inlining context
+(see Section~\ref{sect:derive:cross_function_cfgs}), and this allows
+the compiler to determine precisely where the instruction will return
+to, converting the indirect branch into a direct one.  The compiler
+will usually produce more efficient code for direct branches than for
+indirect ones\footnote{In particular, it can avoid run-time tests of
+  the $\mathit{Cont}$ set for direct branches.}, and so this leads to
+a patch with slightly lower overhead.
 
 %% \todo{Move this para to be later.}\smh{Yes} One concern here might be
 %% that modifying the program's stack in this way might confuse another
@@ -4983,75 +5013,13 @@ required.
 %%   extended the stack.  Also need to talk about why there's no
 %%   realistic risk of running out of stack space here.}
 
+\todo{Might want another example here.}
 
-
-%% The result of all of these manipulations is that {\technique} is able
-%% to maintain control of the program when necessary, and transfer back
-%% to the original program seamlessly when control is no longer
-%% necessary, without causing excessive damage to the processor's branch
-%% predictor in the common case.\smh{How important is this?  Is a fixed
-%%   prog that's 10\% slower suckey?  ok?}
-
-%% These control-flow considerations somewhat complicate the partial
-%% evaluator.  The complete thing looks like this:
-
-%% \begin{itemize}
-%% \item Certain kinds of \textbf{Redzone} handling are performed early
-%%   in the partial evaluation process.  In particular:
-  
-%%   \begin{itemize}
-%%   \item If $redzone = popreg$, the partial evaluator emits the
-%%     instruction \verb|pop %rdi| and sets $redzone$ to $simple$.  The
-%%     value of \verb|rdi| is restored and the patch is left outside the
-%%     red zone.
-%%   \item If $redzone = finishCall(ra)$, the partial evaluator emits the
-%%     sequence \verb|pop %rdi; lea 0x80(%rsp), %rsp; pushq $ra| and sets
-%%     $redzone$ to $none$.  \verb|rdi| is restored, the red zone is
-%%     restored, and the return address is pushed.  The patch is now in
-%%     the red zone.  An alternative design would have been to leave the
-%%     patch outside of the red zone and track that eight bytes of the
-%%     zone have been consumed by the return address, which might
-%%     simplify some patches; {\implementation} does not do so purely to
-%%     keep the implementation reasonably simple.
-%%   \item If $redzone = ret$, the partial evaluator emits the sequence
-%%     \verb|lea 0x88(%rsp), %rsp| and sets $redzone$ to $none$.  The red
-%%     zone is restored and the return address popped.  As with the
-%%     $finishCall$ case, it would be possible to keep the patch out of
-%%     the red zone here at the expense of slightly greater complexity,
-%%     but {\implementation} does not attempt to do so.
-%%   \item $redzone = simple$ is left unchanged.
-%%   \end{itemize}
-%% \item \textbf{CheckForEntry}, \textbf{Lock}, \textbf{Unlock} and
-%%   \textbf{Return} are unchanged, beyond avoiding clearing the red zone
-%%   if $redzone = simple$ and setting $redzone$ to $simple$ when it does
-%%   need to clear the zone.
-%% \item \textbf{Issue} has to be extended with the final component of
-%%   red zone handling.  In particular, if $redzone \not= none$ and the
-%%   instruction to be issued might access the stack then the red zone
-%%   must be restored before the instruction executes.  At this stage,
-%%   the only possible values of $redzone$ are $none$ and $simple$, so
-%%   this can be accomplished with a simple \verb|lea 0x80(%rsp), %rsp|
-%%   instruction.  Also, the state now branches to \textbf{Redzone}
-%%   rather than \textbf{CheckForEntry}.  Apart from that, the handling
-%%   of the \textbf{Issue} state is unchanged.
-%% \end{itemize}
-
-%% Once all of the necessary augmented states have been partially
-%% evaluated the resulting machine code fragments can be stitched back
-%% together to form the final patch body.  The original program is then
-%% modified to branch to this patch body at all of the instructions given
-%% in the patch strategy's $Patch$ set.  The ultimate result is that the
-%% CFG fragments never execute in parallel, completely fixing the bug
-%% with, usually, acceptably low overhead.
-
-
-%% \todo{Might want another example here.}
-
-%% \todo{I've avoided talking about the flags register here, because that
-%%   makes everything much more complicated and this is pretty fiddly as
-%%   it is.  Not sure if I can get away with that.}\smh{In general you
-%%   can mention something at a reasonable level of abstraction without
-%%   needing to provide every detail.}
+\todo{I've avoided talking about the flags register here, because that
+  makes everything much more complicated and this is pretty fiddly as
+  it is.  Not sure if I can get away with that.}\smh{In general you
+  can mention something at a reasonable level of abstraction without
+  needing to provide every detail.}
 
 
 \subsection{Other ways of fixing the bugs}
