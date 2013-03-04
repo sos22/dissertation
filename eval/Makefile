@@ -1,4 +1,5 @@
 CDFS=delta-perf/default.cdf delta-perf/neither.cdf delta-perf/no_dynamic.cdf delta-perf/no_load.cdf delta-perf/no_phi.cdf delta-perf/no_static.cdf
+CDFS+=delta-perf/default.30.cdf delta-perf/neither.30.cdf delta-perf/no_dynamic.30.cdf delta-perf/no_load.30.cdf delta-perf/no_phi.30.cdf delta-perf/no_static.30.cdf
 
 all: mysql-opt.tex $(CDFS)
 
