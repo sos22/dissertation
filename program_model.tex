@@ -77,6 +77,46 @@ not run under the dynamic analysis, which is an acceptable problem.
   not usually a big deal in the section on patch strategy generation,
   but it wouldn't hurt to recap here.}
 
+\subsection{Finding the predecessors of instructions}
+\label{sect:program_model:instr_predecessors}
+
+\todo{Building a CFG relies on being able to find the predecessors of
+  an instruction, which depends on the dynamic alias analysis, so I
+  don't want to describe it until after I've explained that.  On the
+  other hand, once you have the dynamic alias analysis, it becomes
+  trivial.}
+
+Recall that the algorithm for building a \backref{crashing thread}'s
+static control-flow graph, given in
+Section~\ref{sect:derive:build_static_cfg} depends on being able to
+find the predecessor instructions of any instruction.  That is, it
+assumes that there is some function $\mathit{pred}(i)$ which maps from
+one of the program's instructions $i$ to the set of all instructions
+in the program which might execute immediately before $i$ in a
+particular thread.  The indirect branch analysis allows {\technique}
+to build a complete \backref{CFG} for most programs, and hence to
+implement the $\mathit{pred}$ easily.  The key observation is that,
+for most programs on most operating systems, the processor will only
+start executing instructions from the main program binary following an
+indirect branch from a library\footnote{The only common exceptions on
+  Linux are the \texttt{\_start} routine, which can be trivially
+  located by parsing the ELF meta-data, and signal handlers, which
+  {\technique} does not consider.  Shared libraries cannot call into
+  the main program binary via a direct branch as they must support
+  being linked into multiple programs without any modifications to
+  their machine code.  \todo{Not sure how convincing that is.}}, and
+so the indirect branch table contains all ``roots'' of the program
+CFG.  Simply disassembling forwards from these roots then gives the
+entire CFG of all reachable instructions in the program binary.
+
+There is one common exception to this rule: JIT compilers\needCite{}.
+A JIT compiler will often generate code which branches back into the
+JIT itself, and these branches can be direct.  {\Implementation} will
+not behave correctly in this case.  If this were to become a problem
+then it would be reasonably simple to design another direct analysis
+which simply tracked all branches from outside the main program binary
+to addresses in the program binary, which avoid the issue.
+
 \section{Dynamic alias analysis}
 \label{sect:program_model:dynamic_alias}
 
@@ -159,7 +199,7 @@ access, which is in some sense like the set of values on which it can
 operate, whereas the actual analysis discovers the set of instructions
 which it can interact with, which is like a set of operations.
 
-\todo{Maybe draw an explicit analogy with de Bruijn indices?}.
+\todo{Maybe draw an explicit analogy with de Bruijn indices?}
 
 Given this conceptual work, implementing the dynamic analysis itself
 is quite simple.  {\Implementation} does so using a Valgrind
@@ -232,9 +272,9 @@ structure initialisation operations to be marked as thread private.
 
 The decision to handle the stack differently from the heap perhaps
 requires further explanation.  This is a fundamentally pragmatic
-decision.  Ideally, {\technique} would use only analyses to resolve
-aliasing problems, minimising the risk of false positives and
-negatives, but this is simply not practical when analysing the
+decision.  Ideally, {\technique} would use only sound static analyses
+to resolve aliasing problems, minimising the risk of false positives
+and negatives, but this is simply not practical when analysing the
 program's heap.  The heap structure can itself be very complicated, in
 terms of which parts might contain pointers to which other parts, and
 the information needed to derive this structure can be scattered
@@ -453,18 +493,20 @@ The key assumption made by this analysis is that locations in the
 local stack frame are ``created'' when the function starts.  This
 means that there cannot be any pointers to such locations before the
 function starts, except for the stack pointer, whether in registers,
-non-stack memory, or indeed the new stack frame itself.  A pointer
-here is defined to be something which is eventually dereferenced,
-rather than something which just has a numerical value which happens
-to match the local stack frame, so that, for instance, pointers in
-dead registers are acceptable.  An important corollary of this is that
-the address of the stack must have been unknown when the program was
-compiled, and so statically constant values cannot be stack pointers.
+non-stack memory, or indeed the new stack frame itself, and the
+program must not be able to calculate any from the pointers which it
+does have (excluding the stack pointer itself).  A pointer here is
+defined to be something which is eventually dereferenced, rather than
+something which just has a numerical value which happens to match the
+local stack frame, so that, for instance, pointers in dead registers
+are acceptable.  An important corollary of this is that the address of
+the stack must have been unknown when the program was compiled, and so
+statically constant values cannot be stack pointers.
 
 The analysis is structured as a least fixed point iteration which
-builds a mapping $\mathit{configurations}$ from instructions to
+builds a mapping \textit{configurations} from instructions to
 \textsc{configuration}s, defined in
-Figure~\ref{fig:static_alias:domain}, starting from the state shown in
+Figure~\ref{fig:static_alias:abstract_domain}, starting from the state shown in
 Figure~\ref{fig:static_alias:initial_config}, updating instructions
 according to the relationships described in
 Figure~\ref{fig:static_alias:update_rules}, and merging control-flow
@@ -494,10 +536,9 @@ The aim of this analysis is to construct a mapping from instructions
 to \textsc{configurations}, which are defined in
 Figure~\ref{fig:static_alias:abstract_domain}.  This is less
 complicated than it appears.  A \textsc{configuration} can be either
-$\bot$, indicating that the instruction is unreachable, or a
-\textsc{configuration} could consist of a 3-tuple of $\mathit{regs}$,
-$\mathit{stackInStack}$, and $\mathit{stackInOther}$.  Within that
-tuple:
+$\bot$, indicating that the instruction is unreachable, or a it can
+consist of a 3-tuple of $\mathit{regs}$, $\mathit{stackInStack}$, and
+$\mathit{stackInOther}$.  Within that tuple:
 
 \begin{itemize}
 \item $\mathit{stackInStack}$ is true if there is any possibility that
@@ -515,10 +556,11 @@ tuple:
   the current stack frame.
 \end{itemize}
 
-The analysis builds a $\mathit{configurations}$ from instructions to
-the \textsc{configuration} which applies at the start of that
-instruction.  This mapping is initially optimistic, but will have
-become conservative by the time the fixed-point iteration converges.
+The analysis builds the $\mathit{configurations}$ map from
+instructions to the \textsc{configuration} which applies at the start
+of that instruction.  This mapping is initially optimistic, but will
+have become conservative by the time the fixed-point iteration
+converges.
 
 \paragraph{Figure~\ref{fig:static_alias:initial_config}, the initial configuration}
 
@@ -568,9 +610,9 @@ In a little more detail:
   assumption that the stack frame is created by the \texttt{call}
   instruction, and so there is no way for the caller to have obtained
   a pointer to it.
-\item Similar, the stack frame does not initially contain any pointers
-  to itself.  Non-stack memory is likewise free of pointers to the
-  frame.
+\item Similarly, the stack frame does not initially contain any
+  pointers to itself.  Non-stack memory is likewise free of pointers
+  to the frame.
 \item Non-argument registers cannot contain any values at all.  This
   reflects the fact that the platform ABI leaves the value of all
   non-argument registers undefined at the start of a function, and so
@@ -657,10 +699,18 @@ and otherwise take a point-wise union of the two input
       \end{array}\right)\right]\\
     \hline
     \textsc{Copy } k + \textsc{reg}_1 \rightarrow \textsc{reg}_2 \hfill \circled{4}\\
-    \hspace{10mm}\mathit{pre}\left[regs[\textsc{reg}_2] = \mathit{pre}.\mathit{regs}[\textsc{reg}_1]\right]\\
+    \hspace{10mm}\mathit{pre}\left[regs[\textsc{reg}_2] = \left(\begin{array}{rl}
+        \mathit{nonPointer} = & \!\!\!\mathit{pre}.\mathit{regs}[\textsc{reg}_1].\mathit{nonPointer}\\
+        \mathit{stackPointer} = & \!\!\!\mathit{pre}.\mathit{regs}[\textsc{reg}_1].\mathit{stackPointer}\\
+        \mathit{otherPointer} = & \!\!\!\mathit{pre}.\mathit{regs}[\textsc{reg}_1].\mathit{otherPointer} \vee {\neg}\smBadPtr{k}\\
+      \end{array}\right)\right]\\
     \hline
     \textsc{Copy } k {\oplus} \textsc{reg}_1 \rightarrow \textsc{reg}_2 \hfill \circled{5}\\
-    \hspace{10mm}\mathit{pre}\left[regs[\textsc{reg}_2] = \mathit{pre}.\mathit{regs}[\textsc{reg}_1][\mathit{nonPointer} = \mathit{true}]\right]\\
+    \hspace{10mm}\mathit{pre}\left[regs[\textsc{reg}_2] = \left(\begin{array}{rl}
+        \mathit{nonPointer} = & \!\!\!\true\\
+        \mathit{stackPointer} = & \!\!\!\mathit{pre}.\mathit{regs}[\textsc{reg}_1].\mathit{stackPointer}\\
+        \mathit{otherPointer} = & \!\!\!\mathit{pre}.\mathit{regs}[\textsc{reg}_1].\mathit{otherPointer} \vee {\neg}\smBadPtr{k}\\
+      \end{array}\right)\right]\\
     \hline
     \textsc{Copy } \textsc{reg}_1 {\oplus} \textsc{reg}_2 \rightarrow \textsc{reg}_3 \hfill \circled{6}\\
     \hspace{10mm}\begin{array}{ll}
@@ -696,8 +746,8 @@ shown in Figure~\ref{fig:static_alias:update_rules}.
 \item[\circled{1}] The first rule in the figure shows how to handle
   store-like instructions.  The notation is intended to indicate an
   instruction which stores the value of register $\textsc{reg}_1$ to
-  the memory location given by $\textsc{reg}_2$.  The update has
-  three parts:
+  the memory location given by $\textsc{reg}_2$.  The update to the
+  \textsc{configuration} has three parts:
 
   \begin{itemize}
   \item $\mathit{regs}$ is updated to record the fact that, if this
@@ -725,7 +775,7 @@ shown in Figure~\ref{fig:static_alias:update_rules}.
     pointer to the stack and the stack might contain a pointer to
     itself or if $\textsc{reg}_1$ might be a pointer to non-stack
     memory and there might be any pointers to the stack from other
-    memory.
+    memory\editorial{Long sentence}.
   \end{itemize}
 \item[\circled{3}] This rule shows how to handle an instruction which
   sets a register to a constant.  The only change here is to
@@ -777,11 +827,6 @@ shown in Figure~\ref{fig:static_alias:update_rules}.
   for any operators other than $+$.  The result might always be a
   non-pointer, and might be a pointer to anything which any of the
   inputs point to.
-
-  \todo{Should really introduce the potential to point at other if one
-    of the inputs is a valid pointer constant.  The implementation
-    does that, but this presentation makes it look like I've
-    forgotten.}
 
 \item[\circled{7}] Handling called sub-functions requires some care,
   as this is a function-local analysis and so the bodies of
@@ -838,6 +883,7 @@ shown in Figure~\ref{fig:static_alias:update_rules}.
 
 \begin{figure}
   \subfigure[][Stack does not reach callee]{
+    \hspace{-10mm}
     \begin{math}
       \begin{array}{rrl}
         \textit{regs} & \mathit{ret} = &\!\!\!\left(\!\!\!\begin{array}{rl}
@@ -857,6 +903,7 @@ shown in Figure~\ref{fig:static_alias:update_rules}.
     \end{math}
   }
   \subfigure[][Stack does reach callee]{
+    \hspace{-5mm}
     \begin{math}
       \begin{array}{rrl}
         \textit{regs} & \mathit{ra} = &\!\!\!\left(\!\!\!\begin{array}{rl}
@@ -886,403 +933,206 @@ Most non-control flow instructions in the AMD64 instruction set can be
 expressed in terms of these simple operations, but the full expansion
 is quite tedious and I do not give details here.  
 
-
 \todo{Need to eval how effective all of this actually is.}\smh{Ack;
   also maybe look at how effective it would be to use more distinct
   locations (i.e. a greater number of locations).}
 
-\subsection{Mapping the program's function call structure to the {\StateMachine} structure}
-\label{sect:derive_manip:synthesis_aliasing}
-
-The static analysis is expressed in terms of accesses to the current
-function's local frame, but {\StateMachines} are potentially
-cross-function and so even the idea of a ``current function'' is not
-entirely well-defined.  It is therefore necessary to recover the
-program's function call structure, determining where function local
-frames are created and destroyed and the boundaries between them, and
-to then match this structure to the data produced by the static
-analysis.
-
-Deriving the function call structure is reasonably straightforward:
-frames are created by \texttt{call} instructions, destroyed by
-\texttt{ret} instructions, and the boundaries between frames are given
-by the value of the stack pointer when one of these instructions
-executes.  The \texttt{call} and \texttt{ret} instructions are easily
-encoded into \state{StartFunction} and \state{EndFunction} annotation
-states, with any leftover \texttt{ret} instructions used to determine
-the stack when the {\StateMachine} starts and used to form
-\state{StackLayout} annotation states at each entry
-point\editorial{LS}.
-
-The only slight subtlety lies in deciding when to treat two
-\texttt{call} instructions as starting equivalent stack frames, and
-hence when they should be assigned the same frame identifier.  If two
-\texttt{call}s call the same function then giving them the same frame
-identifier potentially allows the relevant states in the
-{\StateMachine} to be merged together, and hence reduces future
-analysis work.  On the other hand, assigning them different
-identifiers usually allows the static analysis to be encoded with
-greater fidelity, which can improve the results of alias analysis.
-{\Implementation} solves this problem by assigning functions different
-frame identifiers whenever possible, subject to the constraint that
-all paths to a given {\StateMachine} state must always result in the
-same call stack.
-
-Consider, for example, the program fragments shown in
-Figures~\ref{fig:derive:assign_frames1}
-and~\ref{fig:derive:assign_frames2}.  In the first figure there are
-two calls to \texttt{f}.  One starts after the other has finished, and
-so they can be assigned different frame identifiers without causing
-any {\StateMachine} states to be executed in different stack contexts;
-this ensures that the local variables of the two invocations of
-\texttt{f} can be correctly disambiguated by the alias analysis.  The
-second figure also shows two static calls to \texttt{f}, but here any
-given path will only invoke \texttt{f} once, at the end of the path.
-All paths will therefore share a single representation of \texttt{f}
-and the two calls to \texttt{f} will share a single frame identifier.
-This allows the results of the alias analysis on \texttt{f} to be
-effectively shared across the two paths, reducing computation costs.
-
-\todo{That's not a brilliant explanation of this.  If nothing else, it
-  implies that this is purely a performance thing, whereas there are
-  actually some correctness constraints here as well.}
-
-\subsection{Incorporating static analysis results into the {\StateMachine}}
-
-The next step, once frame IDs have been allocated and the stack layout
-determined, is to incorporate the information from the static analysis
-into the {\StateMachine}, and in particular determining which frames
-might be present in registers or memory when the {\StateMachine}
-starts.  For frames allocated by \state{StartFunction} annotations
-this is trivial: such frames are never present in memory or in
-registers\footnote{Except possibly for the stack pointer itself; see
-  later.} when the {\StateMachine} starts.  This reflects the
-fundamental assumption that there are no live pointers to a function's
-local variables before that function starts.  Likewise, the frame at
-the top of the stack when the {\StateMachine} starts is easily
-handled, as it is perfectly modelled by the static analysis, and the
-information can be simply added to the appropriate \state{StackLayout}
-annotation state.  The other frames on the initial stack require more
-care.  The approach taken by {\implementation} is to find the call
-site which allocated a frame and to derive an over-approximation of
-the correct points-to configuration from the points-to configuration
-at that point.
-
-As an example, suppose that the initial \state{StackLayout} annotation
-has frames $F_1$, $F_2$ and $F_3$, and that the inlining
-context\footnote{This can be obtained from the {\StateMachine}'s CFG;
-  see section~\ref{sect:derive:cross_function_cfgs}.} is $a$, $b$,
-$c$.  This indicates that the {\StateMachine} starts in function $c$,
-which was called from function $b$, which was called from function
-$a$; that function $c$'s frame is $F_3$; that function $b$'s frame is
-$F_2$; and that function $a$'s frame is $F_1$.  The static analysis
-can easily determine whether any pointers to $F_3$ might have reached
-registers or memory, and so this information is simply copied into the
-\state{StackLayout} annotation.  Determining whether any registers
-might contain a pointer to $F_2$ is more difficult, as it requires
-analysing both $c$ and $b$ and the static analysis is function-local.
-It is, however, still possible to usefully constrain the locations
-which might point at $F_2$ by examining the points-to configuration at
-the \texttt{call} instruction in $b$ which invoked $c$.  In
-particular, if there is no way for $c$ to have acquired a pointer to
-$F_2$, whether via an argument register or through non-stack memory,
-then it cannot have created any additional pointers to
-$F_2$\footnote{This is closely analogous to the way the static
-  analysis itself handles called sub-functions, as discussed in the
-  previous section.}, and so it is safe to assume that a variable can
-only contain a pointer to $F_2$ if the \texttt{call}-time
-\backref{points-to configuration} allowed that location to point to
-$F_2$\editorial{Rephrase.}.  On the other hand, if $c$ could have
-received a pointer to $F_2$ then there is no way to constrain what it
-could have done with it, and so any variable might point at $F_2$ by
-the time the {\StateMachine} starts.  Similarly, the
-\backref{points-to configuration} at the \texttt{call} from $a$ to $b$
-can often be used to constrain the possible pointers to
-$F_1$\footnote{One might reasonably ask what happens if a function
-  does not have a \texttt{call}er; for instance, if it is the start
-  function of some thread.  Such situations are extremely rare in
-  practice.  Almost all operating systems start new programs and
-  threads in some library function which then calls into the program's
-  actual start-thread or start-program function, and so all program
-  functions in practice have a \texttt{call}er.  {\Implementation}
-  does not analyse library code, and so the library function's frame
-  is itself never an issue.}\editorial{That footnote might be a bit
-  too glib.}.
-
-\todo{Maybe talk about interactions with cross-thread \StateMachines?
-  They're not actually very interesting, but it's kind of an obvious
-  omission.}
-
-\subsection{Using the static analysis to constrain aliasing}
-
-The {\StateMachine} has now been augmented with a number of annotation
-states: \state{StackLayout}s, showing the initial stack layout and
-which initial stack frames can be pointed at from where;
-\state{StartFunction}s and \state{EndFunction}s, showing where stack
-frames are created and destroyed; and \state{ImportRegister}s, showing
-which frames program registers might point at.  The next step is to
-use this information to determine which stack frames each memory
-access might refer to, and hence to determine when the accesses might
-alias.
-
-This phase of the analysis builds two main data structures: the
-aliasing table itself, which is a set of pairs of \state{Load} and
-\state{Store} operations such that the \state{Store} might provide
-some information which is loaded by the \state{Load}, and a points-to
-table, which specifies where each {\StateMachine} temporary can point,
-expressed as a set of stack frames and a flag indicating whether it
-can point at non-stack memory.  These two structures are defined in
-terms of each other and the analysis is structured as a simple
-fixed-point iteration between them: the points-to table is used to
-refine an initial, conservative\editorial{Why?  Should be able to use
-  aggressive tables safely, and the results would probably be
-  better.}, aliasing table, which is then used to refine the points-to
-table, which is used to further refine the aliasing table, and so on,
-until both tables have fully converged.  The resulting tables
-accurately capture the possible memory-accessing behaviours of the
-{\StateMachine}.
-
-Defining the initial contents of the two tables is straightforwards.
-The points-to table contains an entry for every {\StateMachine}
-variable indicating that that variable might point at anything.  The
-aliasing table contains an entry for every \state{Load} listing every
-\state{Store} in the {\StateMachine}, subject to three constraints:
-
-\begin{itemize}
-\item \state{Store}s are not included in the set if simple arithmetic
-  considerations show that they cannot alias with the \state{Load}.
-  For instance, a \state{Store} to $RSP+8$ will not be included in the
-  set for a \state{Load} of $RSP+32$.  \todo{I could maybe give
-    details of the arithmetic rules used here, but it'd be long,
-    obvious, and boring.}
-\item \state{Store}s are only included in the set if there is some
-  path through the {\StateMachine} which passes through the
-  \state{Store} before reaching the \state{Load}.  This gives the
-  analysis a modest level of control-flow sensitivity.
-\item If the dynamic analysis recorded any information about the
-  \state{Load} then the set of \state{Store}s is constrained to be
-  consistent with that information.  The static analysis is not
-  usually able to meaningfully improve on the information collected by
-  the dynamic analysis, but incorporating it here simplifies the
-  implementation.
-\end{itemize}
-
-These initial tables are clearly safe, in the sense that any data flow
-pattern which the {\StateMachine} can actually achieve is also allowed
-by the tables, but they are more conservative than is necessary.
-{\Technique} therefore refines them slightly before using them.  This
-has two phases: refining the alias table using the points-to table,
-and refining the points-to table using the alias table.  The two
-phases alternate until the tables converge.
-
-Consider the alias refinement phase first.  This phase considers each
-entry in the alias table, and hence each aliasing pair of \state{Load}
-and \state{Store} operations, in turn.  For each pair, it calculates a
-points-to set for each address; if they do not overlap, the pair can
-be removed from the table.  Calculating the points-to set for an
-address, $\mathit{pts}(\mathit{addr})$, is straightforward:
-
-\begin{itemize}
-\item
-  The first step is to compare the address expression to the stack
-  layout at this state.  If the address can be arithmetically shown to
-  point to a particular stack frame then the points-to set is simply
-  that frame.  If the address cannot be shown to point to a particular
-  frame, but does mention the stack pointer, it is treated as being
-  able to possibly point at any frame.  Otherwise, if it does not
-  explicitly mention the stack pointer and cannot be shown to point at
-  a particular frame, the analysis proceeds by cases.  \todo{That
-    could maybe do with more detail.}
-\item
-  For a {\StateMachine} temporary $t$, the result is simply the
-  points-to table's entry for $t$.
-\item
-  For an operator $x \oplus y$, the result is the union of the
-  points-to sets for $x$ and $y$.  It might be possible to refine this
-  rule somewhat for particular operators $\oplus$, but I have not
-  needed to do so yet.  The rules for non-binary operators are
-  analogous.
-\item
-  The rules for an initial memory expression $\smLoad{\mathit{addr}}$
-  are more complicated.  The algorithm first derives the points-to set
-  for $\mathit{addr}$, to find which memory locations the $\smLoad{}$
-  might access, and then compares these to the memory layout implied
-  by the \state{StackLayout} annotations to find what pointers those
-  locations might contain.  The resulting points-to set are trimmed to
-  remove any frames which are not live at both the \state{Load} and
-  \state{Store} states.  The final result is the union of the
-  remaining sets.  \todo{Formalise a little, maybe?}
-\end{itemize}
-
-There is a slight complication here, which is that the address fields
-of \state{Store} and \state{Load} states are not simple expression,
-but are instead BDDs with expressions at their leaves.
-{\Implementation} therefore calculates points-to sets for each leaf of
-the two BDDs, to form new BDDs over points-to sets, intersects the two
-new BDDs, and then takes the union of the leaves of the result.
-\todo{Should maybe mention the implications of that?  They're not very
-  interesting, but it's an obvious omission at the moment.
-  Alternatively: could move this to a footnote so as to de-emphasise
-  it a bit.}
-
-Refining the points-to table is also quite simple.  The refinement
-process considers each entry in the variable in the {\StateMachine} in
-turn and attempts to refine its points-to set using the current
-points-to and alias tables.  The refinement of a variable depends on
-the type of state which defined that variable\footnote{Recall that
-  {\StateMachines} are in static single assignment form, and so there
-  will always be precisely one such state.}:
-
-\begin{itemize}
-\item
-  \state{Copy} $\mathit{expr} {\rightarrow} \mathit{tmp}$, which
-  evaluates $\mathit{expr}$ and sets the {\StateMachine} variable
-  $\mathit{tmp}$ to that value.  The new points-to set for
-  $\mathit{tmp}$ will be $\mathit{old} \wedge
-  \mathit{pts}(\mathit{expr})$, where $\mathit{old}$ is the current
-  points-to set for $\mathit{tmp}$, $\mathit{pts}$ calculates the
-  points-to set for $\mathit{expr}$ using the current points-to table,
-  and $\wedge$ is the intersection of points-to sets.
-\item
-  \state{$\Phi$} $\{\mathit{tmp}_i : \mathit{expr}_i\} {\rightarrow}
-  \mathit{tmp}$, which sets $\mathit{tmp}$ to one of the
-  $\mathit{expr}_i$ depending on which of the $tmp_i$ has been most
-  recently assigned to.  The new points-to set for $\mathit{tmp}$ will
-  be $\mathit{old} \wedge (\bigvee \mathit{pts}(\mathit{expr}_i))$, where
-  $\vee$ is the union of points-to sets.
-\item
-  \state{ImportRegister} $\mathit{tid}, \mathit{reg}, \mathit{pts}
-  \rightarrow \mathit{tmp}$, which sets $\mathit{tmp}$ to the value of
-  register $\mathit{reg}$ in thread $\mathit{tid}$ and notes that it
-  has points-to set $\mathit{pts}$.  This case is trivial: the new
-  points-to set for $\mathit{tmp}$ is simply $\mathit{pts}$.
-\item
-  \state{Load} $\ast\mathit{addr} \rightarrow \mathit{tmp}$, which
-  evaluates $\mathit{addr}$ to obtain an address and copies the
-  contents of memory at that address to $\mathit{tmp}$.  For this
-  case, the analysis examines the aliasing table to find all
-  \state{Store}s $S$ which might alias with the load and sets the new
-  points-to set of $\mathit{tmp}$ to $old \wedge (\bigvee_{s \in
-    S}(\mathit{pts}(s_{\mathit{data}})) \vee \mathit{pts}(\smLoad{\mathit{addr}}))$,
-  where $s_{\mathrm{data}}$ is the data field of the \state{Store}
-  $s$.
-\end{itemize}
-
-
-
-These two refinement phases are iterated until both the points-to and
-aliasing tables completely converge.  The resulting aliasing table can
-then be used to constrain the set of \state{Store}s which each
-\state{Load} might interact with, and hence to produce simpler
-load-replacing expression BDDs during the \state{Load} elimination
-simplification.
-
-\todo{The aliasing table can also be used to eliminate some
-  \state{Store}s, but that's kind of an awkward thing to work in here,
-  and is also kind of obvious.}
-
 \section{The known register analysis}
 \label{sect:program_model:fixed_regs}
 
-\subsection{Frame pointer elimination}
+In many cases the value of a register at a particular instruction is
+either a fixed constant or a fixed offset from another register.  This
+analysis attempts to discover such fixed relationships.  The structure
+of the analysis is broadly similar to the static alias analysis:
+define a domain of \textsc{Configuration}s
+(Figure~\ref{fig:known_regs:configuration}), a join operator for them
+(Figure~\ref{fig:known_regs:join_op}), and an abstract interpretation
+relation for instructions (Figure~\ref{fig:known_regs:update_rule}),
+and then build a mapping from instructions to \textsc{Configuration}s
+by taking the least fixed point.  I now describe these diagrams in
+more detail.
 
-\todo{Not entirely convinced this needs to be here at all.}
+\todo{Mention that this is most useful for figuring out DF, so that
+  memcpy etc. work, and for getting rid of frame pointers.}
 
-\todo{This is one of the simplest static analyses I do, but has the
-  same structure as the more complex alias analysis, so I could
-  consider pulling it up a bit?}
-
-The frame pointer register, if present, complicates local variable
-aliasing analysis\footnote{It is perhaps surprising that, at least in
-  this respect, the output of an optimising compiler is usually easier
-  to analyse than that of a non-optimising one.  This is not the only
-  situation in which this happens; see the evaluation for other
-  examples. \todo{Need to do that bit of the eval.}}.  The problem is
-that some accesses to local variables will be expressed relative to
-the stack pointer and some to the frame pointer, and so alias
-resolution is likely to fail unless some relationship can be
-established between them.  For most compilers, most of the time, that
-relationship is straightforward: for any given instruction, the frame
-pointer will be the stack pointer will some fixed offset.  If the
-frame pointer could be replaced with the expression $RSP+k$, where
-$RSP$ is the stack pointer and $k$ the offset, then this problem could
-be avoided.  {\Technique} takes exactly that approach, using an
-initial static analysis to derive $k$ for every possible instruction
-in the program and then replacing the frame pointer with an
-appropriate stack-relative expression\footnote{The main
-  {\StateMachine}-level analysis cannot derive $k$, as $k$ is usually
-  set by the function prologue and the {\technique} analysis window
-  often starts in the middle of a function, so does not include the
-  necessary information.}.
+\paragraph{Figure~\ref{fig:known_regs:configuration}, the abstract domain}
 
 \begin{figure}
-\begin{algorithmic}
-  \For {Every instruction $i$ in the program}
-     \State {$exitLabels[i] \gets \bot$}
-     \State {$entryLabels[i] \gets \bot$}
-  \EndFor
-  \While {Not converged}
-     \For {Every instruction $i$ in the program}
-        \State {$entryLabels[i] \gets \bigsqcup\limits_{p \in predecessors(i)}exitLabels[p]$}
-        \State {$exitLabels[i] \gets \textsc{exitConfig}(i, entry)$}
-     \EndFor
-  \EndWhile
-  \State \Return $entryLabels$
-\end{algorithmic}
-\caption{Frame pointer offset algorithm.  \textsc{exitConfig} is
-  described in the main text.}
-\label{fig:derive:frame_pointer_alg}
+  \begin{displaymath}
+    \begin{array}{rcl}
+      \textsc{RegValue} & = & (\mathit{invalid}:1) + (\mathit{const}:\textsc{Integer}) + \\
+                        &   & {\quad\quad\quad} (\mathit{regOffset}:\left(\mathit{reg}: \textsc{Reg}, \mathit{offset}: \textsc{Integer}\right)) \\
+      \\
+      \textsc{Configuration} & = & (\mathit{unreachable}:1) + (\mathit{reachable}: \textsc{Reg} \rightarrow \textsc{RegValue})\\
+    \end{array}
+  \end{displaymath}
+  \caption{\textsc{Configuration} type for the known register analysis}
+  \label{fig:known_regs:configuration}
 \end{figure}
 
-The static analysis is itself rather simple, and is shown in
-Figure~\ref{fig:derive:frame_pointer_alg}.  Each instruction has an
-entry label, showing the offset from the frame pointer to the stack
-pointer at the start of the instruction, and an exit label, showing
-the offset at the end of the instruction.  In addition, each label can
-take the special value $\bot$, indicating that nothing is currently
-known about the offset at that point, or the value $\top$, indicating
-that the offset is not a constant.  The analysis is then structured as
-an iteration to a fixed point of two rules: first $entryLabel[i]$ is
-set to the union of the exit label's of all of $i$'s predecessors, and
-then $exitLabel[i]$ is recomputed based on $entryLabel[i]$ and the
-type of instruction at $i$.  \todo{Rewrite.}
+Figure~\ref{fig:known_regs:configuration} gives the abstract domain
+for the known register analysis.  A \textsc{Configuration} here is
+either \textit{unreachable}, indicating that no paths to the
+instruction have yet been discovered, or \textit{reachable}, in which
+case the \textsc{Configuration} consists of a mapping from
+\textsc{Reg}isters to \textsc{RegValue}s.  A \textsc{RegValue} is in
+turn either \textit{const k}, indicating that the register is the
+constant $k$, \textit{regOffset r k}, indicating that this register is
+equal to $r + k$, where $r$ is some other register, or
+$\mathit{invalid}$, indicating that the register does not fit one of
+those forms.
 
-A few things remain to define:
+The initial value for the fixed point iteration has every instruction
+\textit{unreachable} except for the \backref{function head}
+instruction, which is a \textit{reachable} whose contents reflects
+whatever constraints the system ABI imposes at the start of a
+function.  For Linux on AMD64, the only such constraint is that the
+direction flag in \texttt{rflags} is equal to 1.  {\Implementation}
+stores the direction flag in its own register \textsc{df}, and so the initial
+configuration is just:
+\begin{displaymath}
+  \mathit{reachable} \{ \textsc{df} \rightarrow \textit{const }1 \}
+\end{displaymath}
+
+\paragraph{Figure~\ref{fig:known_regs:join_op}, the join operator}
+
+\begin{figure}
+  \begin{displaymath}
+    \begin{array}{l}
+      \begin{array}{rl}
+        \cup : & \textsc{RegValue} \rightarrow \textsc{RegValue} \rightarrow \textsc{RegValue} \\
+        \sqcup : & \textsc{Configuration} \rightarrow \textsc{Configuration} \rightarrow \textsc{Configuration}
+      \end{array}\\\\
+      \begin{array}{rclcll}
+        x & \cup & y & = & x                & \textrm{if } x = y\\
+        x & \cup & y & = & \mathit{invalid} & \textrm{otherwise} \\
+        \\
+        \mathit{unreachable} & \sqcup & x & = & x \\
+        x & \sqcup & \mathit{unreachable} & = & x \\
+        \textit{reachable x} & \sqcup & \textit{reachable y} & = & \textit{reachable } (r \rightarrow \textit{x r} \cup \textit{y r})
+      \end{array}
+    \end{array}
+  \end{displaymath}
+  \caption{Join operator $\sqcup$ operator for known register analysis \textsc{Configuration}s.}
+  \label{fig:known_regs:join_op}
+\end{figure}
+
+Figure~\ref{fig:known_regs:join_op} shows the join operator $\sqcup$
+on \textsc{Configuration}s.  If one of the predecessor states is
+unreachable, the operator takes the \textsc{Configuration} from its
+other predecessor; otherwise, it performs a point-wise join of the
+values for the individual registers using the $\cup$ operator.  The
+$\cup$ operator is, again, simple: if its arguments are equal, it
+returns them, and otherwise it returns \textit{invalid}.
+
+\paragraph{Figure~\ref{fig:known_regs:update_rule}, the update rule}
+
+\begin{figure}
+  \begin{displaymath}
+    \begin{array}{l}
+      \hspace{\columnwidth}~\\
+      \textsc{Copy } k \rightarrow \textsc{reg} \hfill \circled{1}\\
+      \hspace{10mm}\textit{reachable }\left\{\begin{array}{ll}
+      \textsc{reg}     & \!\!\!\rightarrow \textit{const k}\\
+      \textsc{reg}' \hspace{1mm} \multirow{2}{*}{\begin{math}
+          \left|\hspace{-1mm}\begin{array}{l}
+          \textit{old \textsc{reg}' = offset \textsc{reg} k'} \\
+          \textit{otherwise}
+          \end{array}\right.
+        \end{math}
+      }\hspace{-5mm}   & \!\!\!\rightarrow \mathit{invalid}\\
+                       & \!\!\!\rightarrow \textit{pre }\textsc{reg}'\\
+      \end{array}\hfill\right\}\quad\\
+
+      \hline
+      \textsc{Copy } k + \textsc{reg} \rightarrow \textsc{reg} \hfill \circled{2}\\
+      \hspace{10mm}\textit{reachable }\left\{\begin{array}{lll}
+        \textsc{reg} & \multirow{3}{*}{\begin{math}
+            \left|\hspace{-1mm}\begin{array}{l}
+              \textit{pre }\textsc{reg} = \mathit{invalid}\\
+              \textit{pre }\textsc{reg} = \textit{const }k'\\
+              \textit{pre }\textsc{reg} = \textit{offset r } k'\\
+            \end{array}\right.
+          \end{math}
+        } & \!\!\!\rightarrow \mathit{invalid} \\
+        & & \!\!\!\rightarrow \textit{const k + }k' \\
+        & & \!\!\!\rightarrow \textit{offset r }(k + k')\\
+        \vspace{-2mm}\\
+        \textsc{reg}' & \multirow{2}{*}{\begin{math}
+            \left|\hspace{-1mm}\begin{array}{l}
+              \textit{pre }\textsc{reg}' = \textit{offset \textsc{reg} }k'\\
+              \mathit{otherwise}\\
+            \end{array}\right.
+          \end{math}
+        } & \!\!\!\rightarrow \textit{offset \textsc{reg} } (k'-k) \\
+        & & \!\!\!\rightarrow \textit{pre }r'\\
+      \end{array}\right\}\\
+
+      \hline
+      \textsc{Copy } k + \textsc{reg}_1 \rightarrow \textsc{reg}_2 \textrm{ where } \textsc{reg}_1 \not= \textsc{reg}_2 \hfill \circled{3}\\
+      \hspace{10mm}\textit{reachable }\left\{\begin{array}{ll}
+        \textsc{reg}_2 & \!\!\!\rightarrow \textit{offset }\textsc{reg}_1 \textit{ k} \\
+        \textsc{reg}' \multirow{2}{*}{\begin{math}
+            \left|\hspace{-1mm}\begin{array}{l}
+              \textit{pre }\textsc{reg}' = \textit{offset }\textsc{reg}_2 \textit{ } k' \\
+              \textit{otherwise}\\
+            \end{array}\right.
+          \end{math}
+        } & \!\!\!\rightarrow \mathit{invalid}\\
+          & \!\!\!\rightarrow \textit{pre }\textsc{reg}'\\
+      \end{array}\right\}\\
+
+      \hline
+      \textrm{Other updates of }\textsc{reg} \hfill \circled{4}\\
+      \hspace{10mm}\textit{reachable }\left\{\begin{array}{ll}
+        \textsc{reg} & \!\!\!\rightarrow \textit{invalid} \\
+        \textsc{reg}' \multirow{2}{*}{\begin{math}
+            \left|\hspace{-1mm}\begin{array}{l}
+              \textit{pre }\textsc{reg}' = \textit{offset }\textsc{reg} \textit{ } k \\
+              \textit{otherwise}\\
+            \end{array}\right.
+          \end{math}
+        } & \!\!\!\rightarrow \mathit{invalid}\\
+          & \!\!\!\rightarrow \textit{pre }\textsc{reg}'\\
+      \end{array}\right\}\\
+      
+    \end{array}
+  \end{displaymath}
+  \caption{Update rule for known register analysis \textsc{Configuration}s.}
+  \label{fig:known_regs:update_rule}
+\end{figure}
+
+Figure~\ref{fig:known_regs:update_rule} shows how to calculate the
+\textsc{Configuration} at the end of an instruction from the
+\textsc{Configuration} at the start, when that is not
+\textit{unreachable}, for some simple instructions.
 
 \begin{itemize}
-\item
-  $l \sqcup \bot = l$ and $\bot \sqcup l = l$, for any $l$.
-\item
-  $l \sqcup \top = \top$ and $\top \sqcup l = \top$, for any $l$.
-\item
-  $offset(k) \sqcup \mathit{offset}(k) = \mathit{offset}(k)$
-\item
-  $offset(k) \sqcup \mathit{offset}(k)' = \top$ for any $k \not= k'$.
-\item
-  The behaviour of $\textsc{exitConfig}(i, l)$ depends on the
-  instruction $i$ being examined:
-
-  \begin{itemize}
-  \item If $i$ modifies neither the frame pointer nor the stack
-    pointer then the result is $l$.
-  \item If it sets the frame pointer to be equal to the stack pointer
-    plus $k$ then the result is $\mathit{const}(k)$, and likewise if
-    it sets the stack pointer to the frame pointer plus $k$ the result
-    is $\mathit{const}(-k)$.
-  \item If it adds $k$ to the frame pointer and $l$ is
-    $\mathit{const}(k')$ then the result is $\mathit{const}(k'+k)$.
-    For other values of $l$, the result is just $l$.  Conversely, if
-    it adds $k$ to the stack pointer then the result is
-    $\mathit{const}(k'-k)$.
-  \item Otherwise, for any other modifications to the stack or frame
-    pointers, the result is $\top$.
-  \end{itemize}
+\item[\circled{1}] If the instruction sets a register to a constant $k$,
+  the update rule first sets that register to \textit{const k} and then
+  invalidates any other registers which are currently believed to be a
+  fixed offset from that register.
+\item[\circled{2}] This rule handles instructions which update a
+  register by adding a constant.  There are two parts to this: the
+  register which was updated must have the constant added to its
+  value, and registers which were defined in terms of the register
+  must have the constant subtracted from there value.
+\item[\circled{3}] The third rule shows how to handle instructions
+  which set a register $\textsc{reg}_2$ to be equal to another
+  register $\textsc{reg}_1$ plus a constant $k$\footnote{Which might
+    be zero or negative.}.  $\textsc{reg}_2$ is set to $\textit{offset
+  }\textsc{reg}_1\textit{ k}$, and any registers defined in terms of
+  $\textsc{reg}_2$ are invalidated.
+\item[\circled{4}] The final rule handles all other types of
+  instructions which update a register $\textsc{reg}$.  This rule
+  simply invalidates the entry for $\textsc{reg}$ and all registers
+  which are defined in terms of it.  This is quite conservative.  For
+  instance, the instruction is adding two registers both of which have
+  known values it would be easy to constant-fold the values together.
+  This is unlikely to be helpful for programs produced with optimising
+  compilers, as even a very basic optimising compiler will itself
+  perform constant folding optimisations, and so there will be no
+  further opportunity to apply them to the compiled binary.
 \end{itemize}
 
-Once these rules have converged any $\mathit{const}(k)$ entries in the
-resulting table will correctly specify the offset between the stack
-and frame pointers at that instruction.  The {\StateMachine} compiler,
-described in Section~\ref{sect:derive:compile_cfg}, can then use this
-information to remove most references to the frame pointer.
-
-\todo{Need to eval how often this works.}
+\todo{Need to eval how often this works, as well.}
