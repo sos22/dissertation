@@ -2514,6 +2514,7 @@ memory accesses.
 
 \begin{figure}
   \begin{centering}
+    \hfill
   \begin{tikzpicture}
     \node[stateSideEffect, initial] (AC) {\shortstack{(A, C)\\\state{If} $\happensBefore{A}{C}$ }};
     \node[stateSideEffect, below left = of AC] (A1) {\shortstack{A\\L1}};
@@ -2551,6 +2552,7 @@ memory accesses.
     \draw[->] (0C) -- (0D);
 
   \end{tikzpicture}
+    \hfill
   \end{centering}
   \caption{Correct cross-product of the {\StateMachines} shown in
     Figure~\ref{fig:cross_product:example_aliasing}.  Note that the
@@ -2655,42 +2657,69 @@ will insert delays into the program's execution in a way which will
 make the bug more likely to reproduce.  This can then be used to
 determine which of the many bugs reported by the prior analysis are
 actually reproducible, and hence to appropriately target efforts in
-fixing them.  As an example, consider these two threads:
-
-\begin{verbatim}
-int *global_ptr[];
-void crashing(int idx1) {
-    if (global_ptr[idx1])
-        *global_ptr[idx1] = 7;
-} 
-void interfering(int idx2) {
-    global_ptr[idx2] = NULL;
-}
-\end{verbatim}
-
-Suppose further that they compile to this machine code:
-
-\begin{verbatim}
-crashing:
-
-l1:   ADD global_ptr + idx1 -> reg1
-l2:   LOAD *reg1 -> reg2
-l3:   CMP 0, reg2
-l4:   jmp_if_eq l7
-l5:   LOAD *reg1 -> reg3
-l6:   STORE 7 -> *reg3
-l7:
-
-interfering:
-
-l8:   ADD global_ptr + idx2 -> reg4
-l9:   STORE 0 -> *reg4
-\end{verbatim}
-
-(This is essentially the bug indexed\_toctou\smh{?} discussed in
-Section~\ref{sect:eval:indexed_toctou}).  There is a risk here that
-the crashing thread might crash if \verb|l9| is interleaved between
-\verb|l2| and \verb|l5| and \verb|idx1 == idx2|.  The previous
+fixing them.
+\begin{figure}
+  \begin{tabular}{ll}
+    \multicolumn{2}{l}{\texttt{int *global\_ptr[];}}\\
+    \hspace{-5mm}\subfigure[][Crashing thread source]{
+      \texttt{
+        \begin{tabular}{lll}
+          \multicolumn{3}{l}{void crashing(int idx1) \{}\\
+          &\multicolumn{2}{l}{if (global\_ptr[idx1])}\\
+          &&*global\_ptr[idx1] = 7;\\
+          \}\\
+        \end{tabular}
+      }
+    } & \hspace{-5mm}%
+    \subfigure[][Interfering thread source]{
+      \texttt{
+        \begin{tabular}{ll}
+          \multicolumn{2}{l}{void interfering(int idx2) \{}\\
+          &global\_ptr[idx2] = NULL;\\
+          \}\\
+          \\
+        \end{tabular}
+      }
+    }\\
+    \hspace{-5mm}\subfigure[][Crashing thread machine code]{
+      \texttt{
+        \begin{tabular}{rlll}
+          & \multicolumn{3}{l}{crashing:} \\
+          l1: & ADD & global\_ptr+idx1 & \!\!\!$\rightarrow$ reg1 \\
+          l2: & LOAD & *reg1 & \!\!\!$\rightarrow$ reg2 \\
+          l3: & CMP & 0, reg2 \\
+          l4: & JE & l7 \\
+          l5: & LOAD & *reg1 & \!\!\!$\rightarrow$ reg3 \\
+          l6: & STORE & 7 & \!\!\!$\rightarrow$ *reg3 \\
+          l7:
+        \end{tabular}
+      }
+    } & \hspace{-5mm}%
+    \subfigure[][Interfering thread machine code]{
+      \texttt{
+        \begin{tabular}{rlll}
+          & \multicolumn{3}{l}{interfering:} \\
+          l8: & ADD & global\_ptr+idx2 & \!\!\!$\rightarrow$ reg4 \\
+          l9: & STORE & 0 & \!\!\!$\rightarrow$ *reg4 \\
+          \\
+          \\
+          \\
+          \\
+          \\
+        \end{tabular}
+      }
+    }\\
+  \end{tabular}
+  \caption{Example threads.}
+  \label{fig:enforce:example_threads}
+\end{figure}
+  
+Consider, for example, the threads shown in
+Figure~\ref{fig:enforce:example_threads}\footnote{This example is
+  discussed further in Section~\ref{sect:eval:indexed_toctou}, where
+  it is referred to as the indexed\_toctou bug.}.  There is a risk
+here that the crashing thread might crash if \verb|l9| is interleaved
+between \verb|l2| and \verb|l5| and \verb|idx1 == idx2|.  The previous
 analysis phase will detect this bug and produce the verification
 condition $idx1 = idx2 \wedge \happensBefore{l2}{l9} \wedge
 \happensBefore{l9}{l5}$.  This can then be used to augment the control
@@ -2723,24 +2752,22 @@ Figure~\ref{fig:using:example_hb_graph}.
   \label{fig:using:example_hb_graph}
 \end{figure}
 
-The task is then to modify the program so as to make it more likely
-that this happen-before graph will be satisfied when the program runs,
-while leaving its behaviour otherwise unchanged.  This can be
-accomplished by inserting small delays into the program's execution.
-In this case, all that needs to happen is for some thread to execute
-\texttt{l9} while another thread is between \texttt{l2} and
-\texttt{l5}, and so inserting a delay anywhere between \texttt{l2} and
-\texttt{l5} would be sufficient.  The longer the delay, the more
-likely it becomes that some other thread will execute \texttt{l9}
-during it, and hence the more easily the bug will reproduce.  This
-strategy would be appropriate if \texttt{l9} executes more frequently
-than \texttt{l2} and \texttt{l5}.
-
-Alternatively, the program could be modified such that \texttt{l9}
-waits for some other thread to execute \texttt{l2}, so that
-\texttt{l9} can be issued as soon as \texttt{l2} completes, which
-would again make it easier to reproduce the bug.  This would be more
-appropriate when \texttt{l2} is executed more frequently than
+{\Technique} can make this condition more likely to be satisfied by
+inserting small delays into the program's execution.  In this case,
+all that needs to happen is for some thread to execute \texttt{l9}
+while another thread is between \texttt{l2} and \texttt{l5}, and so
+inserting a delay anywhere between \texttt{l2} and \texttt{l5} would
+be sufficient.  The longer the delay, the more likely it becomes that
+some other thread will execute \texttt{l9} during it, and hence the
+more easily the bug will reproduce.  The performance impact of this
+strategy would be roughly proportional to the frequency at which
+\texttt{l2} runs\editorial{It's a bit of an abuse to talk about the
+  frequency of a non-periodic process, but I think it's fairly clear
+  what I mean.}.  Alternatively, the program could be modified such
+that \texttt{l9} waits for some other thread to execute \texttt{l2},
+so that \texttt{l9} can be issued as soon as \texttt{l2} completes,
+which would again make it easier to reproduce the bug; in this case,
+the cost would be roughly proportional to the frequency of
 \texttt{l9}.
 
 Of course, for this bug, simply reproducing the happens-before graph
@@ -2760,6 +2787,8 @@ the interfering one), so that no single thread can evaluate the
 condition by itself.  
 
 \begin{figure}
+  \begin{centering}
+    \hfill
   \begin{tikzpicture}
     \node[draw] (A) {A};
     \node[draw, above right = of A] (X) {X};
@@ -2774,6 +2803,8 @@ condition by itself.
     \draw[->,happensBeforeEdge] (B) -- (Y);
     \draw[->,happensBeforeEdge] (Y) -- (C);
   \end{tikzpicture}
+  \hfill
+  \end{centering}
   \caption{A happens-before graph which cannot be reproduced by
     inserting a simple delay.  The bug of interest reproduces only for
     the access ordering A, X, B, Y, C.}
@@ -2796,7 +2827,7 @@ difficult to collect and highly configuration-specific\editorial{Cite,
 message-passing system.  The core idea is to model a happens-before
 ordering X before Y as a message which is sent by X, after it
 completes, and collected by Y, before it starts.  In the first
-example, there will be two messages, on from \texttt{l2} to
+example, there will be two messages, one from \texttt{l2} to
 \texttt{l9} and one from \texttt{l9} to \texttt{l5}.  The desired
 happens-before graph will be achieved precisely when all of these
 message operations succeed.
@@ -2808,16 +2839,16 @@ convenient place in which to evaluate side-conditions.
 Figure~\ref{fig:message_petri_net} gives a Petri net semantics for the
 message operation.  One way of reading this diagram is to say that the
 process starts with two threads, in the two before locations, which
-are then merged into a single thread in the message operation place,
-and which then split apart into separate threads in the two after
-places.  This suggests an obvious strategy for evaluating the
-side-condition: if the message operation place represents the merging
-of the two threads, then it should be able to access both threads'
-local state, and so should be able to evaluate the $\mathit{idx1} = \mathit{idx2}$
-side-condition.  This is the strategy adopted by
-{\implementation}\footnote{There is an alternative design for the
-  message passing-operation in which the message operations are
-  asynchronous, so the threads never merge, but carry some of the
+are then merged into a single thread in the message operation
+transition, and which then split apart into separate threads in the
+two after places.  This suggests an obvious strategy for evaluating
+the side-condition: if the message operation place represents the
+merging of the two threads, then it should be able to access both
+threads' local state, and so should be able to evaluate the
+$\mathit{idx1} = \mathit{idx2}$ side-condition.  This is the strategy
+adopted by {\implementation}\footnote{There is an alternative design
+  for the message passing-operation in which the message operations
+  are asynchronous, so the threads never merge, but carry some of the
   sending thread's local state as a kind of payload, so that the
   side-condition can be evaluated in the receiving thread before it
   receives the message.  That would potentially allow greater
@@ -2842,9 +2873,9 @@ side-condition.  This is the strategy adopted by
   \label{fig:message_petri_net}
 \end{figure}
 
-One problem remains to be solved: how is a thread to determine which
-thread it is supposed to be communicating with?  In the example, there
-might be many program threads running the \texttt{crashing} and
+One problem remains to be solved: how is a thread to determine with
+which thread it is supposed to be communicating?  In the example,
+there might be many program threads running the \texttt{crashing} and
 \texttt{interfering} functions at the same time, and so many instances
 of \texttt{l2}, \texttt{l9}, and \texttt{l5}, and the verification
 condition gives no indication of which \texttt{l2} must occur before
@@ -2879,7 +2910,8 @@ the side-conditions are strong enough.
 Of course, sometimes the side-conditions are not strong enough, and
 the enforcer must decide which happens-before graph to enforce.  In
 that case, it makes a decision completely arbitrarily, discarding some
-hypothetical threads so as to make the ordering consistent.
+hypothetical threads so as to make the ordering
+consistent\editorial{Feels like I want to say more there.}.
 
 \subsection{Outline of algorithm}
 
@@ -2887,41 +2919,24 @@ At a high level, the algorithm used has the following phases:
 
 \begin{itemize}
 \item
-  ``Slice'' the verification condition according to the possible
-  happens-before graphs. As discussed in
-  Section~\ref{sect:intro:overview}, {\technique} can correctly
-  capture the happens-before graph necessary for a bug to reproduce
-  even when that happens-before graph is data-dependent.
-  Unfortunately, those data-dependencies make it difficult to encode
-  the happens-before graph into a simple message passing system.
-  {\Technique} therefore re-expresses the verification condition as a
-  function of the happens-before graph, effectively eliminating the
-  dependency.  This is discussed in more detail in
+  Examine the verification condition and extract the happens-before
+  graphs which are to be reproduced.  This is discussed in
   Section~\ref{sect:enforce:slice_hb_graph}.
 \item
-  The algorithm now considers each possible happens-before graph in
-  turn and, for each one, decides where to evaluate the graph's
-  side-condition.  The side-condition will be split into a number of
-  sub-conditions according to what parts of program state they depend
-  on, and these sub-conditions will then be placed at the appropriate
-  places in the happens-before and control-flow graphs.  This is
-  discussed in Section~\ref{sect:enforce:place_vcs}.
+  Decide how to evaluate the parts of the non-happens-before parts of
+  the verification condition.  This is discussed in
+  Section~\ref{sect:enforce:place_vcs}.
 \item
   If appropriate, multiple enforcers can be combined at this point,
   which can sometimes make it easier to discover bugs if the initial
-  analyses have produced a very large pool of candidates.
+  analyses have produced a very large pool of
+  candidates\editorial{This is completely trivial, so I haven't
+    described how to do it, but it probably wants something
+    somewhere.}.
 \item
   Decide on a strategy for gaining control of the program at
-  appropriate points.  The crash enforcement plan only imposes
-  constraints on instructions which are likely to be involved in the
-  target bug, which is usually a tiny fragment of the entire program.
-  It would be deeply unfortunate if the entire program had to be
-  rewritten to insert the necessary modifications; quite aside from
-  the greater risk of bugs in {\implementation}, the performance would
-  probably be quite poor.  As such, it is necessary to modify the
-  original program so that {\technique} can gain control when the
-  program reaches one of the interesting fragments of code.
-  Section~\ref{sect:enforce:gain_control} discusses how this is done.
+  appropriate points.  Section~\ref{sect:enforce:gain_control}
+  discusses how this is done.
 
 \item
   The results of the previous phases are then combined with the plan
@@ -2932,6 +2947,8 @@ At a high level, the algorithm used has the following phases:
 
 \subsection{Slicing the verification condition by happens-before graph}
 \label{sect:enforce:slice_hb_graph}
+
+\todo{This is a really complicated way of describing BDD reordering.}
 
 {\STateMachines} and verification conditions are capable of
 representing data and control flow dependent happens-before graphs,
@@ -2998,14 +3015,17 @@ to reproduce.  The next step is to decide how to evaluate the
 side-condition.  This amounts to factoring the side-condition $p$ into
 a set of sub-conditions $p_0, p_1, {\ldots}, p_n$ such that $p =
 \wedge_i p_i$ and then attaching the $p_i$ to either nodes in the
-control-flow graph or edges in the happens-before graph.  The $p_i$
-are chosen such that each depends on a different subset of the
-program's state, and they are placed as early as possible in the two
-graphs such that all of the necessary state is available.  The intent
-is to ensure that if a side-condition is ultimately going to fail,
-that is detected as soon as possible, so that the enforcer avoids
-imposing unnecessary delays and avoids running the program in the
-interpreter for longer than is strictly necessary.
+control-flow graph or edges in the happens-before
+graph\editorial{Should probably have said explicitly that the various
+  inputs to the side-condition become available at different points in
+  the CFG.}.  The $p_i$ are chosen such that each depends on a
+different subset of the program's state, and they are placed as early
+as possible in the two graphs such that all of the necessary state is
+available.  The intent is to ensure that if a side-condition is
+ultimately going to fail, that is detected as soon as possible, so
+that the enforcer avoids imposing unnecessary delays and avoids
+running the program in the interpreter for longer than is strictly
+necessary.
 
 \begin{figure}
   \centerline{

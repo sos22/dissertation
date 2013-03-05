@@ -276,6 +276,129 @@ labels for any which do not.  The result of the analysis is unchanged.
   rebuilt each time?}\smh{Possibly.  As mentioned, this section is
   among the most confusing so far.}
 
+\subsection{Conversion to SSA}
+\label{sect:ssa}
+
+\todo{I just moved this from the building phase without updating it.
+  It probably needs rewriting for its new context, if I decide to keep
+  it.}
+
+{\STateMachines} are, for the most part, maintained in a variant of
+static single assignment (SSA) form.  SSA is a standard compiler
+intermediate representation in which each variable has at most one
+static assignment\needCite{}\smh{Cytron et al TOPLAS 91?  or some
+  textbook from AM's class?}.  Variables which are assigned to
+multiple times are converted into families of related variables
+(usually referred to as ``versions'' or ``generations'' of the
+variable), each of which is assigned to precisely once.  This has the
+effect of breaking up the live ranges of long-lived variables, which
+can expose other useful optimisations.  Most uses of the original
+variable will be converted into references to a specific member of one
+of these families; the only case in which this is not possible is
+where the correct member to use depends on the program's control flow,
+and in that case special $\Phi$ nodes are inserted into the program
+which select an appropriate member depending on the immediately
+proceeding control flow.  These $\Phi$ nodes are themselves
+unrealisable on most hardware, and so the program must be converted
+back from SSA form after being optimised and before being lowered to
+machine code.
+
+Many of the compiler optimisations for which SSA is helpful are also
+relevant to {\technique}, and so {\technique} also converts its
+{\StateMachines} (which are analogous to a compiler's intermediate
+representation) into SSA form.  The details of the SSA form are,
+however, very slightly different to the conventional one: whereas a
+compiler-style $\Phi$ node examines the program's preceding control
+flow and maps from incoming control-flow edges to input variables, a
+{\technique} one examines the order in which variables have been
+assigned to and selects whichever was updated most recently (from a
+specified set).  This has several important implications:
+
+\begin{itemize}
+\item
+  Converting this form of SSA back into a non-SSA form can sometimes
+  requires additional temporary variables to record which version of a
+  particular variable has been most recently assigned to, whereas the
+  more conventional control-flow based form does not.  This would be
+  an additional complication in a compiler, but is not a problem for
+  {\technique}, which never has to perform that conversion.
+\item
+  A {\StateMachine}'s control flow graphs can be modified without
+  needing to update $\Phi$ nodes.  For example, suppose that a
+  {\StateMachine} is as shown on the left of
+  Figure~\ref{fig:ssa_cfg1}, and suppose that further analysis shows
+  that the assignment of $z$ is dead.  We would like to remove the
+  assignment and turn the {\StateMachine} into the one shown on the
+  right.  This is correct as-is using {\technique}'s $\Phi$ semantics.
+  If a simple control-flow based definition of $\Phi$ were used
+  instead then we would also need to convert the $\Phi$ node at l1
+  into $x_3 = \Phi(x_1, x_2, x_2)$, as the l1 state now has three
+  control-flow predecessors.  There are, of course, many solutions to
+  this problem in the standard compiler literature\needCite{}, but all
+  add complexity which is unnecessary and unuseful in this context.
+\end{itemize}
+
+Most algorithms for converting to SSA form will work equally well with
+either form, including that used by \implementation, and so no details
+are given here; see \needCite{} for more information\editorial{blah}.
+
+\todo{I'd be surprised if I'm the first person to come up with this...}
+
+Note that while {\StateMachine}-level variables, including registers,
+are converted to single static assignment form, memory accesses are
+not.  This is because it is not always clear from the {\StateMachine}
+when two \state{Store} operations modify the same memory location,
+which makes the conversion process far more difficult.  \todo{Maybe
+  cite Van Emmerik 2007 here?}
+
+\todo{Maybe mention that LLVM and gcc do something very similar?}
+
+\todo{Not actually sure how interesting this is, now that I've written
+  it down.  It's all true, and it does make a bit of difference to the
+  symbolic execution stuff, but I could probably rewrite to drop it
+  completely without leaving a particularly obvious hole.}
+
+\begin{figure}
+\begin{tikzpicture}
+  \node (start) {start};
+  \node [below right=of start] (b) {$x_2 = 6$};
+  \node [below = of b](c) {if ($\ldots$)};
+  \node [below = of c] (d) {$y_1 = 1$};
+  \node [below right = of c] (e) {$y_2 = 2$};
+  \node [below = of d] (f) {$z = 3$};
+  \node [left = of f] (a) {$x_1 = 5$};
+  \node [below = of a] (g) {l1: $x_3 = \Phi(x_1, x_2)$};
+  \draw[->] (start) -- (a);
+  \draw[->] (start) -- (b);
+  \draw[->] (a) -- (g);
+  \draw[->] (b) -- (c);
+  \draw[->] (c) -- (d);
+  \draw[->] (c) -- (e);
+  \draw[->] (d) -- (f);
+  \draw[->] (e) -- (f);
+  \draw[->] (f) -- (g);
+\end{tikzpicture}
+\begin{tikzpicture}
+  \node (start) {start};
+  \node [below right=of start] (b) {$x_2 = 6$};
+  \node [below = of b](c) {if ($\ldots$)};
+  \node [below = of c] (d) {$y_1 = 1$};
+  \node [below right = of c] (e) {$y_2 = 2$};
+  \node [left = of d] (a) {$x_1 = 5$};
+  \node [below = of a] (g) {l1: $x_3 = \Phi(x_1, x_2)$};
+  \draw[->] (start) -- (a);
+  \draw[->] (start) -- (b);
+  \draw[->] (a) -- (g);
+  \draw[->] (b) -- (c);
+  \draw[->] (c) -- (d);
+  \draw[->] (c) -- (e);
+  \draw[->] (d) -- (g);
+  \draw[->] (e) -- (g);
+\end{tikzpicture}
+\caption{Optimising an SSA-form machine}
+\label{fig:ssa_cfg1}
+\end{figure}
+
 \section{Alias analysis}
 \label{sect:alias_analysis}
 
