@@ -1,396 +1,59 @@
+\chapter{Evaluation}
 \label{chapter:eval}
 
-\todo{This is much less complete than the previous chapters.}
-
-\section{Eval plan}
-
-Things I want to show in the eval:
-
-\begin{itemize}
-\item That it works for some simple test cases.  This'll include a
-  reasonable amount of discussion about what it actually does.
-  This'll include showing that the generated fixes work, and some bits
-  about their relative performance.  I'd also like to discuss
-  whole-program vs. core dump.  This will also include a comparison to
-  my implementation of DataCollider.
-
-  Things to show:
-
-  \begin{itemize}
-  \item That simple bugs reproduce much more quickly with an enforcer
-    than without\smh{Comparison to simpler schemes}.  It'd also be
-    nice to show that they reproduce more quickly under SLI than under
-    DataCollider.
-  \item That the analysis to produce them is nice and cheap.
-  \item That the performance overhead of the enforcer when the bug
-    doesn't reproduce isn't so massive that it'll make bugs less
-    likely to reproduce.
-  \item That the side-condition checking stuff is both necessary and
-    effective.\smh{+what it is}
-  \item That we can generate ``reasonable-looking'' fixes for all of
-    the test bugs.
-  \item That the fixes generated actually fix the intended bug.
-
-  \item That the fixes generated have vaguely plausible performance
-    overhead.\smh{Top bit has to be ``technique can fix x\% of bugs in
-      the test set, with an average y\% overhead.}\smh{Second most
-      important eval is pushing the limits i.e. why does SLI not work
-      for large program or multiple threads or ... . Plus how might
-      new research help fix this.}
-  \end{itemize}
-
-  It'd also be quite nice if I could show that the summaries are
-  useful for a human trying to fix the bug, but that's likely to be a
-  rather hard argument to make.
-
-  It might also be worth trying some pseudo-fixes which do everything
-  except for acquiring and releasing the lock, just so that I can
-  isolate how much of the overhead is the patching machinery and how
-  much the lock operation itself.\smh{Sure}
-
-\item Show that it works for some slightly more realistic artificial
-  bugs, probably from ripping sync blocks out of STAMP.
-  i.e. real-size programs with artificial bugs.  I currently have one
-  bug produced by removing synchronisation from one of the STAMP
-  benchmarks for which this works reasonably well; should try to
-  expand that a bit.\smh{Ack}
-
-  Result of trying to expand it a bit: I now have something where it
-  doesn't work.  Not terribly helpful, but what the hell.
-
-\item That it could feasibly scale up to something of realistic size.
-  Obvious approach here is just to show that we can run the full
-  analysis on mysql, thunderbird, and pbzip2.  It's currently looking
-  like this will find at most one or two new bugs, which makes it all
-  a bit less convincing.  This'll be mostly just showing that the
-  analysis does actually complete in a sensible amount of
-  time.  \smh{Yes; this will be very nice.}
-
-\item I'm going to pick one of those big programs (probably mysql,
-  since that's where I've done the most testing so far) and do a few
-  more experiments on it:
-
-  \begin{itemize}
-  \item Display a CDF of how long it takes to analyse each
-    instruction.\smh{Why?}
-  \item Try turning the various machine simplification passes on and
-    off and see what effect that has on the CDF.  Likewise the
-    induction rule.\smh{Ok}
-  \item Likewise changing the size of the analysis window.
-  \item Just directly look at how long the various phases
-    take.\smh{Ack}
-  \item Alias analysis: try turning off the static analysis bit and
-    see how much effect that has.  Likewise try running without the
-    dynamic analysis; the results will be very bad, but it'd be
-    interesting to put a number on how bad is bad.  It'd also be worth
-    looking at how bad it is if you use the dynamic analysis to
-    resolve stack accesses.
-  \item Try turning off Phi elimination and see how much that costs
-    us.
-  \item Look at how the number of candidate bugs varies as the
-    analysis window changes.
-  \item Look at how the time taken to do the analysis varies as the
-    analysis window changes.
-  \end{itemize}
-
-  Aim here is less proving some hypothesis and more just giving a
-  decent feeling for where the main costs are.
-\item I really want something to show how much the W isolation
-  property costs us, in terms of bugs detected, and how much it buys
-  us, in terms of simpler analysis.  The implementation is such that
-  turning it on and off is fairly feasible, although I haven't tried
-  it in a while.\smh{This may be interesting to eval --- but it
-    certainly is something you should explain/justify in English prose
-    much \emph{much} earlier.}
-
-\item At some point I'm going to need to do a sensitivity analysis to
-  show that the timeouts don't need to be tuned particularly finely to
-  get bugs to repro.  Not sure how to do that.  All of the artificial
-  bugs work fine for timeouts between 10ms and 1 second, but that
-  isn't particularly convincing by itself.
-\item I need to show that the dynamic analysis is reasonable\smh{?}.
-  Ideally that'd be by using a static analysis to get an upper bound
-  and then showing that they're reasonably close, but implementing
-  that'd be a pain in the backside.  Alternative is just to look at
-  convergence rates.  I should also look at how large the resulting
-  alias tables are for different
-\item I need to show that the tool is actually correctly implemented
-  itself.  The small number of bugs found in real programs means that
-  this has more than a little bit of a negative-results flavour, so
-  this isn't completely trivial.\smh{Hmm -- not sure how to do this??
-    Formal proofoid?}
-\end{itemize}
-
-So, here are the graphs and tables I need to be present in the final
-eval:
+Previous chapters have described the basic {\technique} technique.  I
+will now evaluate its effectiveness, and the performance of my
+implementation {\implementation}.  This evaluation will consist of the
+following parts:
 
 \begin{itemize}
-\item Artificial/semi-artificial bugs section:
-  \begin{itemize}
-  \item Table with a row for each bug and columns for how
-    long it takes to find the bug, how long it takes to build the
-    enforcer, how long it takes to build the fix, time to repro without
-    enforcer, time to repro with enforcer, time to repro with NDC,
-    overhead of enforcer, overhead of fix.
-  \item For each bug, CDF of how long it takes to reproduce with
-    enforcer, without enforcer, and with NDC.
-  \item For the indexed\_toctou bug, fan charts showing how
-    time-to-repro varies with NR\_PTRS for no enforcer, standard
-    enforcer, and no-side-condition enforcer.
-  \item For write\_to\_read, I want to investigate overhead with a
-    pseudo-fix which skips the actual lock operation.
-  \end{itemize}
-\item Real programs: Just say how long it takes to do the full
-  analysis on each one, the number of candidates discovered, the
-  number of bugs reproduced, and the time taken to run the
-  reproduction phase.
-\item Dynamic analysis: measure overhead of running the analysis on
-  some of the artificial bugs.  Quote the size of the types table
-  generated for each program (real+artificial), both in megabytes and
-  the number of entries.  Show a graph of how the types table grows
-  over time for the real programs (artificial ones converge too
-  quickly to be interesting).  Show a graph of how the types table
-  grows ``horizontally'' for mysqld as you introduce more tests from
-  the test harness.
-\item I want a fan chart showing how time-to-analyse for mysql
-  instructions changes as the analysis window changes.  That'll have
-  points for 5, 10, 20, 50, 100, 500, 1000 instruction windows.  I'll
-  have to do that for a small sampling of instructions to keep it
-  computationally feasible; I'd guess a hundred would be reasonable.
-\item Phase analysis.  I want a stacked CDF showing how the time for
-  the analysis breaks down into the different phases, analysing one
-  instruction at a time, for a full run of mysqld.  I'd also like
-  something showing the effects of changing the different
-  optimisations, which'll be another CDF with one line for each
-  condition:
-
-  \begin{itemize}
-  \item All optimisations enabled.
-  \item Load elimination disabled, phi enabled.
-  \item Phi elimination disabled, load enabled.
-  \item Both disabled.
-  \item All optimisations enabled but ignoring the results of the
-    static analysis.
-  \item All optimisations enabled but ignoring the results of the
-    dynamic analysis.
-  \end{itemize}
-
-  Those'll be taken on a random sampling of 1000 instructions from
-  mysqld, probably with a short timeout, just so that they don't take
-  forever to collect.  If I have space, I'd also like a couple more
-  graphs:
-
-  \begin{itemize}
-  \item One with a bit more detail on load elimination.  In
-    particular, comparing current load elim to the previous load elim.
-  \item Something to explore the interaction of Phi elimination and
-    the SSA conversion.  It'd be nice to show how much of phi elim's
-    win is just down to my using a slightly stupid phi introduction
-    algorithm.
-  \end{itemize}
+\item Section~\ref{sect:eval:artificial} explores the behaviour of the
+  tool and the technique on a number of artificial bugs in simple test
+  programs.  This includes a comparison to a
+  DataCollider\needCite{}-like tool which I implemented for the
+  purpose of the evaluation.
+\item Section~\ref{sect:eval:semiartificial} investigates some
+  slightly more realistic bugs.  These include a simplified version of
+  a real bug in glibc\needCite{} and some bugs which I deliberately
+  introduced into the STAMP benchmark suite\needCite{}.
+\item Section~\ref{sect:eval:real} applies the tool to some large
+  programs: pbzip2\needCite{}, MySQL\needCite{}, and
+  Thunderbird\needCite{}.  I show that the analysis completes in a
+  tolerable amount of time even for some very large programs,
+  and demonstrate that it can both reproduce and fix a (small)
+  number of real bugs.
+\item Section~\ref{sect:eval:time_details} then investigates the
+  tool's performance on large programs in slightly more detail,
+  showing how the time taken breaks down across the various phases
+  and the effects of some of {\implementation} optimisations.
+\item The final section, \ref{sect:eval:validation}, gives the results
+  of some experiments intended to validate that {\implementation} is
+  itself correctly implemented, and hence to give confidence that the
+  other results are reasonable.
 \end{itemize}
 
-\section{Artificial bugs}
-
-I now present the results of running {\implementation} on a number of
-artificial bugs, showing that it assists in both reproducing the bugs
-and fixing them, along with some discussion of what the various
-analysis phases actually do.
-
-\subsection{Statistical considerations}
-
-\todo{I might possibly be over-thinking this.  I may also be demonstrating
-  that I don't really understand how stats works.}
-
-The following sections report the results of two kinds of experiments:
-performance overhead tests and crash time tests.  Neither can be
-sensibly approximated by any statistically convenient distributions.
-This makes the results somewhat difficult to summarise and interpret.
-Most of the effects reported here are sufficient large that formal
-statistical significance tests would be redundant, but it would still
-be useful to be able to quantitatively characterise both the
-parameters involved and the level of uncertainty in them.  I now
-explain the approach I have adopted to doing so.
-
-The performance distributions are simpler to understand than the crash
-time ones and so I discuss them first.  All of the test programs
-discussed below have some performance metric\smh{So bigger is good?}
-associated with them, usually the number of iterations of some loop
-completed per second, and this metric usually follows a roughly
-Gaussian distribution.  I characterise the performance of a test in
-isolation by running the test twenty times for ten seconds each,
-discarding the largest and smallest values, and then reporting the
-mean and estimated population standard deviation as $\mu \pm
-\sigma$\footnote{One complication is that most of these test programs
-  contain bugs (deliberately) and may therefore crash before
-  completing a ten second run.  Any such crashing runs were repeated
-  until the program completed without crashing.}.  All such results
-were also subjected to Anderson-Darling and Jarque-Bera normality
-tests at the 90\% level.  Whenever an experiment failed either test I
-concluded that it did not follow a Gaussian distribution and instead
-report the results as $[p_{10};p_{50};p_{90}]_n$, where $p_{10}$ is
-the tenth percentile\footnote{Linearly interpolating where that does
-  not fall precisely on one of the samples}, $p_{50}$ is the fiftieth
-percentile, $p_{90}$ the ninetieth percentile, and $n$ the number of
-samples.
-
-I have also quoted estimates of the overhead of some possible
-modifications to the test programs.  The estimated overhead here is
-quite simple: $\frac{\textrm{baseline performance} - \textrm{modified
-    performance}}{\textrm{baseline performance}}$\smh{You assume a
-  clear denom?}.  Estimating the error bounds of this quantity is,
-however, somewhat more difficult.  When both the baseline and modified
-performance metrics are normally distributed the resulting overhead
-estimate has an infinitely large standard deviation\editorial{Possibly
-  need a cite?}, which would be unhelpful.  It would still in
-principle be possible to derive a confidence interval for ratio using
-Fieller's theorem\needCite{}, but this would still leave the question
-of what to do when the data does not appear to be normally
-distributed\editorial{Don't actually have very much non-normal data,
-  so I could just ignore it, but whatever.}.  Instead, I take the 80\%
-confidence intervals for the two performance measures\footnote{Using a
-  bootstrap method when necessary.}\editorial{Should make it clear
-  that these are intervals for the \emph{means} rather than for the
-  data.} and use these to calculate the minimum and maximum overhead
-estimates where both performance metrics are within their confidence
-intervals.  This provides a conservative estimate of the 80\%
-confidence interval of the overhead\footnote{Note that this
-  construction could, in principle, produce non-contiguous confidence
-  intervals, or could even produce one which covers the entire real
-  line.  This will be true of any conservative characterisation of the
-  ratio of two distributions which might be Gaussian, be the
-  Gleser-Hwang theorem\needCite{}.  Fortunately, the data I have
-  derived was sufficiently well-behaved that it produces small,
-  contiguous confidence intervals.}.  I report this as $\alpha = \{a <
-b < c\}$, where $a$ and $c$ are the bounds of the confidence interval
-and $b$ is the simple ratio of means.  \todo{Von Luxberg and Franz
-  2007 calls this a geometric bootstrap, but I don't think that's a
-  terribly helpful way of describing it.}  \todo{Alternative would be
-  to use a Hwang bootstrap to estimate confidence intervals on the
-  ratio directly, but there have been a bunch of papers recently
-  saying that that gives you intervals which are too tight when its
-  preconditions don't fit, and I don't know enough stats to check
-  whether they do here.}
-
-\todo{Estimating overhead given before and after performance
-distributions, approximated by Gaussians, seems like the kind of thing
-that you'd have to do quite frequently.  It's kind of sad that there
-doesn't seem to be any standard protocol for it.}
-
-\todo{\emph{Should} do all of that stuff.  Currently just report the
-  ratio of means.}\smh{Probably ok for now.  Remember there's a lot of
-  system + measurement noise.}
-
-Crash time distributions are generally less well-behaved than
-performance distributions.  Depending on the precise test\smh{BAd
-  word! use ``run''?} being examined, I would expect the distribution
-to have one of the following forms:
-
-\begin{itemize}
-\item
-  Some distributions will be roughly Gaussian.
-\item
-  Some distributions will be uniform over some range.  The enforcers
-  generated by {\technique} select the delay to be inserted uniformly
-  over some range, and if this delay dominates the time taken for
-  a bug to reproduce then the time taken to reproduce the bug will be
-  uniformly distributed.
-\item
-  Some distributions will be exponential, if the probability of
-  reproducing per unit time is a constant.  This is a good model if
-  the test program runs the buggy code at some fixed frequency and
-  each time it runs has a constant probability of triggering the bug.
-\end{itemize}
- 
-As a further complication, some tests can take a very long time to
-reproduce their bug.  In order to keep the time taken to run tests
-reasonable I limit each test program to run for at most three minutes,
-at which point I consider the test program to have failed to reproduce
-its bug.  I have used the following protocol to characterise the
-distribution of times taken for a bug to reproduce:
-
-\begin{itemize}
-\item All experiments start by running the test twenty times.  If
-  every test times out then I abandon the test and simply report the
-  result as \textit{timeout}.  If the data contains both timed-out and
-  non-timed-out results then I simply report the timeout rate, written
-  $timeout = n/20$, where $n$ is the number of runs which timed out.
-\item Otherwise, I discard the smallest and largest values and then
-  test for normality using the Anderson-Darling and Jarque-Bera
-  tests at the 90\% level.  If both pass then I conclude that the
-  data follows a Gaussian distribution and report it as $\mu \pm \sigma$,
-  where $\mu$ is the sample mean and $\sigma$ the estimated population
-  standard deviation.
-\item If the data fails either normality test then I investigate
-  whether it might be uniformly distributed using a one-sided
-  Kolmogorov-Smirnov test at the 1\% level\editorial{I'm not convinced
-    I've got the KS test quite right.  The general form is definitely
-    right, but I think the critical value might be wrong.  Check with
-    a bootstrap test.}.  If this test passes then I conclude that the
-  data is uniformly distributed and report it as $[l, h]$, where $l$
-  is the lowest value observed and $h$ the highest\editorial{Maybe use
-    a Fischer-Tippett correction on those limits?}.
-\item If the data appears to be neither Gaussian nor
-  uniform then I investigate whether it might be exponentially
-  distributed.  I run the experiment an additional 110 times and
-  discard the largest and smallest five values, so that I have one
-  hundred samples of the distribution, and then randomly partition the
-  resulting data into ten sets of ten samples.  I fit an exponential
-  distribution to each set to produce ten estimates of the
-  distribution's $\lambda$ parameter\editorial{Maximum likelihood
-  estimator} and characterise the distribution by the mean and
-  estimated population standard deviations of these estimates.  I
-  accept that the data is exponentially distributed if the data itself
-  passes a Kolmogorov-Smirnov test at the 1\% level and the set of
-  estimates passes both normality tests at the 90\% level.  I denote
-  this distribution by $\lambda = \mu \pm \sigma$.
-
-  If any of these additional experiments time out then I simply repeat
-  that run of the experiment.  The final results table includes the
-  number of additional runs which were necessary.
-
-\item Finally, if none of those tests succeed then I simply
-  characterise the distribution by the tenth, fiftieth, and ninetieth
-  percentiles of the enlarged data set, written $[p_{10}; p_{50};
-    p_{90}]_{100}$.
-\end{itemize}
-
-From a statistical perspective, this scheme is hard to justify, and
-the resulting distributions should not be used for significance
-testing without, at the very least, using a multiple-testing
-correction.  On the other hand, it is effective at reducing complex
-test data to a simple summary statistic and allowing rapid comparison
-of dramatically different distributions.  The values presented in this
-evaluation are generally sufficiently different that formal
-significance tests would be redundant and so I consider this to be a
-reasonable trade-off.
-
-\smh{Most of this does not matter and is insufficiently precise
-  anyway.  What benefit is there in having defined in a metric that is
-  not decent??}
-
-\todo{Alternative is just to tell the reader to look at the CDFs,
-  but I quite like having a table of simple summary statistics.}
-
-\subsection{DataCollider-like implementation}
+\section{DataCollider-like implementation}
 \label{sect:eval:datacollider}
 
-As a point of comparison, I also implemented a tool which explores
-alternative thread schedules without first analysing the program to
-obtain {\StateMachines} and verification conditions, inspired by
-DataCollider\needCite{}.  The idea here is to select a random subset
-of memory-accessing instructions in the program and place breakpoint
-instructions at them.  When these breakpoints fire the tool examines
-the program state to determine which memory locations they access and
-sets a processor watch point\needCite{} on that location.  It then
-waits a short while to see if the watch point is triggered by any
-other threads.  If it is, the two instructions race and the tool
-selects which to execute first at random, then allows both threads to
-proceed unmolested.  Otherwise, the breakpoint and watch point are
-cleared and another breakpoint set elsewhere in the program.  The
-result is that the program explores its possible schedules more
-quickly than it would if run without these manipulations, which should
-lead to bugs being discovered more quickly.
+\todo{Rewrite}
+
+As a point of comparison, I implemented a tool which explores
+alternative thread schedules at random, without first analysing the
+program to obtain {\StateMachines} and verification conditions,
+inspired by DataCollider\needCite{}.  The idea here is to select a
+random subset of memory-accessing instructions in the program and
+place breakpoint instructions at them.  When these breakpoints fire
+the tool examines the program state to determine which memory
+locations they access and sets a processor watch point\needCite{} on
+that location.  It then waits a short while to see if the watch point
+is triggered by any other threads.  If it is, the two instructions
+race and the tool selects which to execute first at random, then
+allows both threads to proceed unmolested.  Otherwise, the breakpoint
+and watch point are cleared and another breakpoint set elsewhere in
+the program.  The result is that the program explores its possible
+schedules more quickly than it would if run without these
+manipulations, which should lead to bugs being discovered more
+quickly.
 
 The effectiveness of this tool is obviously highly dependent on the
 fraction of instructions which are covered by breakpoints and the
@@ -461,128 +124,94 @@ be an interesting reference point.
   re-implement it for Linux, but I don't really have time to do that
   right now.}
 
-\subsection{Lookup between bug numbers and names}
-\todo{This is a reference into the git repo; it will not be in the
-  final dissertation.}
+\section{Artificial bugs}
+\label{sect:eval:artificial}
 
-\begin{itemize}
-\item 1 -- simple\_toctou
-\item 2 -- indexed\_toctou
-\item 3 -- read\_indexed\_toctou
-\item 4 -- write\_indexed\_toctou
-\item 5 -- multi\_variable
-\item 6 -- context.
-\item 7 -- Cross-function TOCTOU; check in one function, use in the
-  function it returns to.
-\item 8 -- write\_to\_read
-\item 9 -- multi\_bugs
-\item 10 -- multi\_threads
-\item 11 -- complex\_hb with four HB edges.
-\item 12 -- complex\_hb with ten HB edges.
-\item 13 -- Something which demonstrates data-dependent happens-before
-  graphs.
-\item 14 -- Something with relevant synchronisation which means that
-  it has no data races but still has a synch bug which we can handle
-  correctly.
-\item 15 -- A false positive -- something where the main analysis
-  thinks there might be a bug, but there isn't, and so the enforcer
-  can't enforce it.
-\item 16 -- Something which nicely illustrates the cross-function
-  alias analysis stuff.  Tricky part of this is that programs need to
-  be fairly complex before this kicks in.
-\item 17 -- Something which illustrates the importance of the Phi
-  elimination pass.  Likewise.
-\end{itemize}
+I now present the results of running {\implementation} on a number of
+artificial bugs, showing that it assists in both reproducing the bugs
+and fixing them, and that the analysis phases complete very quickly.
 
-\subsubsection{Simple time-of-check, time-of-use (TOCTOU) bug (simple\_toctou)}
-\label{sect:eval:art:simple_toctou}
-
-\todo{The discussion here is painfully detailed.  I think that's
-  reasonable for the first bug discussed, but later ones are going to
-  have to be much more high-level.  To be honest, I'm not entirely
-  convinced that this bit is all that interesting, but I think I
-  should probably copy-and-paste the complete tool output into the
-  dissertation at least once, just to prove that it exists.}
-
-\todo{Perhaps I should move some of this discussion a bit earlier and
-  treat it as an example?}\smh{Yes, could be a good plan!}
+\subsection{Simple time-of-check, time-of-use (TOCTOU) bug (simple\_toctou)}
+\label{sect:eval:simple_toctou}
 
 \begin{figure}
-  \begin{subfloat}
-    \begin{minipage}{50mm}
-\begin{verbatim}
-while (1) {
-   STOP_ANALYSIS();
-   if (global_ptr != NULL)
-       *global_ptr = 5;
-   STOP_ANALYSIS();
-}
-\end{verbatim}
-    \end{minipage}
-    \caption{Read-side}
-  \end{subfloat}
-  \begin{subfloat}
-    \begin{minipage}{50mm}
-\begin{verbatim}
-while (1) {
-    global_ptr = &t;
-    sleep(1 second);
-
-    STOP_ANALYSIS();
-    global_ptr = NULL;
-    STOP_ANALYSIS();
-}
-\end{verbatim}
-    \end{minipage}
-    \caption{Write-side}
-  \end{subfloat}
+  \subfigure[][Crashing thread]{
+    \texttt{
+      \begin{tabular}{lll}
+        \multicolumn{3}{l}{while (1) \{}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        &\multicolumn{2}{l}{if (global\_ptr != NULL) \{}\\
+        &&*global\_ptr = 5;\\
+        &\multicolumn{2}{l}{\}}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        \multicolumn{3}{l}{\}}\\
+      \end{tabular}
+    }
+  }\hfill %
+  \subfigure[][Interfering thread]{
+    \texttt{
+      \begin{tabular}{ll}
+        \multicolumn{2}{l}{while (1) \{}\\
+        &global\_ptr = \&t;\\
+        &sleep(1 second);\\
+        &STOP\_ANALYSIS();\\
+        &global\_ptr = NULL;\\
+        &STOP\_ANALYSIS();\\
+        \multicolumn{2}{l}{\}}\\
+      \end{tabular}
+    }
+  }\hfill
   \caption{The two sides of the simple\_toctou bug.}
   \label{fig:eval:simple_toctou}
 \end{figure}
 
 \begin{figure}
-  \begin{subfloat}
-    \begin{minipage}{70mm}
-\begin{verbatim}
-  400624: mov    (global_ptr),%rax
-  40062b: test   %rax,%rax
-  40062e: je     40063d
-  400630: mov    (global_ptr),%rax
-  400637: movl   $0x5,(%rax)
-  40063d:
-\end{verbatim}
-    \end{minipage}
-    \caption{Read side}
-  \end{subfloat}
-  \begin{subfloat}
-    \begin{minipage}{70mm}
-\begin{verbatim}
-  400815: movq   $0x0,(global_ptr)
-  400820:
-\end{verbatim}
-    \end{minipage}
-    \caption{Write side}
-  \end{subfloat}
-  \caption{Disassembly of the program in Figure~\ref{fig:eval:simple_toctou}.}\smh{More clear separation}
-  \label{fig:eval:simple_toctou_compiled}
+  \subfigure[][Crashing thread]{
+    \texttt{
+    \begin{tabular}{rlll}
+              & \multicolumn{3}{l}{crashing\_thread:} \\
+      400694: & movq  & global\_ptr, &\!\!\!\%rax\\
+      40069b: & testq & \%rax,       &\!\!\!\%rax \\
+      40069e: & je    & \multicolumn{2}{l}{4006ad}\\
+      4006a0: & movq  & global\_ptr, &\!\!\!\%rax\\
+      4006a7: & movl  & \$0x5,       &\!\!\!(\%rax)\\
+    \end{tabular}
+    }
+  }%
+  \hspace{-5mm}\subfigure[][Interfering thread]{
+    \texttt{
+      \begin{tabular}{rlll}
+        & \multicolumn{3}{l}{interfering\_thread:} \\
+        400816: & lea  & c(\%rsp), &\!\!\!\%rbp \\
+        ...\\
+        400884: & movq & \%rbp, &\!\!\!global\_ptr\\
+        ...\\
+        4008fb: & movq & \$0x0, &\!\!\!global\_ptr\\
+      \end{tabular}
+      }
+    }
+  \caption{Disassembly of the program fragments in Figure~\ref{fig:eval:simple_toctou}.}
+  \label{fig:eval:simple_toctou:compiled}
 \end{figure}
 
-This is the simplest possible kind of concurrency bug: as
+This is the simplest possible kind of concurrency bug: a
 single-variable time-of-check, time-of-use race.  The two threads
 involved are shown in Figure~\ref{fig:eval:simple_toctou}.  The intent
 here is to model a very simple structure which is accessed frequently
-but updated rarely.  The bug is, of course, that the updating thread
-might set \verb|global_ptr| to \verb|NULL| in between the two reads of
-it in the reading thread, causing the reading thread to crash when it
-dereferences the pointer it loaded.  \verb|STOP_ANALYSIS()| is a
-marker which prevents {\technique}'s analysis from exploring past that
-point when build the CFGs from which {\StateMachines} are constructed.
-It is used here to help keep the crash summaries generated simple and
-easily explained; {\implementation} is able to reproduce and fix the
-bug even without those markers\editorial{Could last time I tried it,
-  probably worth checking that again with the current version.}.
-Compiling this program produced the machine code fragments illustrated
-in Figure~\ref{fig:eval:simple_toctou_compiled}.
+but updated rarely.  The bug is, of course, that the interfering
+thread might set \texttt{global\_ptr} to \texttt{NULL} in between the
+two reads of it in the crashing thread, causing the crashing thread to
+crash when it dereferences the pointer it loaded.  This bug was
+previously discussed in
+Section~\ref{sect:derive:simple_toctou_example}.
+
+\texttt{STOP\_ANALYSIS()} is a marker which prevents {\technique}'s
+analysis from exploring past that point when building the CFGs from
+which {\StateMachines} are constructed.  It is used here to help keep
+the crash summaries generated simple and easily explained;
+{\implementation} is able to reproduce and fix the bug even without
+those markers\editorial{Could last time I tried it, probably worth
+  checking that again with the current version.}.
 
 \begin{figure}
   \begin{minipage}{100mm}
