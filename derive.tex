@@ -121,47 +121,45 @@ program state, and that most program state will not be represented by
 any temporary.
 
 \begin{landscape}
-\begin{longtable}{lllp{4.5cm}p{10.5cm}}
+\begin{table}
+\begin{tabular}{lllp{5cm}p{12.8cm}}
 \multicolumn{2}{l}{State}       & \multicolumn{2}{l}{Fields} & Meaning \\
-\hline
-\endhead
 \hline
 \multicolumn{2}{l}{\state{If}}  & \state{cond} & BBDD        & Conditional branch with two successor states.  Evaluates \state{cond}, branching to one successor if it is true and the other if it is false. \\
 \hline
-\multicolumn{2}{l}{Terminal states} &          &             & Terminal states.  The {\StateMachine} execution finishes when it reaches one of these. \\
+\multicolumn{2}{l}{Terminal states} &          &             & Terminal states.  {\STateMachine} execution finishes when it reaches one of these. \\
  & \state{Survive}              &              &             & The bug has been avoided. \\
  & \state{Crash}                &              &             & The bug will definitely happen. \\
- & \state{Unreached}            &              &             & A contradiction has been reached, or this path through the {\StateMachine} is otherwise uninteresting. \\
+ & \state{Unreached}            &              &             & A contradiction has been reached; this path through the {\StateMachine} should be ignored. \\
 \hline
 \multicolumn{2}{l}{Side-effect states}\\
- & \state{Load}                 & \state{addr} & Expression BDD & \multirow{2}{10.5cm}{Load from program memory.  \state{addr} is evaluated to an address and the current contents of memory at that address copied to the {\StateMachine} temporary \state{tmp}.} \\
+ & \state{Load}                 & \state{addr} & Expression BDD & \multirow{2}{12.8cm}{Load from program memory at address \state{addr} and store the result in {\StateMachine} temporary \state{tmp}.} \\
  &                              & \state{tmp}  & {\STateMachine} temporary \\
-\\
- & \state{Store}                & \state{addr} & Expression BDD & \multirow{2}{10.5cm}{Store to program memory.  \state{data} and \state{addr} are evaluated to concrete values and the value of \state{data} stored to the address \state{addr}.} \\
+ & \state{Store}                & \state{addr} & Expression BDD & \multirow{2}{12.8cm}{Store to program memory.  \state{data} and \state{addr} are evaluated to concrete values and the value of \state{data} stored to the address \state{addr}.} \\
  &                              & \state{data} & Expression BDD \\
+ & \state{Copy}                 & \state{data} & Expression BDD & Evaluate an expression and store the result in a {\StateMachine} temporary. \\
+ &                              & \state{tmp}  & {\STateMachine} temporary \\
 \\
- & \state{Copy}                 & \state{data} & Expression BDD & \multirow{2}{10.5cm}{Evaluate an expression and store the result in a {\StateMachine} temporary.} \\
- &                              & \state{tmp}  & {\STateMachine} temporary \\
- & $\Phi$                       & \state{input}& Set of {\StateMachine} temporaries & \multirow{2}{10.5cm}{Examine the temporaries in \state{input}, select whichever has been assigned to most recently, and copy its value to \state{tmp}.  See Section~\ref{sect:ssa}.} \\
- &                              & \state{tmp}  & {\STateMachine} temporary \\
-\newpage
- & \state{ImportRegister}       & \state{tid}  & Thread ID       & \multirow{3}{10.5cm}{Copy the value of register \state{reg} in program thread \state{tid} into {\StateMachine} temporary \state{tmp}.} \\
+ & \state{ImportRegister}       & \state{tid}  & Thread ID       & \multirow{2}{12.8cm}{Copy the value of register \state{reg} in program thread \state{tid} into {\StateMachine} temporary \state{tmp}.} \\
  &                              & \state{reg}  & Register ID \\
  &                              & \state{tmp}  & {\STateMachine} temporary \\
- & \state{StartAtomic}          &              &                 & \multirow{3}{10.5cm}{Mark the start and end of atomic blocks, used to constrain the set of schedules which must be considered; see Section~\ref{sect:using:build_cross_product}.} \\
- & \state{EndAtomic}            \\
 \\
- & \state{Assert}               & \state{cond} & BBDD            & Note that a particular condition is guaranteed to be true at a particular point in the {\StateMachine}'s execution. \\
-\caption{Types of {\StateMachine} states.  \todo{StartFunction, EndFunction, StackLayout, alias set on ImportRegister? Also, second page looks a bit silly}}
+ & \state{Assert}               & \state{cond} & Boolean BDD     & Note that a given condition is true at a particular point in the {\StateMachine}'s execution. \\
+ & $\Phi$                       &              &                 & Implement an SSA $\Phi$ node\needCite. \\
+\\
+ & \state{StartAtomic}          &              &                 & \multirow{2}{12.8cm}{Mark the start and end of atomic blocks, used to constrain the set of schedules which must be considered; see Section~\ref{sect:using:build_cross_product}.} \\
+ & \state{EndAtomic}            \\
+\end{tabular}
+\caption{Types of {\StateMachine} states.}
 \label{table:state_machine_states}
-\end{longtable}
+\end{table}
 \end{landscape}
 
 \subsection{{\STateMachine} expression language}
 \label{sect:sm_expr_language}
 
 \begin{table}
-\begin{tabular}{lp{11.5cm}}
+\begin{tabular}{lp{11.3cm}}
 Expression & Meaning \\
 \hline
 $\smTmp{A}$ & The value of {\StateMachine} temporary $A$. \\
@@ -318,8 +316,8 @@ Section~\ref{sect:implementation_hacks:bdd_ordering}.
 Figure~\ref{fig:derive:single_threaded_machine} shows an example of a
 simple single-threaded {\StateMachine}\footnote{This is the crashing
   thread component of the simple\_toctou test discussed in more detail
-  in Section~\ref{sect:eval:art:simple_toctou}.}.  It illustrates a
-simple time-of-check, time-of-use race: the program loads from
+  in Section~\ref{sect:eval:simple_toctou}.}.  It illustrates a simple
+time-of-check, time-of-use race: the program loads from
 \verb|global_ptr| twice in quick succession, validating the result of
 the first and using the result of the second.  It is trivial to read
 off from this diagram that the program might crash if some other
@@ -426,7 +424,7 @@ first; later sections will explain how to generalise this.
 The aim of this phase is to take this crashing instruction pointer and
 the \backref{program model} and use them build a {\StateMachine}
 representing the final \backref{$\alpha$} instructions executed by the
-crashing thread.  The approach used has several stages:
+crashing thread.  The approach used has three stages:
 
 \begin{itemize}
 \item First, determine which instructions need to be included in the
@@ -447,9 +445,6 @@ crashing thread.  The approach used has several stages:
   translated independently and the resulting fragments are then
   stitched back together to form the {\StateMachine}.  This is
   described in Section~\ref{sect:derive:compile_cfg}.
-\item Finally, the {\StateMachine} is converted to
-  \introduction{static single assignment} form (SSA).  The SSA form
-  used by {\technique} is described in Section~\ref{sect:ssa}.
 \end{itemize}
 
 The resulting {\StateMachine} captures all of the relevant information
@@ -715,7 +710,7 @@ there are some important mitigating factors:
 The overall result is that, despite having cost $O(n^{\alpha})$, this
 phase of the analysis rarely accounts for more than a small percentage
 of {\implementation}'s total running time (see
-Section~\ref{eval:time_breakdowns} for more details).
+Section~\ref{sect:eval:time_breakdowns} for more details).
   
 \subsection{Handling cross-function CFGs.}
 
@@ -3489,12 +3484,12 @@ The replacement for {\tt c} is similar:
   \end{subfloat}
   {\hfill}
   \begin{subfloat}
-    \parbox{4cm}{\tt c: loc1 = 7;}\\
+    \parbox{3.2cm}{\tt c: loc1 = 7;}\\
     \caption{Interfering thread}
   \end{subfloat}
   {\hfill}
   \begin{subfloat}
-    \parbox{4cm}{$\happensBefore{a}{c} \wedge \happensBefore{c}{b} \wedge \mathtt{loc1} \not= 7$}\\
+    $\happensBefore{a}{c} \wedge \happensBefore{c}{b} \wedge \mathtt{loc1} \not= 7$
     \caption{Generated verification condition}
   \end{subfloat}
   {\hfill}
@@ -4409,11 +4404,11 @@ useful when analysing the bug
 (Section~\ref{sect:using:check_realness}) or when attempting to
 reproduce it (Section~\ref{sect:reproducing_bugs}), but cannot be used
 by this kind of instruction-level fix\footnote{But see future work
-  Section~\ref{sect:fw:better_fixes} for a possible alternative scheme
-  which would make use of it.}, so including it in the fix is
-unhelpful and would tend to lead to unnecessarily large critical
-sections.  The fix generating process must therefore select a useful
-subset of the instructions in the control-flow graph.
+  Section~\ref{sect:future_work:better_fixes} for a possible
+  alternative scheme which would make use of it.}, so including it in
+the fix is unhelpful and would tend to lead to unnecessarily large
+critical sections.  The fix generating process must therefore select a
+useful subset of the instructions in the control-flow graph.
 
 The approach taken here is simple:
 
