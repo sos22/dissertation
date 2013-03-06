@@ -128,9 +128,9 @@ any temporary.
 \multicolumn{2}{l}{\state{If}}  & \state{cond} & BBDD        & Conditional branch with two successor states.  Evaluates \state{cond}, branching to one successor if it is true and the other if it is false. \\
 \hline
 \multicolumn{2}{l}{Terminal states} &          &             & Terminal states.  {\STateMachine} execution finishes when it reaches one of these. \\
- & \state{Survive}              &              &             & The bug has been avoided. \\
- & \state{Crash}                &              &             & The bug will definitely happen. \\
- & \state{Unreached}            &              &             & A contradiction has been reached; this path through the {\StateMachine} should be ignored. \\
+ & {\stSurvive}              &              &             & The bug has been avoided. \\
+ & {\stCrash}                &              &             & The bug will definitely happen. \\
+ & {\stUnreached}            &              &             & A contradiction has been reached; this path through the {\StateMachine} should be ignored. \\
 \hline
 \multicolumn{2}{l}{Side-effect states}\\
  & \state{Load}                 & \state{addr} & Expression BDD & \multirow{2}{12.8cm}{Load from program memory at address \state{addr} and store the result in {\StateMachine} temporary \state{tmp}.} \\
@@ -147,8 +147,8 @@ any temporary.
  & \state{Assert}               & \state{cond} & Boolean BDD     & Note that a given condition is true at a particular point in the {\StateMachine}'s execution. \\
  & $\Phi$                       &              &                 & Implement an SSA $\Phi$ node\needCite. \\
 \\
- & \state{StartAtomic}          &              &                 & \multirow{2}{12.8cm}{Mark the start and end of atomic blocks, used to constrain the set of schedules which must be considered; see Section~\ref{sect:using:build_cross_product}.} \\
- & \state{EndAtomic}            \\
+ & {\stStartAtomic}          &              &                 & \multirow{2}{12.8cm}{Mark the start and end of atomic blocks, used to constrain the set of schedules which must be considered; see Section~\ref{sect:using:build_cross_product}.} \\
+ & {\stEndAtomic}            \\
 \end{tabular}
 \caption{Types of {\StateMachine} states.}
 \label{table:state_machine_states}
@@ -258,6 +258,7 @@ worst performance problems.  These are discussed further in
 Section~\ref{sect:implementation_hacks:bdd_ordering}.
 
 \subsection{Example}
+\label{sect:derive:simple_toctou_example}
 
 \begin{figure}
   \subfigure[][Crashing thread]{
@@ -292,12 +293,12 @@ Section~\ref{sect:implementation_hacks:bdd_ordering}.
 \begin{figure}
   \begin{center}
   \begin{tikzpicture}
-    \node (l1) at (0,2) [stateSideEffect] {l1: \state{Load} tmp1 $\leftarrow$ global\_ptr AT cfg6 };
-    \node (l2) [stateIf, below=of l1] {l2: \state{If} (0 == tmp1)};
-    \node (l4) [stateSideEffect, below=of l2] {l4: \state{Load} tmp2 $\leftarrow$ global\_ptr AT cfg3 };
-    \node (l3) [stateTerminal, right=of l4] {l3: \state{Survive} };
-    \node (l5) [stateIf, below=of l4] {l5: \state{If} (BadPtr(tmp2))};
-    \node (l6) [stateTerminal, below=of l5] {l6: \state{Crash}};
+    \node (l1) at (0,2) [stateSideEffect] {l1: \stLoad{tmp1}{\mathrm{global\_ptr}} };
+    \node (l2) [stateIf, below=of l1] {l2: \stIf{0 == \smTmp{1}}};
+    \node (l4) [stateSideEffect, below=of l2] {l4: \stLoad{2}{\mathrm{global\_ptr}} };
+    \node (l3) [stateTerminal, right=of l4] {l3: \stSurvive };
+    \node (l5) [stateIf, below=of l4] {l5: \stIf{\smBadPtr{\smTmp{2}}}};
+    \node (l6) [stateTerminal, below=of l5] {l6: \stCrash};
     \draw[->] (l1) -- (l2);
     \draw[->,ifTrue] (l2) -- (l3);
     \draw[->,ifFalse] (l2) -- (l4);
@@ -332,7 +333,7 @@ happen.
 \begin{figure}
   \begin{center}
     \begin{tikzpicture}
-      \node (l7) [stateSideEffect] {l7: \state{Store} 0 $\rightarrow$ global\_ptr AT cfg8 };
+      \node (l7) [stateSideEffect] {l7: \stStore{0}{\mathrm{global\_ptr}}};
     \end{tikzpicture}
   \end{center}
   \caption{{\STateMachine} generated from the code in
@@ -345,21 +346,21 @@ happen.
 
 \begin{sidewaysfigure}
   \begin{tikzpicture}
-    \node (lA) [stateIf] { \state{If} $\happensBefore{\mai{cfg6}{thread1}}{\mai{cfg8}{thread2}}$ };
-    \node (lB) [stateSideEffect, below = of lA] { l1: \state{Load} tmp1 $\leftarrow$ global\_ptr AT cfg6:thread1 };
+    \node (lA) [stateIf] { \stIf{\happensBefore{\mai{cfg6}{thread1}}{\mai{cfg8}{thread2}}} };
+    \node (lB) [stateSideEffect, below = of lA] { l1: \stLoad{1}{\mathrm{global\_ptr}} };
     \node (lCdummy) [below right = of lA] {};
-    \node (lC) [stateSideEffect, right = of lCdummy] {l7: \state{Store} 0 $\rightarrow$ global\_ptr AT cfg8:thread2 };
-    \node (lD) [stateIf, below = of lB] { l2: \state{If} (0 == tmp1) };
-    \node (lE) [stateTerminal, below = of lC] { \state{Unreached} };
-    \node (lF) [stateIf, below left = of lD] {\state{If} $\happensBefore{\mai{cfg3}{thread1}}{\mai{cfg8}\mai{thread2}}$ };
-    \node (lG) [stateTerminal, below right = of lD] {\state{Survive}};
+    \node (lC) [stateSideEffect, right = of lCdummy] {l7: \stStore{0}{\mathrm{global\_ptr}} };
+    \node (lD) [stateIf, below = of lB] { l2: \stIf{0 == \smTmp{1}} };
+    \node (lE) [stateTerminal, below = of lC] { \stUnreached };
+    \node (lF) [stateIf, below left = of lD] {\stIf{\happensBefore{\mai{cfg3}{thread1}}{\mai{cfg8}{thread2}}} };
+    \node (lG) [stateTerminal, below right = of lD] {\stSurvive};
     \node (lHdummy) [below right = of lF] {};
-    \node (lH) [stateTerminal, right = of lHdummy] {\state{Unreached}};
-    \node (lI) [stateSideEffect, below = of lF] {l7: \state{Store} 0 $\rightarrow$ global\_ptr AT cfg8:thread2 };
-    \node (lJ) [stateSideEffect, below = of lI] {l4: \state{Load} tmp2 $\leftarrow$ global\_ptr AT cfg3:thread1 };
-    \node (lK) [stateIf, below = of lJ] { l5: \state{If} $BadPtr(tmp2)$ };
-    \node (lL) [stateTerminal, below left = of lK] { \state{Crash} };
-    \node (lM) [stateTerminal, below right = of lK] { \state{Survive} };
+    \node (lH) [stateTerminal, right = of lHdummy] {\stUnreached};
+    \node (lI) [stateSideEffect, below = of lF] {l7: \stStore{0}{\mathrm{global\_ptr}} };
+    \node (lJ) [stateSideEffect, below = of lI] {l4: \stLoad{2}{\mathrm{global\_ptr}} };
+    \node (lK) [stateIf, below = of lJ] { l5: \stIf{\smBadPtr{\smTmp{2}}} };
+    \node (lL) [stateTerminal, below left = of lK] { \stCrash };
+    \node (lM) [stateTerminal, below right = of lK] { \stSurvive };
     \draw[->,ifTrue] (lA) -- (lB);
     \draw[->,ifFalse,draw] (lA) -- (lC);
     \draw[->] (lB) -- (lD);
@@ -382,10 +383,10 @@ happen.
 \begin{figure}
   \begin{center}
   \begin{tikzpicture}
-    \node (lA) [stateSideEffect] {\state{Assert} $0 \not= InitMemory(global\_ptr)$ and $cfg6:thread1 \happensBefore cfg7:thread2$};
-    \node (lB) [stateIf, below = of lA] {\state{If} $cfg3:thread1 \happensBefore cfg7:thread2$ };
-    \node (lC) [stateTerminal, below left = of lB] {\state{Survive}};
-    \node (lD) [stateTerminal, below right = of lB] {\state{Crash}};
+    \node (lA) [stateSideEffect] {\stAssert{0 \not= \smLoad{\mathrm{global\_ptr}} \wedge \happensBefore{\mai{cfg6}{thread1}}{\mai{cfg7}{thread2}}} };
+    \node (lB) [stateIf, below = of lA] {\stIf{\happensBefore{\mai{cfg3}{thread1}}{\mai{cfg7}{thread2}}} };
+    \node (lC) [stateTerminal, below left = of lB] {\stSurvive};
+    \node (lD) [stateTerminal, below right = of lB] {\stCrash};
     \draw [->] (lA) -- (lB);
     \draw [->,ifTrue] (lB) -- (lC);
     \draw [->,ifFalse] (lB) -- (lD);
@@ -791,7 +792,7 @@ which require special care:
   Some edges will be erased from the \backref{CFG}, so that the
   program can branch from the instruction corresponding to $C_1$ to
   $D_0$ but the \backref{CFG} does not allow that to happen.  These
-  are converted to branches to the special \state{Unreached} state,
+  are converted to branches to the special {\stUnreached} state,
   reflecting the fact that these paths are of no interest to the rest
   of the analysis.
 
@@ -857,21 +858,21 @@ to the rest of the analysis.
 
 \begin{figure}
 \begin{tikzpicture}
-  \node[stateIf,initial above] (l1) {\state{If} $\entryExpr{\mai{threadId}{A_0}}$};
-  \node[stateSideEffect,below = of l1] (l2) {$A_0$: \state{Copy} $\mathit{rdx}$ to $\mathit{rcx}$};
-  \node[stateIf,below = of l2] (l3) {$A_0'$: \state{If} $\controlEdge{threadId}{A_0}{B_0}$};
-  \node[stateSideEffect,below = of l3] (l4) {$B_0$: \state{Load} $\mathit{rcx}$ to $\mathit{rcx}$};
-  \node[stateSideEffect,below = of l4] (l5) {$C_0$: \state{Load} $\mathit{rcx}+8$ to $\mathit{tmp}$};
-  \node[stateIf,below = of l5] (l6) {\state{If} $\mathit{tmp} = 0$};
-  \node[stateIf,below = of l6] (l7) {$D_0$: \state{If} $\mathit{BadPtr}(\mathit{rcx})$};
-  \node[stateSideEffect,below right = of l3] (l8) {$B_1$: \state{Load} $\mathit{rcx}$ to $\mathit{rcx}$};
-  \node[stateSideEffect,below = of l8] (l9) {$C_1$: \state{Load} $\mathit{rcx}+8$ to $\mathit{tmp}$};
-  \node[stateIf,below = of l9] (l10) {\state{If} $\mathit{tmp} = 0$};
-  \node[stateSideEffect,below right = of l1] (l11) {$C_2$: \state{Load} $\mathit{rcx}+8$ to $\mathit{tmp}$};
-  \node[stateIf,right = of l3] (l12) {\state{If} $\mathit{tmp} = 0$};
-  \node[stateTerminal,below = of l7] (lBeta) {\state{Crash}};
-  \node[stateTerminal,below right = of l7] (lGamma) {\state{Survive}};
-  \node[stateTerminal,right = of lGamma] (lAlpha) {\state{Unreached}};
+  \node[stateIf,initial above] (l1) {\stIf{\entryExpr{\mai{threadId}{A_0}}}};
+  \node[stateSideEffect,below = of l1] (l2) {$A_0$: \state{Copy} $\mathit{rcx} \leftarrow \mathit{rdx}$};
+  \node[stateIf,below = of l2] (l3) {$A_0'$: \stIf{\controlEdge{threadId}{A_0}{B_0}}};
+  \node[stateSideEffect,below = of l3] (l4) {$B_0$: \state{Load} $\mathit{rcx} \leftarrow \ast(\mathit{rcx})$};
+  \node[stateSideEffect,below = of l4] (l5) {$C_0$: \stLoad{}{\mathit{rcx}+8}};
+  \node[stateIf,below = of l5] (l6) {\stIf{\smTmp{} = 0}};
+  \node[stateIf,below = of l6] (l7) {$D_0$: \stIf{\smBadPtr{\mathit{rcx}}}};
+  \node[stateSideEffect,below right = of l3] (l8) {$B_1$: \state{Load} $\mathit{rcx} \leftarrow \ast(\mathit{rcx})$};
+  \node[stateSideEffect,below = of l8] (l9) {$C_1$: \stLoad{}{\mathit{rcx}+8}};
+  \node[stateIf,below = of l9] (l10) {\stIf{\smTmp{} = 0}};
+  \node[stateSideEffect,below right = of l1] (l11) {$C_2$: \stLoad{}{\mathit{rcx}+8}};
+  \node[stateIf,right = of l3] (l12) {\stIf{\smTmp{} = 0}};
+  \node[stateTerminal,below = of l7] (lBeta) {\stCrash};
+  \node[stateTerminal,right = of lBeta] (lGamma) {\stSurvive};
+  \node[stateTerminal,right = of lGamma] (lAlpha) {\stUnreached};
   \draw[->,ifTrue] (l1) -- (l2);
   \draw[->,ifFalse] (l1) -- (l11);
   \draw[->] (l2) -- (l3);
@@ -892,7 +893,9 @@ to the rest of the analysis.
   \draw[->,ifFalse] (l12) -- (l8);
 \end{tikzpicture}
 \caption{{\STateMachine} generated from the CFG shown in
-  Figure~\ref{fig:cyclic_cfg}. \todo{Check this very carefully.}}
+  Figure~\ref{fig:cyclic_cfg}. \todo{This is a bit of an abuse:
+    {\StateMachine} language separates temporaries and registers, and
+    I've ignored that here.}}
 \label{fig:state_machine_for_cyclic_cfg}
 \end{figure}
 
@@ -1607,10 +1610,10 @@ implementation\footnote{Note that this includes other calls to
 \begin{figure}
   \subfigure[][Crashing \texttt{free}]{
     \begin{tikzpicture}
-      \node (l1) [stateSideEffect] {\state{Load} $t \leftarrow \mathrm{last\_free}$ };
-      \node (l2) [stateIf, below = of l1] {\state{If} $t = \mathit{arg0}$ };
-      \node (l3) [stateTerminal, below left = of l2] {\state{Crash} };
-      \node (l4) [stateTerminal, below right = of l2] {\state{Survive} };
+      \node (l1) [stateSideEffect] {\stLoad{1}{\mathit{last\_free}} };
+      \node (l2) [stateIf, below = of l1] {\stIf{\smTmp{1} = \mathit{arg0}} };
+      \node (l3) [stateTerminal, below left = of l2] {\stCrash };
+      \node (l4) [stateTerminal, below right = of l2] {\stSurvive };
       \draw[->] (l1) -- (l2);
       \draw[->,ifTrue] (l2) -- (l3);
       \draw[->,ifFalse] (l2) -- (l4);
@@ -1620,7 +1623,7 @@ implementation\footnote{Note that this includes other calls to
   \subfigure[][Non-crashing \texttt{free}]{
     \raisebox{17mm}{
     \begin{tikzpicture}
-      \node [stateSideEffect] {\state{Store} $\mathit{arg0} \rightarrow \mathit{last\_free}$ };
+      \node [stateSideEffect] {\stStore{\mathit{arg0}}{\mathit{last\_free}} };
     \end{tikzpicture}
     }
     \label{fig:library_free:non_crashing}
@@ -1963,9 +1966,9 @@ which running the interfering {\StateMachine} and then the crashing
 one survives.  Each sub-condition is formed by concatenating the two
 input {\StateMachines} in two appropriate order, symbolically
 executing them, and then taking the disjunction of all paths which end
-in the \state{Survive} state\editorial{i.e. taking all paths which
+in the {\stSurvive} state\editorial{i.e. taking all paths which
   definitely survive, and excluding those which crash and which reach
-  \state{Unreached}.}.  The inferred assumption itself is then formed
+  {\stUnreached}.}.  The inferred assumption itself is then formed
 from the conjunction of these two sub-constraints.
 
 \todo{Might be worth mentioning that W isolation implies CI atomic ==
@@ -1973,12 +1976,12 @@ from the conjunction of these two sub-constraints.
   interfering threads when the crashing thread is the same?}
 
 Concatenating {\StateMachines} is straightforward: simply take the
-first {\StateMachine} and replace all of its \state{Survive} states
+first {\StateMachine} and replace all of its {\stSurvive} states
 with branches to the start of the second {\StateMachine}.
 
 \todo{Bad para break.} One might reasonably ask why building the
 composite machine is superior to simply symbolically executing one
-{\StateMachine} until it reaches the \state{Survive} state and then
+{\StateMachine} until it reaches the {\stSurvive} state and then
 starting the other {\StateMachine} in the resulting configuration.
 This would correctly implement the desired behaviour, and would be
 somewhat simpler to implement.  The great advantage of building a
@@ -2029,8 +2032,8 @@ There are some important subtleties involved in building the
 cross-product {\StateMachine}:
 
 \begin{itemize}
-\item The input {\StateMachines} might contain \state{StartAtomic} and
-  \state{EndAtomic} blocks, which are intended to indicate that some
+\item The input {\StateMachines} might contain {\stStartAtomic} and
+  {\stEndAtomic} blocks, which are intended to indicate that some
   fragment of the {\StateMachine} executes atomically.  It is
   important that the output {\StateMachine} is constructed in a way
   which respects those blocks.
@@ -2126,11 +2129,11 @@ this diagram:
   either input {\StateMachine} issuing any memory accesses.  This
   indicates that both {\StateMachines} have completed atomically,
   which is not an interesting case to investigate, and so {\technique}
-  instantiates this output state as \state{Unreached}.  The later
+  instantiates this output state as {\stUnreached}.  The later
   analysis phases will therefore not investigate this path.  In
   general, any time one of the input {\StateMachines} reaches a
   terminal state and either input {\StateMachine} has failed to issue
-  an access the output state should be \state{Unreached}.
+  an access the output state should be {\stUnreached}.
 
 \item In the other successor of the initial state, (\{$A$, {\false}\},
   \{$F$, {\false}\}), both {\StateMachines} have reached a memory
@@ -2168,12 +2171,12 @@ this diagram:
 \begin{figure}
   \begin{subfloat}
     \begin{tikzpicture}
-      \node[stateSideEffect,initial above] (lA) {$A$: \state{Load} $x \rightarrow tmp$ };
-      \node[stateIf,below = of lA] (lB) {$B$: \state{If} $tmp = 0$ };
-      \node[stateSideEffect,below = of lB] (lC) {$C$: \state{Load} $x \rightarrow tmp'$ };
-      \node[stateIf,below = of lC] (lD) {$D$: \state{If} $BadPtr(tmp')$ };
-      \node[stateTerminal,below = of lD] (lH) {$H$: \state{Crash} };
-      \node[stateTerminal,right = of lC] (lG) {$G$: \state{Survive} };
+      \node[stateSideEffect,initial above] (lA) {$A$: \stLoad{1}{x} };
+      \node[stateIf,below = of lA] (lB) {$B$: \stIf{\smTmp{1} = 0} };
+      \node[stateSideEffect,below = of lB] (lC) {$C$: \stLoad{2}{x} };
+      \node[stateIf,below = of lC] (lD) {$D$: \stIf{\smBadPtr{\smTmp{2}}} };
+      \node[stateTerminal,below = of lD] (lH) {$H$: \stCrash };
+      \node[stateTerminal,right = of lC] (lG) {$G$: \stSurvive };
       \draw[->] (lA) -- (lB);
       \draw[->,ifTrue] (lB) -- (lG);
       \draw[->,ifFalse] (lB) -- (lC);
@@ -2185,9 +2188,9 @@ this diagram:
   \end{subfloat}
   \begin{subfloat}
     \begin{tikzpicture}
-      \node[stateIf,initial above] (lE) {$E$: \state{If} $y \not= 0$};
-      \node[stateSideEffect,below right = of lE] (lF) {$F$: \state{Store} $0 \rightarrow x$};
-      \node[stateTerminal,below left = of lF] (lI) {$I$: \state{Survive} };
+      \node[stateIf,initial above] (lE) {$E$: \stIf{y \not= 0}};
+      \path (node cs:name=lE) ++(2.2,-1.5) node [stateSideEffect] (lF) {$F$: \stStore{0}{x}};
+      \node[stateTerminal,below = 2 of lE] (lI) {$I$: \stSurvive };
       \draw[->,ifTrue] (lE) -- (lI);
       \draw[->,ifFalse] (lE) -- (lF);
       \draw[->] (lF) -- (lI);
@@ -2202,24 +2205,24 @@ this diagram:
 
 \begin{figure}
   \begin{tikzpicture}[align=center]
-    \node[stateIf, initial above] (A) {(\{$A$, {\false}\}, \{$E$, {\false}\})\\\state{If} $y \not= 0$ };
-    \node[stateTerminal, right = of A] (B) {(\{$A$, {\false}\}, \{$I$, {\false}\})\\\state{Unreached} };
-    \node[stateIf, below = of A] (C) {(\{$A$, {\false}\}, \{$F$, {\false}\})\\\state{If} $\happensBefore{A}{F}$ };
-    \node[stateSideEffect, below = of C] (D) {$A$\\\state{Load} $x \rightarrow tmp$};
-    \node[stateSideEffect, right = of C] (E) {$F$\\\state{Store} $0 \rightarrow x$};
-    \node[stateIf, below = of D] (F) {(\{$B$, {\true}\}, \{$E$, {\false}\})\\\state{If} $tmp = 0$ };
-    \node[stateTerminal, below = of E] (G) {(\{$A$, {\false}\}, \{$I$, {\true}\})\\\state{Unreached} };
-    \node[stateTerminal, right = of F] (H) {(\{$G$, {\true}\}, \{$E$, {\false}\})\\\state{Unreached} };
-    \node[stateIf, below = of F] (I) {(\{$C$, {\true}\}, \{$E$, {\false}\})\\\state{If} $\happensBefore{C}{F}$ };
-    \node[stateSideEffect, below = of I] (J) {$C$\\\state{Load} $x \rightarrow tmp'$};
-    \node[stateSideEffect, right = of I] (K) {$F$\\\state{Store} $0 \rightarrow x$};
-    \node[stateIf, below = of J] (L) {(\{D, {\true}\}, \{$E$, {\false}\})\\\state{If} $BadPtr(tmp')$ };
-    \node[stateSideEffect, right = of K] (M) {(\{$C$, {\true}\}, \{$I$, {\true}\})\\\state{Load} $x \rightarrow tmp'$ };
-    \node[stateTerminal, below = of L] (N) {(\{$H$, {\true}\}, \{$E$, {\false}\})\\\state{Unreached} };
-    \node[stateTerminal, right = of N] (O) {(\{$G$, {\true}\}, \{$E$, {\false}\})\\\state{Unreached} };
-    \node[stateIf, below = of M] (P) {(\{D, {\true}\}, \{$I$, {\true}\})\\\state{If} $BadPtr(tmp')$ };
-    \node[stateTerminal, left = of P] (Q) {(\{$G$, {\true}\}, \{$I$, {\true}\})\\\state{Survive} };
-    \node[stateTerminal, below = of P] (R) {(\{$G$, {\true}\}, \{$I$, {\true}\})\\\state{Crash} };
+    \node[stateIf, initial above] (A) {(\{$A$, {\false}\}, \{$E$, {\false}\})\\\stIf{y \not= 0} };
+    \node[stateTerminal, right = of A] (B) {(\{$A$, {\false}\}, \{$I$, {\false}\})\\{\stUnreached} };
+    \node[stateIf, below = of A] (C) {(\{$A$, {\false}\}, \{$F$, {\false}\})\\\stIf{\happensBefore{A}{F}} };
+    \node[stateSideEffect, below = of C] (D) {$A$\\\stLoad{1}{x} };
+    \node[stateSideEffect, right = of C] (E) {$F$\\\stStore{0}{x} };
+    \node[stateIf, below = of D] (F) {(\{$B$, {\true}\}, \{$E$, {\false}\})\\\stIf{\smTmp{1} = 0} };
+    \node[stateTerminal, below = of E] (G) {(\{$A$, {\false}\}, \{$I$, {\true}\})\\\stUnreached };
+    \node[stateTerminal, right = of F] (H) {(\{$G$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
+    \node[stateIf, below = of F] (I) {(\{$C$, {\true}\}, \{$E$, {\false}\})\\\stIf{\happensBefore{C}{F}} };
+    \node[stateSideEffect, below = of I] (J) {$C$\\\stLoad{2}{x}};
+    \node[stateSideEffect, right = of I] (K) {$F$\\\stStore{0}{x}};
+    \node[stateIf, below = of J] (L) {(\{D, {\true}\}, \{$E$, {\false}\})\\\stIf{\smBadPtr{\smTmp{2}}}};
+    \node[stateSideEffect, right = of K] (M) {(\{$C$, {\true}\}, \{$I$, {\true}\})\\\stLoad{2}{x}};
+    \node[stateTerminal, below = of L] (N) {(\{$H$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
+    \node[stateTerminal, right = of N] (O) {(\{$G$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
+    \node[stateIf, below = of M] (P) {(\{D, {\true}\}, \{$I$, {\true}\})\\\stIf{\smBadPtr{\smTmp{2}}} };
+    \node[stateTerminal, left = of P] (Q) {(\{$G$, {\true}\}, \{$I$, {\true}\})\\\stSurvive };
+    \node[stateTerminal, below = of P] (R) {(\{$G$, {\true}\}, \{$I$, {\true}\})\\\stCrash };
     \draw[->,ifTrue] (A) -- (B);
     \draw[->,ifFalse] (A) -- (C);
     \draw[->,ifTrue] (C) -- (D);
@@ -2257,7 +2260,7 @@ this diagram:
      {\StateMachine} shown in
      Figure~\ref{fig:cross_product_output_opt}.  In this case, the
      actual symbolic execution step will be trivial, and will report
-     that the program will reach a \state{Crash} state precisely when
+     that the program will reach a {\stCrash} state precisely when
      $y = 0 \wedge \happensBefore{A}{F} \wedge LD(x) \not= 0 \wedge
      \happensBefore{F}{C}$; in other words, if $y$ is nonzero, the
      initial value of $x$ is non-zero, and statement F intercedes
@@ -2266,8 +2269,8 @@ this diagram:
 \begin{figure}
   \begin{centering}
   \begin{tikzpicture}
-    \node[stateSideEffect, initial] (A) {\state{Assert} $y = 0 \wedge \happensBefore{A}{F} \wedge LD(x) \not= 0 \wedge \happensBefore{F}{C}$ };
-    \node[stateTerminal, below = of A] (B) {\state{Crash} };
+    \node[stateSideEffect, initial] (A) {\stAssert{y = 0 \wedge \happensBefore{A}{F} \wedge \smLoad{x} \not= 0 \wedge \happensBefore{F}{C}} };
+    \node[stateTerminal, below = of A] (B) {\stCrash };
     \draw[->] (A) -- (B);
   \end{tikzpicture}
   \end{centering}
@@ -2279,9 +2282,9 @@ this diagram:
 For the example, only three simplifications are necessary:
 
 \begin{itemize}
-\item If a state is guaranteed to eventually reach \state{Unreached}
-  then the state can itself be replaced by \state{Unreached}.
-\item If a branch has one target which is \state{Unreached} then
+\item If a state is guaranteed to eventually reach {\stUnreached}
+  then the state can itself be replaced by {\stUnreached}.
+\item If a branch has one target which is {\stUnreached} then
   it can be replaced by an \state{Assert}.
 \item A chain of successive \state{Assert}s can be replaced by a
   single \state{Assert}.
@@ -2318,13 +2321,13 @@ here halves the implementation effort.
   \begin{displaymath}
     \begin{array}{cccp{5cm}}
       \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateSideEffect] {\state{StartAtomic}};
+          \node at (0,0) (r) [stateSideEffect] {{\stStartAtomic}};
           \node at (0,-10mm) (A) {B};
           \draw[->] (r) -- (A);
         \end{tikzpicture}}, b_1\right\},\left\{C, b_2\right\}, \varnothing \right) & \!\!\!\Rightarrow\!\!\! & (\{B, b_1\}, \{C, b_2\}, \mathit{crashing}) & And likewise for interfering thread.\\
 
       \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateSideEffect] {\state{EndAtomic}};
+          \node at (0,0) (r) [stateSideEffect] {{\stEndAtomic}};
           \node at (0,-10mm) (A) {B};
           \draw[->] (r) -- (A);
         \end{tikzpicture}}, b_1\right\},\left\{C, b_2\right\}, \mathit{crashing} \right) & \!\!\!\Rightarrow\!\!\! & (\{B, b_1\}, \{C, b_2\}, \varnothing ) & And likewise for interfering thread.\\
@@ -2340,13 +2343,13 @@ here halves the implementation effort.
         \end{tikzpicture}} & And likewise for interfering thread. \\
 
       \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[node distance=0.5cm,font=\small]
-          \node at (0,0) (r) [stateIf] {\state{If} $c$};
+          \node at (0,0) (r) [stateIf] {\stIf{c}};
           \node at (-5mm, -10mm) (A) {$A$};
           \node at (5mm, -10mm) (B) {$B$};
           \draw[->,ifTrue] (r) -- (A);
           \draw[->,ifFalse] (r) -- (B);
       \end{tikzpicture}}, b_1\right\},\left\{C, b_2\right\},a\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-10mm}{\begin{tikzpicture}[node distance=0.5cm,font=\small]
-          \node at (0,0) (r) [stateIf] {\state{If} $c$ };
+          \node at (0,0) (r) [stateIf] {\stIf{c} };
           \node at (-20mm, -10mm) (A) { $(\{A, b_1\}, \{C, b_2\}, a)$ };
           \node at (20mm, -10mm) (B) { $(\{B, b_1\}, \{C, b_2\}, a)$ };
           \draw[->,ifTrue] (r) -- (A);
@@ -2366,19 +2369,19 @@ here halves the implementation effort.
       \left(\left\{\raisebox{-3mm}{\begin{tikzpicture}[font=\small]
           \node [stateTerminal] {\state{Terminal}};
       \end{tikzpicture}}, b_1\right\}, \{A, b_2\}, a\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-4mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {\state{Unreached}};
+          \node [stateTerminal] {{\stUnreached}};
       \end{tikzpicture}} & If $b_1 \wedge b_2 = \false$.  Likewise for interfering thread. \\
       
       \left(\left\{\raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {\state{Crash}};
+          \node [stateTerminal] {{\stCrash}};
       \end{tikzpicture}}, \true\right\}, \{A, \true\}, a\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {\state{Crash}};
+          \node [stateTerminal] {{\stCrash}};
       \end{tikzpicture}} & \\
       
       \left(\left\{\raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {\state{Survive}};
+          \node [stateTerminal] {{\stSurvive}};
       \end{tikzpicture}}, \true\right\}, \{A, \true\}, a\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {\state{Survive}};
+          \node [stateTerminal] {{\stSurvive}};
       \end{tikzpicture}} & \\
       
       \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
@@ -2390,7 +2393,7 @@ here halves the implementation effort.
           \node at (0,-10mm) (A) {D};
           \draw[->] (r) -- (A);
         \end{tikzpicture}}, b_2\right\}, \varnothing\!\!\!\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-16mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateIf] {\state{If} $\happensBefore{A}{C}$};
+          \node at (0,0) (r) [stateIf] {\stIf{\happensBefore{A}{C}}};
           \node at (-22mm, -10mm) [stateSideEffect] (A) {$A$};
           \node at (22mm, -10mm) [stateSideEffect] (C) {$C$};
           \node at (-22mm, -20mm) (B) {$(\{B, \true\}, \{C, \false\}, \varnothing)$};
@@ -2467,7 +2470,7 @@ then it would have omitted L1, S1, L2, S2.
 \begin{figure}
   \begin{tikzpicture}
     \node[stateSideEffect, initial above] (AC) {\shortstack{(A, C)\\L1}};
-    \node[stateSideEffect, right = of AC] (BC) {\shortstack{(B, C)\\\state{If} $\happensBefore{B}{C}$}};
+    \node[stateSideEffect, right = of AC] (BC) {\shortstack{(B, C)\\\stIf{\happensBefore{B}{C}}}};
 
     \node[stateSideEffect, above right = of BC] (B) {\shortstack{B\\L2}};
     \node[stateSideEffect, right = of B] (0C) {\shortstack{($\varnothing$, C)\\S1}};
@@ -2512,9 +2515,9 @@ memory accesses.
   \begin{centering}
     \hfill
   \begin{tikzpicture}
-    \node[stateSideEffect, initial] (AC) {\shortstack{(A, C)\\\state{If} $\happensBefore{A}{C}$ }};
+    \node[stateSideEffect, initial] (AC) {\shortstack{(A, C)\\\stIf{\happensBefore{A}{C}}}};
     \node[stateSideEffect, below left = of AC] (A1) {\shortstack{A\\L1}};
-    \node[stateSideEffect, below = of A1] (BC) {\shortstack{(B, C)\\\state{If} $\happensBefore{B}{C}$ }};
+    \node[stateSideEffect, below = of A1] (BC) {\shortstack{(B, C)\\\stIf{\happensBefore{B}{C}} }};
     \node[stateSideEffect, below left = of BC] (B) {\shortstack{B\\L2}};
     \node[stateSideEffect, below = of B] (0C) {\shortstack{($\varnothing$, C)\\S1}};
     \node[stateSideEffect, below = of 0C] (0D) {\shortstack{($\varnothing$, D)\\S2}};
@@ -2523,7 +2526,7 @@ memory accesses.
     \node[stateSideEffect, below = of BD] (0D2) {\shortstack{($\varnothing$, D)\\S2}};
 
     \node[stateSideEffect, below right = of AC] (C0) {\shortstack{C\\S1}};
-    \node[stateSideEffect, below = of C0] (AD) {\shortstack{(A, D)\\\state{If} $\happensBefore{A}{D}$}};
+    \node[stateSideEffect, below = of C0] (AD) {\shortstack{(A, D)\\\stIf{\happensBefore{A}{D}}}};
     \node[stateSideEffect, below = of AD] (A2) {\shortstack{A\\L1}};
     \node[stateSideEffect, below right = of AD] (D) {\shortstack{D\\S2}};
     \node[stateSideEffect, below = of D] (A0) {\shortstack{(A, $\varnothing$)\\L1}};
@@ -2571,7 +2574,7 @@ number of other features not illustrated in the example:
   is in an atomic block then only that {\StateMachine} is allowed to
   issue operations in the output {\StateMachine}, regardless of what
   the rules illustrated above would suggest.  Implementing
-  \state{StartAtomic} and \state{EndAtomic} side-effects is then a
+  {\stStartAtomic} and {\stEndAtomic} side-effects is then a
   simple matter of updating this field.
 
 \item The output {\StateMachine} is not necessarily tree-structure,
@@ -2586,7 +2589,7 @@ number of other features not illustrated in the example:
   {\technique} to larger {\StateMachines}.
 
 \item The output {\StateMachine} includes a large number of
-  \state{Unreached} states.  The {\StateMachine} simplification passes
+  {\stUnreached} states.  The {\StateMachine} simplification passes
   are quite effective at removing these, but for efficiency reasons we
   would prefer to not generate them at all.  {\Implementation}
   includes a few simple rules to eliminate some of the more egregious
@@ -2595,9 +2598,9 @@ number of other features not illustrated in the example:
   so if the crashing thread ever reaches C before the interfering
   thread has issued any accesses then the crashing thread will
   definitely complete as-if atomically and be replaced by an
-  \state{Unreached} state, and so state C in the output
+  {\stUnreached} state, and so state C in the output
         {\StateMachine} will itself be replaced by an
-        \state{Unreached} state.  There is therefore no need to
+        {\stUnreached} state.  There is therefore no need to
         actually generate any of (\{D, true\}, \{E, false\}), (\{H,
         true\}, \{E, false\}), or (\{G, true\}, \{E, false\}).  These
         rules are generally quite obvious and unenlightening and so
