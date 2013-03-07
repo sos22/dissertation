@@ -1,0 +1,14 @@
+  \begin{tikzpicture}
+    \node (l1) at (0,2) [stateSideEffect] {l1: \stLoad{1}{\mathrm{global\_ptr}} };
+    \node (l2) [stateIf, below=of l1] {l2: \stIf{\smTmp{1} = 0}};
+    \node (l4) [stateSideEffect, below=of l2] {l4: \stLoad{2}{\mathrm{global\_ptr}} };
+    \node (l3) [stateTerminal, right=of l4] {l3: \stSurvive };
+    \node (l5) [stateIf, below=of l4] {l5: \stIf{\smBadPtr{\smTmp{2}}}};
+    \node (l6) [stateTerminal, below=of l5] {l6: \stCrash};
+    \draw[->] (l1) -- (l2);
+    \draw[->,ifTrue] (l2) -- (l3);
+    \draw[->,ifFalse] (l2) -- (l4);
+    \draw[->] (l4) -- (l5);
+    \draw[->,ifFalse] (l5) -- (l3);
+    \draw[->,ifTrue] (l5) -- (l6);
+  \end{tikzpicture}

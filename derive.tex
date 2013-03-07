@@ -292,20 +292,7 @@ Section~\ref{sect:implementation_hacks:bdd_ordering}.
 
 \begin{figure}
   \begin{center}
-  \begin{tikzpicture}
-    \node (l1) at (0,2) [stateSideEffect] {l1: \stLoad{tmp1}{\mathrm{global\_ptr}} };
-    \node (l2) [stateIf, below=of l1] {l2: \stIf{0 == \smTmp{1}}};
-    \node (l4) [stateSideEffect, below=of l2] {l4: \stLoad{2}{\mathrm{global\_ptr}} };
-    \node (l3) [stateTerminal, right=of l4] {l3: \stSurvive };
-    \node (l5) [stateIf, below=of l4] {l5: \stIf{\smBadPtr{\smTmp{2}}}};
-    \node (l6) [stateTerminal, below=of l5] {l6: \stCrash};
-    \draw[->] (l1) -- (l2);
-    \draw[->,ifTrue] (l2) -- (l3);
-    \draw[->,ifFalse] (l2) -- (l4);
-    \draw[->] (l4) -- (l5);
-    \draw[->,ifFalse] (l5) -- (l3);
-    \draw[->,ifTrue] (l5) -- (l6);
-  \end{tikzpicture}
+    \input{simple_toctou_sm}
   \end{center}
   \caption{{\StateMachine} generated from the machine code in
     Figure~\ref{fig:derive:single_threaded_machine_inp:crashing},
@@ -350,7 +337,7 @@ happen.
     \node (lB) [stateSideEffect, below = of lA] { l1: \stLoad{1}{\mathrm{global\_ptr}} };
     \node (lCdummy) [below right = of lA] {};
     \node (lC) [stateSideEffect, right = of lCdummy] {l7: \stStore{0}{\mathrm{global\_ptr}} };
-    \node (lD) [stateIf, below = of lB] { l2: \stIf{0 == \smTmp{1}} };
+    \node (lD) [stateIf, below = of lB] { l2: \stIf{\smTmp{1} = 0} };
     \node (lE) [stateTerminal, below = of lC] { \stUnreached };
     \node (lF) [stateIf, below left = of lD] {\stIf{\happensBefore{\mai{cfg3}{thread1}}{\mai{cfg8}{thread2}}} };
     \node (lG) [stateTerminal, below right = of lD] {\stSurvive};
@@ -1734,7 +1721,7 @@ Crashing thread:\hfill         & Interfering thread: \\
 \textit{Something complicated} & 8: Store $t_3 + 1$ to loc2 \\
 3: Load $t_1$ from loc1        & \\
 4: Load $t_2$ from loc2        & \\
-5: Crash if $t_1 == t_2$ & \\
+5: Crash if $t_1 = t_2$ & \\
 \end{tabular}
 \hfill
 \end{centering}
@@ -1750,7 +1737,7 @@ Crashing thread:          & Interfering thread: \\
 \\
 3: Load $t_1$ from loc1   & 6: Load $t_3$ from loc1 \\
 4: Load $t_2$ from loc2   & 7: Store $t_3$ to loc2 \\
-5: Crash if $t_1 == t_2$  & 8: Store $t_3 + 1$ to loc2
+5: Crash if $t_1 = t_2$   & 8: Store $t_3 + 1$ to loc2
 \end{tabular}
 \hfill
 \end{centering}

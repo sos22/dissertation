@@ -131,8 +131,10 @@ I now present the results of running {\implementation} on a number of
 artificial bugs, showing that it assists in both reproducing the bugs
 and fixing them, and that the analysis phases complete very quickly.
 
-\subsection{Simple time-of-check, time-of-use (TOCTOU) bug (simple\_toctou)}
+\subsection{Simple time-of-check, time-of-use (TOCTOU) bug (simple\_toctou)}\footnote{This bug was previously discussed in
+  Section~\ref{sect:derive:simple_toctou_example}.}
 \label{sect:eval:simple_toctou}
+
 
 \begin{figure}
   \subfigure[][Crashing thread]{
@@ -201,10 +203,7 @@ here is to model a very simple structure which is accessed frequently
 but updated rarely.  The bug is, of course, that the interfering
 thread might set \texttt{global\_ptr} to \texttt{NULL} in between the
 two reads of it in the crashing thread, causing the crashing thread to
-crash when it dereferences the pointer it loaded.  This bug was
-previously discussed in
-Section~\ref{sect:derive:simple_toctou_example}.
-
+crash when it dereferences the pointer it loaded.
 \texttt{STOP\_ANALYSIS()} is a marker which prevents {\technique}'s
 analysis from exploring past that point when building the CFGs from
 which {\StateMachines} are constructed.  It is used here to help keep
@@ -213,287 +212,312 @@ the crash summaries generated simple and easily explained;
 those markers\editorial{Could last time I tried it, probably worth
   checking that again with the current version.}.
 
+\subsubsection{Generating candidate bugs}
+
+The first step in the analysis is to build the CFG for the
+\backref{crashing thread} (see
+Section~\ref{sect:derive:build_static_cfg}), which in this case is
+straightforward; the result is shown in
+Figure~\ref{fig:eval:simple_toctou:cfg}.  This can then be compiled to
+produce the {\StateMachine} shown in
+Figure~\ref{fig:eval:simple_toctou:sm}.
+
 \begin{figure}
-  \begin{minipage}{100mm}
-\begin{verbatim}
-Load Machine:
-CFG:
--1-------->cfg6: {0x400624} -> cfg5:branch
-.          cfg5: {0x40062b} -> cfg4:branch
-.          cfg4: {0x40062e} -> cfg3:default
-.          cfg3: {0x400630}
-l1: {{0x400624}:LOAD tmp1:1:1:I64 <- *(0x601040:I64):normal@mai1:1 then l2}
-l2: {0x40062e}: if ((0x0:I64 == GET:I64(tmp1:1:1))) then l3 else l4
-l3: <survive>
-l4: {{0x400630}:LOAD tmp1:1:2:I64 <- *(0x601040:I64):normal@mai1:2 then l5}
-l5: {0x400637}: if (BadPtr(GET:I64(tmp1:1:2))) then l8 else l3
-l8: <crash>
-Root: l1
-Store Machine:
-CFG:
--98------->cfg52: {0x400815}
-l7: {{0x400815}:*(0x601040:I64):normal <- 0x0:I64 @ mai98:4 then l8}
-l8: <crash>
-Root: l7
-Memory access identifiers:
-        mai1:1 -> {cfg6}
-        mai1:2 -> {cfg3}
-        mai98:4 -> {cfg52}
-Aliasing:
-        mai1:1 <-> mai98:4
-        mai1:2 <-> mai98:4
-Verification condition: (!((mai1:2 <-< mai98:4)) && (mai1:1 <-< mai98:4))
-\end{verbatim}
-  \end{minipage}
-  \caption{Crash summary generated for the program in
-    Figure~\ref{fig:eval:simple_toctou}.}\smh{Gory.  Can you relayout or ``redraw''?}
-  \label{fig:eval:simple_toctou_summary}
+  \subfigure[][Control flow graph.  $\varnothing$ indicates that the
+    thread has left the CFG.]{
+    \begin{tikzpicture}
+      \node (cfg1) [CfgInstr] {\texttt{400694}: cfg1};
+      \node (cfg2) [CfgInstr,below=of cfg1] {\texttt{40069b}: cfg2};
+      \node (cfg3) [CfgInstr,below=of cfg2] {\texttt{40069e}: cfg3};
+      \node (cfg3b) [right = of cfg3] {$\varnothing$};
+      \node (cfg4) [CfgInstr,below=of cfg3] {\texttt{4006a0}: cfg4};
+      \node (cfg4b) [below = of cfg4] {$\varnothing$};
+      \draw[->] (cfg1) -- (cfg2);
+      \draw[->] (cfg2) -- (cfg3);
+      \draw[->,ifTrue] (cfg3) -- (cfg3b);
+      \draw[->,ifFalse] (cfg3) -- (cfg4);
+      \draw[->] (cfg4) -- (cfg4b);
+    \end{tikzpicture}
+    \label{fig:eval:simple_toctou:cfg}
+  }
+  \subfigure[][{\STateMachine}]{
+    \begin{tikzpicture}
+      \node (l1) at (0,2) [stateSideEffect] {\stLoad{1}{\mathrm{global\_ptr}} @ cfg1 };
+      \node (l2) [stateIf, below=of l1] {\stIf{\smTmp{1} = 0}};
+      \node (l4) [stateSideEffect, below=of l2] {\stLoad{2}{\mathrm{global\_ptr}} @ cfg4 };
+      \node (l3) [stateTerminal, right=of l4] {\stSurvive };
+      \node (l5) [stateIf, below=of l4] {\stIf{\smBadPtr{\smTmp{2}}}};
+      \node (l6) [stateTerminal, below=of l5] {\stCrash};
+      \draw[->] (l1) -- (l2);
+      \draw[->,ifTrue] (l2) -- (l3);
+      \draw[->,ifFalse] (l2) -- (l4);
+      \draw[->] (l4) -- (l5);
+      \draw[->,ifFalse] (l5) -- (l3);
+      \draw[->,ifTrue] (l5) -- (l6);
+    \end{tikzpicture}
+    \label{fig:eval:simple_toctou:sm}
+  }
+  \caption{\backref{CFG} and {\STateMachine} for the crashing thread
+    in Figure~\ref{fig:eval:simple_toctou:compiled}.}
+\end{figure}
+
+The next step is to build the \backref{interfering stores} set (see
+Section~\ref{sect:derive:write_side}).  The crashing {\StateMachine}
+contains two loads, at \texttt{400694} and \texttt{4006a0}, and so the
+analysis will ask\editorial{ick} the \backref{program model} what
+stores might interact with them, and the \backref{program model} will
+use the results of the \backref{dynamic alias analysis} (see
+Section~\ref{sect:program_model:dynamic_alias}) to return the set
+\{\texttt{400884}, \texttt{4008fb}\}.  The \texttt{STOP\_ANALYSIS()}
+markers prevent these from being clustered together, and there are no
+other \backref{communicating instructions}, and so there will be two
+\backref{interfering thread} CFGs, shown in
+Figures~\ref{fig:eval:simple_toctou:interfering_cfg1}
+and~\ref{fig:eval:simple_toctou:interfering_cfg2}.
+
+\begin{figure}
+  \begin{tabular}{cc}
+    \subfigure[][CFG for interfering store \texttt{400884}]{
+      \begin{tikzpicture}
+        \node (a) [CfgInstr] {\texttt{400884}: cfg5};
+        \node (b) [below = of a] {$\varnothing$};
+        \draw[->] (a) -- (b);
+      \end{tikzpicture}
+      \label{fig:eval:simple_toctou:interfering_cfg1}
+    } &
+    \subfigure[][{\STateMachine} for interfering store \texttt{400884}, without static analysis]{
+      \begin{tikzpicture}
+        \node [stateSideEffect] {\stStore{\smReg{rbp}{2}}{\mathrm{global\_ptr}} @ cfg5};
+      \end{tikzpicture}
+      \label{fig:eval:simple_toctou:interfering_sm1}
+    } \\
+    \subfigure[][CFG for interfering store \texttt{4008fb}]{
+      \begin{tikzpicture}
+        \node (a) [CfgInstr] {\texttt{4008fb}: cfg6};
+        \node (b) [below = of a] {$\varnothing$};
+        \draw[->] (a) -- (b);
+      \end{tikzpicture}
+      \label{fig:eval:simple_toctou:interfering_cfg2}
+    } &
+    \subfigure[][{\STateMachine} for interfering store \texttt{4008fb}]{
+      \begin{tikzpicture}
+        \node [stateSideEffect] {\stStore{0}{\mathrm{global\_ptr}} @ cfg6};
+      \end{tikzpicture}
+      \label{fig:eval:simple_toctou:interfering_sm2}
+    }
+  \end{tabular}
+  \caption{Interfering CFGs and {\StateMachines}.}
+\end{figure}
+
+Consider the interfering store at \texttt{400884} first.  Without the
+static analysis phases, this would produce the {\StateMachine} shown
+in Figure~\ref{fig:eval:simple_toctou:interfering_sm1}.  There is no
+way for the program to crash due to interleaving this {\StateMachine}
+with the crashing thread, as $\smReg{rbp}{2}$ is never a bad pointer,
+but the {\StateMachines} do not contain enough information to show
+that.  The analysis will produce the verification condition shown in
+Figure~\ref{fig:eval:simple_toctou:bad_summary}. The fixed register
+and static aliasing analyses will both eliminate this candidate bug,
+as either is capable of showing that $\smReg{rbp}{2}$ is a pointer
+into thread 2's stack frame, and hence that it is a valid pointer.
+The \backref{interfering store} at \texttt{4008fb}, on the other hand,
+does represent a valid bug, as interleaving it with the
+\backref{crashing thread} could lead to a crash, and it produces the
+\backref{verification condition} shown in
+Figure~\ref{fig:eval:simple_toctou:interfering_assumption2}.
+
+\begin{figure}
+  \begin{tabular}{lll}
+    \backref{CI atomic}: & $\smLoad{\mathrm{global\_ptr}} = 0$ &\!\!\!$\vee\,\, \neg\smBadPtr{\smLoad{\mathrm{global\_ptr}}}$ \\
+    \backref{IC atomic}: & $\smReg{rbp}{2} = 0$                &\!\!\!$\vee\,\, \neg\smBadPtr{\smReg{rbp}{2}}$\\
+    \backref{Verification condition}: & \multicolumn{2}{l}{$\happensBefore{\mai{cfg1}{1}}{\mai{cfg5}{2}} \wedge \happensBefore{\mai{cfg5}{2}}{\mai{cfg4}{2}} \wedge \smBadPtr{\smReg{rbp}{2}}  \wedge$}\\
+                                      & $\smLoad{\mathrm{global\_ptr}} \not= 0$\\
+  \end{tabular}
+  \caption{\backref{Inferred assumption} and \backref{verification
+      condition} produced using the crashing {\StateMachine} in
+    Figure~\ref{fig:eval:simple_toctou:sm} and the interfering
+    {\StateMachine} in
+    Figure~\ref{fig:eval:simple_toctou:interfering_sm1}.}
+  \label{fig:eval:simple_toctou:inferred_assumption1}
+\end{figure}
+
+The time taken to perform this analysis is quite modest: $0.52 \pm
+0.04$ seconds for the static analysis phase and $0.18 \pm 0.01$
+seconds for the {\StateMachine} analysis (mean and standard deviation
+of mean for ten runs in both cases).  The dynamic analysis phase
+achieved complete coverage essentially as soon as the program started.
+This is a reasonable lower bound on the time which {\technique} will
+take to process a very simple bug; any realistic program will take far
+longer than this to process.
+
+\subsubsection{Reproducing the bug}
+This \backref{verification condition} can now be turned into a
+\backref{crash enforcer}.  The only happens-before graph will be the
+one shown in Figure~\ref{fig:eval:simple_toctou:hb_graph}, and it will
+have the side condition that $\smLoad{\mathrm{global\_ptr}} \not= 0$.
+This side condition can be evaluated completely at either
+$\mai{cfg1}{1}$ or $\mai{cfg6}{2}$, and so the crash enforcement plan
+will be as shown in Figure~\ref{fig:eval:simple_toctou:enforce_plan}.
+In other words, whenever a program thread reaches \texttt{400694} and
+global\_ptr is non-zero, the enforcer will wait for an interfering
+thread to reach \texttt{4008fb}, after loading global\_ptr.  If one
+does arrive, the enforcer will make the crashing thread wait for the
+interfering thread to complete its store before proceeding to the load
+at \texttt{4006a0}.  This will be sufficient to reproduce the bug.
+
+\begin{figure}
+  \begin{tabular}{lll}
+    \backref{CI atomic}: & $\smLoad{\mathrm{global\_ptr}} = 0$ &\!\!\!$\vee\,\, \neg\smBadPtr{\smLoad{\mathrm{global\_ptr}}}$ \\
+    \backref{IC atomic}: & \true\\
+    \backref{Verification condition}: & \multicolumn{2}{l}{$\happensBefore{\mai{cfg1}{1}}{\mai{cfg6}{2}} \wedge \happensBefore{\mai{cfg6}{2}}{\mai{cfg4}{2}} \wedge \smLoad{\mathrm{global\_ptr}} \not= 0$}\\
+  \end{tabular}
+  \caption{\backref{Inferred assumption} and \backref{verification
+      condition} produced using the crashing {\StateMachine} in
+    Figure~\ref{fig:eval:simple_toctou:sm} and the interfering
+    {\StateMachine} in
+    Figure~\ref{fig:eval:simple_toctou:interfering_sm2}.}
+  \label{fig:eval:simple_toctou:inferred_assumption2}
 \end{figure}
 
 \begin{figure}
   \begin{tikzpicture}
-    \node[draw] (l1) {400624};
-    \node[draw, below right = of l1] (l2) {400815};
-    \node[draw, below left = of l2] (l3) {40063e};
+    \node[draw] (l1) {\texttt{400694}: $\mai{cfg1}{1}$};
+    \node[draw, below right = of l1] (l2) {\texttt{4008fb}: $\mai{cfg6}{2}$ };
+    \node[draw, below left = of l2] (l3) {\texttt{4006a0}: $\mai{cfg4}{1}$ };
     \draw[->] (l1) -- (l3);
     \draw[->, happensBeforeEdge] (l1) -- (l2);
     \draw[->, happensBeforeEdge] (l2) -- (l3);
   \end{tikzpicture}
   \caption{Happens-before graph to be enforced for simple\_toctou}
-  \label{fig:eval:simple_toctou_hb_graph}
+  \label{fig:eval:simple_toctou:hb_graph}
 \end{figure}
 
-SLI produces a single candidate bug for this program, shown in
-Figure~\ref{fig:eval:simple_toctou_summary}.  This is hopefully
-reasonably easy to understand at this point.  The candidate bug
-consists of several parts:
-
-\begin{itemize}
-\item The {\StateMachines} for the read and write sides of the race.
-  In this case, the load machine has been assigned thread identifier 1
-  and the store machine has been assigned thread identifier 98.  These
-  identifiers are completely arbitrary.
-\item Control flow graph fragments for the two sides.  The read side
-  here contains CFG nodes three through 6, while the store machine has
-  CFG node 52; these identifiers are arbitrary.  In this case the CFGs
-  are largely uninteresting, but in a more complex example these
-  fragments would\smh{hmm.  How is this not present in the actual
-    {\StateMachines}?} include details of which nodes were created by
-  loop unrolling and some information on the function call structure
-  of the program.
-
-  Note that the instruction which actually crashes, \verb|400637| is
-  not included in the CFGs.  This is because it is completely
-  irrelevant to the behaviour which is actually being investigated: by
-  the time that instruction executes, the program has either avoided
-  the purported bug or is doomed to crash, and so it cannot tell us
-  anything useful about the nature of the bug.
-
-  Note also that the read-side CFG does not include the control-flow
-  edge from \verb|40062e| to \verb|40063d|.  If the program follows
-  that edge then the bug will definitely be avoided, as the crashing
-  instruction will not run, and so it is perfectly appropriate to
-  exclude it from the CFG here.
-\item A memory access identifier table, showing how memory access
-  identifiers map into CFG nodes, or, in other words, how the accesses
-  analysed by SLI's main analysis passes correspond to accesses made
-  by the program itself.  In this case, that mapping is trivial, and
-  each memory access identifier corresponds to a single CFG node.  In
-  in a more complex example SLI might merge several similar program
-  accesses into a single \StateMachine-level accesses, and in that
-  case a single memory access identifier might map to multiple CFG
-  nodes\smh{Hmm... really??  Why is this good?}.
-\item An aliasing table, showing which memory accesses might
-  potentially access the same memory, according to the
-  dynamically-collected aliasing table.
-\item The verification condition.  This is the condition which must
-  hold for the bug being investigated to reproduce when the two
-  \StateMachines are run in parallel.  In this case, it consists of
-  just two happens-before edges, \verb|mai1:1 <-< mai98:4| and
-  \verb|!((mai1:2 <-< mai98:4))|, which between them indicate that the
-  bug will reproduce precisely when memory access 4 in thread 98
-  intervenes between memory accesses 1 and 2 in thread 1.  In other
-  words, the program will crash when the store thread sets
-  \verb|global_ptr| to \verb|NULL| in between the two loads of
-  \verb|global_ptr| in the load thread, precisely as desired.
-\end{itemize}
-
 \begin{figure}
-  \begin{minipage}{100mm}
-\begin{verbatim}
-Crash enforcement plan:
-        Threads: T1:1 = {t1}; T1:98 = {t2}
-        Roots: t1 = {cfg6}; t2 = {cfg52}
-        CFG:
-                cfg3:t1: successors = {}
-                cfg4:t1: successors = {cfg3}
-                cfg5:t1: successors = {cfg4}
-                cfg6:t1: successors = {cfg5}
-                cfg52:t2: successors = {}
-        Label to RIP table:
-                1:cfg3 -> {0x400630}
-                1:cfg4 -> {0x40062e}
-                1:cfg5 -> {0x40062b}
-                1:cfg6 -> {0x400624}
-                1:cfg52 -> {0x400815}
-        Happens before map:
-                cfg3:t1 -> {43708: cfg52:t2 <-< cfg3:t1}
-                cfg6:t1 -> {43707: cfg6:t1 <-< cfg52:t2}
-                cfg52:t2 -> {43707: cfg6:t1 <-< cfg52:t2,
-                             43708: cfg52:t2 <-< cfg3:t1}
-Patch = {0x400624, 0x400815}, Cont = {}
-\end{verbatim}
-  \end{minipage}
-  \caption{Crash enforcement plan generated for the simple\_toctou
-    bug} \todo{Having said I wanted to copy and paste the output,
-    that's a slightly simplified version.  Should probably fix the
-    pretty printer so that I can just copy and paste it.}
-  \label{fig:eval:simple_toctou_cep}
-\end{figure}
-
-The next step of the pipeline is to take that crash summary and
-convert it into a crash enforcement plan, shown in
-Figure~\ref{fig:eval:simple_toctou_cep}.  In this case, no side
-conditions need to be checked and no program-level values need to be
-stashed, and so this is a direct encoding of the verification
-condition and control flow graph from
-Figure~\ref{fig:eval:simple_toctou_summary}.  There is only one bug to
-be enforced and that bug only reproduces in a single possible
-happens-before graph and so there is precisely one plan-level thread
-for every summary-level one\smh{New terms!}.  Finally, the patch
-strategy generated is very simple, with a single $Patch$ entry for the
-first instruction in each CFG fragment and no $Cont$ entries, because
-the test program's control flow is such that that will not risk the
-branch-to-corrupted-instruction problem.
-
-\todo{Hmm.  A lot of the features of the plan only really make sense
-  when you're combining multiple candidate bugs into a single
-  enforcement plan, which means they're hard to describe in this
-  single-candidate example.}
-
-\todo{I should come up with a less ugly way of displaying the damn
-  things.}
-
-The plan can then be loaded into the buggy program in order to make
-the bug reproduce more easily.  In this particular case the results
-are somewhat unimpressive, as this bug already reproduces quite
-easily, but still show a small improvement in reproduction
-time.\smh{So this somehow then turns into thing with message passing?}
-
-The time to reproduce a bug of this kind follows a roughly exponential
-distribution, as each iteration of the write loop has a roughly
-independent chance of causing the read loop to crash.  I ran each
-configuration (with enforcer, without enforcer) ten times on an
-otherwise idle machine and timed how long it took for them to crash.
-As might be expected, the version without the enforcer always took a
-roughly whole number of seconds to crash, as the write side runs after
-a whole number of seconds has passed.  The mean time before the
-program crashed was 5.2 seconds, so each iteration of the write side
-has a roughly 20\% chance of causing the read side to
-crash\editorial{Need to re-do that stat with more data}.
-
-\begin{figure}
-  \tikzset{label/.style = {anchor=north west}}
-  \begin{tikzpicture}[node distance = 0 and 0]
-    \begin{scope}[align=left]
-      \node[] (storeSt1) at (0,2) {global\_ptr = {\&}t;};
-      \node[label] at (storeSt1.south west) (storeSleep) { sleep(1 second); };
-      \path (storeSleep.south west) -- +(0,-2cm) node [name=storeTrap, label, draw] { $\rightarrow$ Interpreter gains control };
-      \draw[decorate,decoration={snake}] (storeSleep.south) -- +(0,-2cm);
-      \node[draw, label] at (storeTrap.south west) (storeDelay) { $\rightarrow$ Interpreter inserts 0.14s delay };
-      \path (storeDelay.south west) -- +(0,-4cm) node [name=storeSt2, label] { global\_ptr = NULL;};
-      \draw[decorate,decoration={snake}] (storeSt2.north) -- +(0,4cm);
-    \end{scope}
-
-    \begin{scope}[xshift=10cm]
-      \node[label] at (0,-3.5cm) (loadLdA2) {mov (global\_ptr), \%rax };
-      \draw[dotted] (1,2) -- +(0,-5.5cm);
-      \node[label] at (loadLdA2.south west) (loadTest2) {test \%rax, \%rax };
-      \node[label] at (loadTest2.south west) (loadJe2) {je 40063d};
-      \path (loadJe2.south west) -- +(0,-2cm) node [name=loadLdB,label] { mov (global\_ptr), \%rax};
-      \draw[decorate,decoration={snake}] (loadJe2.south) to node {Wait for store to complete} (loadLdB.north);
-      \node[label] at (loadLdB.south west) (loadSt) {mov \$5, (\%rax)};
-      \node[label,draw] at (loadSt.south west) {$\rightarrow$ Program crashes};
-    \end{scope}
-
-    \draw[->] (storeDelay.east) to node {Load arrives during store interval} (loadLdA2.west);
-    \draw[->] (loadLdA2.west) to node {Load discharges message with store} (storeSt2.east);
-    \draw[->] (storeSt2.east) to node {Discharge second message} (loadLdB.west);
+  \begin{tikzpicture}
+    \node[draw] (l1) {\texttt{400694}: $\mai{cfg1}{1}$};
+    \node[left = 0 of l1] {$\smLoad{\mathrm{global\_ptr}} \not= 0$};
+    \node[draw, below right = of l1] (l2) {\texttt{4008fb}: $\mai{cfg6}{2}$ };
+    \node[right = 0 of l2] {$\smLoad{\mathrm{global\_ptr}} \not= 0$};
+    \node[draw, below left = of l2] (l3) {\texttt{4006a0}: $\mai{cfg4}{1}$ };
+    \draw[->] (l1) -- (l3);
+    \draw[->, happensBeforeEdge] (l1) -- (l2);
+    \draw[->, happensBeforeEdge] (l2) -- (l3);
   \end{tikzpicture}
-  \caption{Enforcing the simple\_toctou bug.  Dotted lines indicate
-    the program thread running some uninteresting code, wavey lines
-    indicate the program thread sleeping.  The program crashes after
-    roughly 1.14 seconds.}\todo{Not sure this one adds all that much.}
+  \caption{Crash enforcement plan for simple\_toctou}
+  \label{fig:eval:simple_toctou:enforce_plan}
 \end{figure}
 
-With the enforcer loaded and delays set to be between 100ms and 200ms,
-the program crashes after between 1.1 and 1.2 seconds, with a uniform
-distribution between the two.  This delay consists of two components:
+This enforcer is effective at reproducing the bug.  Without the
+enforcer, the time taken to reproduce the bug is roughly exponentially
+distributed with $\lambda = 0.20$Hz; with the enforcer, it is roughly
+normally distributed with $\mu = 1.17$, $\sigma = 0.03$\footnote{Both
+  distributions were generated by running the program 100 times until
+  it crashed.  The normal distribution was confirmed using the
+  Anderson-Darling and Jarque-Bera tests at the 90\% level.  The
+  exponential distribution was confirmed using a $\chi$-squared test
+  at the 90\% level.  I also estimated the variance of the $\lambda$
+  parameter using a jackknife method; the result was that $\lambda$ is
+  itself normally distributed with mean 0.20Hz and standard deviation
+  0.01Hz.}.  Cumulative distribution functions for these distributions
+are shown in Figure~\ref{fig:eval:simple_toctou:repro_cdfs}.  The
+enforcer reduced the median time to reproduce the bug from 4.93
+seconds to 1.17, a four-fold reduction in the time taken.
 
-\begin{itemize}
-\item One second, which is caused by the call to \verb|sleep| in the
-  test harness.
-\item An additional 100 to 200ms\smh{Huh?}, which is caused by the RX
-  message delay\smh{What is this?}.  The write thread starts its
-  critical section at one second in and must immediately wait for a
-  read thread to arrive.  In this configuration, the thread will wait
-  for between 100 and 200 milliseconds.
-\end{itemize}
+Perhaps more interestingly, it also reduced the ninety-fifth
+percentile of the time taken to reproduce the bug from 14 seconds to
+1.2 seconds, a nearly twelve-fold reduction.  Without an enforcer,
+this bug's reproduction time has a very long tail distribution, so
+that some runs will take far longer to reproduce the bug than others.
+This can make the bug difficult for a programmer to work with.  The
+enforcer almost completely eliminates this behaviour.
 
-To confirm this explanation, I modified the interpreter to seed the
-random number generator with a constant, with the result that the
-first delay was fixed at 144ms.  In this configuration, the program
-crashed after $1.144 \pm 0.002$ seconds (mean and standard deviation
-of ten runs), roughly as expected.  Note that this distribution was
-not Gaussian, due to the presence of positive outliers, but that the
-largest of these, 1.153 seconds, was not large enough to meaningfully
-change the conclusions.  \todo{That's not how I said I was going to
-  characterise this distribution...}
+\begin{figure}
+  \include{eval/crash_times/simple_toctou}
+  \caption{Reproduction times for the simple\_toctou bug, with and
+    without an enforcer.  Note the log scale.  The stairstep effect is
+    caused because the interfering thread runs once a second, and so
+    the time to reproduce the bug is almost always near to a multiple
+    of one.}
+  \label{fig:eval:simple_toctou:repro_cdfs}
+\end{figure}
 
-The fix generated in this case is very simple and contains two
-critical sections, one covering \verb|400624| to \verb|400630| and the
-other covering the single instruction \verb|400815|.  Notice that, as
-in the enforcer, the instruction which crashes, \verb|400637|, is
-\emph{not} included in any critical section.  The patch itself is, in
-this case, rather large relative to the original program code (179
-bytes rather than 26).  This is mostly because the machine code to be
-protected is itself quite small and so the function call sequence used
-to acquire or release the patch lock completely dominates the total
-size of the patch.
+The time taken to build the enforcer is also quite reasonable: $0.13
+\pm 0.01$ seconds, again as a mean and standard deviation of ten runs.
+This includes all of the time needed to devise the plan, select the
+patch strategy, and actually compile the enforcer.
 
+\subsubsection{Fixing the bug}
+{\Implementation} can also generate a fix for this bug.  In this case,
+the CFG fragments to be protected will be the complete CFGs of both
+threads, as the first and last CFG nodes in both threads are involved
+in happens-before edges.  This corresponds to modifying the program as
+shown in Figure~\ref{fig:eval:simple_toctou:fix}.  This correctly
+fixes the bug.
 
-With no fix, the test program completed $352.5 * 10^6 \pm 0.1 * 10^6$
-iterations per second.  With a fix applied, that performance dropped
-to $95.4 * 10^6 \pm 0.3 * 10^6$.  That gives an overhead of roughly a
-factor of 3.7.  This is obviously rather large, but is probably close
-to {\technique}'s worst case: the read-side critical section is very
-small and runs with very high frequency, and so the patch must acquire
-and release the lock with similarly high frequency and these lock
-operations dominate the time taken.  Any realistic test would usually
-have much lower overhead, assuming lock contention does not become a
-factor, simply because the critical sections would run less frequently
-and the overhead could be more effectively amortised.  Even in this
-case, a factor of four overhead is not completely unreasonable when
-the alternative is a program which crashes frequently.
+\begin{figure}
+  \subfigure[][Crashing thread]{
+    \texttt{
+      \begin{tabular}{lll}
+        \multicolumn{3}{l}{while (1) \{}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        &\multicolumn{2}{l}{acquire\_lock();}\\
+        &\multicolumn{2}{l}{if (global\_ptr != NULL) \{}\\
+        &&t = global\_ptr;\\
+        &&release\_lock();\\
+        &&*t = 5;\\
+        &\multicolumn{2}{l}{\}}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        \multicolumn{3}{l}{\}}\\
+      \end{tabular}
+    }
+  }\hfill %
+  \subfigure[][Interfering thread]{
+    \texttt{
+      \begin{tabular}{ll}
+        \multicolumn{2}{l}{while (1) \{}\\
+        &global\_ptr = \&t;\\
+        &sleep(1 second);\\
+        &STOP\_ANALYSIS();\\
+        &acquire\_lock();\\
+        &global\_ptr = NULL;\\
+        &release\_lock();\\
+        &STOP\_ANALYSIS();\\
+        \multicolumn{2}{l}{\}}\\
+      \end{tabular}
+    }
+  }\hfill
+  \caption{The fix generated by {\implementation} for the simple\_toctou bug..}
+  \label{fig:eval:simple_toctou:fix}
+\end{figure}
+
+It does, however, have a rather high performance overhead: without a
+fix, the crashing thread completes $352.5 \pm 0.2
+{\times} 10^6$ iterations of the loop per second; with one, it
+completes $95.9 \pm 0.2 {\times} 10^6$ (mean and
+standard deviation of ten runs each of ten seconds, discarding any
+runs in which the unfixed program crashed, both distributions
+confirmed to be normal using Anderson-Darling and Jarque-Bera at the
+90\% level).  That gives an overhead of roughly a factor of 3.7.  This
+is obviously rather large, but is probably close to {\technique}'s
+worst case: the read-side critical section is very small and runs with
+very high frequency, and so the patch must acquire and release the
+lock with similarly high frequency and these lock operations dominate
+the time taken.  Any realistic test would usually have much lower
+overhead, assuming lock contention does not become a factor, simply
+because the critical sections would run less frequently and the
+overhead could be more effectively amortised.  Even in this case, a
+factor of four overhead is not completely unreasonable when the
+alternative is a program which crashes frequently.
+
+For comparison, I also produced a version of the patch which does
+everything except for acquiring the lock.  This version completed $321
+\pm 5 {\times} 10^6$ loops per second.  This strongly suggests that
+the overhead in this case is mostly caused by the cost of the
+uncontended lock operations.
 
 \todo{Worst case ignoring the loss of concurrency, of course.}
 
-\todo{I currently just call into libpthread to actually acquire and
-  release the lock.  Just doing inline futex operations in the patch
-  might be a bit faster than that, at least some of the time, which'd
-  help to get the overhead numbers down.}\smh{Ok}
-
 \todo{Give details of the machine the test is running on.}\smh{Yes}
-
-\todo{Give some breakdown of where the overhead comes from.  I
-  strongly suspect that it's almost all down to the cost of acquiring
-  and releasing the lock; it'd be nice to confirm that.}\smh{Yes}
-
-\todo{Say something about how I set the analysis window.  It doesn't
-  really matter for these tests, because it's entirely constrained by
-  the STOP\_ANALYSIS markers anyway, but it'd still be an idea to have
-  a sentence or two somewhere to say that.}\smh{Possibly need some
-  much earlier, too!}
 
 \subsubsection{Indexed TOCTOU bug (indexed\_toctou)}
 \label{sect:eval:indexed_toctou}
