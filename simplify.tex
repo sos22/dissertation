@@ -777,6 +777,49 @@ simplification.
   \state{Store}s, but that's kind of an awkward thing to work in here,
   and is also kind of obvious.}
 
+\subsection{Comparison to other aliasing analyses}
+
+\todo{I'm not convinced this adds all that much; might just kill it.}
+
+\todo{This doesn't really belong in the program model chapter.}
+
+There is some standard terminology for describing compiler alias
+analyses\editorial{Cite Hind 2001.}.  It does not apply perfectly in
+this context, but here's an attempt to do so anyway:
+
+\begin{itemize}
+\item
+  The analysis is partly flow-sensitive.  Two accesses are only
+  considered to alias if the control flow of the {\StateMachine}
+  allows them to occur in an appropriate order, but higher-order
+  control flow dependencies are not tracked.  \todo{I did find a cite
+    for another alias analysis which has the same kind of sensitivity,
+    but I now seem to have lost it.  I should dig that up again.}
+\item
+  The analysis is not context-sensitive in the usual optimising
+  compiler sense of examining a function's calling context, beyond
+  that which has been incorporated into the {\StateMachine}.  On the
+  other hand, the {\StateMachine}-level analysis does use context
+  information from the static analysis phase.
+\item
+  The heap is not modelled at all.  Instead, the objects which are
+  pointed at are frames on the stack, or a special value indicating
+  that a value points at something other than a stack frame.
+\item
+  Aggregates, as such, do not really exist, and so aggregate modelling
+  is not entirely meaningful.  To the extent that it does mean
+  something, the analysis distinguishes aggregate fields.
+\item
+  The analysis operates on whole {\StateMachines}, and hence on small
+  fragments of the original program.
+\item
+  The alias representation is a hybrid, including both an explicit
+  alias table and a points-to table. \todo{Could actually build the
+    aliasing table lazily, which might be a bit faster but would make
+    everything much more confusing; ref demand driven aliasing
+    analysis, maybe?}
+\end{itemize}
+
 \smh{Ok, some nice text and I definitely feel that I have a better
   understanding of what you've done.  But: (i) still need to define
   some appropriate concepts and terms for them.  Will make text
