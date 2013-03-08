@@ -316,15 +316,15 @@ way for the program to crash due to interleaving this {\StateMachine}
 with the crashing thread, as $\smReg{rbp}{2}$ is never a bad pointer,
 but the {\StateMachines} do not contain enough information to show
 that.  The analysis will produce the verification condition shown in
-Figure~\ref{fig:eval:simple_toctou:bad_summary}. The fixed register
-and static aliasing analyses will both eliminate this candidate bug,
-as either is capable of showing that $\smReg{rbp}{2}$ is a pointer
-into thread 2's stack frame, and hence that it is a valid pointer.
-The \backref{interfering store} at \texttt{4008fb}, on the other hand,
-does represent a valid bug, as interleaving it with the
+Figure~\ref{fig:eval:simple_toctou:inferred_assumption1}. The fixed
+register and static aliasing analyses will both eliminate this
+candidate bug, as either is capable of showing that $\smReg{rbp}{2}$
+is a pointer into thread 2's stack frame, and hence that it is a valid
+pointer.  The \backref{interfering store} at \texttt{4008fb}, on the
+other hand, does represent a valid bug, as interleaving it with the
 \backref{crashing thread} could lead to a crash, and it produces the
 \backref{verification condition} shown in
-Figure~\ref{fig:eval:simple_toctou:interfering_assumption2}.
+Figure~\ref{fig:eval:simple_toctou:inferred_assumption2}.
 
 \begin{figure}
   \begin{tabular}{lll}
@@ -339,6 +339,20 @@ Figure~\ref{fig:eval:simple_toctou:interfering_assumption2}.
     {\StateMachine} in
     Figure~\ref{fig:eval:simple_toctou:interfering_sm1}.}
   \label{fig:eval:simple_toctou:inferred_assumption1}
+\end{figure}
+
+\begin{figure}
+  \begin{tabular}{lll}
+    \backref{CI atomic}: & $\smLoad{\mathrm{global\_ptr}} = 0$ &\!\!\!$\vee\,\, \neg\smBadPtr{\smLoad{\mathrm{global\_ptr}}}$ \\
+    \backref{IC atomic}: & \true\\
+    \backref{Verification condition}: & \multicolumn{2}{l}{$\happensBefore{\mai{cfg1}{1}}{\mai{cfg6}{2}} \wedge \happensBefore{\mai{cfg6}{2}}{\mai{cfg4}{2}} \wedge \smLoad{\mathrm{global\_ptr}} \not= 0$}\\
+  \end{tabular}
+  \caption{\backref{Inferred assumption} and \backref{verification
+      condition} produced using the crashing {\StateMachine} in
+    Figure~\ref{fig:eval:simple_toctou:sm} and the interfering
+    {\StateMachine} in
+    Figure~\ref{fig:eval:simple_toctou:interfering_sm2}.}
+  \label{fig:eval:simple_toctou:inferred_assumption2}
 \end{figure}
 
 The time taken to perform this analysis is quite modest: $0.52 \pm
@@ -364,20 +378,6 @@ thread to reach \texttt{4008fb}, after loading global\_ptr.  If one
 does arrive, the enforcer will make the crashing thread wait for the
 interfering thread to complete its store before proceeding to the load
 at \texttt{4006a0}.  This will be sufficient to reproduce the bug.
-
-\begin{figure}
-  \begin{tabular}{lll}
-    \backref{CI atomic}: & $\smLoad{\mathrm{global\_ptr}} = 0$ &\!\!\!$\vee\,\, \neg\smBadPtr{\smLoad{\mathrm{global\_ptr}}}$ \\
-    \backref{IC atomic}: & \true\\
-    \backref{Verification condition}: & \multicolumn{2}{l}{$\happensBefore{\mai{cfg1}{1}}{\mai{cfg6}{2}} \wedge \happensBefore{\mai{cfg6}{2}}{\mai{cfg4}{2}} \wedge \smLoad{\mathrm{global\_ptr}} \not= 0$}\\
-  \end{tabular}
-  \caption{\backref{Inferred assumption} and \backref{verification
-      condition} produced using the crashing {\StateMachine} in
-    Figure~\ref{fig:eval:simple_toctou:sm} and the interfering
-    {\StateMachine} in
-    Figure~\ref{fig:eval:simple_toctou:interfering_sm2}.}
-  \label{fig:eval:simple_toctou:inferred_assumption2}
-\end{figure}
 
 \begin{figure}
   \begin{tikzpicture}
@@ -519,116 +519,91 @@ uncontended lock operations.
 
 \todo{Give details of the machine the test is running on.}\smh{Yes}
 
-\subsubsection{Indexed TOCTOU bug (indexed\_toctou)}
+\subsection{Indexed TOCTOU bug (indexed\_toctou)}
 \label{sect:eval:indexed_toctou}
+
+\todo{The results of this test are \emph{very} sensitive to set-up of
+  the machine on which they're run.  I'm going to need a lot of data
+  here to get sensibly small error bars.}
+
+\todo{Generally need to re-run all of these experiments.}
 
 In this variant of a TOCTOU bug, there are multiple instances of the
 structure which is being raced on and the bug will only manifest if
 the reading and writing threads happen to coincide.  This bug
-exercises the side-condition-checking part of SLI\smh{So where does
-  this manifest in the fix?? (or the enforcer)??}.  The code involved
-in the race is shown in Figure~\ref{fig:eval:indexed_toctou}.  Except
-where otherwise noted, \verb|NR_PTRS| is set to 100.
+exercises the side condition-checking part of {\technique}'s crash
+enforcers.  The code involved in the race is shown in
+Figure~\ref{fig:eval:indexed_toctou}.  Except where otherwise noted,
+\verb|NR_PTRS| is set to 100.
 
 \begin{figure}
-  \begin{subfloat}
-    \begin{minipage}{70mm}
-\begin{verbatim}
-while (1) {
-  idx = random() % NR_PTRS;
-  STOP_ANALYSIS();
-  if (global_ptrs[idx] != NULL)
-    *(global_ptrs[idx]) = 5;
-  STOP_ANALYSIS();
-}
-\end{verbatim}
-    \end{minipage}
-    \caption{Read side}
-  \end{subfloat}
-  \begin{subfloat}
-    \begin{minipage}{70mm}
-\begin{verbatim}
-while (1) {
-  idx = random() % NR_PTRS;
-  STOP_ANALYSIS();
-  global_ptrs[idx] = NULL;
-  STOP_ANALYSIS();
-  global_ptrs[idx] = &t;
-}
-\end{verbatim}
-    \end{minipage}
-    \caption{Write side}
-  \end{subfloat}
+  \subfigure[][Crashing thread]{
+    \texttt{
+      \begin{tabular}{lll}
+        \multicolumn{3}{l}{while (1) \{}\\
+        &\multicolumn{2}{l}{idx = random() \% NR\_PTRS;}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        &\multicolumn{2}{l}{if (global\_ptrs[idx] != NULL) \{}\\
+        &&*(global\_ptrs[idx]) = 5;\\
+        &\multicolumn{2}{l}{\}}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        \}\\
+      \end{tabular}
+    }
+  }%
+  \subfigure[][Interfering thread]{
+    \texttt{
+      \begin{tabular}{ll}
+        \multicolumn{2}{l}{while (1) \{}\\
+        & idx = random() \% NR\_PTRS;\\
+        & STOP\_ANALYSIS();\\
+        & global\_ptrs[idx] = NULL;\\
+        & STOP\_ANALYSIS();\\
+        & global\_ptrs[idx] = \&t;\\
+        \multicolumn{2}{l}{\}}\\
+      \end{tabular}
+    }
+  }
   \caption{The two sides of the indexed\_toctou bug.}
   \label{fig:eval:indexed_toctou}
 \end{figure}
 
-The summary, fix, and enforcer produced here are essentially the same
-as for indexed\_toctou except for the addition of a side-condition
-requiring the two indices to match up, and so are not discussed in
-detail here.
+As with the simple\_toctou test, this test produces a single candidate
+bug, with a similar enforcer and fix.  The only important difference
+is that the enforcer includes a side condition $\mathtt{idx}_1 =
+\mathtt{idx}_2$, where $\mathtt{idx}_1$ is an expression for
+\texttt{idx} in the crashing thread and $\mathtt{idx}_2$ that in the
+interfering thread, which is checked on the first happens-before edge.
 
+The enforcer was effective at making this bug reproduce more easily.
 With no enforcer loaded, the bug reproduction time was exponentially
-distributed with $\lambda = 0.6 \pm 0.2$ per second.  With an enforcer
-loaded, the reproduction time was exponentially distributed with
-$\lambda = 6.87 \pm 0.01$ per second, a more than ten-fold improvement
-in the reproduction rate.
+distributed with $\lambda = 0.6 \pm 0.2$Hz.  With an enforcer loaded,
+the reproduction time was exponentially distributed with $\lambda =
+6.87 \pm 0.01$Hz, a more than ten-fold improvement in the reproduction
+rate.  The median reproduction time is reduced from 1.2 seconds to 0.1
+seconds and the $95^{th}$ percentile reproduction time from five
+seconds to 0.45 seconds.  \todo{Redo these numbers}
 
 I also investigated the behaviour of this test with an enforcer loaded
 but no side condition checking performed.  In that case, the bug
 reproduction time was again exponentially distributed, but this time
-$\lambda = 0.054 \pm 0.004$ per second.  This reduced enforcer not
-only fails to make the bug reproduce more quickly; it actually makes
-it \emph{less} likely to be triggered, per unit time!  This is because
-an enforcer without side-condition checking will often slow the
-program down in order to impose the happens-before graph even in
-situations where doing so is unlikely to trigger the bug, and this
-causes the buggy code to run far less frequently than it otherwise
-would.
-
-\smh{Ok this is very cool!!  need to make clearer!  (earlier in text
-  -- not here)}
-
-\todo{I seem to get completely different results out of this test
-  depending on the phase of the moon.  Not sure what to make of that.}
-
-As a further test, I investigated what happens when the length of the
-delays is modified, first by reducing it to between 10 and 20
-milliseconds and then by increasing it to between 1000 and 2000
-milliseconds.  The results are shown in
-Table~\ref{table:eval:indexedtoctou:delay}.  The important point to
-note here is that disabling side-condition checking and setting a
-timeout of one second actually leads to a lower bug reproduction rate
-than simply running without an enforcer of any sort, and increasing
-the delay further would exacerbate this problem.  Of course, one to
-two seconds is a rather long time to wait in order to reproduce a
-race, but this might still be appropriate if the bug to be
-investigated is in code which is executed very infrequently.
-
-\begin{table}
-\begin{tabular}{lll}
-Delay range  & With side-condition checking          & Without side-condition checking \\
-10-20ms      & $\lambda = 58 \pm 0.7/s$              & $\lambda = 5.3 \pm 1.97/s$ \\
-100-200ms    & $t = 100 - 200ms$                     & $\lambda = 1.72 \pm 2.81/s$ \\
-1000-2000ms  & $t = 1000 - 2000ms$                   & $\lambda = 0.13 \pm 0.001/s$ \\
-\end{tabular}
-\caption{Effect of side condition and delay parameter on time taken to
-  reproduce the indexed\_toctou bug.}  \todo{Some of those are quite
-  small sample sizes; redo.}\smh{Center; layout better}
-\label{table:eval:indexedtoctou:delay}
-\end{table}
+$\lambda = 0.054 \pm 0.004$Hz \todo{re-do experiment to check that
+  number}.  This reduced enforcer not only fails to make the bug
+reproduce more quickly; it actually makes it \emph{less} likely to be
+triggered, per unit time!  This is because an enforcer without
+side-condition checking will often slow the program down in order to
+impose the happens-before graph even in situations where doing so is
+unlikely to trigger the bug, and this causes the buggy code to run far
+less frequently than it otherwise would.
 
 As a final test, I investigated the effect changing the \verb|NR_PTRS|
 parameter, and how that interacted with the delay parameter.  The
-results are shown in Table~\ref{table:eval:indexedtoctou:nrptrs}.
-
-\todo{The NR\_PTRS = 1000 configuration with no side conditions
-  definitely isn't Gaussian, but I don't have enough data to say more
-  than that.  Also, for the full enforcer, the NR\_PTRS = 1000 is now
-  5--95\% interval, rather than full interval, because we're starting
-  to get enough noise that that makes more sense.}
-
-\todo{Not sure why the no-enforcer results aren't monotonic.}
+results without an enforcer loaded were quite surprising.  The time
+taken to reproduce the bug with no enforcer loaded does not appear to
+vary smoothly with \texttt{NR\_PTRS}.  For instance, with
+$\texttt{NR\_PTRS} = 6037$, the bug failed to reproduce within three
+hours on three successive runs, whereas with $\texttt{NR\_PTRS} =
+6036$ it reproduced after 182 seconds
 
 \begin{table}
 \begin{tabular}{llll}
@@ -659,368 +634,683 @@ that.}.  This is far smaller than the factor of four reported in the
 simple\_toctou case, largely because the test loop in this case
 includes a call to \verb|random|, which is rather expensive relative
 to simple lock operations and helps to amortise the cost of the
-additional synchronisation.\smh{Graphs are better -- visual}
+additional synchronisation.
 
 \todo{I don't believe for a minute that those distributions are Gaussian.}
 
-\subsubsection{Biassed indexed TOCTOU bugs (read\_indexed\_toctou, write\_indexed\_toctou)}
+\subsection{Biassed indexed TOCTOU bugs (crash\_indexed\_toctou, interfering\_indexed\_toctou)}
 
-These bugs are essentially similar to the indexed\_toctou, except with
-additional delays such that either the write operation (for
-write\_indexed\_toctou) or the read operation (for
-read\_indexed\_toctou) is far more common than the other.  This test
-illustrates the importance of rebalancing delays between the various
-happens-before edges in the crash enforcement plans.\smh{Phar exp?}
+\todo{Re-do experiments.}
 
-Without an enforcer, these bugs failed to reproduce within the three
-minute timeout in any of twenty runs.  With a full enforcer,
-write\_indexed\_toctou reproduced consistently in roughly 1.16 seconds
-while read\_indexed\_toctou's reproduction time was bimodally
-distributed between 0.14 seconds ($p = 0.55$) and 1.16 seconds ($p =
-0.45$).  With an enforcer modified to always impose delays on the send
-side, read\_indexed\_toctou reproduced after 83 seconds and
-write\_indexed\_toctou after 1.15.
+These bugs are similar to the indexed\_toctou with $\texttt{NR\_PTRS}
+= 100$, except with an additional one second delay in either the
+interfering or crashing thread's loops, such that either the
+interfering thread (for interfering\_indexed\_toctou) or the crashing
+thread (for crash\_indexed\_toctou) runs far more often than the
+other.  These tests are intended to illustrate the importance of
+placing delays at appropriate operations in the crash enforcement
+message-passing system.  The results are shown in
+Table~\ref{fig:biassed_indexed_toctou:times}.  These results show
+that, while the delay placement mechanism is not always guaranteed to
+find the placing, it does avoid some very poor possible placements.
 
-With delay always on the receive: bug3 takes 0.147s, bug4 takes more
-than a minute and then I got bored.
+\begin{table}
+  \begin{tabular}{llllll}
+                                 & crash\_indexed\_toctou & interfering\_indexed\_toctou \\
+    No enforcer                  & No reproduction        & No reproduction\\
+    Normal delay positioning \\
+    Delays on sends \\
+    Delays on receives \\
+    Delays on both \\
+  \end{tabular}
+  \caption{Time taken to reproduce the crash\_indexed\_toctou and
+    interfering\_indexed\_toctou bugs in different configurations.
+    All experiments were repeated twenty times.}
+  \label{fig:biassed_indexed_toctou:times}
+\end{table}
 
-\todo{Repeat experiments.}
-
-\todo{Integrate these into the main summary table.}
-
-\subsubsection{Multi-variable consistency constraint (multi\_variable)}
-
-\todo{I'm tempted to re-work this so that it only generates a single
-  bug, just to make things a bit clearer, and also to avoid overlap
-  with the multi\_bugs test.}
+\subsection{Multi-variable consistency constraint (multi\_variable)}
 
 \begin{figure}
-  \begin{minipage}{70mm}
-\begin{verbatim}
-while (1) {
-   STOP_ANALYSIS();
-   v1 = global1;
-   v2 = global2;
-   assert(v1 == v2);
-   STOP_ANALYSIS();
-   usleep(10ms);
-}
-\end{verbatim}  
-    \caption{Read side}
-  \end{minipage}
-  \begin{minipage}{70mm}
-\begin{verbatim}
-while (1) {
-  usleep(100ms);
-  STOP_ANALYSIS();
-  global1 = 5;
-  global2 = 5;
-  STOP_ANALYSIS();
-  usleep(100ms);
-  STOP_ANALYSIS();
-  global1 = 7;
-  global2 = 7;
-  STOP_ANALYSIS();
-}
-\end{verbatim}
-    \caption{Write side}
-  \end{minipage}
-  \caption{The two sides of the multi\_variable bug.}
-  \todo{How were those delays chosen?}
+  \subfigure[][Crashing thread]{
+    \texttt{
+      \begin{tabular}{ll}
+        \multicolumn{2}{l}{while (1) \{} \\
+        & STOP\_ANALYSIS();\\
+        & v1 = global1;\\
+        & v2 = global2;\\
+        & assert(v1 == v2);\\
+        & STOP\_ANALYSIS();\\
+        & sleep(10 milliseconds);\\
+        \multicolumn{2}{l}{\}}\\
+        \\
+        \\
+        \\
+        \\
+      \end{tabular}
+    }
+  }
+  \hfill
+  \subfigure[][Interfering thread]{
+    \texttt{
+      \begin{tabular}{ll}
+        \multicolumn{2}{l}{while (1) \{}\\
+        & STOP\_ANALYSIS();\\
+        & global1 = 5;\\
+        & STOP\_ANALYSIS();\\
+        & global2 = 5;\\
+        & STOP\_ANALYSIS();\\
+        & sleep(100 milliseconds);\\
+        & STOP\_ANALYSIS();\\
+        & global1 = 7;\\
+        & global2 = 7;\\
+        & STOP\_ANALYSIS();\\
+        \multicolumn{2}{l}{\}}\\
+      \end{tabular}
+    }
+  }
+  \caption{The two sides of the multi\_variable bug. The delays were
+    chosen so that the program crashed in a reasonable amount of time
+    when run unmodified.}
   \label{fig:eval:multi_variable}
 \end{figure}
 
-This bug is intended to illustrate that {\technique} is able to
-correctly analyse multi-variable atomicity violations.  The code for
-the two sides of the bug is shown in
-Figure~\ref{fig:eval:multi_variable}.  Note that in this case the race
-leads to an assertion failure, whereas previous bugs lead to a bad
-pointer dereference.
+This bug is intended to explore {\technique}'s effects on
+multi-variable atomicity violations.  The two sides of the bug are
+shown in Figure~\ref{fig:eval:multi_variable}.  Note that in this case
+the race leads to an assertion failure, whereas previous bugs lead to
+a bad pointer dereference.  {\Technique} reports a single candidate
+bug in this program, corresponding to interleaving the crashing thread
+with the two stores which set \texttt{global1} and \texttt{global2} to
+7 in the interfering thread.  This enforcer causes the bug to
+reproduce quickly (in an average of 300ms \todo{more details of
+  experiment}).
 
-In this case, {\technique} reports two bugs in the program: one which
-corresponds to interleaving the read side of the test with the two
-stores which set the global variables to 5 and another which
-corresponds to interleaving it with the stores which set the global
-variables to 7.  These are both real bugs.  Both are successfully
-converted into enforcers and both enforcers cause their matching bugs
-to reproduce quickly.
+It is perhaps worth explaining why {\technique} only reported a single
+bug here.  {\Technique} discovered that the crashing thread can crash
+when interleaved with the stores which set the globals to 7, but
+missed the fact that it can also crash when interleaved with the ones
+which set them to 5.  This is because of an interaction between the
+second \texttt{STOP\_ANALYSIS()} in the interfering thread and the
+\backref{inferred assumption}, discussed in
+Section~\ref{sect:derive:inferred_assumption}.  The
+\texttt{STOP\_ANALYSIS()} causes the two stores to be converted into
+independent {\StateMachines}.  Consider the first store; the other is
+symmetrical.  Figure~\ref{fig:eval:multi_variable:other_bug} shows how
+the \backref{inferred assumption} is derived for this bug\footnote{The
+  actual analysis performs this derivation using {\StateMachines},
+  rather than by concatenating the program's actual code, but that
+  makes no difference in this case.}.  The \backref{CI atomic}
+constraint shows that the initial values of \texttt{global1} and
+\texttt{global2} must be equal, and the \backref{IC atomic} constraint
+shows that the initial value of \texttt{global2} must be 5.  Combining
+these two shows that the initial value of \texttt{global} must also be
+5, and so the store operation becomes a no-op and no candidate bug is
+reported.
 
-It is also possible to build a single combined enforcer which attempts
-to enforce both bugs.  The combined enforcer consistently caused the
-first bug to reproduce, as the enforcer for that bug consistently
-reproduces its bug on the first attempt, causing the program to crash
-before the second enforcer has the opportunity to run.
+\begin{figure}
+  \subfigure[][CI atomic]{
+    \begin{tabular}{l}
+      \hspace{-5mm}\texttt{
+        \begin{tabular}{l}
+          v1 = global1;\\
+          v2 = global2;\\
+          assert(v1 == v2);\\
+          v1 = 5;\\
+        \end{tabular}
+      }\\
+      \\
+      $\smLoad{\texttt{global1}} = \smLoad{\texttt{global2}}$\\
+    \end{tabular}
+  }
+  \hfill
+  \subfigure[][IC atomic]{
+    \begin{tabular}{l}
+      \hspace{-5mm}\texttt{
+        \begin{tabular}{l}
+          v1 = 5;\\
+          v1 = global1;\\
+          v2 = global2;\\
+          assert(v1 == v2);\\
+        \end{tabular}
+      }\\
+      \\
+      $\smLoad{\texttt{global2}} = 5$\\
+    \end{tabular}
+  }\\
+  \\
+  Inferred assumption: $\smLoad{\texttt{global2}} = 5 \wedge \smLoad{\texttt{global1}} = 5$
+  \caption{Deriving the \backref{inferred assumption} for the other bug in the multi\_variable bug.}
+  \label{fig:eval:multi_variable:other_bug}
+\end{figure}
 
-These bugs can also be converted into fixes.  In the case of the
-individual bugs this is unhelpful: one of the bugs is successfully
-fixed, but the other bug remains, and the program still crashes very
-quickly.  The combined fix, on the other hand, does successfully
-prevent both bugs.
+The reported bug can also be converted into a fix.  This fix correctly
+fixes the reported bug, but does not, of course, fix the one which is
+not reported.  As such, the program might still crash (although the
+average time before a crash increases from \todo{...} to \todo{...}
+seconds).  If the \texttt{STOP\_ANALYSIS()} marker is removed then
+both bugs will be discovered, and a fix which fixes both bugs
+correctly causes the program to no longer crash.  \todo{That needs
+  rephrasing.}
 
-This bug could not be handled by tools such as Kivati\needCite{}, as
-it involves multiple variables, but can be handled by {\technique}:
-the bug is reproduced quickly by the enforcer, and a correct and
-low-overhead fix is generated automatically.
+\subsection{Context-dependent races (context)}
 
-\todo{I really need to set those delays to something less crazy so as to
-  make this eval less completely bloody pointless.}
-
-\subsubsection{Context-dependent races (context)}
-
-This test is similar to simple\_toctou, except that the behaviour
-depends on the function's call context.  It is structured like this:
-
-\begin{verbatim}
-f(int **ptr) {
-    if (*ptr)
-        **ptr = 5;   
-}
-read_thread() {
-    while (1) {
-        if (random() % 1000 == 0) {
-            STOP_ANALYSIS();
-            f(&global_ptr1);
-            STOP_ANALYSIS();
-        } else {
-            STOP_ANALYSIS();
-            f(&global_ptr2);
-            STOP_ANALYSIS();
-        }
+\begin{figure}
+  \subfigure[][Crashing thread]{
+    \texttt{
+      \begin{tabular}{lll}
+        \multicolumn{3}{l}{f(int **ptr) \{}\\
+        &\multicolumn{2}{l}{if (*ptr) \{}\\
+        &&**ptr = 5;\\
+        &\multicolumn{2}{l}{\}}\\
+        \multicolumn{3}{l}{\}}\\
+        \\
+        \multicolumn{3}{l}{while (1) \{}\\
+        & \multicolumn{2}{l}{if (random() \% 1000 == 0) \{}\\
+        &&STOP\_ANALYSIS();\\
+        &&f(\&global\_ptr1);\\
+        &&STOP\_ANALYSIS();\\
+        &\multicolumn{2}{l}{\} else \{}\\
+        &&STOP\_ANALYSIS();\\
+        &&f(\&global\_ptr2);\\
+        &&STOP\_ANALYSIS();\\
+        &\multicolumn{2}{l}{\}}\\
+        \multicolumn{3}{l}{\}}\\
+      \end{tabular}
     }
-}        
-write_thread() {
-    while (1) {
-        STOP_ANALYSIS();
-        global_ptr1 = &t;
-        STOP_ANALYSIS();
-        sleep(1ms);
-        STOP_ANALYSIS();
-        global_ptr1 = NULL;
-        STOP_ANALYSIS();
+  }
+  \subfigure[][Interfering thread]{
+    \texttt{
+      \begin{tabular}{ll}
+        \\
+        \\
+        \\
+        \\
+        \\
+        \\
+        \multicolumn{2}{l}{while (1) \{}\\
+        &STOP\_ANALYSIS();\\
+        &global\_ptr1 = \&t;\\
+        &STOP\_ANALYSIS();\\
+        &sleep(1 millisecond);\\
+        &STOP\_ANALYSIS();\\
+        &global\_ptr1 = NULL;\\
+        &STOP\_ANALYSIS();\\
+        \multicolumn{2}{l}{\}}\\
+        \\
+        \\
+      \end{tabular}
     }
-}
-\end{verbatim}
-\smh{Maybe indicate there is a different bug?  e.g. a box around
-  relevant lines? (can explain in text that in practice its above via
-  a macro)}
+  }
+  \caption{Crashing and interfering threads for the context test.}
+  \label{fig:eval:context}
+\end{figure}
 
-Here, there are two calls to \verb|f|, only one of which could ever
-possibly exhibit the bug, and that call is much less frequent than the
-other one.  Reproducing the bug quickly is therefore only possible if
-the crash enforcer checks the calling context before inserting any
-large additional delays.
+This test demonstrates {\technique}'s ability to take account of some
+cross-function properties of the program.  The test program is shown
+in Figure~\ref{fig:eval:context}.  The function \texttt{f} is called
+from two places in the crashing thread, one of which passes
+\texttt{\&global\_ptr1} as the pointer argument while the other passes
+\texttt{\&global\_ptr2}.  Meanwhile, the interfering thread loops
+modifying \texttt{global\_ptr1}.  This means that the call to
+\texttt{f(\&global\_ptr1)} can sometimes suffer a crash caused by a
+race while the call to \texttt{f(\&global\_ptr2)} cannot.  The safe
+call is far more common than the unsafe one, and so it is important
+that the enforcer only insert delays in the correct calling context.
 
 Without an enforcer, this test program crashes reasonably
 infrequently, reaching the three minute timeout six times out of
 twenty runs and taking an average of 80 seconds in the remaining
-cases\editorial{Maybe fit a truncated exponential on those so as to
-get $\lambda$ parameter out?  Probably not worth it.}.  With a full
-enforcer loaded, the time taken to obtain a reproduction is uniformly
-distributed between 100 and 200 milliseconds.  With an enforcer
-modified to nor perform stack context checking, the bug did not
-reproduce within three minutes.
+cases.  With a full crash enforcer, including context checking, the
+time taken to obtain a reproduction is uniformly distributed between
+100 and 200 milliseconds.  With an enforcer modified to not perform
+stack context checking, the bug did not reproduce within three
+minutes.
 
-\todo{Run this experiment properly, with a sensible number of repeats
-  and the full statistical thing.}
+\todo{Need to re-run those experiments with repeats.}
 
-\subsubsection{Write-to-read hazard (write\_to\_read)}
+\subsection{Write-to-read hazard (write\_to\_read)}
 
-This test demonstrates a bug on the edge of what SLI can handle.
-Because of the W isolation property in the bug definition, SLI cannot
-handle any bugs in which the write thread reads a memory location
-which has been written to by the read thread.  It is, however,
-supposed to be able to handle the case where the read thread reads a
-location which has been written by the read thread, and in particular
-the case where a write in the read thread races with a write in the
-write thread and the result is then read by the read thread.  This
-test demonstrates that case.
+\begin{figure}
+  \subfigure[][Crashing thread]{
+    \texttt{
+      \begin{tabular}{ll}
+        \multicolumn{2}{l}{while (1) \{}\\
+        &STOP\_ANALYSIS();\\
+        &global\_ptr = \&t;\\
+        &*global\_ptr = 5;\\
+        &STOP\_ANALYSIS();\\
+        \multicolumn{2}{l}{\}}\\
+      \end{tabular}
+    }
+  }
+  \hfill
+  \subfigure[][Interfering thread]{
+    \texttt{
+      \begin{tabular}{ll}
+        \multicolumn{2}{l}{while (1) \{}\\
+        &STOP\_ANALYSIS();\\
+        &global\_ptr = NULL;\\
+        &STOP\_ANALYSIS();\\
+        \multicolumn{2}{l}{\}}\\
+      \end{tabular}
+    }
+  }
+  \caption{The write\_to\_read test case.}
+  \label{fig:eval:write_to_read}
+\end{figure}
 
-(In other words, there is a write-to-read hazard in the read thread
-which is potentially interrupted by the write thread.)
+This test investigates a form of write-write-read race, whereas all of
+the previous ones have considered only write-read ones.  It is shown
+in Figure~\ref{fig:eval:write_to_read}.  The crashing thread loops
+setting a global variable to point at some location and then proceeds
+to use that global variable, while at the same time the interfering
+thread loops setting that global variable to \texttt{NULL}.  In other
+words, there is a write-to-read hazard in the crashing thread which
+might be interrupted by the interfering thread, leading to a crash.
 
-The read side is simple:
+This test program is surprisingly reliable, given that it runs both
+sides of the race in a tight loop with no delays or synchronisation,
+and can often run for several minutes without encountering an error on
+an otherwise idle system, during which time the buggy code might run
+billions of times.  A more realistic test would run the two sections
+far less frequently, and so might easily require hundreds of years of
+CPU time to reproduce the bug.  I suspect that this is because the
+store and load instructions in the crashing thread are close enough
+together that the load is always satisfied from the processor's write
+buffer, and so only returns \texttt{NULL} when the processor receives
+an interrupt in precisely the wrong place.  \todo{It probably wouldn't
+  be hard to check this with a hacked up kernel.  Should probably do
+  that.}  The {\technique}-generated bug enforcer, by contrast, can
+reliably reproduce the bug in a few hundred milliseconds.
 
-\begin{verbatim}
-global_ptr = &t;
-*global_ptr = 5;
-\end{verbatim}
+{\Technique} can also generate a fix for this bug.  The difficulty of
+reproducing the bug makes it difficult to validate experimentally that
+the generated fix is correct, but manual inspection suggested that it
+is.
 
-The write side is then this:
+\subsection{Multiple bugs (multi\_bugs)}
 
-\begin{verbatim}
-global_ptr = NULL;
-\end{verbatim}
-
-Both sides run in a tight loop without any delays.  Despite this, it
-still often takes several seconds for the bug to reproduce without an
-enforcement patch applied, during which time the two critical sections
-may run hundreds of millions of times.  A more realistic test would
-run the two sections far less frequently, and so might require
-hundreds of years of CPU time to reproduce the bug.  The SLI-generated
-enforcer patch, by contrast, can reliably reproduce this bug in a few
-hundred milliseconds.
-
-{\Technique} can also generate a fix for this bug, although given the
-difficultly of reproducing it that is perhaps less than useful.
-Manual inspection nevertheless suggested that the generated fix was
-correct and reasonable.
-
-\todo{I think it might be interesting to investigate this a bit more.
-  I have a sneaking suspicion that it won't reproduce at all if you
-  run on bare metal without any interrupts, and that it pretty much
-  only reproes if you get a timer interrupt at precisely the right (or
-  wrong) place.  Could maybe get a paragraph or so of useful
-  discussion out of that if I had some evidence.  Plus, it's the kind
-  of experiment which looks impressive but is actually really easy,
-  so, you know, win.}
-
-\subsubsection{Multiple bugs (multi\_bugs)}
+\begin{figure}
+  \subfigure[][Crashing thread]{
+    \texttt{
+      \begin{tabular}{lll}
+        \multicolumn{3}{l}{while (1) \{}\\
+        & \multicolumn{2}{l}{r = select\_test();}\\
+        & \multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        & \multicolumn{2}{l}{if (r) \{}\\
+        && simple\_toctou\_crashing();\\
+        & \multicolumn{2}{l}{\} else \{}\\
+        && write\_to\_read\_crashing();\\
+        & \multicolumn{2}{l}{\}}\\
+        & \multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        \multicolumn{3}{l}{\}}\\
+      \end{tabular}
+    }
+  }
+  \subfigure[][Interfering thread]{
+    \texttt{
+      \begin{tabular}{lll}
+        \multicolumn{3}{l}{while (1) \{}\\
+        & \multicolumn{2}{l}{for (i = 0; i < 2000000; i++) \{}\\
+        && STOP\_ANALYSIS(); \\
+        && write\_to\_read\_interfering();\\
+        && STOP\_ANALYSIS(); \\
+        & \multicolumn{2}{l}{\}}\\
+        & \multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        & \multicolumn{2}{l}{simple\_toctou\_interfering();}\\
+        & \multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        \multicolumn{3}{l}{\}}\\
+      \end{tabular}
+    }
+  }
+  \caption{The multi\_bugs test.  The constant \texttt{2000000} was
+    chosen so that the two bugs reproduce with roughly equal
+    probability.}
+  \label{fig:eval:multi_bugs}
+\end{figure}
 
 This test combines simple\_toctou and write\_to\_read into a single
-test, and demonstrates SLI's ability to exercise several bugs using a
-single enforcer.  This is useful when testing with large programs;
-something like mysqld can easily generate thousands of candidate bugs,
-and having to test each one individually would become quite tedious,
-but testing dozens at a time is far more reasonable.
+test, demonstrating {\technique}'s ability to exercise several bugs
+using a single enforcer.  The test program is shown in
+Figure~\ref{fig:eval:multi_bugs}.  The behaviour of
+\texttt|select\_test| is configurable at run time, and will either
+always select simple\_toctou, always select write\_to\_read, or select
+randomly.  The dynamic analysis phases were run with it configured to
+select randomly.
 
-The read side of the test is structured like this:
+{\Implementation} is able to generate a candidate bug for each of the
+component bugs in the test, each of which can be instantiated into an
+enforcer, and these enforcers succeed in reproducing their respective
+bugs.  As expected, neither enforcer is able to reproduce both bugs.
+On the other hand, if both bugs' happens-before graphs are loaded into
+the enforcer then it is able to reproduce either bug, as desired.
+Perhaps more surprisingly, when the test is configured to exercise
+both bugs the enforcer consistently reproduces the write\_to\_read
+bug.  This is simply because the enforcer reproduces the
+write\_to\_read bug before the simple\_toctou interfering critical
+section ever runs.
 
-\begin{verbatim}
-while (1) {
-    r = select_test();
-    STOP_ANALYSIS();
-    if (r)
-        simple_toctou();
-    else
-        write_to_read();
-    STOP_ANALYSIS();
-}
-\end{verbatim}
+In the same way, both candidate bugs can be instantiated into
+individual fixes, both of which correctly fix their respective bug
+while leaving the other bug in place.  Alternatively, a combined fix
+can be generated, and this successfully fixes both bugs.
 
-The behaviour of \verb|select_test| is configurable at run time.  It
-can either choose between the tests at random, always select one, or
-always select the other.  The write side of the test is structured
-like this:
+\subsection{Multiple crashing and interfering threads (multi\_threads)}
 
-\begin{verbatim}
-for (i = 0; i < 2000000; i++) {
-    STOP_ANALYSIS();
-    write_to_read_write_side();
-    STOP_ANALYSIS();
-}
-STOP_ANALYSIS();
-simple_toctou_write_side();
-STOP_ANALYSIS();
-\end{verbatim}
+This test investigates {\implementation}'s behaviour in programs with
+a very large number of threads.  The racing code is the same as in
+indexed\_toctou (Figure~\ref{fig:eval:indexed_toctou}) with
+$\texttt{NR\_PTRS} = 100$, except that rather than having a single
+thread running the crashing and interfering critical sections, this
+test has 32 threads running each.  {\Technique} behaves roughly as
+expected here: it is able to generate an enforcer and a fix, with the
+enforcer making the bug happen more quickly and the fix preventing it
+from happening at all.
 
-The constant \verb|2000000| was chosen such that with no enforcer
-applied and with the read side configured to choose the two tests with
-equal probability the two bugs reproduce with roughly equal frequency.
-
-In this test, SLI correctly generates two candidate bugs (one for each
-component bug).  These can either be instantiated into separate
-enforcers (which have the expected behaviour of making one bug
-reproduce quickly while having no effect on the other) or combined
-into a single enforcer.  If the test is configured to always use one
-bug or the other then the combined enforcer consistently reproduces
-that, as desired.  Perhaps more surprisingly, if the test is
-configured to select a sub-test randomly then the enforcer always
-reproduces the write\_to\_read bug, simply because the enforcer
-reproduces the bug quickly enough that the write side of the
-simple\_toctou write side never runs.
-
-Likewise, both candidate bugs can be instantiated into individual
-fixes, and both fixes correctly fix their own bug while leaving the
-other bug in place.  Alternatively, a combined fix can be generated,
-and this successfully fixes both bugs.
-
-\subsubsection{Multiple read threads (multi\_threads)}
-
-This test is a variant of the indexed\_toctou test in which there are
-32 read-side threads and 32 write-side ones, all operating
-independently.  This test is intended to show that {\implementation}
-correctly handles programs with more than two threads.  Without an
-enforcer, the bug reproduces at a rate of roughly $\lambda = 0.15$ per
-second.  The behaviour with an enforcer loaded is more complex.  With
-high probability (95\%), the bug is reproduced in under a second, but
-there is a long tail in which the bug might take several minutes to
-occur.  \todo{Need to figure out what the hell is going on there.}
-
-{\Technique} can successfully generate a fix for this bug.
+This test illustrates one subtlety in the implementation of the
+enforcer: it must be (at least reasonably) fair in order for the time
+to reproduce the bug to be predictable.  An initial version of the
+enforcer internally used an unfair lock implementation, and while it
+was able to reproduce the bug quickly (in under a second) most of the
+time it suffered from a long tail in 5\% of tests took more than a
+minute to reproduce.  Switching to a fair lock implementation solved
+this problem, and reduced the mean time to reproduction, but at the
+expense of slightly increasing the median time to reproduction.
+\todo{Insert reproduction time CDFs here.}  All other experiments in
+this evaluation were conducted using the fair lock implementation.
 
 \todo{Currently running all of these tests on a four-processor machine,
   which might have an interesting effects on the results of a
   64-thread test.}
 
-\subsubsection{Complicated happens-before graphs (complex\_hb)}
+\todo{I kind of feel like I ought to say \emph{which} fair and unfair
+  lock implementations I'm using here, since I just strongly implied
+  that it matters, but it's a bit of a tedious thing to have to
+  explain.}
 
-This test is intended to illustrate {\technique}'s ability to handle
-more complicated happens-before graphs which require more than two
-context switches.  The test is structured like so:
-
-\begin{verbatim}
-while (1) {
-   STOP_ANALYSIS();
-   x' = x;
-   x'' = x;
-   x''' = x;
-   assert(!((x' == 0) && (x'' == 1) && (x''' == 2) ));
-   STOP_ANALYSIS();
-}
-\end{verbatim}
-
-And the write side is:
-
-\begin{verbatim}
-while (1) {
-  STOP_ANALYSIS();
-  x = 0;
-  x = 1;
-  x = 2;
-  STOP_ANALYSIS();
-  delay();
-}
-\end{verbatim}
+\subsection{Complicated happens-before graphs ($\textrm{complex\_hb}_{\{5,11,17\}}$)}
 
 \begin{figure}
-  \begin{tikzpicture}
-    \node[draw] (x0) {x = 0};
-    \node[draw, below right = of x0] (xp) {x' = x};
-    \node[draw, below left = of xp] (x1) {x = 1};
-    \node[draw, below right = of x1] (xpp) {x'' = x};
-    \node[draw, below left = of xpp] (x2) {x = 2};
-    \node[draw, below right = of x2] (xppp) {x''' = x};
-    \draw[->, happensBeforeEdge] (x0) -- (xp);
-    \draw[->, happensBeforeEdge] (xp) -- (x1);
-    \draw[->, happensBeforeEdge] (x1) -- (xpp);
-    \draw[->, happensBeforeEdge] (xpp) -- (x2);
-    \draw[->, happensBeforeEdge] (x2) -- (xppp);
-    \draw[->] (x0) -- (x1);
-    \draw[->] (x1) -- (x2);
-    \draw[->] (xp) -- (xpp);
-    \draw[->] (xpp) -- (xppp);
-  \end{tikzpicture}
-  \caption{Happens-before graph necessary to reproduce the complex\_hb
-    bug.}
+  \subfigure[][Crashing thread]{
+    \texttt{
+      \begin{tabular}{ll}
+        \multicolumn{2}{l}{while (1) \{}\\
+        &STOP\_ANALYSIS();\\
+        &x1 = global;\\
+        &x2 = global;\\
+        &x3 = global;\\
+        &assert(!(x1 == 0 \&\& x2 == 1 \&\& x3 == 2));\\
+        &STOP\_ANALYSIS();\\
+        \multicolumn{2}{l}{\}}\\
+      \end{tabular}
+    }
+  }
+  \subfigure[][Interfering thread]{
+    \texttt{
+      \begin{tabular}{ll}
+        \multicolumn{2}{l}{while (1) \{}\\
+        &STOP\_ANALYSIS();\\
+        &global = 0;\\
+        &global = 1;\\
+        &global = 2;\\
+        &STOP\_ANALYSIS();\\
+        \multicolumn{2}{l}{\}}\\
+        \\
+      \end{tabular}
+    }
+  }
+  \caption{Crashing and interfering threads for the
+    $\textrm{complex\_hb}_5$ test.  The $\textrm{complex\_hb}_{11}$
+    and $\textrm{complex\_hb}_{17}$ tests are generated by extending
+    this pattern to require additional happens-before edges.}
   \label{fig:eval:complex_hb}
 \end{figure}
 
-In this case, the bug will only reproduce if the happens-before graph
-is as shown in Figure~\ref{fig:eval:complex_hb}.  Note that this graph
-requires four happens-before edges.  This means that it would be
-difficult for tools such as Chess\needCite{} to handle, as, in its
-default configuration, Chess only considers executions with up to
-three context switches.  This construction can be easily extended to
-require arbitrarily many context switches, and so even if Chess were
-configured to use a higher threshold it would still be possible to
-defeat it using bugs of this type.
+\begin{figure}
+  \subfigure[][]{
+    \begin{tabular}{ll}
+      \begin{tikzpicture}
+        \node (dummy) {};
+        \node (ld1) [CfgInstr, below = of dummy] {\texttt{x1 = global;}};
+        \node (ld2) [CfgInstr, below = 2 of ld1] {\texttt{x2 = global;}};
+        \node (ld3) [CfgInstr, below = 2 of ld2] {\texttt{x3 = global;}};
+        \node (st1) [CfgInstr, right = of dummy] {\texttt{global = 0;}};
+        \node (st2) [CfgInstr, below = 2 of st1] {\texttt{global = 1;}};
+        \node (st3) [CfgInstr, below = 2 of st2] {\texttt{global = 2;}};
+        \draw[->] (ld1) -- (ld2);
+        \draw[->] (ld2) -- (ld3);
+        \draw[->] (st1) -- (st2);
+        \draw[->] (st2) -- (st3);
+        \draw[->,happensBeforeEdge] (st1) -- (ld1);
+        \draw[->,happensBeforeEdge] (ld1) -- (st2);
+        \draw[->,happensBeforeEdge] (st2) -- (ld2);
+        \draw[->,happensBeforeEdge] (ld2) -- (st3);
+        \draw[->,happensBeforeEdge] (st3) -- (ld3);
+      \end{tikzpicture}\\
+      Side condition: \true
+    \end{tabular}
+  }
+  \hfill
+  \subfigure[][]{
+    \begin{tabular}{ll}
+      \begin{tikzpicture}
+        \node (ld1) [CfgInstr] {\texttt{x1 = global;}};
+        \node (dummy) [right = of ld1] {};
+        \node (ld2) [CfgInstr, below = 3 of ld1] {\texttt{x2 = global;}};
+        \node (ld3) [CfgInstr, below = 2 of ld2] {\texttt{x3 = global;}};
+        \node (st1) [CfgInstr, below = of dummy] {\texttt{global = 0;}};
+        \node (st2) [CfgInstr, below = 0.5 of st1] {\texttt{global = 1;}};
+        \node (st3) [CfgInstr, below = 1.7 of st2] {\texttt{global = 2;}};
+        \draw[->] (ld1) -- (ld2);
+        \draw[->] (ld2) -- (ld3);
+        \draw[->] (st1) -- (st2);
+        \draw[->] (st2) -- (st3);
+        \draw[->,happensBeforeEdge] (ld1) -- (st1);
+        \draw[->,happensBeforeEdge] (st2) -- (ld2);
+        \draw[->,happensBeforeEdge] (ld2) -- (st3);
+        \draw[->,happensBeforeEdge] (st3) -- (ld3);
+      \end{tikzpicture}\\
+      Side condition: $\smLoad{\mathrm{global}} = 0$
+    \end{tabular}
+  }
+  \caption{Happens-before graphs generated for the $\textrm{complex\_hb}_5$ test.}
+  \label{fig:eval:complex_hb:hb}
+\end{figure}
 
-The evaluation includes two variants of this bug; the one illustrated
-above, which requires four happens-before edges, and an extended
-version which requires 10 edges.  Both of them are analysed reasonably
-quickly by {\implementation} (200ms in the 4-edge case, versus 74
-seconds in the 10-edge one), and converted into an enforcer which
-allows the bug to be reproduced in just a few hundred milliseconds.
+This test, shown in Figure~\ref{fig:eval:complex_hb} is intended to
+evaluate {\technique}'s ability to handle more complicated
+happens-before graphs which require more than two context switches.
+As expected, {\implementation} is able to generate both an enforcer
+and a fix for this bug, which can either make the bug reproduce easily
+or not at all.
+
+The happens-before graphs and side conditions generated for this test
+are shown in Figure~\ref{fig:eval:complex_hb:hb}.  The one on the left
+is the expected graph, and will trigger the bug.  The one on the right
+is not.  It describes the case in which the first store in the
+interfering thread happens after the first load in the crashing
+thread, but the initial contents of memory happens to contain the
+right value.  It is impossible to enforce the desired happens-before
+graph when \texttt{global} is initially 0, as the program structure
+means that first store will only run when \texttt{global} is 2, but
+the {\technique} analysis is not powerful enough to show that.
+Without the side condition, the enforcer would have to try to enforce
+both graphs at run-time, and so it would take longer to reproduce the
+bug; with it, the enforcer can easily discard the spurious
+happens-before graph at run time, partially compensating for the
+incompleteness of the main analysis.
+
+\subsection{A simple double-free bug (double\_free)}
+
+\begin{figure}
+  \subfigure[][Active threads]{
+    \texttt{
+      \begin{tabular}{lll}
+        \multicolumn{3}{l}{while (1) \{}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        &\multicolumn{2}{l}{t = global\_ptr;}\\
+        &\multicolumn{2}{l}{if (t != NULL) \{}\\
+        &&global\_ptr = NULL;\\
+        &&free(t);\\
+        &\multicolumn{2}{l}{\}}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        &\multicolumn{2}{l}{sleep(1 millisecond);}\\
+        \multicolumn{3}{l}{\}}\\
+      \end{tabular}
+    }
+  }
+  \hfill
+  \subfigure[][Environmental thread]{
+    \texttt{
+      \begin{tabular}{lll}
+        \multicolumn{3}{l}{while (1) \{}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        &\multicolumn{2}{l}{if (global\_ptr == NULL) \{}\\
+        &&global\_ptr = malloc(64);\\
+        &\multicolumn{2}{l}{\}}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        \multicolumn{3}{l}{\}}\\
+        \\
+        \\
+        \\
+      \end{tabular}
+    }
+  }
+  \caption{Threads involved in the double\_free bug.}
+  \label{fig:eval:double_free}
+\end{figure}
+
+This test demonstrates {\technique}'s ability to handle some simple
+double-free bugs.  The test program is shown in
+Figure~\ref{fig:eval:double_free}.  Note that in this test, the
+crashing and interfering threads (collectively, the active threads)
+both run the same code, shown on the left of the figure, while a third
+thread, known as the environmental thread, modifies the environment in
+which they are operating.  The two active threads loop reading
+\texttt{global\_ptr} and, if it is non-\texttt{NULL}, releasing it and
+setting it to \texttt{NULL}.  The environment thread is meanwhile
+undoing their work by examining \texttt{global\_ptr} and, when it is
+\texttt{NULL}, setting it to a newly-allocated block.  Every time it
+does so, the two active threads will race trying to release the block
+and reset \texttt{global\_ptr}.  In some interleavings, both active
+threads will try to release the same block, leading to a double-free
+bug.
+
+Note that the program threads here do not map directly on to the
+threads in the candidate bug: the interfering thread is whichever of
+the two active threads wins the race and releases the block first; the
+crashing thread is the other active thread, which \texttt{free}s a
+block which has already been released; and the environmental thread
+does not appear in the candidate bug at all, despite being necessary
+for the bug to reproduce.
+
+{\Implementation} is able to build an enforcer and a fix for this bug,
+and they behave as expected.
+
+\subsection{A program with existing synchronisation (existing\_sync\_visible, existing\_sync\_invisible)}
+
+\begin{figure}
+  \subfigure[][Crashing thread with {\technique}-visible synchronisation]{
+    \texttt{
+      \begin{tabular}{lll}
+        \multicolumn{3}{l}{while (1) \{}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        &\multicolumn{2}{l}{lock(\&global\_lock);}\\
+        &\multicolumn{2}{l}{if (global\_ptr != NULL) \{}\\
+        &&*global\_ptr = 5;\\
+        &\multicolumn{2}{l}{\}}\\
+        &\multicolumn{2}{l}{unlock(\&global\_lock);}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        \multicolumn{3}{l}{\}}\\
+      \end{tabular}
+    }
+    \label{fig:eval:existing_sync:visible}
+  }
+  \subfigure[][Crashing thread with {\technique}-invisible synchronisation]{
+    \texttt{
+      \begin{tabular}{lll}
+        \multicolumn{3}{l}{while (1) \{}\\
+        &\multicolumn{2}{l}{lock(\&global\_lock);}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        &\multicolumn{2}{l}{if (global\_ptr != NULL) \{}\\
+        &&*global\_ptr = 5;\\
+        &\multicolumn{2}{l}{\}}\\
+        &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
+        &\multicolumn{2}{l}{unlock(\&global\_lock);}\\
+        \multicolumn{3}{l}{\}}\\
+      \end{tabular}
+    }
+    \label{fig:eval:existing_sync:invisible}
+  }
+  \subfigure[][Interfering thread]{
+    \texttt{
+      \begin{tabular}{ll}
+        \multicolumn{2}{l}{while (1) \{}\\
+        &global\_ptr = \&t;\\
+        &sleep(1 second);\\
+        &STOP\_ANALYSIS();\\
+        &lock(\&global\_lock);\\
+        &global\_ptr = NULL;\\
+        &unlock(\&global\_lock);\\
+        &STOP\_ANALYSIS();\\
+        \multicolumn{2}{l}{\}}\\
+      \end{tabular}
+    }
+  }
+  \caption{Threads for the existing\_sync\_visible and existing\_sync\_invisible tests.}
+  \label{fig:eval:existing_sync}
+\end{figure}
+
+These tests explore {\technique}'s interactions with the program's
+existing synchronisation.  It is the same as simple\_toctou, except
+that the program contains calls to \texttt{pthread\_mutex\_lock} and
+\texttt{pthread\_mutex\_unlock} which prevent the bug from ever
+reproducing.  As discussed previously\editorial{ref?}, {\technique}
+has no global model of the program's synchronisation, and so can only
+analyse synchronisation within the analysis window \backref{$\alpha$}.
+The analysis will therefore be aware of the synchronisation in the
+existing\_sync\_visible crashing thread,
+Figure~\ref{fig:eval:existing_sync:visible}, but not that in the
+existing\_sync\_invisible crashing thread,
+Figure~\ref{fig:eval:existing_sync:invisible}.  As such, it generates
+a candidate bug for the existing\_sync\_invisible test but not for the
+existing\_sync\_visible one.
+
+\begin{figure}
+  \centerline{
+    \begin{tikzpicture}
+      \node (LD1) {First load};
+      \path (node cs:name=LD1,anchor=west) -- ++(0,-2) node (LD2) [right] {Second load};
+      \node (dummy) [right = 2 of LD1] {};
+      \node (ST) [below = 0.6 of dummy] {Store};
+      \draw (node cs:name=LD1,anchor=north west) -- ++(-0.2,0) |- (node cs:name=LD2,anchor=south west);
+      \draw (node cs:name=ST,anchor=north east) -- ++(0.2,0) |- (node cs:name=ST,anchor=south east);
+      \draw[->, happensBeforeEdge] (LD1) -- (ST);
+      \draw[->, happensBeforeEdge] (ST) -- (LD2);
+      \draw[->] (LD1) -- ++(0,-1.8);
+      \path (-1.5,-2) to node [sloped] {locked region} (-1.5,0);
+      \node at (5.3,-1.05) {locked region};
+    \end{tikzpicture}
+  }
+  \caption{Happens-before graph which must be enforced for the
+    existing\_sync\_invisible test, along with the program's existing
+    locked regions.  This bug cannot be reproduced.}
+  \label{fig:eval:existing_sync:hb}
+\end{figure}
+
+This candidate bug can be instantiated into a bug enforcer, but, as
+might be expected, this enforcer cannot cause any bugs to reproduce.
+The happens-before graph for the bug is shown in
+Figure~\ref{fig:eval:existing_sync:hb}; this clearly contradicts the
+program's existing synchronisation strategy, and so trying to enforce
+it will lead to a deadlock.  The unbound message operations in the
+crash enforcement plan will therefore all time out, preventing
+successful plan completion.
+
+It can similarly be instantiated into a fix.  This fix does not fix
+any actual bugs, as there are none, but does not otherwise harm the
+program's execution.
 
 \subsection{Summary tables}
 
@@ -1349,31 +1639,6 @@ have compiler optimisations, because otherwise the compiler caches
   the definition of that function to show that the fix is correct
   anyway?}
 
-\subsubsection{Effect of the induction rule}
-
-Without the induction rule, the tool produced 7935 candidate bugs.
-With the induction rule enabled, the tool produced 7783 bugs, or about
-a 2\% reduction.  That's not great, but it's not completely terrible
-either.
-
-Figure~\ref{fig:eval:mysql:analysis_cdf} shows a CDF of the time taken
-to analyse each instruction in an optimised build of mysql, with and
-without the induction rule.  As can be seen, the two lines are very
-close together, indicating that the induction rule is not usually very
-expensive.  It is thus justifiable to use it in spite of the
-relatively minor improvement in the final results.
-
-\begin{figure}
-\include{eval/mysql-opt}
-\caption{CDF of time taken to analyse instructions in an optimised
-  build of mysql, with and without the induction rule, with an
-  analysis window of twenty instructions.  The analysis window was
-  twenty instructions and the per-instruction timeout was 180 seconds.
-  Note logarithmic x scale.} \todo{Include some other analysis window
-  sizes.}
-\label{fig:eval:mysql:analysis_cdf}
-\end{figure}
-  
 \section{Validation of tool implementation}
 
 \subsection{Static analyses}
