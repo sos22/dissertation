@@ -26,7 +26,7 @@
      \subfigure[\subcapsave]{\box\subfigbox}}%
 \makeatother
 
-\usetikzlibrary{arrows,decorations.pathmorphing,decorations.markings,backgrounds,positioning,fit,petri,automata,shapes,petri}
+\usetikzlibrary{arrows,decorations.pathmorphing,decorations.markings,backgrounds,positioning,fit,petri,automata,shapes,petri,patterns}
 
 \pgfdeclarelayer{bg}
 \pgfsetlayers{bg,main}
@@ -49,6 +49,29 @@
 \renewcommand\topfraction{.9}
 \renewcommand\textfraction{.1}
 \renewcommand\floatpagefraction{.8}
+
+% defining the new dimensions
+\newlength{\hatchspread}
+\newlength{\hatchthickness}
+% declaring the keys in tikz
+\tikzset{hatchspread/.code={\setlength{\hatchspread}{#1}},
+         hatchthickness/.code={\setlength{\hatchthickness}{#1}}}
+% setting the default values
+\tikzset{hatchspread=8pt,
+         hatchthickness=2pt}
+% declaring the pattern
+\pgfdeclarepatternformonly[\hatchspread,\hatchthickness]% variables
+   {diagonal hatch}% name
+   {\pgfqpoint{-2\hatchthickness}{-2\hatchthickness}}% lower left corner
+   {\pgfqpoint{\dimexpr\hatchspread+2\hatchthickness}{\dimexpr\hatchspread+2\hatchthickness}}% upper right corner
+   {\pgfqpoint{\hatchspread}{\hatchspread}}% tile size
+   {% shape description
+    \pgfsetlinewidth{\hatchthickness}
+    \pgfpathmoveto{\pgfqpoint{0pt}{\hatchspread}}
+    \pgfpathlineto{\pgfqpoint{\dimexpr\hatchspread+0.15pt}{-0.15pt}}
+    \pgfsetstrokecolor{red!20}
+    \pgfusepath{stroke}
+   }
 
 \author{Steven Smith}
 \title{{\Technique}: Automated techniques for diagnosing, reproducing, and fixing concurrency bugs}
