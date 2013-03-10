@@ -14,5 +14,10 @@ mysql-opt-induction-rule.cdf: mysql-opt-induction-rule.timings cdf.py
 mysql-opt-no-induction-rule.cdf: mysql-opt-no-induction-rule.timings cdf.py 
 	grep -v "timed out" $<  | sed 's/.* took //' | ./cdf.py `grep "timed out" $< | wc -l` > $@.t && mv $@.t $@
 
+indexed_toctou_vary_nr_ptrs_enforcer.tex: indexed_toctou_vary_nr_ptrs_enforcer/p25 indexed_toctou_vary_nr_ptrs_enforcer/p50 indexed_toctou_vary_nr_ptrs_enforcer/p75 indexed_toctou_vary_nr_ptrs_enforcer/pmean indexed_toctou_vary_nr_ptrs_enforcer.gpl
+	gnuplot indexed_toctou_vary_nr_ptrs_enforcer.gpl
+indexed_toctou_vary_nr_ptrs_no_enforcer.tex: indexed_toctou_vary_nr_ptrs_no_enforcer/p25 indexed_toctou_vary_nr_ptrs_no_enforcer/p50 indexed_toctou_vary_nr_ptrs_no_enforcer/p75 indexed_toctou_vary_nr_ptrs_no_enforcer/pmean indexed_toctou_vary_nr_ptrs_no_enforcer.gpl
+	gnuplot indexed_toctou_vary_nr_ptrs_no_enforcer.gpl
+
 clean:
 	rm -f *.aux *.cdf mysql-opt.tex
