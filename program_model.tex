@@ -5,12 +5,12 @@ in a crash via the {\StateMachine} mechanism, but these are only
 capable of analysing relatively small fragments of the program.  This
 means that they cannot express global properties such as the structure
 of the heap.  {\Technique} instead captures these properties in its
-\introduction{program model}, a model of some important aspects of the
-program built before the main analysis starts.
+\gls{programmodel}, a model of some important aspects of the program
+built before the main analysis starts.
 
-The first two analyses used in building the \backref{program model}
-are dynamic.  The first is used to build the program's control flow
-graph, including identifying branches from library code into the main
+The first two analyses used in building the \gls{programmodel} are
+dynamic.  The first is used to build the program's control flow graph,
+including identifying branches from library code into the main
 program, and is described in
 Section~\ref{sect:program_model:indirect_branches}.  The other dynamic
 analysis builds a model of the program's aliasing behaviour when
@@ -64,7 +64,7 @@ cases.
   giving a whole section to.}
 
 {\Technique} relies on being able to determine which addresses a given
-branch might branch to in order to build its \backref{CFGs} (see
+branch might branch to in order to build its \glspl{cfg} (see
 Section~\ref{sect:derive:build_static_cfg}).  This is trivial for
 direct branches, but more difficult for indirect ones.
 {\Implementation} solves this problem using a very simple dynamic
@@ -77,15 +77,14 @@ possible in the running program.
 This is clearly unsound, as there might always be some behaviour which
 is possible for the program but which is not observed by the dynamic
 analysis.  This can lead to {\technique} building incomplete
-\backref{CFGs}, and hence missing some bugs.  This is not, in
-practice, a particularly series issue: most programs contain only a
-modest number of dynamic branches, most of which can branch to only a
-modest number of distinct targets, and so it does not take an enormous
-amount of time for the dynamic analysis to achieve reasonable
-coverage.  Even when coverage is incomplete, the most common effect is
-simply to cause the main analysis to miss some bugs in code which was
-not run under the dynamic analysis.  This is usually a tolerable
-weakness.
+\glspl{cfg}, and hence missing some bugs.  This is not, in practice, a
+particularly series issue: most programs contain only a modest number
+of dynamic branches, most of which can branch to only a modest number
+of distinct targets, and so it does not take an enormous amount of
+time for the dynamic analysis to achieve reasonable coverage.  Even
+when coverage is incomplete, the most common effect is simply to cause
+the main analysis to miss some bugs in code which was not run under
+the dynamic analysis.  This is usually a tolerable weakness.
 
 \todo{Hmm... The patch strategy generation step assumes it can find
   all of the predecessors of an instruction in order to fix the
@@ -97,15 +96,15 @@ weakness.
 \subsection{Finding the predecessors of instructions}
 \label{sect:program_model:instr_predecessors}
 
-Recall that the algorithm for building a \backref{crashing thread}'s
-static control-flow graph, given in
+Recall that the algorithm for building a \gls{crashingthread}'s static
+control-flow graph, given in
 Section~\ref{sect:derive:build_static_cfg} depends on being able to
 find the predecessor instructions of any instruction.  That is, it
 assumes that there is some function $\mathit{pred}(i)$ which maps from
 one of the program's instructions $i$ to the set of all instructions
 in the program which might execute immediately before $i$.  The
 indirect branch analysis allows {\technique} to build a complete
-\backref{CFG} for most programs, and hence to implement the
+\gls{cfg} for most programs, and hence to implement the
 $\mathit{pred}$ easily.  The key observation is that, for most
 programs on most operating systems, the processor will only start
 executing instructions from the main program binary following an
@@ -145,7 +144,7 @@ detail\editorial{Well, kind of.  I did do a version using a DRS, which
 
 {\Technique} relies on a dynamic analysis to model memory accesses to
 non-stack memory locations.  This analysis is responsible for building
-an \introduction{aliasing table}, showing which pairs of instructions
+an \gls{dynamicaliasingtable}, showing which pairs of instructions
 might conceivably access the same memory locations.  In the pessimal
 case, where every instruction might alias with every other, this table
 will contain $n^2$ entries, where $n$ is the number of memory
@@ -310,14 +309,15 @@ program.  The definition used by {\technique} is simple:
     it.}
 \item
   Every function has a single designated entry point instruction,
-  referred to as the \introduction{function head}.
+  referred to as the \gls{functionhead}.
 \item
   The target of a \texttt{call} instruction is always the
-  \backref{head} of some function.  \todo{Maybe say something about
-    the dummy calls used to implement PIC on 32 bit x86?}
+  \glslink{functionhead}{head} of some function.  \todo{Maybe say
+    something about the dummy calls used to implement PIC on 32 bit
+    x86?}
 \item
   Any branch instruction will either start and end in the same
-  function or will end at a \backref{function head}, or both.  This
+  function or will end at a \gls{functionhead}, or both.  This
   includes the implicit branch to the next instruction at the end of
   an ordinary instruction.
 \end{itemize}
@@ -336,7 +336,7 @@ interesting cases:
 \item
   If a function is ever called normally, using a call-type branch, the
   fourth rule will ensure that its first instruction is a
-  \backref{function head}, as desired.
+  \gls{functionhead}, as desired.
 \item
   If a function is tail-called from precisely one place, and is never
   invoked with a normal call instruction, no entry point will be
@@ -345,8 +345,8 @@ interesting cases:
 \item
   If a function is tail-called from multiple different locations then
   the final rule will ensure that the join of the caller's CFGs is a
-  \backref{function head}.  This is as desired: for simple tail calls,
-  the join is the first instruction in the called function, which should
+  \gls{functionhead}.  This is as desired: for simple tail calls, the
+  join is the first instruction in the called function, which should
   indeed be marked as a head.
 \end{itemize}
 
@@ -560,8 +560,8 @@ the time the fixed point iteration converges.
     \end{array}
   \end{displaymath}
   \caption{Starting point for the static alias analysis fixed point.
-    $\mathit{head}$ is the \backref{function head} instruction and $i$
-    is any other instruction.}
+    $\mathit{head}$ is the \gls{functionhead} instruction and $i$ is
+    any other instruction.}
   \label{fig:static_alias:initial_config}
 \end{figure}
 
@@ -891,8 +891,8 @@ k$, where $r$ is some other register, or $\mathit{invalid}$,
 indicating that the register does not fit one of those forms.
 
 The initial value for the fixed point iteration has every instruction
-$\bot$ except for the \backref{function head} instruction, which is a
-map which reflects whatever constraints the system ABI imposes at the
+$\bot$ except for the \gls{functionhead} instruction, which is a map
+which reflects whatever constraints the system ABI imposes at the
 start of a function.  For Linux on AMD64, the only such constraint is
 that the direction flag in \texttt{rflags} is equal to
 1\editorial{Cite, maybe?}.  {\Implementation} stores the direction
