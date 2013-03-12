@@ -42,17 +42,17 @@ These tools rely on a happens-before graph showing the order in which
 program operations are ``supposed'' to happen and then flag a warning
 whenever the order of two operations is undefined by this graph and
 important, in some sense, for the program's execution.  Maintaining
-the happens-before graph is itself an moderately complicated
-operation.  The simplest approach starts from the assumption that a
-complete trace of all of the program's memory accesses is available
-and then uses a variant of Lamport's vector clock algorithm\needCite{}
-to extract a minimal set of happens-before edges which completely
-characterises the order of operations.  If this minimal graph contains
-any un-approved edges then a warning is raised\editorial{I could
-  describe the VC algorithm itself here, but it has an annoying number
-  of special cases and it doesn't really add anything.}.  Recent tools
-of this form include RaceTrack\needCite{} and FastTrack\needCite{};
-Netzer and Miller 1989 is an earlier example.  These tools are
+the happens-before graph is itself a moderately complicated operation.
+The simplest approach starts from the assumption that a complete trace
+of all of the program's memory accesses is available and then uses a
+variant of Lamport's vector clock algorithm\needCite{} to extract a
+minimal set of happens-before edges which completely characterises the
+order of operations.  If this minimal graph contains any un-approved
+edges then a warning is raised\editorial{I could describe the VC
+algorithm itself here, but it has an annoying number of special cases
+and it doesn't really add anything.}.  Recent tools of this form
+include RaceTrack\needCite{} and FastTrack\needCite{}; Netzer and
+Miller 1989\needCite{} is an earlier example.  These tools are
 generally quite effective at finding places in the program's execution
 where behaviour depends on the details of the interleaving chosen by
 the hardware, and this does include most concurrency bugs.  However,
@@ -81,13 +81,13 @@ cannot determine whether it is safe, and so the tool is forced to use
 potentially error-prone heuristics.
 
 DataCollider\needCite{} takes a completely different approach, and one
-which is conceptually more similar to SLI's.  Rather than trying to
-find races directly, it instead inserts delays into the program's
-execution so as to make races more likely, detects them when they
-occur, and then uses heuristics to determine how dangerous that race
-is.  This approach has a number of important advantages: it has no
-false positives (any race reported will definitely have happened); and
-it has reasonably low overhead (so the program's behaviour during
+which is conceptually more similar to {\technique}'s.  Rather than
+trying to find races directly, it instead inserts delays into the
+program's execution so as to make races more likely, detects them when
+they occur, and then uses heuristics to determine how dangerous that
+race is.  This approach has a number of important advantages: it has
+no false positives (any race reported will definitely have happened);
+and it has reasonably low overhead (so the program's behaviour during
 analysis is likely to be at least broadly similar to that during
 normal execution); and it requires relatively little in the way of
 supporting machinery, so can be used in constrained environments such
@@ -117,6 +117,10 @@ schedules and not others.  Despite this, Chess has been demonstrated
 to be an effective way of detecting many interesting bugs in
 real-world programs.
 
+\subsection{Other race bug detection tools}
+
+Something about detecting OS-mediated races?
+
 \subsection{Detecting race bugs with static analysis}
 
 In addition to these dynamic tools, there have also been a number of
@@ -127,15 +131,22 @@ analysis determines, for every line in the program, which locks are
 held when that line executes.  The tool can then use this to determine
 which locks protect each field in a compound structure and then flag
 an error if this set is empty\footnote{The actual implementation
-  includes a number of additional techniques to reduce false
-  positives.}.  The aliasing model used here is very simple, assuming
-that there is precisely one instance of every data type.
+includes a number of additional techniques to reduce false
+positives.}.  The aliasing model used here is very simple, assuming
+that there is precisely one instance of every data type; this is
+necessary to scale to non-trivial programs, but significantly reduces
+the analysis' soundness.
 
-Relay\editorial{Cite Voung Jhala and Lerner, 2007} attempted to
+RELAY\editorial{Cite Voung Jhala and Lerner, 2007} attempted to
 improve the soundness of RacerX while also improving its scalability.
-Key technique is a form of procedure summarisation using symbolic
-execution to find out which fields a given function might access and
-what it does to the current lockset.
+The key technique is to use symbolic execution to construct procedure
+summaries\editorial{I don't think they were the first people to come
+up with function summaries; should dig up some earlier refs.}, showing
+what locks each procedure acquires and releases and what structure
+fields it accesses.  These summaries then allow them to perform a
+sound cross-function race analysis without needing to consider the
+full bodies of each function every time, leading to a significant
+improvement in scalability.  
 
 Chord\editorial{Cite Naik Aiken and Whaley, 2006} takes a slightly
 different approach, attempting to statically detect pairs of racing
@@ -145,31 +156,77 @@ some extent on Java's type safety properties, but it would probably
 not be excessively difficult to generalise to non-typesafe languages
 such as C, at the cost of some precision.  The approach taken here is
 essentially to build up an instruction aliasing table, containing the
-same information as SLI's but built statically rather than
-dynamically, and to then use further static analysis to refine this
-table until it only contains entries for instructions which both alias
-and race.  These are then reported as potential errors.  It would
-potentially be interesting to use these techniques to refine SLI's
-aliasing table, which might help to improve performance somewhat,
-although generalising them from source-level to binary-level might
-prove challenging.
+same information as {\technique}'s dynamic aliasing table but built
+statically rather than dynamically, and to then use further static
+analysis to refine this table until it only contains entries for
+instructions which both alias and race.  These are then reported as
+potential errors.  It would potentially be interesting to use these
+techniques to refine {\technique}'s aliasing table, which might help
+to improve performance somewhat, although generalising them from
+source-level to binary-level might prove challenging.
 
+\subsection{Helping the programmer to find bugs themselves}
 
+All of the schemes discussed so far in this section are intended to
+discover concurrency bugs automatically.  An alternative approach,
+advocated by the TESLA project\needCite{}, amongst others, is just to
+make it easier for programmers to find bugs themselves.  The core idea
+here is to provide programmers with a language for expressing temporal
+and concurrent properties of the program and to then check these
+properties as the program runs, reporting an error if they ever fail.
+This is conceptually rather similar to {\technique}'s enforcers, with
+the difference that a TESLA assertion simply checks whether a bug has
+happened, whereas a {\technique} enforcer will adjust the program's
+schedule so as to make the target bug more likely.  One potentially
+interesting avenue for future work would be to combine the two
+techniques: take a TESLA assertion and convert it to a
+{\implementation}-style message passing automaton which would make it
+easier to reproduce the bug detected by the assertion.
 
-\begin{itemize}
-\item
-  TESLA?
-\item
-  Quite a lot of other papers on using runtime monitors for non-concurrency properties.
-  Chain refs from ``Partially evaluating finite-state runtime monitors ahead of time'', Bodden, Lam, and Hendren, 2012.
-\end{itemize}
+Type state systems are an older approach to this problem\needCite{}.
+In this model, the assertions are described by adding state to program
+types, with a description of how certain operations can move instances
+of a type from one state to another, and then restricting the program
+to only allow certain operations on objects which are in a particular
+state.  These assertions are typically checked at run time\needCite{},
+whether in an ad-hoc\needCite{} or systematic\needCite{} manner, and
+can also in some cases be checked statically\needCite{}.  Some
+systems, such as Clara\editorial{Cite Bodden, Lam, Hendren 2012.
+Might also want to reference chain from there.}, attempt to split the
+difference, checking as much as possible of the assertion statically
+and deferring the rest to run time.  This gives them a great deal of
+flexibility to trade the incompleteness of dynamic analysis off
+against the high computational cost of sound static analysis.  There
+is potentially some scope for combining this sort of technique with
+{\technique}'s enforcer mechanism to evaluate some side-conditions
+statically, which might reduce the enforcer overhead.
 
 \subsection{Detecting other types of bugs}
 
-Not sure about this; there are lots of them and most of them aren't
-all that related, but I probably ought to say something.
+There is a very large body of existing literature which investigates
+ways of automatically detecting various classes of non-concurrency
+bugs.  These range from the very simple systems integrated into most
+compilers\needCite{} all the way through to whole-program model
+checking with symbolic execution\needCite{}.  \todo{Say more here.}
 
-KLEE is probably the best thing to talk about here.
+The most recent example is probably KLEE\needCite{}, a symbolic
+execution engine for LLVM bitcode\needCite{}.  The aim behind KLEE is
+the automatic generation of test suites for single-threaded programs
+which exercise the maximum proportion of the program's functionality
+with the minimum amount of testing.  This is conceptually very similar
+to {\technique}'s enforcer approach to finding bugs: perform some
+static analysis on the program to find places which might have a bug,
+and then convert those places into tests which will show whether or
+not that bug is present.  The difference is that {\technique}'s tests
+are expressed in terms of the concurrency schedules which are to be
+exercised, whereas KLEE's are expressed in terms of the inputs to the
+program.  It would be possible to combine the two techniques by, for
+instance, using KLEE to find program inputs which allow {\technique}
+enforcer side-conditions to be satisfied.  This would mitigate
+{\technique}'s most important weakness, that most of the enforcers it
+generates require conditions which the program can never actually
+reach, and increase KLEE's ability to find interesting concurrency
+bugs.
 
 \section{Automatically characterising bugs}
 
@@ -178,9 +235,9 @@ debugging would also be worth talking about.
 
 \section{Automatically fixing bugs}
 
-There have, of course, been many previous systems which aimed to
-automatically fix bugs in programs, and I now give a brief overview of
-some of the more important ones.
+There have been many previous systems which aimed to automatically fix
+bugs in programs, and I now give a brief overview of some of the more
+important ones.
 
 \subsection{Description of meta-problem}
 

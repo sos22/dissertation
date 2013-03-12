@@ -1,6 +1,31 @@
 \chapter{Evaluation}
 \label{chapter:eval}
 
+\section{Experiments I still need to run}
+
+\begin{itemize}
+\item Compare fair and unfair lock versions of multi\_threads
+\item indexed\_toctou with side condition checking off.
+\item The biassed toctou tests with delays oddly positioned.
+\item The multi\_variable tests
+\item The context tests.
+\item Prod the broken\_publish test to get malloc to actually
+  return a buffer which isn't full of zeroes.
+\item DataCollider calibration experiments.  In fact, all the DC
+  experiments.
+\item all\_md\_perf
+\item Re-do labyrinth experiments and actually track the results.
+\item Re-do Bayes with current version of tool.
+\item Re-do pbzip2 and collect numbers
+\item Re-do thunderbird and time the static analysis phase.
+\item Re-do unoptimised mysql.  Time static and main analysis phases.
+  Check number of candidates generated.  Run candidates.
+\item Re-do optimised mysql.  Time static and main analysis phases.
+  Check number of candidates generated.  Run candidates.
+\end{itemize}
+
+\section{Eval}
+
 Previous chapters have described the basic {\technique} technique.  I
 will now evaluate its effectiveness, and the performance of my
 implementation {\implementation}.  This evaluation will consist of the
@@ -26,10 +51,6 @@ following parts:
   tool's performance on large programs in slightly more detail,
   showing how the time taken breaks down across the various phases
   and the effects of some of {\implementation} optimisations.
-\item The final section, \ref{sect:eval:validation}, gives the results
-  of some experiments intended to validate that {\implementation} is
-  itself correctly implemented, and hence to give confidence that the
-  other results are reasonable.
 \end{itemize}
 
 \section{Artificial bugs}
@@ -431,7 +452,8 @@ themselves.
 
 \todo{Give details of the machine the test is running on.}\smh{Yes}
 
-\subsection{Indexed TOCTOU bug (indexed\_toctou)}
+\subsection{Indexed TOCTOU bug (indexed\_toctou)}\footnote{This bug was used as an example in Section~\ref{sect:reproducing_bugs}.}
+
 \label{sect:eval:indexed_toctou}
 
 \todo{The results of this test are \emph{very} sensitive to set-up of
@@ -586,7 +608,7 @@ find the placing, it does avoid some very poor possible placements.
   \end{tabular}
   \caption{Time taken to reproduce the crash\_indexed\_toctou and
     interfering\_indexed\_toctou bugs in different configurations.
-    All experiments were repeated twenty times.}
+    All experiments were repeated twenty times. \todo{Fill this out.}}
   \label{fig:biassed_indexed_toctou:times}
 \end{table}
 
@@ -1342,6 +1364,13 @@ threads, whereas in this bug data flows in both directions and there
 are no sub-fragments of the critical section which have a bug and do
 not have bi-directional data flow.
 
+\subsection{A bug which is not a race (not\_a\_race)}
+
+\todo{{\Technique} can handle some bugs which aren't actually
+  memory-memory races, which isn't something I've seen done with
+  ``real'' programs before.  I should include an example of that
+  here.}
+
 \subsection{Comparison to DataCollider}
 \label{sect:eval:datacollider}
 
@@ -1734,8 +1763,18 @@ completely cover the actual critical sections in the program.
   the SD drops to something sane, but I don't think that would be
   terribly meaningful.}
 
-\section{Bugs from real programs}
+\section{Experiments with real programs}
 \label{sect:eval:real}
+
+\subsection{pbzip2}
+
+I ran {\implementation} in its bug-finding mode on pbzip2.  This
+included building a program model, generating all {\StateMachines},
+converting them to enforcers, and then running pbzip2 under each
+enforcer in turn.  This did not find any bugs in pbzip2.
+
+\todo{This is a bit sad.  I'm just going to put in some measurements
+  of how long things take to run in here.}
 
 \subsection{Thunderbird}
 
@@ -1847,14 +1886,7 @@ bugs, as desired.
   don't have compiler optimisations, because otherwise the compiler
   caches \texttt{PSI\_server} in a register and avoids the crash.}
 
-\todo{Need to finish running this on the optimised build.}
-
-\todo{Might be worth pointing out that the fix can lead to
-  delete\_current\_thread() running an additional time, and then give
-  the definition of that function to show that the fix is correct
-  anyway?}
-
-\section{Detailed breakdown of the time taken by the analysis}
+\section{Detailed performance analysis}
 \label{sect:eval:time_details}
 
 Basic approach here is going to be to take a random sample of the
@@ -1862,7 +1894,8 @@ instructions in mysql, run the analysis on them, and measure how much
 time is spent in each phase.  I think I'll probably have to say
 something about the distributions there, since you usually find that
 you spend a lot of your time in the outliers.  I'll then show how that
-changes when you change $\alpha$.
+changes when you change $\alpha$.  Also need to show how the number of
+candidates varies with $\alpha$.
 
 I'd also like to show how the different variants affect performance.
 That'll mean doing compare-and-contrast on variants with:
@@ -1875,6 +1908,9 @@ That'll mean doing compare-and-contrast on variants with:
 \item Neither fixed regs nor static aliasing
 \item All the clever bits on, W isolation on
 \end{itemize}
+
+The performance effect should be a small win, and we should see that
+the quality of the results goes up.
 
 \subsection{Dynamic analysis}
 
@@ -1896,406 +1932,3 @@ Things to measure:
   normalised for code coverage.  My metric of badness is the number of
   missing edges between A and B where A and B were both observed.
 \end{itemize}
-
-\section{Validation of tool implementation}
-\label{sect:eval:validation}
-
-\subsection{Static analyses}
-
-SLI relies on two forms of whole-program static analysis applied to
-the target binary before the main analysis starts:
-
-\begin{itemize}
-\item
-  The static points-to analysis
-\item
-  The fixed register analysis
-\end{itemize}
-
-Both analyses assume that the program to be analyses conforms to the
-system ABI.  If that assumption does not hold, or if there is simply a
-bug in one of them, then that might invalidate all of the other
-results.  I therefore developed some Valgrind-based dynamic analyses
-to check that the results of this phase were correct.
-
-\todo{The tool also implements a register liveness analysis, but
-  that's only used to build the points-to table, so validating the
-  points-to table also implicitly validates the liveness one.  Also,
-  I've not described the liveness analysis anywhere, so it'd be hard
-  to wedge it in here.}
-
-\subsubsection{Points-to analysis}
-\label{sect:eval:validate:pta}
-\todo{Shrink this section.}
-
-The static points-to analysis builds an instruction attribute table
-for the program which includes, for each instruction:
-
-\begin{itemize}
-\item
-  Whether the current stack frame might include any pointers to itself
-  or to memory outside of the current frame.
-\item
-  Whether there might be any pointers to the current stack frame in
-  from outside of it.
-\item
-  For each register, a flag saying whether that register might point
-  at the current stack frame or to memory.
-\end{itemize}
-
-The ``current stack frame'' here is defined to be the region of memory
-between \verb|RSP-128| and the value of \verb|RSP| at the time of the
-immediately enclosing \verb|call| instruction\footnote{128 bytes is
-the size of stack red zone, which effectively forms part of the
-current stack frame.}\editorial{talk about effects of tail
-calls}\editorial{i.e. current RSP versus RSP at time of last call;
-could maybe be clearer about that.}.  The tool to check this analysis
-has several parts:
-
-\begin{itemize}
-\item
-  It must track the extent of the current frame; this is
-  straightforward, since the analysis can always see the value
-  of \verb|RSP| and all \verb|call| and \verb|ret| instructions.
-\item
-  It checks, at the start of each instruction, whether any registers
-  currently point into the current frame, and, if so, whether that is
-  allowed by the instruction attribute table.
-\item
-  It attempts to track directly whether there exist any pointers to
-  the current frame, whether in the frame or outside of it.  This part
-  of the analysis assumes that there are no pointers into a frame when
-  it is created at the start of a function and then monitors all
-  stores to detect when such pointers are created.  This information
-  then allows the analysis to directly check the
-  might-be-pointer-to-frame flags in the instruction attribute table.
-\item
-  That assumption holds for most well-behaved programs, but is not
-  absolutely guaranteed.  The dynamic analysis therefore also checks
-  all load operations to confirm that they only return pointers to the
-  current stack frame when the static analysis allows the loaded
-  memory to contain pointers to the frame.
-
-  There might, of course, be pointers into the current stack frame
-  which are never loaded, but (assuming there are no cross-thread
-  stack accesses) they can never be dereferenced, and so don't
-  actually matter.
-\end{itemize}
-
-This flagged a number of minor problems with the analysis:
-
-\begin{itemize}
-\item
-  Pointers to the stack frame can sometimes be left behind in dead
-  registers, and in particular in call-clobbered registers after
-  function calls.  Correct programs which conform to the ABI will
-  never make use of the values of these registers, and the static
-  analysis makes use of that fact, but it is hard for a dynamic
-  analysis to determine when a register is dead.  The solution is
-  simple: have the dynamic analysis overwrite all such registers with
-  poison values when functions return.  If the program does conform to
-  the ABI then this will have no effect, but if it makes use of the
-  theoretically-dead values then its behaviour will change.  I
-  repeated the analysis with three different poison values: zero, a
-  small number which was not a valid pointer, and a large value which
-  was not a valid pointer.
-
-  This revealed a single place which did not conform to the ABI in the
-  desired way: glibc's internal pthread locking functions are
-  guaranteed to never clobber \verb|RSI|, and glibc's syscall stubs
-  make use of this in a number of places\editorial{Cite, maybe?  It'll
-  be pointing at source rather than a document saying exactly what's
-  going on, but at least it's something.}.  This particular static
-  analysis is only applied to the program's main binary, and not any
-  of the libraries which it is dynamically linked against, and so this
-  is not a particular problem.
-
-\item
-  \verb|alloca|
-
-\begin{verbatim}
->   9e56c7:       48 29 c4                sub    %rax,%rsp
->   9e56ca:       48 89 e0                mov    %rsp,%rax
->   9e56cd:       48 83 c0 0f             add    $0xf,%rax
->   9e56d1:       48 c1 e8 04             shr    $0x4,%rax
->   9e56d5:       48 c1 e0 04             shl    $0x4,%rax
->   9e56d9:       48 89 45 a8             mov    %rax,-0x58(%rbp)
-\end{verbatim}
-
-\todo{Crap, my argument for why this doesn't matter doesn't actually work.  Need to rethink that one.}
-\end{itemize}
-
-\subsubsection{RBP offset}
-
-The main analysis removes references to the function frame pointer, if
-present, by replacing them with references to the stack pointer.  This
-relies on a static analysis which determines, for each instruction in
-the program, the offset from the \verb|RBP| register to the stack
-pointer (assuming that that's a constant).  This dynamic analysis
-checks, at the end of every instruction, that the actual offset
-matches the value in the database.  This analysis did not reveal any
-important bugs in the algorithm\footnote{Beyond a few implementation
-  errors which are fixed in the code used for this evaluation.}.
-
-\subsubsection{CFG generation}
-
-For the bug-detecting mode to hope to detect every bug, the CFG
-generation process must be able to generate CFGs which represent all
-dynamic fragments of the program of the desired length which either
-end in a memory-accessing instruction (for probe CFGs) or start and
-end with a store (for store CFGs).  This dynamic analysis attempts to
-validate that by capturing a large pool of dynamic traces from the
-program and then checking that CFG generator can generate the trace.
-Ideally, it would capture every such trace from an execution, but that
-has sufficiently high performance overhead that it would be difficult
-to exercise a broad cross-section of the program's behaviour while
-running such an analysis.  Instead, the analysis applies several
-filters to try to obtain a reasonably representative sample:
-
-\begin{itemize}
-\item
-  Only traces which end in a non-stack memory-accessing instruction
-  are considered.
-\item
-  Amongst those samples, only one in a thousand is used.  This is
-  implemented by only sampling if a randomly-generated number is
-  congruent to zero modulo a thousand, rather than taking every
-  thousandth trace, so as to avoid possible aliasing effects with the
-  program's structure.
-\item
-  I attempt to increase the likelihood of rare traces being sampled
-  using a bloom counter table.  This consists of 131072 saturating
-  7-bit counters.  When the dynamic analysis is determining whether to
-  sample a given trace, it hashes it to select one of these counters,
-  then generates a random number, and only takes the trace if the
-  random number modulo the counter plus one is zero.  It then
-  increments the counter.  This helps to increase the likelihood of
-  moderately rare traces being included in the final sample.
-\end{itemize}
-
-The end result of this dynamic analysis is a large set of short
-fragments of the program's execution.  Each such fragment is
-considered in isolation, and appropriate\editorial{?} instructions
-from it fed into the CFG generating algorithm.  The CFG can then be
-checked to ensure that it includes the desired trace.  This analysis
-did not find any problems with the algorithm.
-
-\todo{Should really try to do something to convince myself that the
-  sanity checker works.  Collecting more stats on the trace pool
-  generated would be good, as would some sensitisation on those
-  parameters.}
-
-\subsection{Dynamic alias analysis}
-
-This is pretty much what it is; not sure there's a great deal to say
-here.  If I had infinite time I could hack up gcc to try to do a
-similar analysis at the source level, but I don't, so I can't.  Only
-real alternative is to look at the convergence rate.
-
-Things to look at:
-
-\begin{itemize}
-\item How fast we add new edges to the aliasing table while running
-  the analysis, as a function of time.  You'd hope that this will fall
-  very quickly as the analysis runs.
-\item mysqld has a reasonably good test harness.  It'd be interesting
-  to try running each of the tests in that in some suitable order and
-  see how many of them you need in order to get good coverage.
-  Probably want to try to normalise that against the actual number of
-  distinct instructions run to make it fair.
-\item Two things are worth looking at here: the rate at which we add
-  edges in toto, and the rate at which we add edges between
-  already-known instructions.  The latter is much more important than
-  the former, because the first one includes discovering new code for
-  the first time, and it's pretty forgivable to not include
-  instructions which are never run, whereas the latter is new
-  interactions between code which we already know about.
-\end{itemize}
-
-\subsection{{\STateMachine} simplification}
-
-\todo{The problem with this stuff is that there's a lot of machinery
-  involved, but the punch line is just that everything works fine,
-  which is somewhat unsatisfying.}
-
-\todo{Also, I've not run this in ages, so I should probably do that
-  again and see if it turns up anything interesting.}
-
-The {\StateMachine} simplification passes are both complicated and
-critical to SLI's correctness; validating that they are correct is
-therefore important.  To do so, I collected a selection of pre- and
-post-simplification machines from a number of runs, evaluated them in
-identical initial configurations, and confirmed that they produced
-identical results.  Generating the initial conditions is non-trivial.
-At first I simply generated them completely at random, but found that
-it required an unreasonably large number of such random configurations
-to achieve good coverage of the \StateMachines' behaviour.  This is
-because the vast majority of paths through most machines ultimately
-report that the machine does not crash, and so a uniform random
-sampling of initial configurations will overwhelmingly sample
-configurations in which the bug of interest does not reproduce.  This
-is unfortunate, as the situations in which the bug does reproduce tend
-to be more interesting.
-
-It is worth considering this is slightly more detail.  A reasonably
-typical \StateMachine might look like this:
-
-\begin{verbatim}
-if (rax == 0) survive();
-if (!BadPtr(rax)) survive();
-crash();
-\end{verbatim}
-
-Here, \verb|rax| is a 64-bit value, and so if its value is randomly
-chosen then the {\StateMachine} is highly unlikely to make it past the
-first state, which would not constitute a good test.  Of course, it
-would be possible to bias the distribution to produce zeroes more
-often than other values, and hence avoid this issue.  This works, in
-the sense that it makes it easy to generate an effective test suite
-for this \StateMachine, but is lacking in two important respects.
-First, it is unclear what other special cases might be needed;
-generating zero is an obvious thing to test, as is generating one or
-minus one, but what if there were a bug in the optimiser when
-\verb|rax| is near to the top of its range?  or has only bits in the
-top byte set?  or is a large prime number?  These questions would make
-it difficult to have faith that such an approach had generated a
-reasonably complete set of initial configurations for testing.
-Second, considering each register independently is inherently
-inefficient, due to the common structure of \StateMachines.  Consider
-this machine, for example:
-
-\begin{verbatim}
-if (rax % 2 == 0) survive();
-if (rbx % 2 == 0) survive();
-if (rcx % 2 == 0) survive();
-if (rdx % 2 == 0) survive();
-crash();
-\end{verbatim}
-
-This reflects the common structure of \StateMachines, in which a long
-prefix of initial tests capture ways in which the program might avoid
-running the code which is suspected of having a bug before the
-interesting part of the \StateMachine starts.  One reasonable set of
-initial configurations might be:
-
-\begin{itemize}
-\item $rax = 0$
-\item $rax = 1$, $rbx = 0$
-\item $rax = 1$, $rbx = 1$, $rcx = 0$
-\item $rax = 1$, $rbx = 1$, $rcx = 1$, $rdx = 0$
-\item $rax = 1$, $rbx = 1$, $rcx = 1$, $rdx = 1$
-\end{itemize}
-
-A total of five initial configurations; one for each possible final
-state.  A randomly-generated configuration, by contrast, will have a
-one in sixteen chance of generating each final state, and will require
-an average of a little over twenty-five input states in order to cover
-every final state, a factor of five worse than the desired
-set\editorial{25 from some Python simulations; not sure it's worth
-  trying to justify it further.}.  The difference will be larger in
-more complex machines, and so coverage will be worse for them, but
-those are precisely the ones which are most likely to reveal optimiser
-bugs.
-
-I therefore used a slightly more complicated scheme for generating the
-initial configurations:
-
-\begin{itemize}
-\item[1] First, execute the unoptimised machine in the symbolic
-  execution engine, collecting all of the path constraints generated.
-  There will be one such constraint for each path (loosely defined)
-  which the symbolic execution engine finds through the machine,
-  whether that path ultimately crashes, survives, or escapes (due to
-  e.g. dereferencing a bad pointer).
-\item[2] Pick a constraint which is not satisfied by any
-  configuration currently present in the initial configuration set.
-  Attempt to generate a configuration which satisfies it and add it to
-  the set.  If there are no constraints which are never satisfied,
-  pick one which is satisfied in every initial configuration and try
-  to generate a configuration which does not satisfy it.
-\item[3] Repeat 2 until every constraint is satisfied in at least one
-  initial configuration and not satisfied in at least one other
-  configuration.
-\item[4] Execute the optimised machine in the symbolic execution
-  engine, generating another set of path constraints, and then try to
-  generate satisfying and unsatisfying initial configurations for them
-  in precisely the same way.
-\end{itemize}
-
-Generating a configuration which satisfies a particular constraint is
-itself non-trivial.  The approach I adopted there was as follows:
-
-\begin{itemize}
-\item First, treat the constraint as an expression over boolean
-  variables.  For instance, the constraint $x < 5 || x > 73$ would be
-  treated as $a || b$, with a note that $a = x < 5$ and $b = x > 73$.
-\item Generate a satisfier for this boolean expression using a simple
-  brute-force satisfiability checker.  This will produce a
-  configuration of the boolean variables, assigning each to one of
-  true, false, or doesn't-matter, which causes the original constraint
-  to be true.
-\item Attempt to generate concrete values for all of the original
-  constraint's variables such that all of the boolean variables have
-  appropriate values.  Some of these values will be provided by simple
-  heuristics (e.g. to make $x > k$ be true, where $k$ has a known
-  value, try setting $x$ to $k+1$), but most will be randomly
-  generated with a retry if the results do not make the boolean value
-  have the desired results.  Even when values have to be randomly
-  generated, being able to treat most boolean variables independently
-  most of the time reduces the number of attempts necessary by a
-  useful amount.
-\item If no concrete values have been found which satisfy the boolean
-  variable configuration after a certain number of random attempts,
-  look for another configuration of boolean variables which satisfies
-  the path constraint.
-\item If there are no more such configurations give up and report an
-  error.
-\end{itemize}
-
-The result is a set of initial configurations which will, with
-reasonably high probability, exercise a useful selection of
-\StateMachine behaviour.  The configurations can contain the following
-items:
-
-\begin{itemize}
-\item Initial values of some registers\footnote{For SSA {\StateMachines}
-  these will be the only values those registers ever have, but for
-  non-SSA {\StateMachines} the value might change during
-  interpretation.}.
-\item Partial contents of memory, in the form of a partial mapping
-  from concrete addresses to concrete values.
-\item A list of bad addresses.  These are locations for which
-  $BadPtr(x)$ must return true.  Any location not in this list is
-  assumed to be valid memory, even if it isn't assigned a value.
-\item A set of $EntryPoint$ and $ControlFlow$ expressions which
-  are to be treated as true.
-\end{itemize}
-
-The configurations (hopefully) contain all of the parts of
-{\StateMachine} state which might affect the final result, but do not
-necessarily contain enough information to actually interpret the
-{\StateMachines} to completion.  For example, many {\StateMachines}
-will access locations on the stack, and so interpreting them will
-require the value of the stack pointer, but it is very rare for their
-final result to depend on the precise value of that pointer, and so
-the symbolic execution engine will not generate any constraints on
-that value and the initial configurations will not contain any value
-for it.  If the validator encounters any such unspecified values
-during {\StateMachine} interpretation it simply generates new random
-values for the relevant variables.  It then runs each initial state
-100 times, with different random values each time, and checks that the
-{\StateMachines} match for each one.
-
-One final subtlety is what to do with what to do with {\StateMachines}
-which escape by, for instance, failing an assertion.  This indicates
-that some part of the analysis has determined that the configuration
-is not interesting, for some reason, \todo{There's some special
-handling here to do with retrying escaping machines, but I don't
-remember why I did it that way any more.  Think harder.  Also need to
-grab a whole bunch of statistics on what this actually does so as to
-convince people that it actually gets decent test coverage.}
-
-I ran the resulting tool on a selection of {\StateMachines} which were
-generated while analysing mysql.  It found a number of implementation
-bugs, which are now fixed, but did not reveal any fundamental problems
-with any of the algorithms involved.
