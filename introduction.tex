@@ -1,14 +1,3 @@
-\todo{Need to think about names of things.  In particular, it'd be a
-  good idea to have different names for the \emph{technique} and the
-  \emph{implementation}; the current text conflates them a bit, and
-  giving them different names might make that a bit more clear.  I've
-  used \technique{} and \implementation{} in a few places as
-  placeholders.}
-
-\todo{The main thing missing here is a well-defined thesis.  Need to come
-  up with one pretty damn quickly.}
-
-
 \section{Motivation and overview}
 \label{sect:intro:overview}
 
@@ -29,18 +18,17 @@ concurrency bugs.
     [block/.style = rectangle,draw,fill=blue!20,
       line/.style = draw, -latex']
     \node [block,draw] (dynamic) {Running program};
-    \node [block,draw, below = of dynamic] (model) {\introduction{Program model}};
-    \node [block,draw, below = of model] (statemachines) {\introduction{\StateMachines}};
-    \node [block,draw, below = of statemachines] (candidates) {\introduction{Candidate bugs}};
+    \node [block,draw, below = of dynamic] (model) {\Gls{programmodel}};
+    \node [block,draw, below = of model] (statemachines) {\STateMachines};
+    \node [block,draw, below = of statemachines] (candidates) {\Glspl{verificationcondition}};
     \node [block,draw, below = of candidates] (repro) {Reproduction};
     \node [block,draw, below = of repro] (fix) {Fixes};
-    \path [line,->] (dynamic) to node [right] {\introduction{Dynamic analysis}} (model);
-    \path [line,->] (model) to node [right] {\introduction{Program abstraction}} (statemachines);
-    \path [line,->] (statemachines.west) to node [left] {\introduction{{\StateMachine} simplification}} (statemachines.west);
-    \path [line,->] (statemachines) to node [right] {\introduction{Symbolic execution}} (candidates);
-    \path [line,->] (candidates) to node [right] {\introduction{Bug enforcers}} (repro);
-    \path [line,->] (dynamic.west) to (repro.west);
-    \path [line,->] (repro) to node [right] {\introduction{Fix generation}} (fix);
+    \path [line,->] (dynamic) to node [right] {Dynamic analysis} (model);
+    \path [line,->] (model) to node [right] {Program abstraction} (statemachines);
+    \path [line,->] (statemachines) to node [right] {Symbolic execution} (candidates);
+    \path [line,->] (candidates) to node [right] {\Glspl{bugenforcer}} (repro);
+    \path [line,->] (dynamic.west) to [bend right=45] (repro.west);
+    \path [line,->] (repro) to node [right] {Fix generation} (fix);
   \end{tikzpicture}
   \caption{Basic pipeline}
 \end{center}
@@ -48,73 +36,23 @@ concurrency bugs.
 \end{figure}
 
 The basic approach is shown in Figure~\ref{fig:basic_pipeline}.  The
-process starts by building a
-\backref{model} of the program's behaviour using \backref{dynamic
-  analysis} (Section~\ref{sect:dynamic_analysis}).  This
-\backref{model} is then used to locate potentially relevant fragments
+process starts by building a \gls{programmodel}, showing how the
+program behaves when it is operating normally, using a combination of
+static and dynamic analyses (\autoref{sect:program_model}).  This
+\gls{programmodel} is then used to locate potentially relevant fragments
 of the program and to build {\StateMachines} which model their
-behaviour (Section~\ref{sect:derive}).  {\Technique} then uses a
-variety of analysis passes to simplify the {\StateMachines} and to
-remove any information which is not relevant to the bug under
-investigation (Section~\ref{sect:simplify}).  These simplified
-{\StateMachines} are then \backref{symbolically executed} to determine
-whether they might exhibit the bug under investigation, and, if so,
-under what circumstances; the results are summarised as a set of
-candidate bugs (Section~\ref{sect:symbolic_execution}).  This set
-usually contains a large number of false positives, and so the next
-step is to prune it back down using \backref{bug enforcers}: special
-schedulers which, when applied to the running program, make it far
-more likely that the bug will reproduce quickly
-(Section~\ref{sect:bug_enforcers}).  Any bugs which do reproduce can
-then be passed to the final \backref{fix generation} phase which
-binary patches the program to introduce synchronisation which
-eliminates the bug (Section~\ref{sect:fix_generation}).
-
-{\Technique} only considers only a subset of concurrency bugs: those
-where one thread, referred to as the ``crashing thread'', is reading
-from shared data structure while another thread, the ``interfering
-thread'', simultaneously modifies it, and these concurrent updates
-cause the crashing thread to crash quickly.  In a little more detail:
-
-\begin{itemize}
-\item The threads must be operating on a data structure located
-  somewhere in shared memory.  The data structure does not need to be
-  in contiguous memory, and does not need to correspond to any
-  higher-level concept of a data structure such as a C++
-  \texttt{class} or \texttt{struct}, but it does need to be in
-  process-accessible memory.  Structures on the filesystem, for
-  instance, are not considered.
-\item The crashing thread must crash in a detectable way.  The
-  simplest case is a hardware-detected fault such as referencing bad
-  memory or dividing by zero, but more complex types of fault could
-  also be supported, if a suitable detector can be implemented.
-  {\Implementation} includes detectors for hardware-detected faults,
-  assertion-failure type errors, and some types of double-free error.
-  \todo{Should maybe have a ref here?}
-\item The crash must be caused by the concurrent updates.  There must
-  be some regions of the crashing and interfering threads such that
-  running those regions in parallel can crash but running them
-  atomically, in either order, will not.
-\item The crashing thread must crash quickly.  {\Technique} uses a
-  finite \introduction{analysis window} \introduction{$\alpha$} and
-  will only consider reordering concurrent operations which occur at
-  most \backref{$\alpha$} instructions before the crash.  Bugs which
-  require knowledge of the program behaviour beyond that window cannot
-  be analysed.  Equivalently, {\technique} only considers bugs which
-  can be fixed by small critical sections containing fewer than
-  $\alpha$ dynamic instructions.  \backref{$\alpha$} can, in
-  principle, be arbitrarily large, but computational constraints mean
-  that in practice it will be limited to a few dozen to a few hundred
-  instructions, depending on the program to be analysed and how much
-  information about the bug is available before analysis starts.
-\end{itemize}
-
-This clearly does not include every possible type of concurrent bug
-(it does not, for instance, include any but the most trivial deadlock
-bugs, and complicated memory corruption bugs are difficult to handle),
-but it does include some interesting bugs.
-Section~\ref{sect:future_work:generalising} considers some possible
-ways of relaxing some of these restrictions.
+behaviour (\autoref{sect:derive}).  These {\StateMachines} are
+then \backref{symbolically executed} to determine whether they might
+exhibit the bug under investigation, and, if so, under what
+circumstances; the results are summarised as a set
+of \glspl{verificationcondition}.  This set usually contains a large
+number of false positives, and so the next step is to prune it back
+down using \glspl{bugenforcer}: special schedulers which, when applied
+to the running program, make it far more likely that the bug will
+reproduce quickly (\autoref{sect:bug_enforcers}).  Any bugs which do
+reproduce can then be passed to the final \backref{fix generation}
+phase which binary patches the program to introduce synchronisation
+which eliminates the bug (\autoref{sect:fix_generation}).
 
 One important decision which must be made when designing this kind of
 tool is how much higher-level semantic information to use, and in
@@ -158,44 +96,107 @@ unknown to the author before writing the tool), and a demonstration
 that the analysis scales to realistically large programs with
 acceptable computational cost.  I also show that the fixes generated
 often have sufficiently low overhead to be useful; usually a few
-percent in more realistic tests.  Finally, I give the results of a
-small set of experiments intended to show that \implementation{} is a
-correct implementation of \technique{}, so that the other results are
-likely to reflect true properties of {\technique} and not simply bugs
-in {\implementation}.
+percent in more realistic tests.
 
-\section{Memory model}
+\section{Execution model and type of bug considered}
 
-{\Technique} assumes that the processor implements a strongly-ordered
-memory model, so that accesses issued by a single are never reordered.
-It therefore cannot precisely model the behaviour of any processor in
-widespread use today.  On the other hand, this is a reasonable
-approximation for the behaviour of the widely-used AMD64
-architecture\needCite{}, where memory reordering is a rare and highly
-constrained event.  This limitation is not, therefore, completely
-crippling.
+{\Technique} considers only a subset of concurrency bugs: those where
+one thread, referred to as the ``crashing thread'', is reading from
+shared data structure while another thread, the ``interfering
+thread'', simultaneously modifies it, and these concurrent updates
+cause the crashing thread to crash quickly.  In a little more detail:
 
-{\Technique} also assumes that the program does not make use of any
-unaligned memory accesses.  For many architectures this would be a
-sound assumption, as most processors do not support such accesses;
-even where they are supported, they are generally very slow, and so
-most programs will avoid them wherever possible, and so this is not a
-major source of unsoundness.
+\begin{itemize}
+\item The threads must be operating on a data structure located
+  somewhere in shared memory.  The data structure does not need to be
+  in contiguous memory, and does not need to correspond to any
+  higher-level concept of a data structure such as a C++
+  \texttt{class} or \texttt{struct}, but it does need to be in
+  process-accessible memory.  Structures on the filesystem, for
+  instance, are not considered.
+\item The crashing thread must crash in a detectable way.  The
+  simplest case is a hardware-detected fault such as referencing bad
+  memory or dividing by zero, but more complex types of fault could
+  also be supported, if a suitable detector can be implemented.
+  {\Implementation} includes detectors for hardware-detected faults,
+  assertion-failure type errors, and some types of double-free error.
+  \todo{Should maybe have a ref here?}
+\item The crash must be caused by the concurrent updates.  There must
+  be some regions of the crashing and interfering threads such that
+  running those regions in parallel can crash but running them
+  atomically, in either order, will not.
+\item The crashing thread must crash quickly.  {\Technique} uses a
+  finite \introduction{analysis window} \introduction{$\alpha$} and
+  will only consider reordering concurrent operations which occur at
+  most \backref{$\alpha$} instructions before the crash.  Bugs which
+  require knowledge of the program behaviour beyond that window cannot
+  be analysed.  Equivalently, {\technique} only considers bugs which
+  can be fixed by small critical sections containing fewer than
+  $\alpha$ dynamic instructions.  \backref{$\alpha$} can, in
+  principle, be arbitrarily large, but computational constraints mean
+  that in practice it will be limited to a few dozen to a few hundred
+  instructions, depending on the program to be analysed and how much
+  information about the bug is available before analysis starts.
+\end{itemize}
 
-\todo{I should maybe mention somewhere that I'm ignoring signal
-  handlers?}
+This clearly does not include every possible type of concurrent bug
+(it does not, for instance, include any but the most trivial deadlock
+bugs, and complicated memory corruption bugs are difficult to handle),
+but it does include some interesting bugs.
+Section~\ref{sect:future_work:generalising} considers some possible
+ways of relaxing some of these restrictions.
 
-\todo{Also assumes a simple accessible/not accessible model of memory
-  protection, rather than considering readable/writable/executable
-  separately.}
+In addition to restricting the class of bugs, {\technique} also
+somewhat restricts the class of programs and execution environments
+which it considers.  In particular, it uses a somewhat restrictive
+memory model:
 
-\todo{And I assume that I know about all of the things which might
-  update a given memory location i.e. no \texttt{MAP\_SHARED} etc.}
+\begin{itemize}
+\item It assumes that the processor implements a strongly-ordered
+  memory model, so that accesses issued by a single are never
+  reordered.  It therefore cannot precisely model the behaviour of any
+  processor in widespread use today.  On the other hand, this is a
+  reasonable approximation for the behaviour of the widely-used AMD64
+  architecture\needCite{}, where memory reordering is a rare and
+  highly constrained event.  This limitation is not, therefore,
+  completely crippling.
+
+\item {\Technique} also assumes that the program does not make use of
+  any unaligned memory accesses.  For many architectures this would be
+  a sound assumption, as most processors do not support such accesses.
+  Even where they are supported, they are generally very slow, and so
+  most programs will avoid them wherever possible.  This is therefore
+  not a major limitation.
+
+\item {\Technique} assumes that the only thing which could possibly
+  modify memory is the program itself, and system calls invoked by the
+  program.  It does not consider, for instance, races which are
+  mediated through inter-process shared memory, or the effects of APIs
+  like \texttt{ptrace}.
+
+\item Similarly, it uses a very simple model of the program's address
+  space in which every address is either fully accessible or
+  completely inaccessible.  Read-only or no-execute memory\needCite{},
+  for instance, is not considered.
+
+\item The only type of concurrency considered is multi-threading.
+  {\Technique} does not, for instance, consider the effects of
+  asynchronous signal handlers or other upcall mechanisms.
+\end{itemize}
+
+These assumptions are clearly not trivial, and do exclude some
+interesting behaviour.  On the other hand, they are not excessively
+strong, either, and much interesting concurrency behaviour will still
+fall within these parameters.
+
+\section{Background}
+
+\todo{I'm not entirely convinced this section adds all that much.}
 
 \subsection{Program slicing}
 
-Program slicing\editorial{Cite Weiser 1984} is a family of techniques
-for extracting the parts of a program which are relevant to some
+Program slicing\cite{Weiser1981} is a family of techniques for
+extracting the parts of a program which are relevant to some
 particular behaviour.  A slice might, for instance, include all
 statements which might be involved in computing the value of some
 variable, or all of those which modify some data structure.  The core
@@ -228,8 +229,28 @@ investigating cross-thread behaviour.
 
 \subsection{The happens-before graph}
 
-\todo{I define an HB graph to be a DAG whose nodes are program events
-  and where there's an edge from A to B if A happens before B.  I
-  thought that was the standard definition, but Steve has a different
-  and more complicated one.  I should chase that to make sure I'm
-  using the term correctly.}
+A happens-before graph\needCite{} is a directed acyclic graph whose
+vertices are events in the program execution and which contains an
+edge from event A to event B if A is ordered before B by some form of
+synchronisation or communication operation.  They are usually used to
+describe the ordering of operations in weakly-ordered concurrent
+systems, where there is not guaranteed to be a single total ordering
+of all events, as they can conveniently express the possibility of two
+events being unordered with respect to each other.  They are a natural
+way of describing the memory ordering associated with a particular
+concurrency bug, and it is in that capacity that {\technique} uses
+them.
+
+There is a slight conceptual subtlety here.  As discussed above,
+{\technique} assumes that the processor implements a strongly ordered
+memory model, so that memory accesses form a total order.  The
+happens-before graph for a single execution is therefore a trivial
+straight line.  Representing this with a full happens-before graph is
+needless complexity.  The advantage of using a happens-before graph is
+that it allows certain aspects of the ordering to be discarded, so
+that several total orderings can be considered at the same time with
+no additional work.  In other words, a {\technique} happens-before
+graph represents a family of total orderings, rather than a single
+partial ordering.  This makes very little practical difference.
+
+

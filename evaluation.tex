@@ -13,7 +13,6 @@
   return a buffer which isn't full of zeroes.
 \item DataCollider calibration experiments.  In fact, all the DC
   experiments.
-\item all\_md\_perf
 \item Re-do labyrinth experiments and actually track the results.
 \item Re-do Bayes with current version of tool.
 \item Re-do pbzip2 and collect numbers
@@ -1458,17 +1457,100 @@ be an interesting reference point.
 
 \subsection{Summary tables}
 
-\todo{Things to include here:
-  \begin{itemize}
-  \item Time taken to do the static analysis phase.
-  \item Time taken to do the main analysis pass with W isolation.
-  \item Time taken to do the main analysis pass without W isolation.
-  \item Time taken to build the enforcer.
-  \item CDFs showing how long it takes to repro without an enforcer,
-    with an enforcer, and under the DC-like tool.
-  \item Performance overhead with a fix loaded.
-  \end{itemize}
-}
+I now give some a quantitative characterisation of {\technique}'s
+performance on these test programs.  This includes CDFs of the time
+taken to reproduce the various bugs, in
+\autoref{fig:eval:summary_cdfs}, the time taken to perform the various
+analysis steps, in \autoref{table:eval:summary_analysis_times}, and
+the performance effects of the fixes, in
+\autoref{table:eval:fix_overheads}.  The important points here are:
+
+\begin{itemize}
+\item {\Technique}'s enforcers make these bugs reproduce more quickly,
+  often much more quickly.
+\item The various analysis passes are generally very fast, usually
+  taking a few hundred milliseconds.  The most time-consuming program
+  to analyse is complex\_hb\_17, which takes 1.711 seconds to analyse.
+\item The fixes which {\technique} generates for these bugs have
+  tolerable overhead, generally from a few tens of percent to a small
+  factor.  More realistic tests would probably shower overheads still.
+\end{itemize}
+
+In other words, {\technique} is an effective and efficient technique
+for both finding and fixing bugs in small programs.  The next few
+sections will explore how well it scales up to more complex programs.
+
+\input{eval/artificial_bugs/crash_time_cdfs}
+
+\begin{sidewaystable}
+  \begin{tabular}{lllll}
+    Test name                      & Static analysis & Generating verification conditions & Building the enforcers & Building the fixes \\
+    simple\_toctou                 & $0.571 \pm 0.060$ &  $0.195 \pm 0.018$ &  $0.126 \pm 0.006$ &  $0.142 \pm 0.005$\\
+    indexed\_toctou                & $0.604 \pm 0.089$ &  $0.275 \pm 0.004$ &  $0.146 \pm 0.005$ &  $0.142 \pm 0.004$\\
+    crash\_indexed\_toctou         & $0.566 \pm 0.068$ &  $0.289 \pm 0.009$ &  $0.149 \pm 0.007$ &  $0.138 \pm 0.004$\\
+    interfering\_indexed\_toctou   & $0.624 \pm 0.055$ &  $0.288 \pm 0.008$ &  $0.149 \pm 0.007$ &  $0.142 \pm 0.010$\\
+    context                        & $0.682 \pm 0.058$ &  $0.233 \pm 0.005$ &  $0.132 \pm 0.007$ &  $0.139 \pm 0.005$\\
+    cross\_function                & $0.669 \pm 0.036$ &  $0.186 \pm 0.004$ &  $0.132 \pm 0.005$ &  $0.138 \pm 0.006$\\
+    double\_free                   & $0.447 \pm 0.029$ &  $0.186 \pm 0.005$ &  $0.130 \pm 0.002$ &  $0.135 \pm 0.003$\\
+    multi\_variable                & $0.792 \pm 0.115$ &  $0.228 \pm 0.006$ &  $0.157 \pm 0.004$ &  $0.135 \pm 0.004$\\
+    write\_to\_read                & $0.439 \pm 0.035$ &  $0.182 \pm 0.003$ &  $0.125 \pm 0.004$ &  $0.135 \pm 0.003$\\
+    broken\_publish                & $0.521 \pm 0.037$ &  $0.181 \pm 0.004$ &  $0.123 \pm 0.005$ &  $0.139 \pm 0.004$\\
+    complex\_hb\_5                 & $0.426 \pm 0.011$ &  $0.212 \pm 0.006$ &  $0.149 \pm 0.007$ &  $0.141 \pm 0.008$\\
+    complex\_hb\_11                & $0.457 \pm 0.021$ &  $0.343 \pm 0.005$ &  $0.162 \pm 0.004$ &  $0.141 \pm 0.005$\\
+    complex\_hb\_17                & $0.451 \pm 0.025$ &  $1.711 \pm 0.012$ &  $0.200 \pm 0.003$ &  $0.140 \pm 0.004$\\
+    existing\_sync\_visible        & $0.566 \pm 0.020$ &  $0.156 \pm 0.005$ & \multicolumn{2}{c}{\emph{Nothing generated}} \\
+    existing\_sync\_invisible      & $0.572 \pm 0.023$ &  $0.206 \pm 0.006$ &  $0.136 \pm 0.003$ &  $0.140 \pm 0.004$\\
+    multi\_bugs                    & $0.625 \pm 0.024$ &  $0.288 \pm 0.005$ & \\
+    \hspace{5mm}Bug 1 & & &  $0.161 \pm 0.006$ &  $0.136 \pm 0.003$\\
+    \hspace{5mm}Bug 2 & & &  $0.143 \pm 0.006$ &  $0.140 \pm 0.005$\\
+    multi\_threads                 & $0.562 \pm 0.025$ &  $0.232 \pm 0.002$ &  $0.160 \pm 0.022$ &  $0.142 \pm 0.009$\\
+    w\_isolation                   & $0.509 \pm 0.031$ &  $0.143 \pm 0.004$ &  $0.117 \pm 0.003$ &  $0.137 \pm 0.005$\\
+    glibc                          & $0.337 \pm 0.030$ &  $0.193 \pm 0.004$ &  $0.128 \pm 0.004$ &  $0.134 \pm 0.003$\\
+  \end{tabular}
+  \caption{Time taken in the various analysis phases for the
+    artificial bugs.  Times are given as mean and standard deviation
+    of ten runs.  The W isolation assumption was enabled for all tests
+    except w\_isolation.}
+  \label{table:eval:summary_analysis_times}
+\end{sidewaystable}
+
+\begin{sidewaystable}
+  \begin{tabular}{lllll}
+    \multicolumn{2}{l}{Test name} & Performance without fix & Performance with fix & Ratio\\
+  \multicolumn{2}{l}{simple\_toctou                }  & $352687762.100 \pm 100802.825$ & $95213282.500 \pm 46110.500$ & 0.27\\
+  \multicolumn{2}{l}{indexed\_toctou               } \\
+  & \multicolumn{1}{l}{Crashing thread} & $9445195.400 \pm 615047.973$ & $11712742.400 \pm 3691545.455$ & 1.24\\
+  & \multicolumn{1}{l}{Interfering thread} & $8444474.800 \pm 588242.365$ & $9036280.700 \pm 2461767.335$ & 1.07\\
+  \multicolumn{2}{l}{crash\_indexed\_toctou        }  & $156764723.500 \pm 40045.526$ & $69828135.100 \pm 90795.871$ & 0.45\\
+  \multicolumn{2}{l}{interfering\_indexed\_toctou  }  & $71470768.300 \pm 176044.183$ & $45010675.100 \pm 316856.123$ & 0.63\\
+  \multicolumn{2}{l}{context                       }  & $147893175.900 \pm 2716478.716$ & $118762469.200 \pm 3049120.604$ & 0.80\\
+  \multicolumn{2}{l}{double\_free                  }  & $17777.900 \pm 574.489$ & $18368.100 \pm 677.005$ & 1.03\\
+  \multicolumn{2}{l}{write\_to\_read               }  & $490670660.000 \pm 7230567.261$ & $160358763.800 \pm 29886378.464$ & 0.33\\
+  \multicolumn{2}{l}{broken\_publish               } \\
+  & \multicolumn{1}{l}{Crashing thread} & $3326395.000 \pm 266102.322$ & $2309002.857 \pm 645792.180$ & 0.69\\
+  & \multicolumn{1}{l}{Interfering thread} & $3326395.000 \pm 266102.322$ & $2309002.857 \pm 645792.180$ & 0.69\\
+  \multicolumn{2}{l}{complex\_hb\_5                } \\
+  & \multicolumn{1}{l}{Crashing thread} & $53933335.700 \pm 4254469.921$ & $39369897.400 \pm 2275171.662$ & 0.73\\
+  & \multicolumn{1}{l}{Interfering thread} & $52113174.800 \pm 1420470.166$ & $26558298.200 \pm 1612337.510$ & 0.51\\
+  \multicolumn{2}{l}{complex\_hb\_11               } \\
+  & \multicolumn{1}{l}{Crashing thread} & $42217355.500 \pm 871097.124$ & $9212455.500 \pm 2241103.994$ & 0.22\\
+  & \multicolumn{1}{l}{Interfering thread} & $42033609.400 \pm 871081.176$ & $13976596.300 \pm 2186328.234$ & 0.33\\
+  \multicolumn{2}{l}{complex\_hb\_17               } \\
+  & \multicolumn{1}{l}{Crashing thread} & $85021419.200 \pm 47700627.628$ & $38137153.700 \pm 2763703.844$ & 0.45\\
+  & \multicolumn{1}{l}{Interfering thread} & $44493863.000 \pm 14960420.480$ & $28501866.400 \pm 2691108.078$ & 0.64\\
+  \multicolumn{2}{l}{existing\_sync\_invisible     }  & $147050783.750 \pm 46761.948$ & $68040702.100 \pm 309415.528$ & 0.46\\
+  \multicolumn{2}{l}{multi\_threads                } \\
+  & \multicolumn{1}{l}{Crashing thread} & $7470682.900 \pm 120327.951$ & $7240730.600 \pm 88753.993$ & 0.97\\
+  & \multicolumn{1}{l}{Interfering thread} & $7126278.700 \pm 118363.226$ & $7127980.600 \pm 75767.339$ & 1.00\\
+  \end{tabular}
+  \todo{Need to re-run these experiments and then apply sensible rounding.}
+  \caption{Performance overheads of automatically-generated fixes,
+    measured in loop iterations per second.  All numbers are mean and
+    standard deviation of ten runs, with crashing runs repeated.  Test
+    programs whose performance is dominated by the test harnes delays
+    are not shown.}
+  \label{table:eval:fix_overheads}
+\end{sidewaystable}
 
 \section{Semi-artificial bugs}
 \label{sect:eval:semiartificial}
@@ -1480,6 +1562,9 @@ programs from the STAMP benchmark suite\needCite{}.
 
 \subsection{A kernel of a real bug (glibc)}
 \label{sect:eval:glibc}
+
+\todo{I'm tempted to treat this as an artificial bug instead of a
+  semi-artificial one.}
 
 glibc is a kernel of glibc bug 2644 \cite{glibc2644}, which affected
 versions of glibc up to 2.5 and could lead to a crash if multiple

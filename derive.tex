@@ -54,7 +54,6 @@ machine code.  They have a number of important properties:
   possible ways of removing this restriction.
 \end{itemize}
 
-\todo{Redundant with background section on program slicing.}
 {\STateMachines} are in many respects similar to executable program
 slices of the original program, with the key difference that, unlike a
 program slice, a {\StateMachine} is not expressed in the same language
@@ -67,18 +66,18 @@ convenient than more conventional source-level program
 slices\editorial{Should maybe have a forward ref here?}.
 
 A somewhat closer analogy is with the abstract models commonly used in
-formal verification systems such as Promela\needCite{}.  The
+formal verification systems such as Promela\cite{Holzmann1991}.  The
 difference here is in the semantic structure of the program to be
 modelled: {\technique} models machine-code programs, and hence has no
 knowledge of higher-level constructs such as variables, arrays, or
-compound structures, whereas tools like Promela or SAL\needCite{} work
-with source code and hence (mostly\editorial{But not always; dig up
-  some references.}) assume that such information is available.  This
-gives them a great deal of analytical power, but makes it more
-difficult for them to model details of the program which are more
-apparent in machine code than source code, and, as already mentioned,
-these details are often important when investigating concurrency
-issues.
+compound structures, whereas tools like Promela or
+SAL\cite{Howard2006} work with source code and hence
+(mostly\editorial{But not always; dig up some references.}) assume
+that such information is available.  This gives them a great deal of
+analytical power, but makes it more difficult for them to model
+details of the program which are more apparent in machine code than
+source code, and, as already mentioned, these details are often
+important when investigating concurrency issues.
 
 \todo{Cite Holzmann and Smith, 2001.}
 
@@ -163,7 +162,7 @@ $\smLoad{expr}$ & The initial value of the memory at location $expr$. \\
  &                              & \state{tmp}  & {\STateMachine} temporary \\
 \\
  & \state{Assert}               & \state{cond} & Boolean BDD     & Note that a given condition is true at a particular point in the {\StateMachine}'s execution. \\
- & $\Phi$                       &              &                 & Implement an SSA $\Phi$ node\needCite. \\
+ & $\Phi$                       &              &                 & Implement an SSA $\Phi$ node\cite{cytron1991}. \\
 \\
  & {\stStartAtomic}          &              &                 & \multirow{2}{12.8cm}{Mark the start and end of atomic blocks, used to constrain the set of schedules which must be considered; see Section~\ref{sect:using:build_cross_product}.} \\
  & {\stEndAtomic}            \\
@@ -195,10 +194,10 @@ operations, simplifying analysis.
 This language is missing one important feature: logical connectives
 such as $\wedge$ or $\vee$.  These operators are not represented using
 the expression language, but are instead encoded into binary decision
-diagrams, or BDDs\needCite{}, which are themselves expressed in terms
-of the expression language.  These BDDs allow much more efficient
-implementations of many common operations than would be possible with
-a scheme based entirely on unconstrained
+diagrams, or BDDs\cite{Brace1990}, which are themselves expressed in
+terms of the expression language.  These BDDs allow much more
+efficient implementations of many common operations than would be
+possible with a scheme based entirely on unconstrained
 expressions\editorial{Proof?}.
 
 \begin{figure}
@@ -1677,7 +1676,7 @@ determine under what circumstances it might do so.
 \todo{Shrink a bit.} The core of the approach is to take a pair of {\StateMachines}, one
 representing the crashing thread and the other representing the
 interfering one, and convert them into a verification
-condition\needCite{} using symbolic execution\needCite{}.  This
+condition\cite{Floyd1967} using symbolic execution\cite{King1976}.  This
 verification condition is satisfiable precisely when running the
 fragments of program represented by the two {\StateMachines} in
 parallel might cause to the bug being investigated to reproduce.  This
@@ -1965,6 +1964,8 @@ The result is that symbolically executing the simplified composite
 {\StateMachines} in turn.  \todo{I can probably find a cite for that
   if I really try.}
 
+\todo{Consider citing Phang, Chang, and Foster from PLDI 2010?}
+
 \todo{I would really like to say at this point that deriving the IC
   atomic constraint is the single most expensive part of the analysis
   pipeline.}
@@ -2008,7 +2009,7 @@ cross-product {\StateMachine}:
   and so can be re-ordered without changing any interesting behaviour.
   The output {\StateMachine} would ideally be constructed in a way
   which avoids forcing later analyses to consider both orderings.  In
-  general, there may be many partial-order redundancies\needCite{}
+  general, there may be many partial-order redundancies\cite{Alur1997}
   between the two {\StateMachines}, and, for efficiency reasons, we
   would like to remove as many of these as possible as early as
   possible.
@@ -3951,8 +3952,8 @@ desired behaviour is correctly implemented, but the non-causal part is
 not.  In practice, the only effect of this is to sometimes cause poor
 performance, by introducing completely redundant delays.  If it were
 necessary, the correct behaviour could be achieved using a
-deterministic replay system\needCite{} and techniques similar to a
-time-travelling debugger\needCite{}, but doing so would almost
+deterministic replay system\cite{Choi1998} and techniques similar to a
+time-travelling debugger\cite{Xu2003}, but doing so would almost
 certainly not fix the performance problems.  I have not investigate
 this at all.\editorial{Lots of weak sentences; rewrite.}
 
@@ -4222,9 +4223,10 @@ that case it is possible that neither rule might be enabled at the
 first instruction in the function.  In that case, {\implementation}
 simply gives up and reports an error.  This is rarely a problem in
 practice, as very few functions are that small without very aggressive
-compiler optimisations, and most compilers, including gcc and
-LLVM\needCite{}, will at high optimisation levels pad functions to a
-multiple of 16 bytes for performance reasons.
+compiler optimisations, and most compilers, including
+gcc\cite[Section~3.10]{Stallman2010} and LLVM\needCite{}, will at high
+optimisation levels pad functions to a multiple of 16 bytes for
+performance reasons.
 
 This problem was also tackled by the AutoPaG project, and the solution
 they developed is similar. \todo{Similar but not the same.  They use a
@@ -4559,10 +4561,10 @@ very frequently.  {\Implementation} includes a mechanism to recompile
 the protected code back into machine code with the necessary
 additional synchronisation added, completely eliminating the run-time
 interpreter.  One productive way of thinking of this is to say that
-the interpreter has been supercompiled\needCite{} or partially
-evaluated\needCite{} so as to fix both the fix plan and the original
-program's machine code, leaving only the original program's external
-inputs unspecified.
+the interpreter has been supercompiled\cite{Sorensen2008} or partially
+evaluated\cite{Jones1993} so as to fix both the fix plan and the
+original program's machine code, leaving only the original program's
+external inputs unspecified.
 
 The main complication here is that the compiled fix has no good way of
 storing its state: registers and the stack are unavailable, as they
@@ -4698,8 +4700,8 @@ problem.\editorial{Maybe ref Gadara and Dimmunix from here?}
 
 Note that library calls are not the only possible cause of deadlocks
 here, as the program might implement its own synchronisation
-primitives\needCite{}, and so the timeout would still be necessary
-even if the patch lock were dropped during library calls.
+primitives\cite{Jannesari2010}, and so the timeout would still be
+necessary even if the patch lock were dropped during library calls.
 
 \subsubsection{Indirect jump instructions}
 
