@@ -1,4 +1,5 @@
 \chapter{The program model}
+\label{sect:program_model}
 
 {\Technique} models the part of the program which is directly involved
 in a crash via the {\StateMachine} mechanism, but these are only
@@ -27,7 +28,7 @@ Section~\ref{sect:program_model:static_aliasing}, and a known-value
 analysis for characterising certain properties of registers, described
 in Section~\ref{sect:program_model:fixed_regs}.
 
-\subsection{Why is the stack handled differently from the heap?}
+\section{Why is the stack handled differently from the heap?}
 \todo{This doesn't really belong here.  It doesn't really belong
   anywhere else, either, though.}
 
@@ -86,13 +87,6 @@ when coverage is incomplete, the most common effect is simply to cause
 the main analysis to miss some bugs in code which was not run under
 the dynamic analysis.  This is usually a tolerable weakness.
 
-\todo{Hmm... The patch strategy generation step assumes it can find
-  all of the predecessors of an instruction in order to fix the
-  corrupted instruction problem.  Getting that wrong will crash the
-  program when you try to fix it.  There's an explanation of why it's
-  not usually a big deal in the section on patch strategy generation,
-  but it wouldn't hurt to recap here.}
-
 \subsection{Finding the predecessors of instructions}
 \label{sect:program_model:instr_predecessors}
 
@@ -131,11 +125,7 @@ analysis, and that is not always true for JIT compilers.  One possible
 approach to this problem would be to use another dynamic analysis
 which could capture execution traces from the program and to then
 perform the analysis using those traces, which would avoid the issue.
-I have not investigated this in detail\editorial{Well, kind of.  I did
-  do a version using a DRS, which is pretty much the same idea, but it
-  was very different from the thing I've described here, and I don't
-  really want to talk about it, so I 'm going pretend it doesn't
-  exist.}.
+I have not investigated this in detail.
 
 \section{Dynamic alias analysis}
 \label{sect:program_model:dynamic_alias}
@@ -209,15 +199,16 @@ In other words, $\mathit{instr\_label}$ is formed from
 $\mathit{instr\_to\_fields}$ by identifying fields with sets of
 instructions.  This can be thought of as analogous to the conceptual
 switch between data types in a functional language and those in an
-object-oriented language\marginpar{Little bit too philosophical}.  In
-a functional language, a data type is identified with a set of
-values\needCite{}, whereas in an object-oriented one the type is
-identified with a set of operators which can be applied to
-values\needCite{}.  In the same way, the intended semantics of this
-analysis talks about the set of fields which an instruction can
-access, which is in some sense like the set of values on which it can
-operate, whereas the actual analysis discovers the set of instructions
-with which it can interact, which is analogous to a set of operations.
+object-oriented language\marginpar{\todo{Little bit too
+    philosophical}}.  In a functional language, a data type is
+identified with a set of values\needCite{}, whereas in an
+object-oriented one the type is identified with a set of operators
+which can be applied to values\needCite{}.  In the same way, the
+intended semantics of this analysis talks about the set of fields
+which an instruction can access, which is in some sense like the set
+of values on which it can operate, whereas the actual analysis
+discovers the set of instructions with which it can interact, which is
+analogous to a set of operations.
 
 \todo{Maybe draw an explicit analogy with de Bruijn indices?}
 
@@ -250,13 +241,12 @@ reset the labels on memory addresses.  This is easy for allocators
 provided by standard system libraries, such as \texttt{malloc}, but
 much harder for program-specific allocators.  It might be possible to
 identify such allocators using a variant of the techniques described
-in \todo{cite the digging for data structures paper here}, but I have
-not investigated that at this time.  Instead, {\implementation} relies
-on manually annotating allocation functions in the program.  This is
-not an unreasonable burden: for mysql, the necessary annotations
-amount to an additional twenty lines across the entire program, and
-none of the other programs examined in the evaluation required any
-annotations at all.
+by Cozzie et al.\cite{Cozzie2008}, but I have not investigated that at
+this time.  Instead, {\implementation} relies on manually annotating
+allocation functions in the program.  This is not an unreasonable
+burden: for mysql, the necessary annotations amount to an additional
+twenty lines across the entire program, and none of the other programs
+examined in the evaluation required any annotations at all.
 
 {\Implementation} includes one minor refinement to the basic analysis
 described above.  It is fairly common for programs to allocate new
@@ -271,11 +261,11 @@ the access is thread-private or potentially racing.  Later analysis
 phases can then assume that two thread-private accesses in different
 threads cannot alias with each other.
 
-\marginpar{Cross-thread stack accesses?} This policy might seem to be
-overly conservative: a block of memory is marked as shared whenever a
-pointer to it is stored into any non-stack memory, even when that
-non-stack memory is itself marked as thread-private.  This is
-necessary because the analysis does not attempt to track the heap
+\marginpar{\todo{Cross-thread stack accesses?}} This policy might seem
+to be overly conservative: a block of memory is marked as shared
+whenever a pointer to it is stored into any non-stack memory, even
+when that non-stack memory is itself marked as thread-private.  This
+is necessary because the analysis does not attempt to track the heap
 reachability graph, and in particular cannot map from one block to the
 set of blocks reachable from that block.  It is therefore not safe to
 ``upgrade'' a block from thread-private to thread-shared if there is

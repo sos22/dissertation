@@ -4,7 +4,7 @@
 \usepackage{tikz}
 \usepackage{tabularx}
 \usepackage{rotating}
-\usepackage{subfigure}
+\usepackage[hang,IT]{subfigure}
 \usepackage{amssymb}
 \usepackage{paralist}
 \usepackage{multirow}
@@ -13,7 +13,9 @@
 \usepackage{hyperref}
 \usepackage{glossaries}
 \usepackage{wrapfig}
-\usepackage{caption}
+\usepackage[font={small,it}]{caption}
+
+\renewcommand{\captionlabelfont}{\rm}
 
 \newbox\subfigbox             % Create a box to hold the subfigure.
 \makeatletter
@@ -114,6 +116,14 @@
   description = {The first instruction in a function.}
 }
 
+\newglossaryentry{analysiswindow}{
+  name = analysis window,
+  description = {The set of instructions in a given
+    thread over which {\technique} will consider alternative instruction
+    schedules.  This will contain \gls{alpha} instructions.}
+}
+
+
 \newglossaryentry{alpha}{
   name = {\ensuremath{\alpha}},
   description = {The size of the analysis window.  This is the
@@ -126,6 +136,61 @@
   description = {An expression over the program state and happens-before
     graph which evaluates to true when a particular bug might
     actually happen.}
+}
+
+\newglossaryentry{inferredassumption}{
+  name = {inferred assumption},
+  description = {The inferred assumption is a condition on the state
+    of a program which is satisfied when it lacks non-concurrency bugs.
+    It is the conjunction of the \gls{ci-atomic} and \gls{ic-atomic}
+    conditions.}
+}
+\newglossaryentry{ci-atomic}{
+  name = {CI atomic},
+  description = {The CI atomic condition is the condition necessary
+    for the concatenation of the \glslink{crashingthread}{crashing}
+    and \glslink{interferingthread}{interfering} {\StateMachines} to
+    not crash when run atomically.  See also \gls{ic-atomic}.}
+}
+\newglossaryentry{ic-atomic}{
+  name = {IC atomic},
+  description = {The IC atomic condition is the condition necessary
+    for the concatenation of the \glslink{interferingthread}{interfering}
+    and \glslink{crashingthread}{crashing} {\StateMachines} to
+    not crash when run atomically.  See also \gls{ci-atomic}.}
+}
+
+\newglossaryentry{crossproduct}{
+  name = {cross product},
+  description = {The cross-product of two {\StateMachines} is a {\StateMachine}
+    which models all of the possible interleavings of the operations
+    in the two input {\StateMachines}.}
+}
+\newglossaryentry{interferingstore}{
+  name = {interfering store},
+  description = {An interfering store is one which might alias with a
+    memory load operation in the \gls{crashingthread}, and hence one
+    which might alter the result of the \gls{crashingthread} {\StateMachine}
+    if run in parallel with it.}
+}
+
+\newglossaryentry{communicatinginstruction}{
+  name = {communicating instruction},
+  description = {The communicating instructions are those which might
+    either influence or be influenced by an operation in the
+    \gls{crashingthread}.  This includes all of the
+    \glspl{interferingstore}, plus all of the loads which might alias
+    with a store in the \gls{crashingthread}.}
+}
+
+\newglossaryentry{w-isolation}{
+  name = {W-isolation},
+  description = {A bug is said to have the W isolation property if
+    the flow of information is entirely from the \gls{interferingthread}
+    to the \glslink{crashingthread}{crashing} one.  In other words,
+    a bug is W-isolated if the \gls{interferingthread} never loads
+    from any memory locations which were previously stored to by
+    the \gls{crashingthread}.}
 }
 
 \newacronym{cfg}{CFG}{Control Flow Graph}
