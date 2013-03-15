@@ -451,24 +451,24 @@ program which crashes frequently.
 \todo{Worst case ignoring the loss of concurrency, of course.}
 
 For comparison, I also produced a version of the patch which does
-everything except for acquiring the lock.  This version completed
-$349.2 \pm 0.3 {\times} 10^6$ loops per second, and so in this case
-the slow down caused by the patch was a little less than 1\%.  This
-strongly suggests that the overhead in this case is mostly caused by
-the lock operations themselves, rather than the {\technique}
+everything except for acquiring and releasing the lock.  This version
+completed $349.2 \pm 0.3 {\times} 10^6$ loops per second, and so in
+this case the slow down caused by the patch was a little less than
+1\%.  This strongly suggests that the overhead in this case is mostly
+caused by the lock operations themselves, rather than the {\technique}
 infrastructure.
 
 \begin{table}
   \begin{tabular}{lll}
                      & Gain control with breakpoints & Gain control with branches \\
-    Locking enabled  & $6077000 \pm 6000$            & $95.9 \pm 0.2 {\times} 10^6$\\
-    Locking disabled & $6379000\pm7000$              & $349.2 \pm 0.3 {\times} 10^6$\\
+    Locking enabled  & $6.08 \pm 0.01$               & $95.9 \pm 0.2$\\
+    Locking disabled & $6.38 \pm 0.01$               & $349.2 \pm 0.3$\\
   \end{tabular}
-  \caption{Performance of some variants of the fix, in terms of the
-    number of loop iterations completed per second.  The original
-    program completed $352.5 \pm 0.2 {\times} 10^6$ iterations per
-    second, when it did not crash.  All measurements mean and standard
-    deviation of ten runs.}
+  \caption{Performance of some variants of the fix, in millions of
+    loop iterations completed per second.  The original program
+    completed $352.5 \pm 0.2$ million iterations per second, when it
+    did not crash.  All measurements mean and standard deviation of
+    ten runs.}
   \label{table:eval:simple_toctou:other_fixes}
 \end{table}
 
@@ -597,17 +597,17 @@ the performance overheads of the fix I again counted the number of
 times the read and write loops execute per second with and without the
 fix applied, running the test for ten seconds and discarding any runs
 in which the test program crashed.  Without a fix applied, the test
-completed the read loop $9.6 * 10^5 \pm 0.5 * 10^5$ times per second
-and the write loop $9.0 \pm 0.2 * 10^5$ times per second; with a fix,
-it completed $8.3 * 10^5 \pm 0.3 * 10^5$ read loops and $7.8 * 10^5
-\pm 0.2 * 10^5$ write loops (mean and standard deviation of ten runs).
-The overhead was therefore roughly 15\% on both the read and write
-sides of the test\editorial{Should really put some error bars on
-that.}.  This is far smaller than the factor of four reported in the
-simple\_toctou case, largely because the test loop in this case
-includes a call to \verb|random|, which is rather expensive relative
-to simple lock operations and helps to amortise the cost of the
-additional synchronisation.
+completed the crashing thread loop $9.6 * 10^5 \pm 0.5 * 10^5$ times
+per second and the interfering thread loop $9.0 \pm 0.2 * 10^5$ times
+per second; with a fix, it completed $8.3 * 10^5 \pm 0.3 * 10^5$
+crashing loops and $7.8 * 10^5 \pm 0.2 * 10^5$ interfering loops (mean
+and standard deviation of ten runs).  The overhead was therefore
+roughly 15\% on both the read and write sides of the test.  This is
+far smaller than the factor of four reported in the simple\_toctou
+case, largely because the test loop in this case includes a call to
+\verb|random|, which is rather expensive relative to simple lock
+operations and helps to amortise the cost of the additional
+synchronisation.  \todo{Re-run those experiments.}
 
 \subsection{Biassed indexed TOCTOU bugs (crash\_indexed\_toctou, interfering\_indexed\_toctou)}
 
