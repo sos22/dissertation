@@ -124,9 +124,22 @@ interesting bugs in real-world programs.
 
 \subsection{Other concurrency bug detection tools}
 
-Something about detecting OS-mediated bugs?
+\todo{Not convinced this needs to be here.}
 
-\cite{Uppuluri2005} \cite{Pu2006}
+{\Technique} considered only concurrency bugs which are mediated
+through main memory, but these are not the only kinds of race bugs.
+Many important security issues have in the past been caused by races
+accessing the local filesystem, for example (this is discussed in more
+detail in, for instance, the Apple Secure Coding
+Guide~\cite{Apple2012SecureCoding}).  There has been some work aimed
+at detecting and preventing such races.  Uppuluri et
+al.~\cite{Uppuluri2005}, for instance, described a system for
+protecting Linux applications against such races via a modified kernel
+which could enforce user-defined access interleaving properties, in
+much the same way that SELinux\cite{Smalley2002} enforces other kinds
+of user-defined security policies.  Pu and Wei~\cite{Pu2006} then
+extended this scheme slightly to avoid needing manual annotations in
+some cases.
 
 \subsection{Detecting race bugs with static analysis}
 
@@ -209,8 +222,6 @@ combining this sort of technique with {\technique}'s enforcer
 mechanism to evaluate some side-conditions statically, which might
 reduce the enforcer overhead.
 
-\todo{Need a description of AVIO in here}
-
 \todo{Could cite PSpec here (Perl, Weihl, 1993)?}
 
 \subsection{Detecting other types of bugs}
@@ -222,25 +233,24 @@ bugs.  These range from the very simple systems integrated into most
 compilers\needCite{} all the way through to whole-program model
 checking with symbolic execution\needCite{}.  \todo{Say more here.}
 
-The most recent\editorial{Most recent widely cited, anyway.} example
-is probably KLEE\cite{Cadar}, a symbolic execution engine for LLVM
-bitcode\cite{Lattner2013}.  The aim behind KLEE is the automatic
-generation of test suites for single-threaded programs which exercise
-the maximum proportion of the program's functionality with the minimum
-amount of testing.  This is conceptually very similar to
-{\technique}'s enforcer approach to finding bugs: perform some static
-analysis on the program to find places which might have a bug, and
-then convert those places into tests which will show whether or not
-that bug is present.  The difference is that {\technique}'s tests are
-expressed in terms of the concurrency schedules which are to be
-exercised, whereas KLEE's are expressed in terms of the inputs to the
-program.  It would be possible to combine the two techniques by, for
-instance, using KLEE to find program inputs which allow {\technique}
-enforcer side-conditions to be satisfied.  This would mitigate
-{\technique}'s most important weakness, that most of the enforcers it
-generates require conditions which the program can never actually
-reach, and increase KLEE's ability to find interesting concurrency
-bugs.
+The most influential recent example is probably KLEE\cite{Cadar}, a
+symbolic execution engine for LLVM bitcode\cite{Lattner2013}.  The aim
+behind KLEE is the automatic generation of test suites for
+single-threaded programs which exercise the maximum proportion of the
+program's functionality with the minimum amount of testing.  This is
+conceptually very similar to {\technique}'s enforcer approach to
+finding bugs: perform some static analysis on the program to find
+places which might have a bug, and then convert those places into
+tests which will show whether or not that bug is present.  The
+difference is that {\technique}'s tests are expressed in terms of the
+concurrency schedules which are to be exercised, whereas KLEE's are
+expressed in terms of the inputs to the program.  It would be possible
+to combine the two techniques by, for instance, using KLEE to find
+program inputs which allow {\technique} enforcer side-conditions to be
+satisfied.  This would mitigate {\technique}'s most important
+weakness, that most of the enforcers it generates require conditions
+which the program can never actually reach, and increase KLEE's
+ability to find interesting concurrency bugs.
 
 \todo{Maybe cite Donaldson 2012 in VSSE?  He tried to make KLEE do
   concurrent stuff directly and pretty much failed, but I'm half
@@ -278,6 +288,8 @@ variants of that schedule, so as to determine which parts of the
 schedule are necessary for the bug to reproduce.  This allows them to
 produce the simplest possible reproduction of the original concurrency
 bug.  \todo{Compare to {\technique} in a more than trivial way.}
+
+\cite{Jeffrey2009}
 
 \section{Automatically fixing bugs}
 
@@ -647,7 +659,39 @@ using virtual memory techniques.  However, it is still necessary for
 the programmer to provide a manually-specified lock discipline, which
 makes these techniques difficult to use in practise.
 
-\todo{Description of Kivati in here.}
+AVIO\cite{Lu} is another approach to automatically fixing
+concurrency-related bugs.  The idea here is to observe the program
+during normal operation, and hence build up a model of its expected
+access interleavings, and to then ensure later on that only those
+interleavings are possible.  The intuition here is that bugs are
+unusual events, and so preventing anything unusual from happening will
+prevent any bugs from occurring.  The weakness, of course, is that
+sometimes something unusual does happen (if, for instance, the program
+receives some input which was not adequately covered by the training
+data), and AVIO will be unable to provide protection in this case.
+AVIO also has the weakness that it requires unusual hardware support
+in order to achieve good performance; while it can be implemented
+purely in software, the software implementation causes a roughly
+twenty-five-fold slow-down, making it impractical to use in production
+systems.
+
+Kivati\cite{Chew2010a} can be thought of as a refinement to AVIO which
+reduces these weaknesses.  In Kivati, the access interleaving
+invariants are discovered by means of a static analysis conducted
+before the program starts running.  This set is usually far smaller
+than the set which is discovered by AVIO.  That then allows Kivati's
+second refinement, which is to enforce the invariants using the
+processor's watchpoint registers\needCite{}, obviating the need for
+custom hardware.  The result is a similar level of protection to AVIO
+but with far less overhead, usually on the order of a few tens of
+percent.  Kivati's main weakness is that it can only protect against
+single-variable races, due to limitations in both the static analysis
+used.  Even if the static analysis were extended, limitations on
+processor watchpoint facilities would prevent it from considering
+large numbers of variables at the same time.  {\Technique} does not
+share this limitation, and the fixes it generates have noticeably
+lower overhead.  The downside, of course, is that {\technique}'s
+initial analysis phase is far more expensive than Kivati's.
 
 \subsection{Deadlock bugs}
 The final class of bugs considered here is deadlocks.  Techniques for
