@@ -338,12 +338,11 @@ at \texttt{4006a0}.  This will be sufficient to reproduce the bug.
 This enforcer is effective at reproducing the bug.  Without the
 enforcer, the mean time taken to reproduce the bug is $4.3 \pm 0.4$
 seconds, mean and standard deviation of mean for 100 runs; with it,
-the mean time was $1.14927 \pm 0.00006$\editorial{Check once I've
-  re-run the experiment}.  Most of this reduction is caused by
-eliminating outliers from the distribution: the median time to
-reproduce the bug decreased from 3.0 seconds to 1.1, a 2.7-fold
+the mean time was $1.158 \pm 0.003$.  Most of this reduction is caused
+by eliminating outliers from the distribution: the median time to
+reproduce the bug decreased from 3.0 seconds to 1.2, a 2.5-fold
 reduction, while the $95^{th}$ percentile was reduced from 12 seconds
-to 1.1, a nearly eleven-fold reduction.
+to 1.2, a ten-fold reduction.
 Figure~\ref{fig:eval:crash_cdf:simple_toctou} shows the complete CDFs
 for both configurations.
 
@@ -532,13 +531,15 @@ is that the enforcer includes a side condition $\mathtt{idx}_1 =
 interfering thread, which is checked on the first happens-before edge.
 
 The enforcer was effective at making this bug reproduce more easily.
-With no enforcer loaded, the bug reproduction time was exponentially
-distributed with $\lambda = 0.6 \pm 0.2$Hz.  With an enforcer loaded,
-the reproduction time was exponentially distributed with $\lambda =
-6.87 \pm 0.01$Hz, a more than ten-fold improvement in the reproduction
-rate.  The median reproduction time is reduced from 1.2 seconds to 0.1
-seconds and the $95^{th}$ percentile reproduction time from five
-seconds to 0.45 seconds.  \todo{Redo these numbers}
+With no enforcer loaded, the mean time to reproduce the bug was $1.2
+\pm 0.2$ seconds, mean and standard deviation of mean for 100 runs;
+with an enforcer, the mean time to reproduce was $0.24 \pm 0.01$
+seconds.  As with the simple\_toctou test, most of this reduction was
+due to removing the long tail: the $95^{th}$ percentile reproduction
+time was reduced from 5.8 seconds to 0.48 seconds, whereas the median
+actually increased slightly, from 0.16 seconds to 0.21 seconds.
+\todo{Investigate how that changes when you change the delay
+  parameter.}
 
 I also investigated the behaviour of this test with an enforcer loaded
 but no side condition checking performed.  In that case, the bug
@@ -597,10 +598,10 @@ the performance overheads of the fix I again counted the number of
 times the read and write loops execute per second with and without the
 fix applied, running the test for ten seconds and discarding any runs
 in which the test program crashed.  Without a fix applied, the test
-completed the crashing thread loop $9.6 * 10^5 \pm 0.5 * 10^5$ times
-per second and the interfering thread loop $9.0 \pm 0.2 * 10^5$ times
-per second; with a fix, it completed $8.3 * 10^5 \pm 0.3 * 10^5$
-crashing loops and $7.8 * 10^5 \pm 0.2 * 10^5$ interfering loops (mean
+completed the crashing thread loop $9.6 \pm 0.5 {\times} 10^5$ times
+per second and the interfering thread loop $9.0 \pm 0.2 {\times} 10^5$
+times per second; with a fix, it completed $8.3 \pm 0.3 \times$
+crashing loops and $7.8 \pm 0.2 \times 10^5$ interfering loops (mean
 and standard deviation of ten runs).  The overhead was therefore
 roughly 15\% on both the read and write sides of the test.  This is
 far smaller than the factor of four reported in the simple\_toctou

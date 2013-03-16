@@ -122,9 +122,7 @@ instructions race in some schedules and not others.  Despite this,
 Chess has been demonstrated to be an effective way of detecting many
 interesting bugs in real-world programs.
 
-\subsection{Other concurrency bug detection tools}
-
-\todo{Not convinced this needs to be here.}
+\subsection{Other forms of concurrency bug}
 
 {\Technique} considered only concurrency bugs which are mediated
 through main memory, but these are not the only kinds of race bugs.
@@ -139,7 +137,7 @@ which could enforce user-defined access interleaving properties, in
 much the same way that SELinux\cite{Smalley2002} enforces other kinds
 of user-defined security policies.  Pu and Wei~\cite{Pu2006} then
 extended this scheme slightly to avoid needing manual annotations in
-some cases.
+some cases. \todo{Not convinced this needs to be here.}
 
 \subsection{Detecting race bugs with static analysis}
 
@@ -157,33 +155,31 @@ that there is precisely one instance of every data type; this is
 necessary to scale to non-trivial programs, but significantly reduces
 the analysis' soundness.
 
-RELAY\editorial{Cite Voung Jhala and Lerner, 2007} attempted to
-improve the soundness of RacerX while also improving its scalability.
-The key technique is to use symbolic execution to construct procedure
-summaries\editorial{I don't think they were the first people to come
-up with function summaries; should dig up some earlier refs.}, showing
-what locks each procedure acquires and releases and what structure
-fields it accesses.  These summaries then allow them to perform a
-sound cross-function race analysis without needing to consider the
-full bodies of each function every time, leading to a significant
-improvement in scalability.  
+RELAY\cite{Voung2007} attempted to improve the soundness of RacerX
+while also improving its scalability.  The key technique is to use
+symbolic execution to construct procedure summaries\cite{Qadeer2004},
+showing what locks each procedure acquires and releases and what
+structure fields it accesses.  These summaries then allow them to
+perform a sound cross-function race analysis without needing to
+consider the full bodies of each function every time, leading to a
+significant improvement in scalability.
 
-Chord\editorial{Cite Naik Aiken and Whaley, 2006} takes a slightly
-different approach, attempting to statically detect pairs of racing
-accesses without first inferring the locks which are intended to
-protect each field.  Their implementation is for Java, and depends to
-some extent on Java's type safety properties, but it would probably
-not be excessively difficult to generalise to non-typesafe languages
-such as C, at the cost of some precision.  The approach taken here is
-essentially to build up an instruction aliasing table, containing the
-same information as {\technique}'s dynamic aliasing table but built
-statically rather than dynamically, and to then use further static
-analysis to refine this table until it only contains entries for
-instructions which both alias and race.  These are then reported as
-potential errors.  It would potentially be interesting to use these
-techniques to refine {\technique}'s aliasing table, which might help
-to improve performance somewhat, although generalising them from
-source-level to binary-level might prove challenging.
+Chord\cite{Naik2006} takes a slightly different approach, attempting
+to statically detect pairs of racing accesses without first inferring
+the locks which are intended to protect each field.  Their
+implementation is for Java, and depends to some extent on Java's type
+safety properties, but it would probably not be excessively difficult
+to generalise to non-typesafe languages such as C, at the cost of some
+precision.  The approach taken here is essentially to build up an
+instruction aliasing table, containing the same information as
+{\technique}'s dynamic aliasing table but built statically rather than
+dynamically, and to then use further static analysis to refine this
+table until it only contains entries for instructions which both alias
+and race.  These are then reported as potential errors.  It would
+potentially be interesting to use these techniques to refine
+{\technique}'s aliasing table, which might help to improve performance
+somewhat, although generalising them from source-level to binary-level
+might prove challenging.
 
 \subsection{Helping the programmer to find bugs themselves}
 
@@ -209,9 +205,10 @@ by adding state to program types, with a description of how certain
 operations can move instances of a type from one state to another, and
 then restricting the program to only allow certain operations on
 objects which are in a particular state.  These assertions are
-typically checked at run time\needCite{}, whether in an
-ad-hoc\needCite{} or systematic\needCite{} manner, and can also in
-some cases be checked statically\needCite{}.  Some systems, such as
+typically checked at run time\cite{Wolff2011}, whether in an
+ad-hoc\cite[pages~305--314]{Gamma1995} or systematic\cite{Aldrich2009}
+manner, and can also in some cases be checked
+statically\cite{Lam2005}.  Some systems, such as
 Clara\cite{Bodden2010}\editorial{Might also want to reference chain
   from there.}, attempt to split the difference, checking as much as
 possible of the assertion statically and deferring the rest to run
@@ -231,7 +228,7 @@ There is a very large body of existing literature which investigates
 ways of automatically detecting various classes of non-concurrency
 bugs.  These range from the very simple systems integrated into most
 compilers\needCite{} all the way through to whole-program model
-checking with symbolic execution\needCite{}.  \todo{Say more here.}
+checking with symbolic execution\cite{Ball2011}.  \todo{Say more here.}
 
 The most influential recent example is probably KLEE\cite{Cadar}, a
 symbolic execution engine for LLVM bitcode\cite{Lattner2013}.  The aim
@@ -244,20 +241,21 @@ places which might have a bug, and then convert those places into
 tests which will show whether or not that bug is present.  The
 difference is that {\technique}'s tests are expressed in terms of the
 concurrency schedules which are to be exercised, whereas KLEE's are
-expressed in terms of the inputs to the program.  It would be possible
-to combine the two techniques by, for instance, using KLEE to find
-program inputs which allow {\technique} enforcer side-conditions to be
-satisfied.  This would mitigate {\technique}'s most important
-weakness, that most of the enforcers it generates require conditions
-which the program can never actually reach, and increase KLEE's
-ability to find interesting concurrency bugs.
+expressed in terms of the inputs to the program\footnote{KLEE itself
+  can be parallelised, as in, for instance, Cloud9\cite{Ciortea2010},
+  but this is not the same as exploring parallel schedules in the
+  program under test.}.  It would be possible to combine the two
+techniques by, for instance, using KLEE to find program inputs which
+allow {\technique} enforcer side-conditions to be satisfied.  This
+would mitigate {\technique}'s most important weakness, that most of
+the enforcers it generates require conditions which the program can
+never actually reach, and increase KLEE's ability to find interesting
+concurrency bugs.
 
 \todo{Maybe cite Donaldson 2012 in VSSE?  He tried to make KLEE do
   concurrent stuff directly and pretty much failed, but I'm half
   convinced that was because he's an idiot rather than because of any
   actual conceptual hardness.}
-
-\todo{Maybe mention Cloud9?}
 
 \todo{Consider citing the bugs-as-deviant-behaviours stuff?  Also want
   a MUVI cite here.}
