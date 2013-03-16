@@ -3,88 +3,179 @@
 
 \section{Automatically finding bugs}
 
-\subsection{Detecting race bugs with dynamic analysis}
+Automatically detecting and characterising bugs in programs has been
+an active area of research for many years.
+Table~\ref{table:rw:find_char} gives a brief summary of some of the
+more interesting pieces of work; the next few sections give a more
+detailed description.
 
-There have been a large number of dynamic program analysis techniques
-intended to detect races.  There are three basic approaches here:
+\begin{sidewaystable}
+  \begin{tabular}{l>{\raggedright}p{5.5cm}lp{11cm}}
+    Technique family           & Type of error discovered                     & Static/dynamic  & Example systems \\
+    \hline
+    Locksets                   & Locking protocol violations                  & Static          & RacerX~\cite{Engler2003},RELAY~\cite{Voung2007} \\
+                               &                                              & Dynamic         & Eraser~\cite{Savage1997} \\
+    \hdashline
+    Happens-before             & Memory races                                 & Dynamic         & RaceTrack~\cite{Yu2005}, FastTrack~\cite{Flanagan2009}, Netzer~\cite{Netzer1991} \\
+    \hdashline
+    Concurrent aliasing        & Memory races                                 & Static          & Chord~\cite{Naik2006} \\
+    \hdashline
+    Schedule perturbation      & Timing dependencies                          & Dynamic         & DataCollider~\cite{Erickson2010}, AtomRace~\cite{Letko2008} \\
+                               &                                              & Mixed           & Chess~\cite{Musuvathi2008} \\
+    \hdashline
+    Stereotyping               & Anomalous behaviour                          & Dynamic         & Anomaly-based IDSes~\cite{Forrest1996a}, Pu and Wei~\cite{Pu2006}, HeapMD~\cite{Chilimbi2006}, DIDUCE~\cite{Hangal2002}, MUVI\needCite{} \\
+                               &                                              & Static          & \todo{Bugs as deviant behaviours}\\
+    \hdashline
+    Extended assertions        & Violations of programmer-identified properties& Dynamic        & TESLA~\needCite{}, Uppuluri et al.~\cite{Uppuluri2005} \\
+    \hdashline
+    Typestate systems~\cite{Strom1986a}& \multirow{2}{*}{\parbox{5.5cm}{Object access protocol sequencing violations}} & Dynamic & Gradual typestates~\cite{Wolff2011}\\
+                               &                                                                             & Static  & Plaid~\cite{Sunshine2011}\\
+                               &                                                                             & Hybrid  & Clara~\cite{Bodden2010}\\
+    \hdashline
+    Symbolic execution         & Most forms of bugs                           & Static          & SLAM~\cite{Ball2011}, KLEE~\cite{Cadar}, JPF~\cite{Havelund2000}, Zing~\cite{Andrews2004} \\
+    \hline
+    Bug characterisation       & Value replacement                            & Dynamic online  & Value replacement~\cite{Jeffrey2009} \\
+                               & Delta debugging                              & Dynamic offline & Delta Debugging~\cite{Cleve2005,Choi2002} \\
+                               & Static program slicing                       & Static          & \todo{...} \\
+                               & Dynamic program slicing                      & Dynamic         & \todo{...} \\
+                               & Assisted debugging                           & Interactive     & Model Inference System~\cite{Shapiro1982} \\
+  \end{tabular}
+  \caption{Summary of some existing bug detection and characterisation
+    techniques.}
+  \label{table:rw:find_char}
+\end{sidewaystable}
 
-\begin{itemize}
-\item Lock sets.
-\item Happens-before vector clocks.
-\item Schedule perturbation.
-\end{itemize}
+\todo{Proving Thread Termination 2007?}
 
-Lock set based systems are the simplest to describe.  In this model,
-originally suggested in Eraser~\cite{Savage1997}, the tool maintains,
-for each memory location, a set of locks which might possibly protect
-that location.  Whenever a thread accesses a memory location, the set
-of locks held by the thread at the time is intersected into the set of
-locks associated with the field, and an error reported if the
-location's lock set becomes empty.  This behaves reasonably for the
-most common type of program synchronisation schema, in which each
-source-level field or compound structure is protected by some lock,
-and where the most common type of bug is simply forgetting to acquire
-the necessary locks.  On the other hand, this kind of approach
-requires extensive special cases to handle other concurrency
-protocols.  A common example of such a protocol is structure
-ownership: a given structure is ``owned'' by a particular thread,
-which can access the structure without acquiring any locks while other
-threads can only access the structure by first acquiring ownership of
-it\editorial{It'd be nice to have a cite for that.  Maybe one of the
-  RCU papers has something?}.  This is perfectly safe (provided that
+\todo{Comparison to STM block inference?}
+
+\subsection{Lockset analysis}
+
+Lockset analysis is a family of techniques used to detect problems in
+a program's locking protocol.  A locking protocol is a set of rules
+specifying what locks a thread must hold in order to operate on a
+particular structure field or shared variable.  A lockset analysis
+works by inferring properties of the program's locking protocol and
+then reporting any violations of the protocol as a potential bug.
+
+Eraser~\cite{Savage1997} was the earliest tool to take this approach.
+This is a dynamic tool which maintains, for each location in memory, a
+set of locks which might possibly protect it.  Whenever a thread
+accesses a location, the tool intersects the set of locks held by the
+thread with the set associated with the location to form a new lockset
+for that location\footnote{There is an similarity here with
+  {\technique}'s dynamic alias analysis
+  (\autoref{sect:program_model:dynamic_alias}), in that both
+  approaches justify their analysis with reference to the fields of
+  high-level language structures but must perform the actual analysis
+  on memory locations, and hence the two techniques make similar
+  assumptions about memory type stability.}.  If the set ever becomes
+empty, the tool reports a potential bug.  This behaves reasonably for
+the most common locking protocol, in which each source-level field or
+compound structure is protected by some lock, and where the most
+common type of bug is simply forgetting to acquire the necessary
+locks.  On the other hand, this kind of approach requires extensive
+special cases to handle other concurrency protocols.  A common example
+of such a protocol is structure ownership: a given structure is
+``owned'' by a particular thread, which can access the structure
+without acquiring any locks while other threads can only access the
+structure by first acquiring ownership of it\footnote{See, for
+  instance, \cite{Spear2007}.}.  This is perfectly safe (provided that
 ownership transfer is implemented correctly), but leaves most fields
 in most structures with empty lock sets.  Extending lock-set based
 schemes to handle these other protocols generally requires a large
-number of special cases\editorial{Cite some papers which do just
-  that.}.
+number of special cases.
 
-Happens-before vector clocks are another approach to this problem.
-These tools rely on a happens-before graph showing the order in which
-program operations are ``supposed'' to happen and then flag a warning
-whenever the order of two operations is undefined by this graph and
-important, in some sense, for the program's execution.  Maintaining
-the happens-before graph is itself a moderately complicated operation.
-The simplest approach starts from the assumption that a complete trace
-of all of the program's memory accesses is available and then uses a
-variant of Lamport's vector clock algorithm\cite{Lamport1978} to
-extract a minimal set of happens-before edges which completely
-characterises the order of operations.  If this minimal graph contains
-any un-approved edges then a warning is raised\editorial{I could
-  describe the VC algorithm itself here, but it has an annoying number
-  of special cases and it doesn't really add anything.}.  Recent tools
-of this form include RaceTrack\cite{Yu2005} and
-FastTrack\cite{Flanagan2009}; Netzer and Miller 1989\needCite{} is an
-earlier example.  These tools are generally quite effective at finding
-places in the program's execution where behaviour depends on the
-details of the interleaving chosen by the hardware, and this does
-include most concurrency bugs.  However, it also includes a large
-number of points in the program's execution which are not bugs.  Most
-obviously, the races inherent in the implementation of synchronisation
-primitives will be detected by these methods.  This means that
-practical tools must in some sense white-list types of edges which are
-believed to be safe, and missing some edges generally leads to an
-excessive number of false positives.  Some tools maintain this
-whitelist explicitly\needCite{}; others, such as FastTrack, leave it
-implicit in the structure of the implementation.  More fundamentally,
-simply noticing that permuting two operations affects their local
-behaviour does not imply that doing so will affect the program's
-global behaviour, and so there will always be a certain number of
-false positives with this kind of tool.
+This kind of analysis can also be applied statically.
+RacerX~\cite{Engler2003} is one of the earliest examples of such a
+tool.  An initial static analysis determines, for every line in the
+program, which locks are held when that line executes.  The tool can
+then use this to determine which locks protect each field in a
+compound structure and then flag an error if this set is
+empty\footnote{The actual implementation includes a number of
+  additional techniques to reduce false positives.}.  RacerX's
+aliasing model is very simple, assuming that there is precisely one
+instance of every data type; this is necessary to scale to non-trivial
+programs, but significantly reduces the analysis' soundness.
 
-These tools may also occasionally suffer from false negatives.  To see
-this, notice that, if the edges related to lock operations have
-themselves been whitelisted, inserting the sequence ``unlock($x$);
-lock($x$)'' into a point in the program where lock $x$ is held can
-never cause additional warnings to be generated, but can cause
-additional bugs to be introduced.  The underlying algorithm can detect
-the additional race on the lock structure itself, but, because it
-cannot look at the larger context in which the accesses take place,
-cannot determine whether it is safe, and so the tool is forced to use
-potentially error-prone heuristics.
+RELAY\cite{Voung2007} attempted to improve the soundness of RacerX
+while also improving its scalability.  The key technique is to use
+symbolic execution to construct procedure summaries\cite{Qadeer2004},
+showing what locks each procedure acquires and releases and what
+structure fields it accesses.  These summaries then allow them to
+perform a sound cross-function race analysis without needing to
+consider the full bodies of each function every time, leading to a
+significant improvement in scalability.
 
-DataCollider\cite{Erickson2010} takes a completely different approach,
-and one which is conceptually more similar to {\technique}'s.  Rather
-than trying to find races directly, it instead inserts delays into the
+\subsection{Happens-before}
+
+Happens-before is another approach to the dynamic race detection
+problem.  The idea here is that certain types of happens-before edges
+are usually safe (e.g. the ones imposed by operating system-provided
+locking functions) while others are usually unsafe (e.g. the ones
+introduced by data races).  The tool can then detect likely errors by
+modelling the happens-before graph as the program runs and generating
+a warning whenever it detects one of those unsafe edges.  For
+efficiency reasons, most tools do not attempt to maintain the entire
+graph at run time, but instead maintain an approximation of the
+relevant part of it using Lamport's vector clock
+algorithm~\cite{Lamport1978}.
+
+Recent tools of this form include RaceTrack\cite{Yu2005} and
+FastTrack\cite{Flanagan2009}; Netzer~\cite{Netzer1991} is one of the
+few which manipulate the graph without using vector clocks.  These
+tools are generally quite effective at finding places in the program's
+execution where behaviour depends on the details of the interleaving
+chosen by the hardware, and this does include most concurrency bugs.
+
+Their main weakness, apart from their high performance overhead, is
+the need to classify edges according to whether they are safe or
+unsafe.  It is difficult to come up with any such classification which
+does not suffer from false negatives and which does not also suffer
+from an excessive number of false positives.  For instance, suppose
+that a program is correctly synchronised\editorial{Could be more
+  precise there} and is then modified to include the sequence
+``release($x$); acquire($x$)'' at some point which holds the lock $x$.
+It is clearly possible for this transformation to introduce a new bug
+into the program.  At the same time, the only edges which can possibly
+be introduced into the happens-before graph are from the release
+operation to an acquire in another thread or from a release in another
+thread to the acquire in this one.  The tool can either report these
+edges, in which case it will also be forced to report all other
+acquire and release edges and hence have a very high false positive
+rate, or it can not report the edges, and suffer a false negative.
+
+\subsection{Concurrent aliasing}
+
+\todo{I'm having to stretch a bit here to make this fit with my
+  framework.}
+
+Chord~\cite{Naik2006} can be thought of as the static equivalent of a
+happens-before race detector.  The idea here is to perform an initial
+static analysis which models the safe edges of the happens-before
+graph by discovering the program's existing synchronisation structure
+(what they refer to as the lock analysis phase), and to then perform a
+second static analysis to find all of the possibly unsafe ones (the
+escaping pairs computation).  These two partial models of the
+program's happens before graph can then be combined and compared so as
+to find any unsafe edges which are not prevented by the safe ones;
+these are reported as potential program bugs.  Their implementation is
+for Java, and depends to some extent on Java's type safety properties,
+but it would probably not be excessively difficult to generalise to
+non-typesafe languages such as C, at the cost of some precision.
+There would be some scope for combining their model of the program's
+safe edges with {\technique}'s analysis, although translating their
+source-level analysis to machine code-level behaviour might be
+challenging.
+
+\subsection{Schedule perturbation}
+
+One plausible definition of a concurrency bug is a bug whose behaviour
+depends on the precise relative timing of parts of a program which run
+concurrently.  This suggests an alternative scheme for finding such
+bugs: simply alter the program's timing and see what happens.  This is
+the approach taken by DataCollider~\cite{Erickson2010}.  Rather than
+trying to find races directly, it instead inserts delays into the
 program's execution so as to make races more likely, detects them when
 they occur, and then uses heuristics to determine how dangerous that
 race is.  This approach has a number of important advantages: it has
@@ -94,14 +185,16 @@ analysis is likely to be at least broadly similar to that during
 normal execution); and it requires relatively little in the way of
 supporting machinery, so can be used in constrained environments such
 as kernel-mode drivers or embedded systems.  I have already described
-the algorithm in section~\ref{sect:eval:datacollider}.  {\Technique}
-can in some ways be regarded as a refinement of DataCollider, using
-static analysis to determine more precisely where delays can most
-profitably be inserted and hence increasing the likelihood of finding
-errors whilst simultaneously reducing the overhead of doing so.
+the algorithm in section~\ref{sect:eval:datacollider}.
 AtomRace\cite{Letko2008} uses a very similar technique to DataCollider
 to find bugs, and combines it with a set of simple rules for
 automatically fixing the bugs which it finds.
+
+The parallels with {\technique} are obvious.  The important
+differences are that {\technique} makes use of an initial analysis
+phase to discover the best places to insert delays, allowing it to
+reproduce bugs far faster than DataCollider, and that {\technique}
+is able to derive a far broader class of fixes than AtomAid.
 
 Chess\cite{Musuvathi2008} can be thought of as a more systematic
 approach to the same idea: rather than inserting delays at randomly
@@ -122,66 +215,67 @@ instructions race in some schedules and not others.  Despite this,
 Chess has been demonstrated to be an effective way of detecting many
 interesting bugs in real-world programs.
 
-\subsection{Other forms of concurrency bug}
+\subsection{Stereotyping}
 
-{\Technique} considered only concurrency bugs which are mediated
-through main memory, but these are not the only kinds of race bugs.
-Many important security issues have in the past been caused by races
-accessing the local filesystem, for example (this is discussed in more
-detail in, for instance, the Apple Secure Coding
-Guide~\cite{Apple2012SecureCoding}).  There has been some work aimed
-at detecting and preventing such races.  Uppuluri et
-al.~\cite{Uppuluri2005}, for instance, described a system for
-protecting Linux applications against such races via a modified kernel
-which could enforce user-defined access interleaving properties, in
-much the same way that SELinux\cite{Smalley2002} enforces other kinds
-of user-defined security policies.  Pu and Wei~\cite{Pu2006} then
-extended this scheme slightly to avoid needing manual annotations in
-some cases. \todo{Not convinced this needs to be here.}
+All of the approaches discussed so far rely on some pre-defined notion
+of what it means for a program to have a bug.  An alternative approach
+is to simply define a bug to be anything which the program doesn't do
+very often.  Tools based on this idea start by building up a model of
+how a stereotypical execution of the program behaves and then report
+any deviation from the stereotype as a potential bug.
 
-\subsection{Detecting race bugs with static analysis}
+This is essentially the same problem as is solved by anomaly detecting
+intrusion detection systems~\cite{Forrest1996a}, and such systems can
+be regarded as a kind of bug detector.  In practice, though, systems
+designed for detecting intrusions are not usually well-suited to
+detecting bugs, as they tend to operate at the wrong level of
+abstraction\editorial{Bollocks do they.}, and I do not consider them
+in detail here.
 
-In addition to these dynamic tools, there have also been a number of
-attempts to detect race bugs statically.  The most famous is probably
-RacerX\cite{Engler2003}.  This tool is essentially a static version of
-the dynamic lockset algorithm discussed earlier.  An initial static
-analysis determines, for every line in the program, which locks are
-held when that line executes.  The tool can then use this to determine
-which locks protect each field in a compound structure and then flag
-an error if this set is empty\footnote{The actual implementation
-  includes a number of additional techniques to reduce false
-  positives.}.  The aliasing model used here is very simple, assuming
-that there is precisely one instance of every data type; this is
-necessary to scale to non-trivial programs, but significantly reduces
-the analysis' soundness.
+The Daikon~\cite{Ernst2007} was one of the earliest anomaly-based
+bug-detecting systems.  Their basic approach is to collect one or more
+traces of the program while it is operating normally, recording the
+values of local variables and function parameters at various
+interesting points in the program's execution.  These traces are then
+mined to find conditions on those values which always hold, and these
+conditions are converted into assertions which can be inserted into
+the program.  Any failure of one of those assertions is reported as a
+probable bug.  DIDUCE~\cite{Hangal2002} works on a similar principle,
+but builds its invariants ``the other way around'': rather than trying
+to find conditions which are true for all known executions, it starts
+with a condition that nothing at all is possible and then weakens it
+until it allows all of the known behaviour.  This tends to lead to
+sharper inferred invariants, in the sense of allowing less behaviour,
+and so DIDUCE tends to find more bugs but with a higher false-positive
+rate.
 
-RELAY\cite{Voung2007} attempted to improve the soundness of RacerX
-while also improving its scalability.  The key technique is to use
-symbolic execution to construct procedure summaries\cite{Qadeer2004},
-showing what locks each procedure acquires and releases and what
-structure fields it accesses.  These summaries then allow them to
-perform a sound cross-function race analysis without needing to
-consider the full bodies of each function every time, leading to a
-significant improvement in scalability.
+The model-building parts of these tools could potentially be combined
+with {\technique} so as to expand its \gls{programmodel}, and hence
+allow it to analyse aspects of the program's behaviour which depend on
+instructions outside of the \gls{analysiswindow}.  That could
+potentially lead to useful improvements in both analysis performance
+and precision.  HeapMD~\cite{Chilimbi2006}, which uses this kind of
+method to build up a model of the heap, would be particularly
+interesting to investigate in this respect.
 
-Chord\cite{Naik2006} takes a slightly different approach, attempting
-to statically detect pairs of racing accesses without first inferring
-the locks which are intended to protect each field.  Their
-implementation is for Java, and depends to some extent on Java's type
-safety properties, but it would probably not be excessively difficult
-to generalise to non-typesafe languages such as C, at the cost of some
-precision.  The approach taken here is essentially to build up an
-instruction aliasing table, containing the same information as
-{\technique}'s dynamic aliasing table but built statically rather than
-dynamically, and to then use further static analysis to refine this
-table until it only contains entries for instructions which both alias
-and race.  These are then reported as potential errors.  It would
-potentially be interesting to use these techniques to refine
-{\technique}'s aliasing table, which might help to improve performance
-somewhat, although generalising them from source-level to binary-level
-might prove challenging.
+The anomaly-detection approach has also been applied to cross-process
+concurrency bugs such as filesystem TOCTOU
+errors\cite[pages~44--45]{Apple2012SecureCoding}.  Pu and
+Wei~\cite{Pu2006}, which built on earlier work by Uppuluri et
+al.~\cite{Uppuluri2005}, produced a modified version of the Linux
+kernel which protects applications against this kind of attack.  This
+kind of technique is of less direct relevance to {\technique}, which
+only considers intra-process bugs, but might still represent an
+interesting way of handling calls to library functions.
 
-\subsection{Helping the programmer to find bugs themselves}
+
+\todo{MUVI?}
+
+\todo{Bugs as deviant behaviours.}
+
+\subsection{Extended assertions}
+
+\todo{Really want a bit more here.}
 
 All of the schemes discussed so far in this section are intended to
 discover concurrency bugs automatically.  An alternative approach,
@@ -199,16 +293,19 @@ techniques: take a TESLA assertion and convert it to a
 {\implementation}-style message passing automaton which would make it
 easier to reproduce the bug detected by the assertion.
 
-Type state systems are an older approach to this
-problem\cite{Strom1986a}.  In this model, the assertions are described
-by adding state to program types, with a description of how certain
-operations can move instances of a type from one state to another, and
-then restricting the program to only allow certain operations on
-objects which are in a particular state.  These assertions are
-typically checked at run time\cite{Wolff2011}, whether in an
-ad-hoc\cite[pages~305--314]{Gamma1995} or systematic\cite{Aldrich2009}
-manner, and can also in some cases be checked
-statically\cite{Lam2005}.  Some systems, such as
+\subsection{Typestate systems}
+
+Type state systems~\cite{Strom1986a} are an older approach to the
+problem of allowing the programmer to express complex program
+properties which are to be enforced.  In this model, the assertions
+are described by adding state to program types, with a description of
+how certain operations can move instances of a type from one state to
+another, and then restricting the program to only allow certain
+operations on objects which are in a particular state.  These
+assertions are typically checked at run time\cite{Wolff2011}, whether
+in an ad-hoc\cite[pages~305--314]{Gamma1995} or
+systematic\cite{Aldrich2009} manner, and can also in some cases be
+checked statically\cite{Lam2005}.  Some systems, such as
 Clara\cite{Bodden2010}\editorial{Might also want to reference chain
   from there.}, attempt to split the difference, checking as much as
 possible of the assertion statically and deferring the rest to run
@@ -221,8 +318,7 @@ reduce the enforcer overhead.
 
 \todo{Could cite PSpec here (Perl, Weihl, 1993)?}
 
-\subsection{Detecting other types of bugs}
-\label{sect:rw:detect_other}
+\subsection{Symbolic execution}
 
 There is a very large body of existing literature which investigates
 ways of automatically detecting various classes of non-concurrency
@@ -252,13 +348,22 @@ the enforcers it generates require conditions which the program can
 never actually reach, and increase KLEE's ability to find interesting
 concurrency bugs.
 
-\todo{Maybe cite Donaldson 2012 in VSSE?  He tried to make KLEE do
-  concurrent stuff directly and pretty much failed, but I'm half
-  convinced that was because he's an idiot rather than because of any
-  actual conceptual hardness.}
+\todo{SLAM}
 
-\todo{Consider citing the bugs-as-deviant-behaviours stuff?  Also want
-  a MUVI cite here.}
+JPF, the Java Pathfinder\cite{Havelund2000}, is another similar system
+which operates on Java Bytecode\cite{Lindholm2013}.  As such, it has
+access to a great deal more detailed information about the program,
+making the analysis task significantly easier, but still less than a
+source-level analysis would have.  It has been used both as a research
+platform for new approaches to the symbolic execution problem itself
+\todo{Cite Amorim and Lauterburg 2008, Gligoric 2010} and to verify
+large-scale systems in an industrial context \todo{Cite Mehlitz 2007}.
+As such, it represents one of the most well-developed symbolic
+execution systems in use today.  Operating at the bytecode level means
+that they avoid most of the difficult issues faced by {\technique}'s
+symbolic execution system.
+
+\todo{Zing}
 
 \section{Automatically characterising bugs}
 
@@ -267,27 +372,27 @@ program which crashed due to a bug and converts it to a verification
 condition showing what must have happened for the bug to have
 occurred; in other words, it provides a characterisation of the bug.
 This is a field which has been extensively researched in the past.
-One of the oldest examples is given by \todo{Cite Shapiro 1982}, which
-investigated algorithms for localising a bug in a Prolog program by
-asking the user a minimal number of questions.
+The Model Inference System~\cite{Shapiro1982} is one of the oldest
+systems.  It was a system for localising bugs in Prolog programs by
+asking the user a minimal number of questions\editorial{So what?}.
 
-A more recent example is the Delta Debugging work\editorial{Cite Cleve
-  and Zeller, 2005} from the University of Saarland, which compared
-traces taken from a program when it was working to ones taken while it
-was exhibiting a bug in order to find the parts of the traces which
-most effectively predict whether the program will suffer the bug being
-investigated, and hence to automatically locate the root cause of the
-bug.  The Delta Debugging paper which is most relevant to the current
-work is probably \todo{cite Jong-Deok and Zeller 2002}, which explored
-how to apply the Delta Debugging technique to concurrent programs.
-Their basic approach is to record a program's action in a
-deterministic replay system and to then replay it under slight
-variants of that schedule, so as to determine which parts of the
-schedule are necessary for the bug to reproduce.  This allows them to
-produce the simplest possible reproduction of the original concurrency
-bug.  \todo{Compare to {\technique} in a more than trivial way.}
-
-\cite{Jeffrey2009}
+Delta Debugging\cite{Cleve2005} is a more recent example.  In this
+approach, the tool compares traces taken from a program when it was
+working to ones taken while it was exhibiting a bug in order to find
+the parts of the traces which most effectively predict whether the
+program will suffer the bug being investigated, and hence to
+automatically locate the root cause of the bug.  The approach was
+extended by \cite{Jeffrey2009}\editorial{ugg} to include actively
+modifying a program's state as it runs and observing the effects.  The
+Delta Debugging paper which is most relevant to the current work is
+probably \cite{Choi2002}, which explored how to apply the Delta
+Debugging technique to concurrent programs.  Their basic approach is
+to record a program's action in a deterministic replay system and to
+then replay it under slight variants of that schedule, so as to
+determine which parts of the schedule are necessary for the bug to
+reproduce.  This allows them to produce the simplest possible
+reproduction of the original concurrency bug.  \todo{Compare to
+  {\technique} in a more than trivial way.}
 
 \section{Automatically fixing bugs}
 
@@ -426,16 +531,18 @@ is a non-causal semantics\footnote{Causality is, of course, maintained
 
 \subsection{Software rejuvenation and micro-reboots}
 
+\todo{Too bitchy.}
+
 One of the earliest attempts at fault remediation was software
 rejuvenation\cite{Huang1995}, which attempted to ameliorate the
 effects of resource leaks by periodically rebooting the affected
 systems.  This spawned a surprising amount of work on calculating the
 optimum reboot schedule
-\cite{Li2002,Vaidyanathan1999,Vaidyanathan2001,Trivedi2000,Garg1998,Garg1995,Garg1998a,Castelli2001}
-and, somewhat more usefully, some attempts at reducing the cost of
-reboots \cite{Candea2002,Candea2001,Candea,Patterson2002}.  While
-historically interesting, these are unlikely to be applicable to the
-current problem, and so are not discussed further here.
+\cite{Li2002,Vaidyanathan1999,Vaidyanathan2001,Trivedi2000,Garg1998,Garg1995,Garg1998a,Castelli2001}\editorial{Shrink
+  list} and, somewhat more usefully, some attempts at reducing the
+cost of reboots \cite{Candea2002,Candea2001,Candea,Patterson2002}.
+While historically interesting, these are unlikely to be applicable to
+the current problem, and so are not discussed further here.
 
 \subsection{Failure obliviousness and related techniques}
 More recently, Rinard et al\cite{Rinard2004} described failure
@@ -501,7 +608,7 @@ use two main techniques to achieve this:
   large dead zones between any two allocations.  This makes buffer
   overflows much less dangerous.
 \item Second, they avoid reusing heap locations quickly after they
-  have been \verb|free()|d, which reduces the risk of use-after-free
+  have been \texttt{free()}d, which reduces the risk of use-after-free
   bugs actually causing problems.
 \end{itemize}
 
@@ -517,8 +624,6 @@ such allocations are detected, this retains all of the bug-fixing
 benefits of DieHard while noticeably reducing its overhead (at least
 in the common case where only a small number of allocations actually
 need padding).
-
-\todo{FirstAid (Gao, 2009) tries to do the same thing, as well.}
 
 The AutoPaG system\cite{Lin2007} tackled a related problem, that of
 overflows of stack-based buffers.  In this work, the authors assume
@@ -548,7 +653,13 @@ time it encounters a similar failure it can simply repeat those
 modifications.  In this way it is able to protect the program from the
 dangerous inputs without needing any knowledge of the program
 structure, and very little knowledge of its interactions with the
-environment.
+environment.  First-Aid\cite{Gao2009} extended RX to handle certain
+kinds of heap-related errors using a similar strategy of rolling the
+program back and then trying it again with slightly different heap
+behaviour; it can be thought of as the union of RX and DieHard.
+Bouncer\cite{Costa2007} and Vigilante\cite{Costa2008} used similar
+techniques to quickly protect network-facing services from
+newly-released worms.
 
 RX's main weakness is that it has no knowledge of the structure of a
 program's inputs.  This means that if a bug is caused by an input it
@@ -562,8 +673,6 @@ satisfy these safeness constraints.  The intent here is to find a
 closest safe approximation to the dangerous input.  This means that
 programs protected by SOAP can still do something useful even on
 inputs which would normally cause them to crash.
-
-\todo{Put in a discussion of Bouncer and Vigilante here.}
 
 \subsection{Hardware-based fixes for data races}
 Of course, memory errors are only one class of bugs.  Synchronisation
@@ -788,60 +897,13 @@ primary purpose of {\StateMachine}.
 
 \todo{Mention S2E?}
 
-Of course, the term ``machine code'' can cover a wide variety of
-formats.  KLEE, which operates on LLVM bitcode, has already been
-discussed in \autoref{sect:rw:detect_other}.  JPF, the Java
-Pathfinder\cite{Havelund2000}, is another similar system which
-operates on Java Bytecode\cite{Lindholm2013}.  As such, it has access to a
-great deal more detailed information about the program, making the
-analysis task significantly easier, but still less than a source-level
-analysis would have.  It has been used both as a research platform for
-new approaches to the symbolic execution problem itself \todo{Cite
-  Amorim and Lauterburg 2008, Gligoric 2010} and to verify large-scale
-systems in an industrial context \todo{Cite Mehlitz 2007}.  As such,
-it represents one of the most well-developed symbolic execution
-systems in use today.  Operating at the bytecode level means that they
-avoid most of the difficult issues faced by {\technique}'s symbolic
-execution system.
-
+\section{Theorem proving and SAT solving techniques}
 
 \begin{itemize}
-\item Quick overview of a couple of model checking-type systems here.
-\end{itemize}
-
-\section{Other stuff}
-
-\begin{itemize}
-\item Data structure invariant inference: DAIKON, DIDUCE
-\item
-  Joisher, Schieder, et al, On a technique for transparently empowering classical compiler optimizations on multithreaded code, 2012.
-\item
-  Something about separation logic?
-\item
-  Synchronisation removal: Choi et al, Escape analysis for Java, 1999; Ruf 2000.
-\item
-  Procedural concurrency graph: Joisher, Schieder, et al, On a technique for transparently empowering classical compiler optimizations on multithreaded code, 2012.
-\item
-  Something on parallel execution graphs and may-happen-in-parallel e.g. Li and Verbrugge 2004, A practical MHP information analysis for concurrent Java programs
-\item
-  Thread escape analysis: Choi et al, Escape analysis for Java, 1999.
-\item
-  Have a look at Chugh et al, 2008, RADAR.  Dataflow analysis for
-  concurrent programs using datarace detection.
 \item
   Need to find some nice cites for BDDs.  That really shouldn't be
   hard; there are lots of them.
 \item
-  Comparison to schedule memoisation.
-\item
-  Compare the bug finding bits to STM block inference.
-\item
-  Dijkstra's weakest precondition thing.
-\item
-  Jager and Brumley, Efficient directionless weakest preconditions, 2010.
-\item
   Find some simple SMT solvers and see if they actually win anything over just using the SLI sat checker.
   e.g. CVC3, Yices.
-\item
-  Terminator by Byron Cook is worth mentioning. (e.g. Proving Thread Termination 2007)
 \end{itemize}
