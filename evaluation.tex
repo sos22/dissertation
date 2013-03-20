@@ -4,7 +4,6 @@
 \section{Experiments I still need to run}
 
 \begin{itemize}
-\item Compare fair and unfair lock versions of multi\_threads
 \item indexed\_toctou with side condition checking off.
 \item The biassed toctou tests with delays oddly positioned.
 \item The multi\_variable tests
@@ -977,14 +976,24 @@ from happening at all.
 This test illustrates one subtlety in the implementation of the
 enforcer: it must be (at least reasonably) fair in order for the time
 to reproduce the bug to be predictable.  An initial version of the
-enforcer internally used an unfair lock implementation, and while it
-was able to reproduce the bug quickly (in under a second) most of the
-time it suffered from a long tail in 5\% of tests took more than a
-minute to reproduce.  Switching to a fair lock implementation solved
-this problem, and reduced the mean time to reproduction, but at the
-expense of slightly increasing the median time to reproduction.
-\todo{Insert reproduction time CDFs here.}  All other experiments in
-this evaluation were conducted using the fair lock implementation.
+enforcer internally used an unfair lock implementation, and this was
+not able to reproduce the bug in reasonable time.  The
+{\implementation} enforcers use a simple global lock to protect the
+interpreter state, and in this test most threads spend almost all of
+their time in the interpreter, and so the actual execution of the test
+is effectively single-threaded.  Combining that with a naive unfair
+lock implementation lead to such severe starvation that the bug could
+not reproduce.  Switching to a fair lock implementation avoided the
+issue.
+
+\begin{figure}
+  \input{eval/artificial_bugs/special/multi_threads.tex}
+  \caption{Effect of the fairness of the enforcer's internal locks on
+    bug reproduction time.  Solid line shows time with no enforcer,
+    dashed line shows time with an enforce and a fair lock, dotted
+    line shows time with an enforcer and an unfair lock.}
+  \label{fig:eval:multi_threads}
+\end{figure}
 
 \todo{Currently running all of these tests on a four-processor machine,
   which might have an interesting effects on the results of a
