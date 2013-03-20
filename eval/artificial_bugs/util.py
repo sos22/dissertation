@@ -48,6 +48,17 @@ def read_series(fname):
         t.append( (times[i], float(i)/(len(times) + nr_timeouts - 1)) )
     return (t, nr_timeouts)
 
+def plot_series(data, idx):
+    print "  \\draw%s (0,0) " % decorations[idx % len(decorations)],
+    last_y = 0
+    for (x,y) in data:
+        last_y = y
+        if x < 0.1:
+            x = 0.1
+        lp = "(%f,%f)" % (time_to_x(x), perc_to_y(y))
+        print " -- %s" % lp,
+    print " -- (%f, %f);" % (time_to_x(180), perc_to_y(last_y))
+
 def print_preamble():
     print "\\begin{tikzpicture}"
     # Draw axes

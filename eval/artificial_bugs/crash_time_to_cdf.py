@@ -8,17 +8,6 @@ def print_trailer(test_name):
     print "\\end{tikzpicture}"
     print "\\label{fig:eval:crash_cdf:%s}" % test_name
 
-def print_legend(x, series, series_keys):
-    print "  \\node at (%f,0.5) [above left] {\\shortstack[l]{" % x
-    f = True
-    for name in series_keys:
-        t = series[name]
-        if not f:
-            print "\\\\"
-        f = False
-        print "    \\raisebox{1mm}{\\tikz{\\draw%s (0,0) -- (0.5,0);}} %s" % (t[-1], name),
-    print "  }};"
-
 def draw_one_test(test_name):
     print_preamble()
     # Draw the series.
@@ -27,7 +16,7 @@ def draw_one_test(test_name):
               ("~0.dc.crash_times_data", "Data collider")]
     i = 0
     for (fname, _descr) in series:
-        s = read_series(test_name, fname)
+        s = read_series("%s%s" % (test_name, name))
         print "  \\draw%s (0,0) " % decorations[i % len(decorations)],
         last_y = 0
         for (x,y) in s[0]:
