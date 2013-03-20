@@ -194,8 +194,7 @@ the expression language, but are instead encoded into binary decision
 diagrams, or BDDs\cite{Brace1990}, which are themselves expressed in
 terms of the expression language.  These BDDs allow much more
 efficient implementations of many common operations than would be
-possible with a scheme based entirely on unconstrained
-expressions\editorial{Proof?}.
+possible with a scheme based entirely on unconstrained expressions.
 
 \begin{figure}
   \begin{center}
@@ -487,8 +486,7 @@ on a combination of static and dynamic analysis.  The full details are
 given in Section~\ref{sect:program_model:instr_predecessors}.  For
 now, assume that there is some function which maps from an instruction
 to the set of instructions which might have executed immediately
-before that instruction in a single thread\editorial{ignoring signal
-  handlers}.
+before that instruction in a single thread.
 
 \subsection{Handling loops in the crashing thread's CFG}
 \label{sect:derive:handling_loops}
@@ -1019,9 +1017,7 @@ any instructions which cannot reach a potentially interfering store
 within \gls{alpha} instructions.  These \gls{cfg} fragments may cross
 function boundaries; the details are the same as those for the
 crashing thread's \glspl{cfg} in most important respects, and I do not repeat
-them here\editorial{Well, the fact that you're exploring forwards
-  rather than backwards makes it a bit different, but not in an
-  interesting way.}.
+them here.
 
 The next step is to remove the cycles from the \gls{cfg}.  As with crashing
 thread \glspl{cfg}, this is accomplished by duplicating nodes so as to unroll
@@ -1363,8 +1359,7 @@ deleted:
 \end{tikzpicture}
 
 This process iterates, removing one cycle-completing edge at a time,
-until the graph is completely acyclic\editorial{I used to have more
-  intermediate steps in here, but they were really boring.}:
+until the graph is completely acyclic:
 
 \begin{tikzpicture}
   \node (A) at (0,2) [CommCfgInstr] {$A$};
@@ -1732,17 +1727,15 @@ Crashing thread:          & Interfering thread: \\
 
 This rule has one non-obvious implication: the ``quality'' of the
 results is not monotonically increasing with $\alpha$.  Consider, for
-instance, the example in
-Figure~\ref{fig:mandatory_concurrency1}\editorial{This is a simplified
-  version of a real bug; should go and dig up the reference for
-  that.}.  The crashing thread copies the contents of loc1 to loc2,
-performs some complex local calculation, and then asserts that loc1
-and loc2 are no longer equal.  Meanwhile, the interfering thread sets
-loc1 and loc2 to $t_3$, then sets loc2 to $t_3 + 1$.  Running the
-crashing thread atomically is guaranteed to lead to a crash, and so
-the inferred assumption will be simply $\mathit{false}$ and
-{\technique} will not report any candidate bugs from this thread pair.
-On the other hand, if the threads were truncated as shown in
+instance, the example in Figure~\ref{fig:mandatory_concurrency1}.  The
+crashing thread copies the contents of loc1 to loc2, performs some
+complex local calculation, and then asserts that loc1 and loc2 are no
+longer equal.  Meanwhile, the interfering thread sets loc1 and loc2 to
+$t_3$, then sets loc2 to $t_3 + 1$.  Running the crashing thread
+atomically is guaranteed to lead to a crash, and so the inferred
+assumption will be simply $\mathit{false}$ and {\technique} will not
+report any candidate bugs from this thread pair.  On the other hand,
+if the threads were truncated as shown in
 Figure~\ref{fig:mandatory_concurrency2} a candidate bug would be
 reported.  The crashing thread will survive when run atomically in
 isolation if the initial content of loc1 is not equal to the initial
@@ -1843,13 +1836,8 @@ parts here\editorial{Already said that I'm going to be brief.}.
   memory updates and test for aliasing with each one.
 
   This is equivalent to treating the whole of memory as a single array
-  and then using functional updates, as in \needCite{}.  \todo{Say
-    more}
-
-  \todo{That really is a completely bloody ridiculous way of doing
-    this.  Should be partitioning using the dynamic aliasing model.
-    Wouldn't actually \emph{help}, in any useful sense, but I'd feel
-    less stupid describing it.}
+  and then using functional updates, as in McCarthy's theory of
+  arrays~\needCite{}.  \todo{Say more.}
 
 \item Aliasing queries are resolved lazily.  This means that if the
   engine must execute a \state{Load} operation and cannot immediately
@@ -2713,9 +2701,7 @@ some other thread will execute \texttt{l9} during it, and hence the
 more easily the bug will reproduce.  The performance impact of this
 strategy would be roughly proportional to the frequency at which
 \texttt{l2} runs, and so it would be appropriate if \texttt{l9} runs
-more often than \texttt{l2}\editorial{It's a bit of an abuse to talk
-  about the frequency of a non-periodic process, but I think it's
-  fairly clear what I mean.}.  Alternatively, the program could be
+more often than \texttt{l2}.  Alternatively, the program could be
 modified such that \texttt{l9} waits for some other thread to execute
 \texttt{l2}, so that \texttt{l9} can be issued as soon as \texttt{l2}
 completes, which would again make it easier to reproduce the bug; in
@@ -3053,17 +3039,17 @@ Section~\ref{sect:enforce:llis}\editorial{Well, they're kind of
 
 Once the input expression availability map has been calculated, the
 next step is to decide how to evaluate the side condition, and in
-particular at which \gls{cfg} nodes it should be evaluated.  It would, in
-principle, to evaluate the entire side condition only once all of its
-inputs become available, but this would be quite inefficient.  In the
-example, the side condition can only be satisfied if $\textsc{rax}_1 =
-93$, and $\textsc{rax}_1$ is available before the first message
-operation, so it would be undesirable to insert the delays related to
-the message M when $\textsc{rax}_1 \not= 93$.  In general, we would
-like to evaluate as much of the side-condition as possible early in
-the \gls{cfg}, so as to exit the enforcer as soon as possible when the
-condition is definitely going to fail, as this will minimise the
-performance overhead.
+particular at which \gls{cfg} nodes it should be evaluated.  It would,
+in principle, to evaluate the entire side condition only once all of
+its inputs become available, but this would be quite inefficient.  In
+the example, the side condition can only be satisfied if
+$\textsc{rax}_1 = 93$, and $\textsc{rax}_1$ is available before the
+first message operation, so it would be undesirable to insert the
+delays related to the message M when $\textsc{rax}_1 \not= 93$.  In
+general, we would like to evaluate as much of the side-condition as
+possible early in the \gls{cfg}, so as to exit the enforcer as soon as
+possible when the condition is definitely going to fail, as this will
+minimise the performance overhead.
 
 \begin{figure}
   \centerline{
@@ -3192,7 +3178,23 @@ as well.
   the sense of genuinely finding the strongest evaluatable
   precondition, and I think it is, but the proof is pretty damn
   awkward.  Might also be worth talking about perf: BDD reordering has
-  a pretty hideous worst-case complexity.}
+  a pretty hideous worst-case complexity, which we avoid mostly by
+  means of obscure implementation details in the main analysis pass.}
+
+\todo{Could maybe move this to related work?}  This can be thought of
+as a kind of predicate abstraction problem~\needCite{}.  Cavada et
+al.\cite{Cavada2007} presented an algorithm similar to this one in a
+slightly different context.  The key difference is that the
+{\technique} algorithm will sometimes retain evaluatable variables in
+the unevaluatable component of the condition, when there are complex
+relationships between the evaluatable and unevaluatable variables.
+The Cavada algorithm, on the other hand, partitions the condition into
+a component which is completely evaluatable and one which is
+completely unevaluatable.  This can sometimes force them to
+approximate the condition.  If {\technique} were to do that, part of
+the side-condition would remain unevaluated at the end of the
+\gls{CFG} fragment, which might lead to unnecessary message operations
+and hence poor performance.
 
 \begin{figure}
   \centerline{
@@ -4230,8 +4232,8 @@ This would work, but would have a couple of important disadvantages:
 \begin{itemize}
 \item
   Debug breakpoints are far slower than branches.  This might be
-  important if the critical section\editorial{?} is to be inserted on
-  a particularly hot code path and has a side-condition which usually
+  important if the critical section is to be inserted on a
+  particularly hot code path and has a side-condition which usually
   fails.
 \item
   Using debug breakpoints in this way would interfere with any other
@@ -4254,15 +4256,6 @@ This would work, but would have a couple of important disadvantages:
 \end{itemize}
 
 {\Implementation} therefore generates exclusively branch-style patches.
-
-\todo{I did implement a breakpoint-based scheme, so it might be
-  interesting to actually include some numbers on their relative
-  effectiveness.}
-
-\todo{Placing patch points is actually the most computationally
-  expensive step of building the enforcer, once you've got the VC.  I
-  might need to do some implementation work to make that a bit less
-  crazy.}
 
 \section{Fixing bugs using global locks}
 \label{sect:fix_global_lock}
@@ -4421,18 +4414,18 @@ and then by dispensing with the interpreter completely.
 program's machine code in a way which ensures that if one thread
 enters a protected region then no other thread is able to enter a
 protected region until the original thread has left its protected
-region.  As with the happens-before edges of an
-enforcer\editorial{ref?}, these regions are defined in terms of the
-unrolled \gls{cfg}, which might not match up with program's actual \gls{cfg}, and
-the interpreter must still maintain the protected regions correctly
-even when its position in the \gls{cfg} is ambiguous.  Even when the mapping
-between the two \glspl{cfg} is unambiguous, the protected regions might
-overlap, and the interpreter must then ensure that no thread ever
-self-deadlocks by acquiring the lock twice.  The solution to these
-problems is similar to that used by enforcers: the interpreter keeps
-track of the set of \gls{cfg} nodes which each thread might potentially be
-executing and acquires the lock whenever this set goes from empty to
-non-empty and releases it whenever it goes from non-empty to empty.
+region.  As with the happens-before edges of an enforcer, these
+regions are defined in terms of the unrolled \gls{cfg}, which might
+not match up with program's actual \gls{cfg}, and the interpreter must
+still maintain the protected regions correctly even when its position
+in the \gls{cfg} is ambiguous.  Even when the mapping between the two
+\glspl{cfg} is unambiguous, the protected regions might overlap, and
+the interpreter must then ensure that no thread ever self-deadlocks by
+acquiring the lock twice.  The solution to these problems is similar
+to that used by enforcers: the interpreter keeps track of the set of
+\gls{cfg} nodes which each thread might potentially be executing and
+acquires the lock whenever this set goes from empty to non-empty and
+releases it whenever it goes from non-empty to empty.
 
 \begin{figure}
   \begin{displaymath}
@@ -4804,6 +4797,3 @@ will usually produce more efficient code for direct branches than for
 indirect ones\footnote{In particular, it can avoid run-time tests of
   the $\mathit{Cont}$ set for direct branches.}, and so this leads to
 a patch with slightly lower overhead.
-
-
-\todo{Might want another example here.}

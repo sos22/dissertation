@@ -9,10 +9,6 @@
 \item The biassed toctou tests with delays oddly positioned.
 \item The multi\_variable tests
 \item The context tests.
-\item Prod the broken\_publish test to get malloc to actually
-  return a buffer which isn't full of zeroes.
-\item DataCollider calibration experiments.  In fact, all the DC
-  experiments.
 \item Re-do labyrinth experiments and actually track the results.
 \item Re-do Bayes with current version of tool.
 \item Re-do pbzip2 and collect numbers
@@ -1416,65 +1412,71 @@ more quickly than it otherwise would.
 
 The effectiveness of this tool is obviously highly dependent on the
 fraction of instructions which are covered by breakpoints and the
-length of the delays inserted.  Some initial experiments\smh{By you?
-  or by them?  what workloads?} suggested that these parameters lead
-to the most rapid bug reproduction\editorial{Should have done this in
-  a more systematic way.}:
+length of the delays inserted.  I used the following parameters in all
+experiments:
 
 \begin{itemize}
 \item
-  At any given point, half of the program's memory accessing
-  instructions will have an instruction breakpoint, excluding stack
-  accesses\editorial{Putting a breakpoint on every instruction lead to
-    a deadlock; should probably figure out why.}.
+  At any given point, half of the program's store instructions will
+  have an instruction breakpoint, excluding stack accesses.
 \item
-  When a breakpoint is hit, the tool will wait for up to 10ms for a
-  matching read or write to arrive.  When a thread does arrive, it
+  When a breakpoint is hit, the tool will wait for up to 100$\mu$s for
+  a matching read or write to arrive.  When a thread does arrive, it
   will select which to resume first at random, with equal probability.
+  Note that this is a factor of a thousand smaller than the timeout
+  used for {\technique} enforcers in most of this evaluation.
 \item
-  Once a second, the tool discards its current instruction breakpoint
+  Every 100ms, the tool discards its current instruction breakpoint
   set and generates a new one.
 \end{itemize}
 
+These parameters were chosen because they minimise the median
+reproduction time for the simple\_toctou test\editorial{I should maybe
+  give some actual experiments I did to confirm that.}.
+
 It is instructive to compare these parameters to those used in the
-DataCollider paper.  The 10ms timeout is broadly similar, as
-DataCollider uses between one and fifteen millisecond timeouts,
-depending on the type of instruction.  Setting breakpoints on half of
-instructions, on the other hand, is not.  The actual DataCollider
-implementation adjusts the breakpoint density dynamically so as to
-achieve a particular breakpoint rate, and their paper does not specify
-a numerical breakpoint density, which makes a direct comparison
-difficult.  It is, however, possible to estimate the breakpoint
-density from the information which they do give.  Their evaluation
-shows breakpoint rates of up to 1500 breakpoints per second in a
-virtual machine with two processors running at 2.4GHz, so $4.8 \times
-10^9$ cycles per second.  If one assumes roughly one non-stack memory
-access every hundred cycles that translates to 4.8 million memory
-accessing instructions per second, and so they must trap roughly
-0.03\% of memory accessing instructions.  Even allowing for the fact
-that their implementation preferentially places breakpoints on
-instructions which execute infrequently this is still likely to
+DataCollider paper.  DataCollider uses timeouts of between one and
+fifteen milliseconds, depending on the type of instruction, and so the
+100$\mu$s timeout is of broadly similar order of magnitude.  Setting
+breakpoints on half of instructions, on the other hand, is not.  The
+actual DataCollider implementation adjusts the breakpoint density
+dynamically so as to achieve a particular breakpoint rate, and their
+paper does not specify a numerical breakpoint density, which makes a
+direct comparison difficult.  It is, however, possible to estimate the
+breakpoint density from the information which they do give.  Their
+evaluation shows breakpoint rates of up to 1500 breakpoints per second
+in a virtual machine with two processors running at 2.4GHz, so $4.8
+\times 10^9$ cycles per second.  If one assumes roughly one non-stack
+memory access every hundred cycles that translates to 4.8 million
+memory accessing instructions per second, and so they must trap
+roughly 0.03\% of memory accessing instructions.  Even allowing for
+the fact that their implementation preferentially places breakpoints
+on instructions which execute infrequently this is still likely to
 translate to a breakpoint ratio several orders of magnitude lower than
 that used in this evaluation.
 
-Setting such a high breakpoint ratio has two main effects: bugs are
-detected more quickly, but the overheads of the tool are much higher.
-In particular, the high overheads mean that this tool is not an
-entirely practical approach to investigating concurrency bugs.  I
-present it merely as a baseline against which to evaluate
-{\implementation}.  \todo{Should really eval the overheads, rather
-  than just asserting that they're massive.  I mean, they are, but I
-  should have some evidence to back that up.}\smh{+maybe look at would
-  they would be if you uses 0.03\% like the original?}
+Compared to {\technique}, and to the original DataCollider, these
+parameters have two interesting effects: the tool intervenes in the
+program's execution much more frequently, because of the high
+breakpoint ratio, but makes relatively small changes to the execution
+each time, because of the short timeout.  In other words, these
+parameters mean that the DataCollider-like tool gets a very large
+number of opportunities to reproduce the bug, but has a low
+probability of reproduction at each opportunity.  This is a sensible
+strategy for these test bugs, as the test harness will ensure that the
+buggy code is run very frequently, but would perhaps be slightly less
+effective in more realistic programs where the buggy code runs less
+often.  It is therefore quite unlikely that DataCollider would perform
+as well on more realistic tests as it does on these artificial bugs.
 
-More fundamentally, using DataCollider to explore alternative
-schedules is itself somewhat unfair, as DataCollider was originally
-intended to discover races rather than to permute schedules, and,
-while it is trivial to extend it to perform schedule exploration, it
-is not entirely surprising that the results are somewhat poor.
-Nevertheless, it represents the approach which is conceptually close
-to {\technique}'s in the existing literature, and so I consider it to
-be an interesting reference point.
+\todo{More fundamentally, using DataCollider to explore alternative
+  schedules is itself somewhat unfair, as DataCollider was originally
+  intended to discover races rather than to permute schedules, and,
+  while it is trivial to extend it to perform schedule exploration, it
+  is not entirely surprising that the results are somewhat poor.
+  Nevertheless, it represents the approach which is conceptually close
+  to {\technique}'s in the existing literature, and so I consider it
+  to be an interesting reference point.}
 
 \todo{I'd really like to do a comparison with CHESS, as well, but
   that's only implemented for 32-bit Windows programs, and
@@ -1482,6 +1484,68 @@ be an interesting reference point.
   a bit of a mess of direct comparisons.  It'd be kind of fun to
   re-implement it for Linux, but I don't really have time to do that
   right now.}
+
+The results of these experiments are shown in
+Figure~\ref{fig:eval:summary_cdfs}.  For the majority of experiments,
+the DataCollider-like tool gives a modest reduction in the time taken
+to reproduce the bug, but is less effective than {\technique}, as
+expected.  There are a few exceptions, however:
+
+\begin{itemize}
+\item The cross\_function bug actually reproduces less frequently with
+  the DataCollider-like tool than it does with no reproduction-aiding
+  tools.  This is because the tool, in this test, often places a delay
+  in the \gls{crashingthread} at a place which is irrelevant to the
+  bug under investigation.  This slows down the \gls{crashingthread},
+  and so there are fewer opportunities to reproduce the bug, but,
+  because it is mispositioned, does not increase the probability of
+  each opportunity actually succeeding.  The end result is that it
+  takes slightly longer to reproduce the bug.
+\item The double\_free test reproduces more quickly with the
+  DataCollider-like tool than with {\technique}.  This is in large
+  part an artifact of the test harness.  This test is implemented such
+  that the program will crash precisely when the two racing threads
+  start their critical section at the same time, and so the harness
+  includes a small delay between starting the two threads so as to
+  avoid crashing on the very first iteration.  This is effective for
+  the {\technique} enforcers and for the baseline case, but the way
+  the DataCollider-like tool is implemented tends to resynchronise the
+  threads so that they crash very quickly.  In fact, more than 90\% of
+  the time this test program crashes before the tool has detected any
+  races or inserted any delays.
+\item The multi\_variable test also reproduces more quickly under the
+  DataCollider-like tool than under the {\technique} enforcer.  With
+  the DataCollider-like tool, the mean time to reproduction is 75ms,
+  the median time 69ms, and the $95^{th}$ percentile 172ms; with a
+  {\technique} enforcer, the mean time is 322ms, the median 330ms, and
+  the $95^{th}$ percentile 386ms.  This is primarily because
+  {\technique}'s timeouts are not well-suited to this test; reducing
+  the timeout from 100ms to 1ms reduced the mean time to 50ms, the
+  median to 50ms, and the $95^{th}$ percentile to 58ms, which would
+  represent a useful improvement on the DataCollider-like tool.  On
+  the other hand, setting the timeouts that short would, as discussed
+  above, be likely to harm reproduction performance on more realistic
+  tests.
+\item Finally, the multi\_threads test reproduces more quickly under
+  the DataCollider-like tool than under the {\technique} enforcer.
+  the problem here is simply that the instruction interpreter used in
+  {\technique} enforcers is rather slow, taking more than 1.5 seconds
+  to step every thread far enough through their critical section to
+  actually try to perform message operations, and then several hundred
+  milliseconds more to reach a point where they can reproduce the bug.
+  The DataCollider-like tool, on the other hand, runs most of the
+  program unmodified, and so does not suffer from this problem.  In a
+  more realistic program the critical sections would probably cover a
+  smaller proportion of the entire program, and so the program would
+  spend less time in the interpreter, which would somewhat mitigate
+  this effect.
+\end{itemize}
+
+Overall, the {\technique} enforcers are usually able to reproduce most
+of the target bugs more quickly than the DataCollider-like tool, and
+the cases where the DataCollider-like tool is more effective are
+mostly caused by the tests being quite small relative to realistic
+programs.
 
 \subsection{Summary tables}
 

@@ -3,7 +3,7 @@
 import sys
 import math
 
-decorations = ["", "[dashed]", "[color=red]", "[color=blue]", "[color=green]", "[color=purple]"]
+decorations = ["", "[dashed]", "[dotted]"]
 def fail(msg):
     sys.stderr.write("%s\n" % msg)
     sys.exit(1)
@@ -80,7 +80,8 @@ def draw_one_test(test_name):
         print "  \\node at (0,%f) [left] {%s\\%%};" % (perc_to_y(i/10.0), render_nr(i* 10.0))
     # Draw the series.
     series = [(".crash_times_data", "No enforcer"),
-              ("~0.crash_times_data", "Enforcer")]
+              ("~0.crash_times_data", "Enforcer"),
+              ("~0.dc.crash_times_data", "Data collider")]
     i = 0
     for (fname, _descr) in series:
         s = read_series(test_name, fname)
@@ -89,7 +90,7 @@ def draw_one_test(test_name):
         for (x,y) in s[0]:
             last_y = y
             if x < 0.1:
-                continue
+                x = 0.1
             lp = "(%f,%f)" % (time_to_x(x), perc_to_y(y))
             print " -- %s" % lp,
         print " -- (%f, %f);" % (time_to_x(180), perc_to_y(last_y))
@@ -97,7 +98,7 @@ def draw_one_test(test_name):
 
     print_trailer(test_name)
 
-legend = "Cumulative distribution functions of the time taken by the test cases to crash.  Solid lines show time without an enforcer; dashed lines show time with an enforcer.  All tests were run 100 times with a 180 second timeout."
+legend = "Cumulative distribution functions of the time taken by the test cases to crash.  Solid lines show time without an enforcer; dashed lines show time with an enforcer; dotted lines show time with the DataCollider-like tool.  All tests were run 100 times with a 180 second timeout.  Note log scale."
 
 buglist = ["simple_toctou", "indexed_toctou", "crash_indexed_toctou",
            "interfering_indexed_toctou", "context", "cross_function",
