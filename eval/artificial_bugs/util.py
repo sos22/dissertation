@@ -2,7 +2,7 @@ import math
 
 fig_width = 6.0
 
-decorations = ["", "[dashed]", "[dotted]"]
+decorations = ["", "[dashed]", "[dotted]","[color=black!50]"]
 def fail(msg):
     sys.stderr.write("%s\n" % msg)
     sys.exit(1)

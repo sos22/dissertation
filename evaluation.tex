@@ -5,7 +5,6 @@
 
 \begin{itemize}
 \item The performance tests.
-\item The biassed toctou tests with delays oddly positioned.
 \item The multi\_variable tests
 \item The multi\_bugs tests
 \item The context tests.
@@ -620,13 +619,13 @@ Table~\ref{fig:biassed_indexed_toctou:times}.  These results show
 that, while the delay placement mechanism is not always guaranteed to
 find the best possible placement, it does avoid some very poor ones.
 
-\begin{table}
+\begin{figure}
   \input{eval/artificial_bugs/special/delay_positioning.tex}
-  \caption{Time taken to reproduce the crash\_indexed\_toctou and
-    interfering\_indexed\_toctou bugs in different configurations.
-    All experiments were repeated one hundred times.}
+  \caption{CDF of time taken to reproduce the crash\_indexed\_toctou
+    and interfering\_indexed\_toctou bugs in different configurations,
+    in seconds.  All experiments were repeated one hundred times.}
   \label{fig:biassed_indexed_toctou:times}
-\end{table}
+\end{figure}
 
 \subsection{Multi-variable consistency constraint (multi\_variable)}
 
@@ -682,8 +681,10 @@ a bad pointer dereference.  {\Technique} reports a single candidate
 bug in this program, corresponding to interleaving the crashing thread
 with the two stores which set \texttt{global1} and \texttt{global2} to
 7 in the interfering thread.  This enforcer causes the bug to
-reproduce quickly (in an average of 300ms \todo{more details of
-  experiment}).
+reproduce quickly (in an average of $322 \pm 4$ms, mean and standard
+deviation of mean for 100 runs), and in all cases within the three
+minute timeout, whereas without an enforcer the bug failed to
+reproduce before the timeout in 73\% of cases.
 
 It is perhaps worth explaining why {\technique} only reported a single
 bug here.  {\Technique} discovered that the crashing thread can crash
@@ -746,11 +747,10 @@ reported.
 The reported bug can also be converted into a fix.  This fix correctly
 fixes the reported bug, but does not, of course, fix the one which is
 not reported.  As such, the program might still crash (although the
-average time before a crash increases from \todo{...} to \todo{...}
-seconds).  If the \texttt{STOP\_ANALYSIS()} marker is removed then
-both bugs will be discovered, and a fix which fixes both bugs
-correctly causes the program to no longer crash.  \todo{That needs
-  rephrasing.}
+probability of crashing before reaching the timeout fell from 27\% to
+\todo{...}).  If the \texttt{STOP\_ANALYSIS()} marker is removed then
+both bugs are discovered, and the resulting fix prevents the program
+from crashing.
 
 \subsection{Context-dependent races (context)}
 
