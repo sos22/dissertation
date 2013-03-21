@@ -15,4 +15,5 @@ harness=${prefix}/harness
 #SOS22_DELAY_RX=1 ${harness} -l special/interfering_indexed_toctou.delay_recv.crash_times_data -r -n 100 ${prefix}/bug4~0.interp.so ${prefix}/bug4.exe
 #SOS22_DELAY_ALWAYS=1 ${harness} -l special/interfering_indexed_toctou.delay_both.crash_times_data -r -n 100 ${prefix}/bug4~0.interp.so ${prefix}/bug4.exe
 
-${harness} -n 100 -l special/multi_var_fix_one_bug.crash_times_data ${prefix}/bug5~0.fix.so ${prefix}/bug5.exe
+#${harness} -n 100 -l special/multi_var_fix_one_bug.crash_times_data ${prefix}/bug5~0.fix.so ${prefix}/bug5.exe
+SOS22_DISABLE_CTXT_CHECK=1 ${harness} -n 71 -l special/context_no_context.crash_times_data ${prefix}/bug6~0.interp.so ${prefix}/bug6.exe

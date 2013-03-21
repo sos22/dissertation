@@ -7,7 +7,6 @@
 \item The performance tests.
 \item The multi\_variable tests
 \item The multi\_bugs tests
-\item The context tests.
 \item Re-do labyrinth experiments and actually track the results.
 \item Re-do Bayes with current version of tool.
 \item Re-do pbzip2 and collect numbers
@@ -537,16 +536,23 @@ actually increased slightly, from 0.16 seconds to 0.21 seconds.
   parameter.}
 
 I also investigated the behaviour of this test with an enforcer loaded
-but no side condition checking performed.  In that case, the bug
-reproduction time was again exponentially distributed, but this time
-$\lambda = 0.054 \pm 0.004$Hz \todo{re-do experiment to check that
-  number}.  This reduced enforcer not only fails to make the bug
-reproduce more quickly; it actually makes it \emph{less} likely to be
-triggered, per unit time!  This is because an enforcer without
-side-condition checking will often slow the program down in order to
-impose the happens-before graph even in situations where doing so is
-unlikely to trigger the bug, and this causes the buggy code to run far
-less frequently than it otherwise would.
+but no side condition checking performed.  In that case, the mean time
+taken to reproduce the bug was $18 \pm 2$ seconds, mean and standard
+deviation of mean for 100 runs.  This reduced enforcer not only fails
+to make the bug reproduce more quickly; it actually makes it
+\emph{less} likely to be triggered, per unit time!  This is because an
+enforcer without side-condition checking will often slow the program
+down in order to impose the happens-before graph even in situations
+where doing so is unlikely to trigger the bug, and this causes the
+buggy code to run far less frequently than it otherwise would.  The
+full CDF is shown in Figure~\ref{fig:eval:indexed_toctou:no_scs}.
+
+\begin{figure}
+  \input{eval/artificial_bugs/special/indexed_toctou_no_scs.tex}
+  \caption{Effect of side-condition checking on the time taken to
+    reproduce the indexed\_toctou bug, in seconds.}
+  \label{fig:eval:indexed_toctou:no_scs}
+\end{figure}
 
 \begin{figure}
   \subfigure[][Without enforcer]{ \input{eval/indexed_toctou_vary_nr_ptrs_no_enforcer.tex} }
@@ -595,7 +601,7 @@ fix applied, running the test for ten seconds and discarding any runs
 in which the test program crashed.  Without a fix applied, the test
 completed the crashing thread loop $9.6 \pm 0.5 {\times} 10^5$ times
 per second and the interfering thread loop $9.0 \pm 0.2 {\times} 10^5$
-times per second; with a fix, it completed $8.3 \pm 0.3 \times$
+times per second; with a fix, it completed $8.3 \pm 0.3 \times 10^5$
 crashing loops and $7.8 \pm 0.2 \times 10^5$ interfering loops (mean
 and standard deviation of ten runs).  The overhead was therefore
 roughly 15\% on both the read and write sides of the test.  This is
@@ -603,7 +609,7 @@ far smaller than the factor of four reported in the simple\_toctou
 case, largely because the test loop in this case includes a call to
 \verb|random|, which is rather expensive relative to simple lock
 operations and helps to amortise the cost of the additional
-synchronisation.  \todo{Re-run those experiments.}
+synchronisation.
 
 \subsection{Biassed indexed TOCTOU bugs (crash\_indexed\_toctou, interfering\_indexed\_toctou)}
 
@@ -818,15 +824,28 @@ call is far more common than the unsafe one, and so it is important
 that the enforcer only insert delays in the correct calling context.
 
 Without an enforcer, this test program crashes reasonably
-infrequently, reaching the three minute timeout six times out of
-twenty runs and taking an average of 80 seconds in the remaining
-cases.  With a full crash enforcer, including context checking, the
-time taken to obtain a reproduction is uniformly distributed between
-100 and 200 milliseconds.  With an enforcer modified to not perform
-stack context checking, the bug did not reproduce within three
-minutes.
+infrequently, reaching the three minute timeout 19 times out of 100
+runs and taking an average of $48 \pm 6$ seconds in the remaining
+cases (mean and standard deviation of mean).  With a full
+\gls{bugenforcer}, including context checking, the time taken to
+obtain a reproduction fell to $185 \pm 2$ milliseconds (mean and
+standard deviation of mean for 100 runs).  With an enforcer modified
+to not perform stack context checking, the bug did not reproduce
+within three minutes in any of hundred runs.
 
-\todo{Need to re-run those experiments with repeats.}
+It is perhaps worth discussing briefly why {\technique} must check the
+calling context in addition to the side condition.  \texttt{f} can
+only crash due to interleaving with the \gls{interferingthread} when
+\texttt{ptr} is equal to \texttt{global\_ptr1}, and so why is this not
+included in the side condition?  The answer is that the side condition
+is derived using information from the static analysis phase.  The
+known register analysis is sufficient to show that the first argument
+register is \texttt{\&global\_ptr1} at the start of the first call to
+\texttt{f}, and so the analysis will not emit that as a requirement in
+the \gls{verificationcondition} and it will not be included in the
+side condition checking mechanism.  Checking the stack context links
+the run-time \gls{bugenforcer} back to the results of the static
+analysis and avoids the issue.
 
 \subsection{Write-to-read hazard (write\_to\_read)}
 
@@ -878,10 +897,9 @@ CPU time to reproduce the bug.  I suspect that this is because the
 store and load instructions in the crashing thread are close enough
 together that the load is always satisfied from the processor's write
 buffer, and so only returns \texttt{NULL} when the processor receives
-an interrupt in precisely the wrong place.  \todo{It probably wouldn't
-  be hard to check this with a hacked up kernel.  Should probably do
-  that.}  The {\technique}-generated bug enforcer, by contrast, can
-reliably reproduce the bug in a few hundred milliseconds.
+an interrupt in precisely the wrong place.  The {\technique}-generated
+bug enforcer, by contrast, can reliably reproduce the bug in a few
+hundred milliseconds.
 
 {\Technique} can also generate a fix for this bug.  The difficulty of
 reproducing the bug makes it difficult to validate experimentally that
@@ -2141,9 +2159,126 @@ the quality of the results goes up.}
 
 \subsection{Effects of $\alpha$}
 
+\todo{This is for the unoptimised build of mysql; should also do it
+  for the optimised one, because the results are different in an
+  interesting way.}
+
+\todo{These have no error bars, and they also have a quite large
+  uncertainty.}
+
+\begin{figure}
+  \input{eval/alpha/unopt/bpm.tex}
+  \caption{Effect of the $\alpha$ parameter on the time taken to build
+    the \gls{crashingthread} {\StateMachines}.  This includes deriving
+    the \gls{cfg}, compiling it to a {\StateMachine}, and performing
+    the initial simplification step.  The mean time is calculated
+    ignoring timeouts.  The timeout was set at sixty seconds per
+    instruction.}
+  \label{fig:perf:alpha:bpm:unopt}
+\end{figure}
+
 The value of the $\alpha$ parameter has a large effect on the time
 taken to analyse a program and on the number of \glspl{bugenforcer}
-generated for it.  
+generated for it.  This has effects on every step in the
+\gls{verificationcondition} generation process.  First, it has a large
+effect on the time taken to build the \gls{crashingthread}
+{\StateMachines}, as shown in Figure~\ref{fig:perf:alpha:bpm:unopt}.  As
+expected, increasing $\alpha$ increases the time taken to generate
+each instruction's {\StateMachine} and the number of instructions
+which hit the timeout (which in this test was set to sixty seconds).
+These results illustrate one major weakness of {\technique}: the size
+of the \gls{cfg} is potentially exponential in $\alpha$, and this
+limits the size of the \gls{analysiswindow}, and hence the type of bug
+which can be investigated.  For this program, these results suggest
+the highest sensible value of $\alpha$ is likely to be around 40
+instructions.
+
+\todo{It might be interesting to include some numbers on how large the
+  \gls{crashingthread} {\StateMachine} actually is; it's certainly a
+  damn sight bigger than 40 instructions.}
+
+\begin{figure}
+  \input{eval/alpha/unopt/gsc.tex}
+  \caption{Effect of the $\alpha$ parameter on the number of
+    \gls{interferingthread} \glspl{cfg} per \gls{crashingthread}
+        {\StateMachine}.  The mean excludes cases where building the
+        \glspl{cfg} timed out.  The timeout was set to sixty seconds.
+        The time taken to derive the \glspl{cfg} is strongly bimodally
+        distributed, with the process either completing very quickly
+        (a handful of milliseconds) or timing out.}
+  \label{fig:perf:alpha:gsc:unopt}
+\end{figure}
+
+Once the \gls{crashingthread} {\StateMachine} has been generated, the
+next step is to derive \glspl{cfg} for the \glspl{interferingthread}.
+The response of this process to the $\alpha$ parameter is shown in
+Figure~\ref{fig:perf:alpha:gsc:unopt}.  As before, increasing $\alpha$
+leads to an increase in the time out rate, as shown in the top half of
+the graph.  The effect on the time taken when the process did not time
+out was much less dramatic; in practice, this phase of the algorithm
+either completes very quickly (usually less than a second) or runs to
+the timeout (which was set to sixty seconds).  The effect on the
+number of \gls{interferingthread} \glspl{cfg} generated is more
+surprising.  Initially, the number of \glspl{cfg} increases as
+$\alpha$ increases, as might be expected, but it then decreases again
+once $\alpha$ exceeds 40.  This is primarily a selection effect: for
+higher values of $\alpha$, complicated \glspl{crashingthread} time out
+building the crashing {\StateMachine}, and so {\implementation} never
+even attempts to build their interfering \glspl{cfg}.
+
+The shape of the distribution is also somewhat interesting here.  Most
+crashing instructions generate very few interfering \glspl{cfg}, with
+a very small number of crashing instructions accounting for the vast
+majority of \glspl{cfg}.  This is apparent from the fact that the mean
+line on the graph is either close to or greater than the seventy-fifth
+percentile line.
+
+The next step of the analysis is to take these pairs of crashing
+{\StateMachines} and interfering \glspl{cfg} and convert them into
+\glspl{verificationcondition}.  This is shown in
+Figure~\ref{fig:perf:alpha:gvc:unopt}.  Note that the denominator for
+the timeout rate has changed: previously, it was the total number of
+potentially-crashing instructions, whereas now it is the number of
+pairs generated by the previous analysis stages.
+
+The effect of $\alpha$ on the number of \glspl{verificationcondition}
+generated is easiest to understand if it is expressed as the fraction
+of \glspl{cfg} which generate a
+\gls{verificationcondition}\footnote{Recall that there is at most one
+  \gls{verificationcondition} for each interfering \gls{cfg}.}  This
+is a roughly monotonically increasing function.  Increasing $\alpha$
+allows {\technique} to consider interleaving the program's threads
+over a larger window of instructions, and so to consider more
+complicated concurrency behaviour, and this leads to a modest increase
+in the fraction of interfering \glspl{cfg} which might cause
+undesirable behaviour in the \gls{crashingthread}.
+
+\begin{figure}
+  \input{eval/alpha/unopt/gvc.tex}
+  \caption{Effect of the $\alpha$ parameter on the number of
+    \glspl{verificationcondition} generated and the time taken to do
+    so.  All timeouts in earlier stages of the analysis are excluded.
+    The mean excludes timeouts in this stage.  The time taken includes
+    building the interfering {\StateMachine}, deriving the
+    \gls{ci-atomic} and \gls{ic-atomic} constraints, building the
+    \gls{verificationcondition}, and checking whether the
+    \gls{verificationcondition} is satisfiable.}
+  \label{fig:perf:alpha:gvc:unopt}
+\end{figure}
+
+The behaviour of the time taken graph is slightly more complicated.
+Initially, this increases as $\alpha$ increases and the
+{\StateMachines} become more complicated, as might be expected.  For
+values of $\alpha$ beyond 50, the time taken then declines again, as
+the selection effects of earlier phases of the analysis begin to
+dominate.  \todo{And there's a sudden increase in the seventy-fifth
+  percentile on the very right without a matching increase in the
+  mean; not sure quite what's causing that.}
+
+\todo{I'd quite like to quantify how much of this is down to increases
+  in the raw size of the {\StateMachines}, how much the more complex
+  interleavings, and how much the aliasing explosion, but I don't have
+  much idea how to actually do that.}
 
 \subsection{Dynamic analysis}
 

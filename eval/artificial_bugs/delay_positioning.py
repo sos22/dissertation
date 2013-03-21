@@ -3,14 +3,6 @@
 from util import *
 import util
 
-def print_legend(x, descriptions):
-    print "  \\node at (%f,0.5) [above left] {\\shortstack[l]{" % x
-    for idx in xrange(len(descriptions)):
-        if idx != 0:
-            print "\\\\"
-        print "    \\raisebox{1mm}{\\tikz{\\draw%s (0,0) -- (0.5,0);}} %s" % (decorations[idx % len(decorations)], descriptions[idx]),
-    print "  }};"
-
 def latex_escape(x):
     return x.replace("_", "\\_")
 
