@@ -7,15 +7,16 @@
 \item The performance tests.
 \item The biassed toctou tests with delays oddly positioned.
 \item The multi\_variable tests
+\item The multi\_bugs tests
 \item The context tests.
 \item Re-do labyrinth experiments and actually track the results.
 \item Re-do Bayes with current version of tool.
 \item Re-do pbzip2 and collect numbers
-\item Re-do thunderbird and time the static analysis phase.
 \item Re-do unoptimised mysql.  Time static and main analysis phases.
   Check number of candidates generated.  Run candidates.
 \item Re-do optimised mysql.  Time static and main analysis phases.
   Check number of candidates generated.  Run candidates.
+\item The convergence experiments for the dynamic analysis phase.
 \end{itemize}
 
 \section{Eval}
@@ -620,17 +621,10 @@ that, while the delay placement mechanism is not always guaranteed to
 find the best possible placement, it does avoid some very poor ones.
 
 \begin{table}
-  \begin{tabular}{llllll}
-                                 & crash\_indexed\_toctou & interfering\_indexed\_toctou \\
-    No enforcer                  & No reproduction        & No reproduction\\
-    Normal delay positioning \\
-    Delays on sends \\
-    Delays on receives \\
-    Delays on both \\
-  \end{tabular}
+  \input{eval/artificial_bugs/special/delay_positioning.tex}
   \caption{Time taken to reproduce the crash\_indexed\_toctou and
     interfering\_indexed\_toctou bugs in different configurations.
-    All experiments were repeated twenty times. \todo{Fill this out.}}
+    All experiments were repeated one hundred times.}
   \label{fig:biassed_indexed_toctou:times}
 \end{table}
 
@@ -1999,7 +1993,11 @@ shown in Figure~\ref{fig:eval:thunderbird}.  If \verb|m_transport| is
 set to \verb|NULL| by \verb|CloseStreams()| in between the two
 accesses in \verb|ProcessCurrentURL| then the program will crash.  The
 simplest way to trigger this behaviour is for the user to click on an
-IMAP folder and to then immediately close Thunderbird.
+IMAP folder and to then immediately close Thunderbird.  For these
+experiments, I assumed that the crashing instruction had already been
+identified, and so I had {\implementation} investigate that one
+instruction rather than generating every possible
+\glspl{verificationcondition} and \glspl{bugenforcer}.
 
 This is essentially the same bug as simple\_toctou, but embedded in a
 much large program.  As such, {\implementation} produces a very
@@ -2015,8 +2013,44 @@ bug all failed.  The code involved in the bug runs quite rarely, and
 in a background thread, and so the user interface was perfectly usable
 even with this very long delay.
 
-This does, however, illustrate one weakness of the {\technique}
-approach: it is difficult to apply to programs which do not have a
+{\Implementation} produced two \glspl{verificationcondition} for this
+bug: one representing the expected race, and one representing a race
+with another part of Thunderbird which can also set
+\texttt{m\_transport} to \texttt{NULL}.  The second
+\gls{verificationcondition} is a false positive: that part of
+Thunderbird is correctly synchronised, and so cannot reproduce the
+bug.  For all other stores to \texttt{m\_transport}, the static
+analysis component of {\implementation} is able to show that the
+stored value is a valid pointer, and so no
+\glspl{verificationcondition} are generated.  {\Implementation} can
+generated \glspl{bugenforcer} for both \glspl{verificationcondition},
+or it can generate a combined \gls{bugenforcer} which tries to check
+both bugs.  All of these \glspl{bugenforcer} have the expected effect:
+the false positive one has no apparent effect, the true positive and
+combined ones successfully reproduce the bug.
+
+The analysis time was quite reasonable here:
+
+\begin{itemize}
+\item The static analysis phase of building the \gls{programmodel}
+  took $1240 \pm 10$ seconds.
+\item Building the \glspl{verificationcondition} took $390 \pm 10$
+  milliseconds.
+\item It took $640 \pm 10$ milliseconds to build each of the two
+  single-\gls{verificationcondition} \glspl{bugenforcer}.
+\item Building the combined \gls{bugenforcer} took $710 \pm 20$
+  milliseconds.
+\end{itemize}
+
+All times mean and standard deviation of ten runs.  The time taken
+building the \gls{programmodel} clearly completely dominates the other
+phases.  This is unsurprising; it must analyse the entire program,
+whereas the other phases analyse only the small window which is
+relevant to the bug.  Twenty minutes is still a perfectly reasonable
+analysis time for a program as complicated as Thunderbird.
+
+This bug does illustrate one weakness of the {\technique} approach to
+finding bugs: it is difficult to apply to programs which do not have a
 good automated test suite.  {\Technique} generates a very large number
 of false positives in its main analysis phase and relies on the
 enforcers to distinguish them from real bugs, but this is only
@@ -2075,17 +2109,24 @@ bugs, as desired.
 \section{Detailed performance analysis}
 \label{sect:eval:time_details}
 
-Basic approach here is going to be to take a random sample of the
-instructions in mysql, run the analysis on them, and measure how much
-time is spent in each phase.  I think I'll probably have to say
-something about the distributions there, since you usually find that
-you spend a lot of your time in the outliers.  I'll then show how that
-changes when you change $\alpha$.  Also need to show how the number of
-candidates varies with $\alpha$.
+I will now investigate the performance of {\implementation}, and how
+that depends on different aspects of the implementation.  For these
+investigations, I selected 1000 potentially-crashing instructions at
+random out of the optimised and unoptimised versions of mysql and
+looked at how long the tool took to analyse each of those instructions
+in a variety of different configurations.
 
-I'd also like to show how the different variants affect performance.
-That'll mean doing compare-and-contrast on variants with:
+\todo{Basic approach here is going to be to take a random sample of
+  the instructions in mysql, run the analysis on them, and measure how
+  much time is spent in each phase.  I think I'll probably have to say
+  something about the distributions there, since you usually find that
+  you spend a lot of your time in the outliers.  I'll then show how
+  that changes when you change $\alpha$.  Also need to show how the
+  number of candidates varies with $\alpha$.}
 
+\todo{I'd also like to show how the different variants affect
+  performance.  That'll mean doing compare-and-contrast on variants
+  with:
 \begin{itemize}
 \item Base thing
 \item No dynamic aliasing analysis
@@ -2094,9 +2135,15 @@ That'll mean doing compare-and-contrast on variants with:
 \item Neither fixed regs nor static aliasing
 \item All the clever bits on, W isolation on
 \end{itemize}
-
 The performance effect should be a small win, and we should see that
-the quality of the results goes up.
+the quality of the results goes up.}
+
+
+\subsection{Effects of $\alpha$}
+
+The value of the $\alpha$ parameter has a large effect on the time
+taken to analyse a program and on the number of \glspl{bugenforcer}
+generated for it.  
 
 \subsection{Dynamic analysis}
 
