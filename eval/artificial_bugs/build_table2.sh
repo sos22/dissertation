@@ -1,11 +1,74 @@
 #! /bin/bash
 
-set -e
+t=$(mktemp)
+chmod +x $t
+cat > $t <<EOF
+#! /usr/bin/env python
 
-get_mean_sd() {
-    eval `<$2 cut -d' ' -f $1 | summarise_numbers.py | sed 's/ /=/' | tail -n +2`
-    printf "\$%.3f \\pm %.3f\$" $mean $sd
-}
+import sys
+import math
+import locale
+
+sqrt20 = math.sqrt(20)
+
+mean1 = float(sys.argv[1])
+sd1 = float(sys.argv[2]) / sqrt20
+mean2 = float(sys.argv[3])
+sd2 = float(sys.argv[4]) / sqrt20
+
+def leading_digit(d):
+    if d < 0:
+        d = -d
+    if d < 1:
+        cntr = 0
+        while d < 1:
+            d *= 10
+            cntr += 1
+        return -cntr
+    else:
+        cntr = -1
+        while d >= 1:
+            d /= 10
+            cntr += 1
+        return cntr
+
+def print_range(lower, mean, higher):
+    d = leading_digit(higher - lower)
+    def fmt(nr):
+        r1 = "%.*f" % (-d, round(nr, -d))
+        r2 = []
+        f = False
+        if r1.find(".") == -1:
+            f = True
+            cntr = 0
+        for i in xrange(len(r1) - 1, -1, -1):
+            if not f:
+                r2.append(r1[i])
+                if r1[i] == ".":
+                    f = True
+                cntr = 0
+                continue
+            if cntr == 3:
+                r2.append(",\\\\!")
+                cntr = 0
+            cntr += 1
+            r2.append(r1[i])
+        r2.reverse()
+        return "".join(r2)
+    print "\$[%s; %s; %s]\$" % (fmt(lower), fmt(mean), fmt(higher)),
+
+lower1 = mean1 - sd1 * 2
+higher1 = mean1 + sd1 * 2
+lower2 = mean2 - sd2 * 2
+higher2 = mean2 + sd2 * 2
+
+print_range(lower1, mean1, higher1)
+print " & ",
+print_range(lower2, mean2, higher2)
+print " & ",
+print_range(lower1 / higher2, mean1 / mean2, higher1 / lower2)
+print "\\\\\\\"
+EOF
 
 escape() {
     echo "$1" | sed 's/_/\\_/g'
@@ -46,16 +109,13 @@ disposition() {
 }
 
 do_one_line() {
-    get_mean_sd $2 $1.perf_data
-    echo -n " & "
-    get_mean_sd $2 $1~0.perf_data
-    echo -n " & "
-    eval `cut -d' ' -f $2 ${1}.perf_data | summarise_numbers.py | sed 's/ /=/' | tail -n +2`
-    base=${mean}
-    eval `cut -d' ' -f $2 ${1}~0.perf_data | summarise_numbers.py | sed 's/ /=/' | tail -n +2`
-    val=${mean}
-    echo -n $(python -c "print \"%.2f\" % (${val}/${base}),")
-    echo "\\\\"
+    eval `<$1.perf_data cut -d' ' -f $2 | summarise_numbers.py | sed 's/ /=/' | tail -n +2`
+    baseline_mean=$mean
+    baseline_sd=$sd
+    eval `<$1~0.perf_data cut -d' ' -f $2 | summarise_numbers.py | sed 's/ /=/' | tail -n +2`
+    fixed_mean=$mean
+    fixed_sd=$sd
+    "$t" $baseline_mean $baseline_sd $fixed_mean $fixed_sd
 }
 
 cat buglist | while read ign bugname
@@ -87,3 +147,5 @@ do
 	exit 1
     fi
 done
+
+rm -f "$t"
