@@ -2,6 +2,8 @@
 
 \section{Overview of the {\StateMachine} abstraction}
 
+\todo{Need to be more explicit that it's a DAG of states.}
+
 The core data structure used by {\technique}'s initial analysis phases
 is the {\StateMachine}.  This can be viewed as a simplified version of
 a fragment of the original program which contains all of the
@@ -470,13 +472,12 @@ framework.
 \end{figure}
 
 The first step in building the crashing thread's {\StateMachine} is to
-find its \gls{cfg}.  The simplest case is that all of the needed
-instructions are contained within a single function.  In that case,
-the algorithm is as shown in
+find its \gls{cfg}.  The algorithm for doing so is shown in
 Figure~\ref{fig:derive:static_read_cfg_single_function}.  This
 implements a depth-limited breadth-first search starting at the
 crashing instruction and exploring backwards through the program's
-control flow.  Note that this can result in a \gls{cfg} with multiple roots.
+control flow.  Note that this can result in a \gls{cfg} with multiple
+roots.
 
 There is a slight subtlety on line 13, which determines the
 predecessors of a given instruction.  This is not always completely
@@ -485,7 +486,8 @@ on a combination of static and dynamic analysis.  The full details are
 given in Section~\ref{sect:program_model:instr_predecessors}.  For
 now, assume that there is some function which maps from an instruction
 to the set of instructions which might have executed immediately
-before that instruction in a single thread.
+before that instruction in a single thread, crossing function
+boundaries when necessary.
 
 \subsection{Handling loops in the crashing thread's CFG}
 \label{sect:derive:handling_loops}
@@ -700,59 +702,6 @@ phase of the analysis rarely accounts for more than a small percentage
 of {\implementation}'s total running time (see
 Section~\ref{sect:eval:time_breakdowns} for more details).
   
-\subsection{Handling cross-function CFGs.}
-
-\label{sect:derive:cross_function_cfgs}
-
-\todo{This whole subsection needs to be rewritten.}
-
-There is, of course, no guarantee that all of the instructions in the
-\gls{analysiswindow} will be contained within a single function, and
-if they are not then {\technique} must be able to generate appropriate
-cross-function \glspl{cfg}.  It does so by partially inlining
-functions as necessary to restore the problem to the single-function
-case.  This means that instructions must be labelled by both the
-pointer of the instruction itself and also by its inlining context,
-which is simply the stack of functions into which it has been
-inlined\editorial{Not terribly clear.}.  The only slight complications
-are that the inlining context is not necessarily known when \gls{cfg}
-exploration starts, and it might be necessary to consider the same
-instruction in several contexts.
-
-\todo{That's kind of a stupid way of doing this.  Should only need to
-  duplicate instructions when the inlining context matters, which is
-  pretty much just when we see both the start and end of the
-  function.}
-
-There are two important cases to consider: backing into another
-function, where the exploration starts in one function and must be
-extended backwards into the end of another one, and backing out of
-one, where the exploration starts in one function and must be extended
-to include that function's callers.  Backing into a function is
-simple: the analysis finds the functions which are to be
-called\footnote{There might be more than one function if the
-  instruction is a dynamic call.  In that case, the \gls{programmodel}
-  is used to find the set of all possibly-called functions and they
-  are all treated as possible predecessors; see
-  Section~\ref{sect:program_model:instr_predecessors}.}, finds all of
-the return instructions in those functions, and treats those as the
-predecessor of the current instruction with an appropriately extended
-inlining context.
-
-Backing out of a function is more complex.  In this case, the analysis
-must consider all possible callers of the target function and inline
-the target function into each.  
-
-\todo{As I write this I realise that the way I've done this is really,
-  really stupid.  I should probably fix that before writing any more
-  about it.}\smh{An example or two would probably help, too.}
-
-Tail calls do not require any particular special handling here.  If
-the exploration reaches the start of a function then all branches to
-that instruction will be treated as possible predecessors of it,
-regardless of whether they come from call instructions or simple
-branch instructions.
-
 \subsection[Compiling the \glsentrytext{cfg} to a \StateMachine]{Compiling the \gls{cfg} to a \StateMachine}
 \label{sect:derive:compile_cfg}
 
@@ -1427,64 +1376,21 @@ properly\footnote{Of course, this means that stack references near the
   is usually a reasonable trade-off, as all paths through the
   {\StateMachine} end in the same way but might start in completely
   different function contexts.}.  This is not completely trivial if
-the starting points are themselves in different functions with
-different inlining contexts (see
-Section~\ref{sect:derive:cross_function_cfgs}).  This problem can be
-solved by examining the generated {\StateMachine} and determining, for
-each entry point, how the stack pointer changes between that entry
-point and the end and then inserting an opposite change immediately
-before the entry point.  Most of the time, the only change to the
-stack pointer is adding or subtracting a constant, and so this is
-easy.  Otherwise, it fails.  The fact that the stack has been massaged
-in this way is recorded in the {\StateMachine} structure so that it
-can be undone later when building data-dependent crash enforcers.
+the starting points are themselves in different functions.  This
+problem can be solved by examining the generated {\StateMachine} and
+determining, for each entry point, how the stack pointer changes
+between that entry point and the end and then inserting an opposite
+change immediately before the entry point.  Most of the time, the only
+change to the stack pointer is adding or subtracting a constant, and
+so this is easy.  Otherwise, it fails.  The fact that the stack has
+been massaged in this way is recorded in the {\StateMachine} structure
+so that it can be undone later when building data-dependent crash
+enforcers.
 
 \todo{Possibly interesting: this means that once you've converted to
   SSA, the initial generation of the stack pointer refers to its value
   at the \emph{end} of the machine, whereas for every other register
   it refers to the value at the \emph{beginning}.}
-
-
-\subsection{Extracting a call stack from a core dump}
-
-\todo{I moved this from earlier without rewriting it.  Re-check it.}
-
-The algorithm presented above starts from the assumption that the call
-stack and crashing instruction pointer are available.  A core dump
-contains all of the necessary information, but not in a convenient
-format.  In particular, it is not trivial to extract the call stack
-from a core dump without access to compiler debug symbols.  The only
-important part of the call stack is the sequence of function calls
-which have started but not returned\footnote{Some tools refer to this
-  as the backtrace \todo{cite?}.}, and {\technique} has two strategies
-for extracting it:
-
-\begin{itemize}
-\item
-  A static analysis, run on the binary before attempting to analyse
-  the core dump, which attempts to map from instruction addresses to
-  the offset between the current stack pointer and the address of the
-  current function's return address.  When this analysis succeeds it
-  makes it easy to determine from the core dump where the function
-  will return to, and hence where it was called from, but it will not
-  always succeed.  In particular, the \verb|alloca| function can cause
-  that offset to change at run-time, and so no static analysis will
-  ever succeed.
-\item
-  An abstract interpreter, which attempts to interpret the program's
-  machine code forwards from the point of the crash to determine what
-  it would have done if it hadn't crashed.  This proceeds until it
-  reaches a \verb|ret| instruction, at which point determining the
-  return address is again straightforward.
-\end{itemize}
-
-\todo{Need to talk about when you use each, and why you need both.
-  Which is potentially awkward, because I've forgotten myself.}
-
-Knowing the contents of the call stack at the time of the crash
-effectively tells us what the correct inlining context to use is,
-which can then be used to constrain the backing-out-of-function case
-discussed above.
 
 \subsection{Finding unknown bugs}
 \label{sect:derive:unknown_bugs}
@@ -1551,21 +1457,16 @@ exactly the same way as any other instruction\footnote{In particular,
   interfering stores set and in the dynamic aliasing analysis.}.  This
 is generally straightforwards and I do not give full details here.
 
-\todo{Ugly wording.} The \texttt{free} function is particularly
-interesting when {\technique} is being used to investigate double-free
-errors.  This function has two possible implementations, illustrated
-in Figure~\ref{fig:library_free}.  {\Technique} builds a separate
-{\StateMachine} for each call to \texttt{free} which might go wrong
-due to freeing a pointer which has already been freed.  The call to
-\texttt{free} which is currently being investigated is referred to as
-the ``Crashing \texttt{free}'', because it is the one which takes the
-place of a crashing instruction, and uses the first implementation.
-All other calls to \texttt{free} use the second
-implementation\footnote{Note that this includes other calls to
-  \texttt{free} in the \gls{crashingthread}.  The last operation
-  in the \gls{crashingthread} is the crashing \texttt{free};
-  other calls to \texttt{free} in the \gls{crashingthread} will
-  be non-crashing.}.
+Library function handling is particularly important when investigating
+double-free bugs, as the actual crash will occur in the library
+function rather than in the program under investigation.
+{\Technique}'s implementation of the \texttt{free} function is shown
+in Figure~\ref{fig:library_free}.  The call to \texttt{free} which we
+suspect might release something which has already been released, and
+hence suffer a double-free crash, uses the crashing \texttt{free}
+implementation, while all of the other calls to \texttt{free} use the
+non-crashing one\footnote{Note that this includes other calls to
+  \texttt{free} in the \gls{crashingthread}.}.
 
 \begin{figure}
   \subfigure[][Crashing \texttt{free}]{
@@ -1602,46 +1503,55 @@ The effects of these implementations are hopefully reasonably clear:
 non-crashing \texttt{free}s set the $\mathit{last\_free}$ address to
 the pointer which was released, and the crashing \texttt{free} then
 asserts that the pointer which it releases is not the one which was
-most recently released.  This is sufficient to handle the most common
-kind of double-free bug (ignoring limitations in the rest of the
-analysis).  \todo{But not \emph{all} double-free bugs.  Not sure if I
-  need to go into detail of the ones where it doesn't work; they're
-  fairly obvious, and it's not like I've ever claimed this works every
-  time.}
+most recently released.  This scheme is clearly not capable of
+detecting all possible double-free bugs, but it is sufficient for the
+most common kind.
 
-\subsection{The W isolation property}
+\todo{Could maybe give the implementations of pthread\_mutex\_lock and
+  pthread\_mutex\_unlock here, as well.  They're not very interesting,
+  but it wouldn't hurt to have them somewhere.}
 
+\subsection{The W isolation assumption}
 \label{sect:derive:w_isolation}
 
-\todo{Wording in this section is quite clunky.  Also, the name is
-  perhaps a little obscure.}
+\todo{The name is perhaps a little obscure.}
 
 As discussed in Section~\ref{sect:intro:overview}, {\technique} is
 concerned with bugs in which two threads are simultaneously operating
 on the same data structure.  This could sensibly be further restricted
-to bugs in which the \gls{interferingthread} is modifying a
-structure which the \gls{crashingthread} is reading.  In
-particular, there is an interesting class of bugs in which the
-\gls{interferingthread} does not load any locations which were
-previously stored to by the \gls{crashingthread}.  This is
-referred to as the \gls{w-isolation} property.  Assuming that
-it always holds makes the analysis somewhat simpler, but at the
-expense of excluding some bugs from consideration.  {\Implementation}
-can be configured to assume that the property holds, and I present
-some experimental results on the effect of this assumption in
-Section~\ref{sect:eval:w_isolation}.
+to bugs in which the \gls{interferingthread} is modifying a structure
+which the \gls{crashingthread} is reading, rather than having to
+consider cases in which both threads modify the structure.  In other
+words, it can be restricted to bugs in which the data flow is only
+from the \gls{interferingthread} to the crashing one.
+{\Implementation} can configured to look only for that kind of bug, by
+making the \gls{w-isolation} assumption: that the
+\gls{interferingthread} never loads any locations which have been
+stored to by the \gls{crashingthread}.
 
-Most of the optimisations which depend on the \gls{w-isolation}
-property are reasonably obvious, and for the most part amount to
-simply restricting the aliasing problem.  The main exception is that
-it reduces the set of \glspl{communicatinginstruction} which must be
-considered when building the \gls{interferingthread} \glspl{cfg}.  In
-particular, with the \gls{w-isolation} assumption, the only possible
-communication between the \glslink{crashingthread}{crashing} and
-\glslink{interferingthread}{interfering} threads is between a store in
-the \gls{interferingthread} and a load in the \gls{crashingthread},
-and so the \glspl{communicatinginstruction} set is just the set of
-\glspl{interferingstore}.
+The \gls{w-isolation} assumption enables three main optimisations:
+
+\begin{itemize}
+\item
+  It directly restricts the aliasing problem, as the analysis no
+  longer needs to consider aliasing between stores in the
+  \gls{crashingthread} and loads in the \gls{interferingthread}.
+\item
+  It reduces the set of interfering \glspl{cfg} which is generated for
+  each \gls{crashingthread}.  If the \gls{interferingthread} cannot
+  load any location stored to by the \gls{crashingthread} then only
+  \glspl{interferingstore} can be \glspl{communicatinginstruction},
+  and all of the other \glspl{communicatinginstruction} can be
+  discarded.
+\item
+  It simplifies the calculation of the \gls{ci-atomic} constraint;
+  see \autoref{sect:derive:inferred_assumption}.
+\end{itemize}
+
+The analysis is almost always faster with the \gls{w-isolation}
+assumption, but cannot handle as broad a class of program behaviour.
+I evaluate these effects experimentally in
+\autoref{sect:eval:w_isolation}.
 
 \section{Generating a verification condition}
 \label{sect:using:check_realness}
@@ -1686,164 +1596,52 @@ potential crashes which depend on it containing an invalid pointer.
 This is consistent with the goal of only reporting concurrency bugs,
 and not simply any kind of bug in the program.
 
-\begin{figure}
-\begin{centering}
-\hfill
-\begin{tabular}{p{8cm}l}
-Crashing thread:\hfill         & Interfering thread: \\
-\\
-1: Load $t_0$ from loc1        & 6: Load $t_3$ from loc1 \\
-2: Store $t_0$ to loc2         & 7: Store $t_3$ to loc2 \\
-\textit{Something complicated} & 8: Store $t_3 + 1$ to loc2 \\
-3: Load $t_1$ from loc1        & \\
-4: Load $t_2$ from loc2        & \\
-5: Crash if $t_1 = t_2$ & \\
-\end{tabular}
-\hfill
-\end{centering}
-\caption{Example of threads with mandatory concurrency.}\smh{Centre/space}
-\label{fig:mandatory_concurrency1}
-\end{figure}
-
-\begin{figure}
-\begin{centering}
-\hfill
-\begin{tabular}{p{8cm}l}
-Crashing thread:          & Interfering thread: \\
-\\
-3: Load $t_1$ from loc1   & 6: Load $t_3$ from loc1 \\
-4: Load $t_2$ from loc2   & 7: Store $t_3$ to loc2 \\
-5: Crash if $t_1 = t_2$   & 8: Store $t_3 + 1$ to loc2
-\end{tabular}
-\hfill
-\end{centering}
-\caption{Truncation of the example in Figure~\ref{fig:mandatory_concurrency1}.}
-\label{fig:mandatory_concurrency2}
-\end{figure}
-
-\todo{Not convinced that this really belongs here; maybe pull up to
-  introduction.}
-
-This rule has one non-obvious implication: the ``quality'' of the
-results is not monotonically increasing with $\alpha$.  Consider, for
-instance, the example in Figure~\ref{fig:mandatory_concurrency1}.  The
-crashing thread copies the contents of loc1 to loc2, performs some
-complex local calculation, and then asserts that loc1 and loc2 are no
-longer equal.  Meanwhile, the interfering thread sets loc1 and loc2 to
-$t_3$, then sets loc2 to $t_3 + 1$.  Running the crashing thread
-atomically is guaranteed to lead to a crash, and so the inferred
-assumption will be simply $\mathit{false}$ and {\technique} will not
-report any candidate bugs from this thread pair.  On the other hand,
-if the threads were truncated as shown in
-Figure~\ref{fig:mandatory_concurrency2} a candidate bug would be
-reported.  The crashing thread will survive when run atomically in
-isolation if the initial content of loc1 is not equal to the initial
-content of loc2, and will always survive if run after the interfering
-thread completes, and so the inferred assumption will be
-$\smLoad{\mathit{loc1}} \not= \smLoad{\mathit{loc2}}$.  Starting from
-a state which satisfies that assumption and interleaving the two
-threads in the order 3, 6, 7, 4, 5\editorial{Diagram?} will result in
-a crash, and so {\technique} will generate a candidate bug for the
-reduced threads.  The original two threads clearly did contain a
-concurrency bug, and so increasing $\alpha$ has caused a real bug to
-be omitted from the set of candidate bugs.
-
-Note that this is not, strictly speaking, a problem with {\technique}
-itself, but rather an unfortunate property of the class of bug
-considered.  As discussed in Section~\ref{sect:intro:overview},
-{\technique} only considers bugs which are caused by interleaving
-threads which would have been safe if they had run without
-interleaving.  The truncated program has a bug of that form but the
-full program does not (as running the full crashing thread in
-isolation will always crash), and so it is unsurprising that
-{\technique} will report a bug in the truncated program but not the
-full one.
-
-This is nevertheless an irritating property for {\technique} to have.
-Fortunately, one could reasonably expect that this problem is rare in
-real programs.  In general, real programs will only contain this type
-of bug if the complicated local computation in the crashing thread
-takes long enough that the interfering thread will almost certainly
-intercede, as otherwise the programmer will find the bug quickly and
-eliminate it.  At the same time, {\technique} will rarely be able to
-support an \gls{analysiswindow} larger than a few hundred
-instructions, and on modern hardware the time taken to run a few
-hundred instructions will generally be small relative to scheduler
-jitter.  It is therefore highly unlikely that the program will be
-written such that the interfering thread runs in that part of the
-analysis window with high enough probability to make the bug difficult
-for a programmer to isolate and fix.  \todo{Not sure how convincing
-  that is.  Argument is basically that this kind of bug is easy to
-  find, so won't be present in real programs.}
-
-
 \subsection{Symbolically executing {\StateMachines}}
 
 \todo{This probably wants re-writing.}
 
 {\Implementation} uses a simple symbolic execution engine to evaluate
 {\StateMachines} and determine when they will crash.  The details of
-this are fairly standard, and I give only a brief overview
-here\editorial{\emph{Should} only give a brief overview; this ended up
-  much more detailed than I'd expected.}.  The core data structure
-used by the execution engine is a queue of (mostly) symbolic
-configurations which the {\StateMachine} might occupy, and the main
-operation is to take a state out of this queue, determine what the
-{\StateMachine} might do next, and possibly add some additional
-configurations to the queue to explore further.  Each configuration
-contains:
-
-\begin{itemize}
-\item
-  A mapping from {\StateMachine} variables to the (symbolic) values of
-  those variables.
-\item
-  A reference to the {\StateMachine}'s current (non-symbolic) state.
-\item
-  A log of all of the memory stores issued by the {\StateMachine} so
-  far.
-\item
-  The current path constraint.  This is simply the conjunction of
-  all of the conditions which are known to be true at this point in
-  the execution.
-\end{itemize}
-
-The core of the symbolic execution engine is a set of rules for
-advancing from one symbolic state to another.  Most of these are
-standard (see, for instance, \editorial{cite one of the early KLEE
-  papers}) and I give only a brief overview of the most important
-parts here\editorial{Already said that I'm going to be brief.}.
+this are, for the most part, quite conventional, and I give only a
+brief overview of the most important features here:
 
 \begin{itemize}
 \item The symbolic execution engine considers only a single
   {\StateMachine} at a time, even when investigating the parallel
-  behaviour of two threads.  Rather than trying to enumerate all
-  possible interleavings during symbolic execution, {\technique}
-  instead encodes them into special cross-product {\StateMachines};
-  see Section~\ref{sect:using:build_cross_product}.
+  behaviour of two threads.  Rather than investigating interleavings
+  of the threads in the symbolic execution engine, as is done in, for
+  instance, ESD\cite{Zamfir2010}, {\technique} instead encodes them
+  into special cross-product {\StateMachines}, described in
+  \autoref{sect:using:build_cross_product}.
 
 \item The program's memory is represented by the sequence of update
   operations, rather than attempting to maintain separate models for
-  particular objects or memory locations.  This is because it is not
-  always possible to identify precisely which memory location a
-  particular memory accessing operation accesses.  Tracking the entire
-  list of operations avoids that issue.
+  particular objects or memory locations.  In effect, the whole of
+  memory is modelled as a single array using McCarthy's theory of
+  arrays\needCite{}.  \state{Store} operations are then implemented by
+  simply adding them to the update list, whereas \state{Load}
+  operations have to scan back through the list to find a matching
+  \state{Store}.
 
-  \state{Store} operations are then very easy to implement by just
-  adding them to the memory log.  \state{Load} operations, on the
-  other hand, are more expensive, and must walk the entire list of
-  memory updates and test for aliasing with each one.
-
-  This is equivalent to treating the whole of memory as a single array
-  and then using functional updates, as in McCarthy's theory of
-  arrays~\needCite{}.  \todo{Say more.}
+  This is not a particularly efficient approach.  {\Implementation}
+  relies on two facts to mitigate the problems.  First, where the
+  relationship between \state{Store}s and \state{Load}s is simple the
+  {\StateMachine} simplifiers will forward data between them before
+  the symbolic execution starts, eliminating both from the
+  {\StateMachine}.  Second, {\implementation} maintains a cache of
+  previous aliasing queries, and so if, for instance, two paths
+  through the {\StateMachine} both need to determine whether
+  \state{Store} A might alias with \state{Load} B the symbolic
+  execution engine usually only needs to do so once.
 
 \item Aliasing queries are resolved lazily.  This means that if the
   engine must execute a \state{Load} operation and cannot immediately
   determine which \state{Store} operation to use, it does not cause an
   immediate fork of its state, but instead causes the \state{Load} to
   return an expression BDD (see Section~\ref{sect:sm_expr_language})
-  describing the aliasing query and selecting the appropriate result.
+  whose internal nodes describe the alias query and whose leaves
+  select the appropriate result.  
+
   \todo{I want to say that's faster, and I genuinely believe that it
     is, but I don't have a great deal of evidence to back it up.}
   \todo{Also, might need a better explanation of that.}  \todo{Need to
@@ -1854,38 +1652,26 @@ parts here\editorial{Already said that I'm going to be brief.}.
   definitely valid.  For instance, if the engine executes a
   \state{Load} operation which loads from memory with a location given
   by $\mathit{expr}$ it will conclude that $\mathit{expr}$ is a valid
-  pointer and add ${\neg}\smBadPtr{expr}$ to the current path
-  constraint.  This means that if {\technique} is investigating a bad
-  pointer dereference and it can show that either thread dereferenced
-  the pointer prior to the crashing instruction then it can assume
-  that the crashing instruction will not crash.
+  pointer and ensure that the expression $\smBadPtr{\mathit{expr}}$
+  always evaluate to {\false}.  This means that if {\technique} is
+  investigating a bad pointer dereference and some fragment of program
+  dereferences the same pointer multiple times, it will only ever
+  report a bug for the first such dereference operation.
 
-  \todo{Ugly ugly ugly}
-
-\item \todo{Rewrite to a para rather than a bullet point.} The engine
-  does not attempt to detect when it revisits a previously visited
-  configuration.  This is because revisiting configurations is
-  extremely rare, and the minimal amounts of redundant work which
-  would be avoided by not doing so cannot justify the costs of
-  checking for cycles.  There are several reasons for revisiting being
-  rare:
-
-  \begin{itemize}
-  \item {\STateMachines} are acyclic, and so any single path through
-    the {\StateMachine} will definitely not revisit any
-    states\footnote{This is also the property which makes not
-      detecting cycles safe: there cannot be any infinite loops in the
-      execution engine because every path is guaranteed to be finite,
-      and there are a finite, if large, number of paths.}.
-  \item {\Technique} applies extensive simplification passes to the
-    {\StateMachine} before attempting to symbolically execute it (see
-    Section~\ref{sect:simplifying}), and these simplifications have
-    the effect of removing redundancy from the {\StateMachines}.
-  \item The decision to model memory as a sequence of updates, rather
-    than as a collection of objects, means that identifying equal
-    states is often difficult.  \todo{That was on my list, but I don't
-      remember what it means any more.  Think harder.}
-  \end{itemize}
+\item Unlike most symbolic execution engines, the one used by
+  {\implementation} does not attempt to detect when it revisits a
+  previously-visited configuration.  This is safe because
+  {\StateMachines} are acyclic: any path through a {\StateMachine} can
+  visit a given state at most once, and so there is no possibility of
+  a single revisiting a configuration and entering an infinite loop.
+  It is also, surprisingly, reasonably performant, because it is
+  extremely rare for multiple paths to visit the same configuration,
+  and so there is little scope for re-using configurations to reduce
+  duplicated work.  This is largely because {\technique} simplifies
+  the {\StateMachine} before attempting to symbolically execute it and
+  these simplifications tend to remove most easily-exploited forms of
+  redundancy\editorial{Should maybe say something about the flat model
+    of memory meaning that I can't really do much CEGAR stuff?}.
 \end{itemize}
 
 \subsection{Deriving the inferred assumption}
@@ -1910,9 +1696,18 @@ state\footnote{Note, in particular, that paths which end at
 The \gls{inferredassumption} itself is then formed from the
 conjunction of these two sub-constraints.
 
-\todo{Might be worth mentioning that W isolation implies CI atomic ==
-  C atomic \&\& I atomic, so we can re-use the computation across
-  interfering threads when the crashing thread is the same?}
+This scheme can be simplified slightly when the \gls{w-isolation}
+assumption holds.  In that case, the \gls{crashingthread} cannot
+influence the behaviour of the \gls{interferingthread}, and so the
+concatenation of the \gls{crashingthread} and \gls{interferingthread}
+will crash precisely when either of the threads would crash when run
+in isolation.  \Gls{ci-atomic} is therefore equal to $C \wedge I$,
+where $C$ is the condition for the \gls{crashingthread} to survive
+when run atomically and $I$ that for the \gls{interferingthread}.  $C$
+is purely a property of the \gls{crashingthread}, and so only needs to
+be computed once even when there are multiple
+\glspl{interferingthread}, which reduces the amount of symbolic
+execution which must be done.
 
 Concatenating {\StateMachines} is straightforward: simply take the
 first {\StateMachine} and replace all of its {\stSurvive} states
@@ -2126,7 +1921,7 @@ this diagram:
       \node[stateSideEffect,below = of lB] (lC) {$C$: \stLoad{2}{x} };
       \node[stateIf,below = of lC] (lD) {$D$: \stIf{\smBadPtr{\smTmp{2}}} };
       \node[stateTerminal,below = of lD] (lH) {$H$: \stCrash };
-      \node[stateTerminal,right = of lC] (lG) {$G$: \stSurvive };
+      \node[stateTerminal,right = 0.5 of lC] (lG) {$G$: \stSurvive };
       \draw[->] (lA) -- (lB);
       \draw[->,ifTrue] (lB) -- (lG);
       \draw[->,ifFalse] (lB) -- (lC);
@@ -2136,6 +1931,7 @@ this diagram:
     \end{tikzpicture}
     \caption{Crashing thread {\StateMachine} }
   \end{subfloat}
+  \hspace{-5mm}
   \begin{subfloat}
     \begin{tikzpicture}
       \node[stateIf,initial above] (lE) {$E$: \stIf{y \not= 0}};
@@ -2149,7 +1945,7 @@ this diagram:
   \end{subfloat}
   \caption{A pair of {\StateMachines}.  $x$ is a global memory
     location.  Figure~\ref{fig:cross_product_output} shows their
-    cross-product.}\smh{Hangs off right margin.}
+    cross-product.}
   \label{fig:cross_product_input}
 \end{figure}
 
@@ -2171,7 +1967,7 @@ this diagram:
     \node[stateTerminal, below = of L] (N) {(\{$H$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
     \node[stateTerminal, right = of N] (O) {(\{$G$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
     \node[stateIf, below = of M] (P) {(\{D, {\true}\}, \{$I$, {\true}\})\\\stIf{\smBadPtr{\smTmp{2}}} };
-    \node[stateTerminal, left = of P] (Q) {(\{$G$, {\true}\}, \{$I$, {\true}\})\\\stSurvive };
+    \node[stateTerminal] at (5.5,-14.8) (Q) {(\{$G$, {\true}\}, \{$I$, {\true}\})\\\stSurvive };
     \node[stateTerminal, below = of P] (R) {(\{$G$, {\true}\}, \{$I$, {\true}\})\\\stCrash };
     \draw[->,ifTrue] (A) -- (B);
     \draw[->,ifFalse] (A) -- (C);
@@ -2192,8 +1988,7 @@ this diagram:
     \draw[->,ifFalse] (P) -- (R);
   \end{tikzpicture}
   \caption{Cross product of the {\StateMachines} shown in
-    Figure~\ref{fig:cross_product_input}. \todo{redo
-      layout}}\smh{Ack!}
+    Figure~\ref{fig:cross_product_input}.}
   \label{fig:cross_product_output}
 \end{figure}
 
@@ -4616,9 +4411,9 @@ verbatim as part of the \textbf{Issue} phase.  The main exceptions are
 control flow instructions, which set the instruction pointer to some
 other value.  If these were included verbatim in the patch then
 {\implementation} would lose control of the program's execution, with
-undesirable results.  For the AMD64 architecture, there are five main
-types of control flow instructions: direct jumps, direct calls,
-indirect jumps, indirect calls, and returns.  I consider each in turn.
+undesirable results.  For the AMD64 architecture, there are three main
+types of control flow instructions: direct jumps, direct calls, and
+indirect transfers.  I consider each in turn.
 
 \subsubsection{Direct jumps}
 
@@ -4679,23 +4474,25 @@ here, as the program might implement its own synchronisation
 primitives\cite{Jannesari2010}, and so the timeout would still be
 necessary even if the patch lock were dropped during library calls.
 
-\subsubsection{Indirect jump instructions}
+\subsubsection{Indirect control-flow transfer instructions}
 
-\todo{Could maybe drop this bit?}
+Indirect control-flow transfer instructions are those which set the
+instruction pointer to a calculated value; for the AMD64 instruction
+set, this includes indirect jumps, indirect calls, and return
+instructions.  They are difficult to handle in the compiler as the
+target is not available at compile time and the compiler must ensure
+that it generates code for every state which might be reached, along
+with appropriate branches to activate that code at appropriate times.
 
-Indirect jump instructions are those which set the instruction pointer
-to a calculated value.  They are difficult to handle in the compiler
-as the target is not available at compile time and the compiler must
-ensure that it generates code for every state which might be reached,
-along with appropriate branches to activate that code at appropriate
-times.
-
-There are three cases which need to be considered:
+I consider only indirect jumps here; generalising to indirect calls
+and return instructions is then easy given the considerations of the
+previous section\editorial{Rephrase.}.  There are three cases which
+need to be considered:
 
 \begin{itemize}
-\item There might be an edge in the \gls{cfg} corresponding to the branch.
-  In that case, the patch must branch to the target of the jump
-  without releasing the lock.
+\item There might be an edge in the \gls{cfg} corresponding to the
+  branch.  In that case, the patch must branch to the target of the
+  jump without releasing the lock.
 \item There might not be any such edge, indicating that the lock
   should be released, but the instruction might be in the
   $\mathit{Cont}$ set, so the patch cannot jump directly back to the
@@ -4716,83 +4513,3 @@ match\footnote{There is a slight complication here that the
   and hence might suffer a race, and the compiler must be careful not
   to drop the lock prematurely if that happens.  {\Implementation}'s
   patches correctly avoid this issue.}.
-
-\subsubsection{Indirect call instructions}
-
-Indirect call instructions are similar to indirect jumps, except that,
-in addition to setting the instruction pointer, they also push the old
-value of the pointer on to the stack.  That extra stack manipulation
-somewhat complicates returning to the original program\footnote{As
-  before, the case where the call remains within the protected region
-  is straightforwards}.  {\Implementation} implements this operation
-using this instruction sequence:
-
-\begin{verbatim}
-mov %rdi, 0x80(%rsp) ; Store next instruction address
-mov 0(%rsp), %rdi    ; Restore RDI
-lea 0x80(%rsp), %rsp ; Restore red zone
-call *0(%rsp)        ; Call target function
-jmp return_address   ; Return to original program
-\end{verbatim}
-
-This perhaps requires some additional explanation:
-
-\begin{itemize}
-\item \texttt{mov \%rdi, 0x80(\%rsp)}.  This stores the address which
-  we need to call into \texttt{0x80(\%rsp)}.  \texttt{0x80} is the
-  size of the red zone, and so once the red zone has been cleared this
-  will be at \texttt{0(\%rsp)}.
-\item \texttt{mov 0(\%rsp), \%rdi}.  This restores the value of
-  \texttt{\%rdi} from the top of the stack.
-\item \texttt{lea 0x80(\%rsp), \%rsp}.  This restores the program's
-  original red zone.  The address which is to be called is now at
-  \texttt{0(\%rsp)}.
-\item \texttt{call *0(\%rsp)}.  The effect of this instruction is
-  somewhat complicated: it sets the instruction pointer to the initial
-  contents of \texttt{0(\%rsp)}, then sets \texttt{0(\%rsp)} to the address
-  of the next instruction, and then decrements \texttt{\%rsp} by eight
-  bytes.  This means that the target function will be invoked with the
-  desired stack pointer and its return address set to the \texttt{jmp}
-  instruction.
-
-  In other words, the sequence uses the stack location which will
-  store the return address as a temporary location to store the
-  address of the function to be called.
-\item \texttt{jmp return\_address}.  This runs once the called
-  function returns and immediately branches to the instruction after
-  the indirect call instruction in the original program.
-\end{itemize}
-
-This means that the indirect branch is correctly
-emulated\editorial{Why is this hard?  I used to have quite a lot on
-  the ways this can go wrong, but I've cut it, and it makes this look
-  a bit pointless.  On the other hand, this really is much harder than
-  it looks.  I'm pretty certain that that sequence is in fact the
-  \emph{only} way of doing it, modulo trivial reorderings and
-  introducing no-ops, and it's outright impossible on ARM.}.
-
-
-
-
-\subsubsection{Return instructions}
-
-\texttt{ret} instructions pop a pointer off the stack and set the
-current instruction pointer to be that value.  They are equivalent to
-this sequence of instructions:
-
-{\tt
-lea 8(\%rsp), \%rsp\\
-jmp *0(\%rsp)\\
-}\footnote{The AMD64 instruction sets also includes a \texttt{ret n} instruction, which performs additional adjustments of the stack pointer; this can be emulated by adjusting the \texttt{8} and \texttt{0} offsets in this sequence.}
-
-It would, therefore, be correct to treat \texttt{ret} instructions as
-ordinary indirect branches, but it is sometimes possible to do
-slightly better by examining the interpreter state at the time of the
-\texttt{ret}.  In particular, \gls{cfg} nodes include an inlining context
-(see Section~\ref{sect:derive:cross_function_cfgs}), and this allows
-the compiler to determine precisely where the instruction will return
-to, converting the indirect branch into a direct one.  The compiler
-will usually produce more efficient code for direct branches than for
-indirect ones\footnote{In particular, it can avoid run-time tests of
-  the $\mathit{Cont}$ set for direct branches.}, and so this leads to
-a patch with slightly lower overhead.

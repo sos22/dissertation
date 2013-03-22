@@ -1,4 +1,4 @@
-#! /bin/sh
+#! /bin/bash
 
 export SOS22_RUN_FOREVER=1
 
@@ -16,4 +16,48 @@ harness=${prefix}/harness
 #SOS22_DELAY_ALWAYS=1 ${harness} -l special/interfering_indexed_toctou.delay_both.crash_times_data -r -n 100 ${prefix}/bug4~0.interp.so ${prefix}/bug4.exe
 
 #${harness} -n 100 -l special/multi_var_fix_one_bug.crash_times_data ${prefix}/bug5~0.fix.so ${prefix}/bug5.exe
-SOS22_DISABLE_CTXT_CHECK=1 ${harness} -n 71 -l special/context_no_context.crash_times_data ${prefix}/bug6~0.interp.so ${prefix}/bug6.exe
+#SOS22_DISABLE_CTXT_CHECK=1 ${harness} -n 71 -l special/context_no_context.crash_times_data ${prefix}/bug6~0.interp.so ${prefix}/bug6.exe
+
+unset SOS22_RUN_FOREVER
+
+if false
+then
+    sample() {
+	local t=$(mktemp)
+	local preload=$1
+	local exe=$2
+	LD_PRELOAD=$preload $exe > $t
+	grep "Survived" $t | sed 's/Survived, \([0-9]*\) read events and \([0-9]*\) write events.*/\1 \2/'
+	rm -f "$t"
+    }
+    cat buglist | while read nr name
+    do
+	: > ${name}~0.perf_data
+	for i in `seq 1 20`
+	do
+	    sample "${prefix}/bug${nr}~0.fix.so" "${prefix}/bug${nr}.exe" >>  ${name}~0.perf_data
+	done
+    done
+fi
+
+if false
+then
+    sample() {
+	local t=$(mktemp)
+	local exe=$1
+	for i in `seq 1 100`
+	do
+	    $exe > $t && break
+	done
+	grep "Survived" $t | sed 's/Survived, \([0-9]*\) read events and \([0-9]*\) write events.*/\1 \2/'
+	rm -f "$t"
+    }
+    cat buglist | while read nr name
+    do
+	: > ${name}.perf_data
+	for i in `seq 1 20`
+	do
+	    sample "${prefix}/bug${nr}.exe" >>  ${name}.perf_data
+	done
+    done
+fi

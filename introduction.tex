@@ -98,7 +98,7 @@ acceptable computational cost.  I also show that the fixes generated
 often have sufficiently low overhead to be useful; usually a few
 percent in more realistic tests.
 
-\section{Execution model and type of bug considered}
+\section{Type of bug considered}
 
 {\Technique} considers only a subset of concurrency bugs: those where
 one thread, referred to as the ``crashing thread'', is reading from
@@ -144,6 +144,83 @@ bugs, and complicated memory corruption bugs are difficult to handle),
 but it does include some interesting bugs.
 Section~\ref{sect:future_work:generalising} considers some possible
 ways of relaxing some of these restrictions.
+
+\begin{figure}
+\begin{centering}
+\hfill
+\begin{tabular}{p{8cm}l}
+Crashing thread:\hfill         & Interfering thread: \\
+\\
+1: Load $t_0$ from loc1        & 6: Load $t_3$ from loc1 \\
+2: Store $t_0$ to loc2         & 7: Store $t_3$ to loc2 \\
+\textit{Something complicated} & 8: Store $t_3 + 1$ to loc2 \\
+3: Load $t_1$ from loc1        & \\
+4: Load $t_2$ from loc2        & \\
+5: Crash if $t_1 = t_2$ & \\
+\end{tabular}
+\hfill
+\end{centering}
+\caption{Example of threads with mandatory concurrency.}
+\label{fig:mandatory_concurrency1}
+\end{figure}
+
+\begin{figure}
+\begin{centering}
+\hfill
+\begin{tabular}{p{8cm}l}
+Crashing thread:          & Interfering thread: \\
+\\
+3: Load $t_1$ from loc1   & 6: Load $t_3$ from loc1 \\
+4: Load $t_2$ from loc2   & 7: Store $t_3$ to loc2 \\
+5: Crash if $t_1 = t_2$   & 8: Store $t_3 + 1$ to loc2
+\end{tabular}
+\hfill
+\end{centering}
+\caption{Truncation of the example in Figure~\ref{fig:mandatory_concurrency1}.}
+\label{fig:mandatory_concurrency2}
+\end{figure}
+
+\todo{Not convinced that this really belongs here; maybe pull up to
+  introduction.}
+
+This definition has one non-obvious property: the ``quality'' of the
+results is not monotonically increasing with \gls{alpha}.  Consider,
+for instance, the example in Figure~\ref{fig:mandatory_concurrency1}.
+The \gls{crashingthread} copies the contents of loc1 to loc2, performs
+some complex local calculation, and then asserts that loc1 and loc2
+are no longer equal.  Meanwhile, the \gls{interferingthread} sets loc1
+and loc2 to $t_3$, then sets loc2 to $t_3 + 1$.  Running the
+\gls{crashingthread} atomically is guaranteed to lead to a crash, and
+so this bug is not caused by concurrent updates, according to the
+definition used by {\technique}, and will not be reported by
+{\technique}.  On the other hand, if the threads were truncated as
+shown in Figure~\ref{fig:mandatory_concurrency2} a candidate bug would
+be reported.  The program will always avoid crashing when the two
+threads are run atomically, in either order, but interleaving their
+statements might cause a crash, and so this program does have a
+concurrency bug which can be detected by {\technique}.  The original
+program threads clearly did contain a bug, and truncating them is
+equivalent to reducing $\alpha$, and so decreasing $\alpha$ has
+removed a false negative from the set of reported bugs.
+
+This is an irritating property for {\technique} to have.  Fortunately,
+one could reasonably expect this problem to be rare in real programs.
+In general, real programs will only contain bugs which are at least a
+little bit difficult to reproduce.  In this case, that means that the
+complicated local computation in the \gls{crashingthread} must take
+long enough to be almost certain that the \gls{interferingthread} will
+intercede, which means that it must, at the very least, be large
+relative to scheduling jitter.  At the same time, this problem will
+only occur if the local computation is of a similar size to
+{\technique}'s \gls{analysiswindow}.  Practical considerations mean
+that the \gls{analysiswindow} can rarely exceed a hundred or so
+instructions, which is usually very small relative to scheduling
+jitter.  As such, it is quite unlikely that any bug could
+simultaneously have a large enough complex local calculation to avoid
+being fixed quickly by the programmer, but also a large enough one
+that it could trigger this behaviour.
+
+\section{Execution model}
 
 In addition to restricting the class of bugs, {\technique} also
 somewhat restricts the class of programs and execution environments

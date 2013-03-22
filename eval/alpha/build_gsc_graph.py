@@ -67,24 +67,28 @@ for p in xrange(0, max_nr+1):
 print "  \\node at (0,%f) [rotate=90, left = 1,anchor=south] {Number of interfering CFGs};" % (times.height1 / 2)
 
 
-print "  \\draw [fill=black!80] (%f,%f)" % (common.alpha_to_x(0), times.timeout_to_y(0))
+print "  \\draw (%f,%f)" % (common.alpha_to_x(0), times.timeout_to_y(0))
 for alpha in common.alphas:
     s = series[alpha]
     timeout_rate = float(s[0] + s[2]) / (s[0] + s[2] + len(s[1]))
     print "        -- (%f, %f)" % (common.alpha_to_x(alpha), times.timeout_to_y(timeout_rate))
-print "        -- (%f, %f)" % (common.width, times.timeout_to_y(0))
-print "        -- cycle;"
-print "  \\path [fill=black!30] (%f,%f)" % (common.alpha_to_x(0), times.timeout_to_y(0))
+print "        ;"
+print "  \\draw (%f,%f)" % (common.alpha_to_x(0), times.timeout_to_y(0))
 for alpha in common.alphas:
     s = series[alpha]
     timeout_rate = float(s[0]) / (s[0] + s[2] + len(s[1]))
     print "        -- (%f, %f)" % (common.alpha_to_x(alpha), times.timeout_to_y(timeout_rate))
-print "        -- (%f, %f)" % (common.width, times.timeout_to_y(0))
-print "        -- cycle;"
+print "        ;"
+
 print "  \\node at (%f,%f) [below left] {\\shortstack[c]{Timeouts building\\\\crashing thread}};" % (common.alpha_to_x(100), times.timeout_to_y(-.1))
-print "  \\draw (%f,%f) -- (%f,%f);" % (common.alpha_to_x(85), times.timeout_to_y(0.1), common.alpha_to_x(85), times.timeout_to_y(-0.1))
-print "  \\node at (%f,%f) [below right] {\\shortstack[c]{Timeouts building\\\\interfering CFGs}};" % (common.alpha_to_x(20), times.timeout_to_y(0.7))
-print "  \\draw (%f,%f) -- (%f,%f);" % (common.alpha_to_x(60), times.timeout_to_y(0.22), common.alpha_to_x(49), times.timeout_to_y(0.41))
+print "  \\draw (%f,%f) -- (%f,%f);" % (common.alpha_to_x(85), times.timeout_to_y(0.25), common.alpha_to_x(85), times.timeout_to_y(-0.1))
+
+print "  \\node at (%f,%f) [above right] {\\shortstack[r]{Timeouts building\\\\interfering CFGs}};" % (common.alpha_to_x(0), times.timeout_to_y(.1))
+print "  \\draw (%f,%f) -- (%f,%f);" % (common.alpha_to_x(45), times.timeout_to_y(0.16), common.alpha_to_x(29), times.timeout_to_y(0.3))
+print "  \\draw[dotted] (%f, %f) -- (%f, %f);" % (common.alpha_to_x(45), times.timeout_to_y(0.04), common.alpha_to_x(45), times.timeout_to_y(.255))
+
+print "  \\node at (%f,%f) [below right] {All timeouts};" % (common.alpha_to_x(29), times.timeout_to_y(.7))
+print "  \\draw (%f, %f) -- (%f, %f);" % (common.alpha_to_x(63), times.timeout_to_y(.4115), common.alpha_to_x(49), times.timeout_to_y(.59))
 
 times.include_timeouts = False
 times.lines = [(times.mk_percento(0.75), "75\\%"),

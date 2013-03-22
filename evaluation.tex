@@ -5,7 +5,6 @@
 
 \begin{itemize}
 \item The performance tests.
-\item The multi\_variable tests
 \item The multi\_bugs tests
 \item Re-do labyrinth experiments and actually track the results.
 \item Re-do Bayes with current version of tool.
@@ -760,95 +759,6 @@ timing of the test program.  If the \texttt{STOP\_ANALYSIS()} marker
 is removed then both bugs are discovered, and the resulting fix
 correctly prevents the program from crashing.
 
-\subsection{Context-dependent races (context)}
-
-\begin{figure}
-  \subfigure[][Crashing thread]{
-    \texttt{
-      \begin{tabular}{lll}
-        \multicolumn{3}{l}{f(int **ptr) \{}\\
-        &\multicolumn{2}{l}{if (*ptr) \{}\\
-        &&**ptr = 5;\\
-        &\multicolumn{2}{l}{\}}\\
-        \multicolumn{3}{l}{\}}\\
-        \\
-        \multicolumn{3}{l}{while (1) \{}\\
-        & \multicolumn{2}{l}{if (random() \% 1000 == 0) \{}\\
-        &&STOP\_ANALYSIS();\\
-        &&f(\&global\_ptr1);\\
-        &&STOP\_ANALYSIS();\\
-        &\multicolumn{2}{l}{\} else \{}\\
-        &&STOP\_ANALYSIS();\\
-        &&f(\&global\_ptr2);\\
-        &&STOP\_ANALYSIS();\\
-        &\multicolumn{2}{l}{\}}\\
-        \multicolumn{3}{l}{\}}\\
-      \end{tabular}
-    }
-  }
-  \subfigure[][Interfering thread]{
-    \texttt{
-      \begin{tabular}{ll}
-        \\
-        \\
-        \\
-        \\
-        \\
-        \\
-        \multicolumn{2}{l}{while (1) \{}\\
-        &STOP\_ANALYSIS();\\
-        &global\_ptr1 = \&t;\\
-        &STOP\_ANALYSIS();\\
-        &sleep(1 millisecond);\\
-        &STOP\_ANALYSIS();\\
-        &global\_ptr1 = NULL;\\
-        &STOP\_ANALYSIS();\\
-        \multicolumn{2}{l}{\}}\\
-        \\
-        \\
-      \end{tabular}
-    }
-  }
-  \caption{Crashing and interfering threads for the context test.}
-  \label{fig:eval:context}
-\end{figure}
-
-This test demonstrates {\technique}'s ability to take account of some
-cross-function properties of the program.  The test program is shown
-in Figure~\ref{fig:eval:context}.  The function \texttt{f} is called
-from two places in the crashing thread, one of which passes
-\texttt{\&global\_ptr1} as the pointer argument while the other passes
-\texttt{\&global\_ptr2}.  Meanwhile, the interfering thread loops
-modifying \texttt{global\_ptr1}.  This means that the call to
-\texttt{f(\&global\_ptr1)} can sometimes suffer a crash caused by a
-race while the call to \texttt{f(\&global\_ptr2)} cannot.  The safe
-call is far more common than the unsafe one, and so it is important
-that the enforcer only insert delays in the correct calling context.
-
-Without an enforcer, this test program crashes reasonably
-infrequently, reaching the three minute timeout 19 times out of 100
-runs and taking an average of $48 \pm 6$ seconds in the remaining
-cases (mean and standard deviation of mean).  With a full
-\gls{bugenforcer}, including context checking, the time taken to
-obtain a reproduction fell to $185 \pm 2$ milliseconds (mean and
-standard deviation of mean for 100 runs).  With an enforcer modified
-to not perform stack context checking, the bug did not reproduce
-within three minutes in any of hundred runs.
-
-It is perhaps worth discussing briefly why {\technique} must check the
-calling context in addition to the side condition.  \texttt{f} can
-only crash due to interleaving with the \gls{interferingthread} when
-\texttt{ptr} is equal to \texttt{global\_ptr1}, and so why is this not
-included in the side condition?  The answer is that the side condition
-is derived using information from the static analysis phase.  The
-known register analysis is sufficient to show that the first argument
-register is \texttt{\&global\_ptr1} at the start of the first call to
-\texttt{f}, and so the analysis will not emit that as a requirement in
-the \gls{verificationcondition} and it will not be included in the
-side condition checking mechanism.  Checking the stack context links
-the run-time \gls{bugenforcer} back to the results of the static
-analysis and avoids the issue.
-
 \subsection{Write-to-read hazard (write\_to\_read)}
 
 \begin{figure}
@@ -1140,9 +1050,9 @@ incompleteness of the main analysis.
         &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
         &\multicolumn{2}{l}{t = global\_ptr;}\\
         &\multicolumn{2}{l}{if (t != NULL) \{}\\
-        &&global\_ptr = NULL;\\
         &&free(t);\\
         &\multicolumn{2}{l}{\}}\\
+        &\multicolumn{2}{l}{global\_ptr = NULL;}\\
         &\multicolumn{2}{l}{STOP\_ANALYSIS();}\\
         &\multicolumn{2}{l}{sleep(1 millisecond);}\\
         \multicolumn{3}{l}{\}}\\
@@ -1195,7 +1105,23 @@ does not appear in the candidate bug at all, despite being necessary
 for the bug to reproduce.
 
 {\Implementation} is able to build an enforcer and a fix for this bug,
-and they behave as expected.
+and they behave as expected.  The critical sections for the fix are
+moderately interesting.  One runs from immediately before the load of
+\texttt{global\_ptr} to immediately after the \texttt{free}, while the
+other runs from immediately before the \texttt{free} to immediately
+after the store of \texttt{global\_ptr}.  The two sections overlap,
+and so are the fix generating machinery merges them into a single
+critical section covering the entire region between the
+\texttt{STOP\_ANALYSIS()} markers.  This correctly fixes the bug.
+
+Note that the critical region includes the call to \texttt{free}, and
+so the generated patch will call into libc while holding the patch
+lock.  In this case, that is safe (and in fact necessary to fix the
+bug), but might carry a risk of deadlock for some other library
+functions.  As discussed previously, {\technique}'s fixes detect such
+deadlocks using a timeout and recover by simply allowing the critical
+sections to proceed unprotected, avoiding the deadlock at the risk of
+re-introducing the fixed bug.
 
 \subsection{A program with existing synchronisation (existing\_sync\_visible, existing\_sync\_invisible)}
 
@@ -1409,13 +1335,6 @@ broken\_publish, data only flows only in one direction between the two
 threads, whereas in this bug data flows in both directions and there
 are no sub-fragments of the critical section which have a bug and do
 not have bi-directional data flow.
-
-\subsection{A bug which is not a race (not\_a\_race)}
-
-\todo{{\Technique} can handle some bugs which aren't actually
-  memory-memory races, which isn't something I've seen done with
-  ``real'' programs before.  I should include an example of that
-  here.}
 
 \subsection{Comparison to DataCollider}
 \label{sect:eval:datacollider}
