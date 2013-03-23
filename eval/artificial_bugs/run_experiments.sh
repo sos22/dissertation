@@ -20,44 +20,78 @@ harness=${prefix}/harness
 
 unset SOS22_RUN_FOREVER
 
+sample_noncrashing() {
+    local t=$(mktemp)
+    local preload=$1
+    local exe=$2
+    LD_PRELOAD=$preload $exe > $t
+    grep "Survived" $t | sed 's/Survived, \([0-9]*\) read events and \([0-9]*\) write events.*/\1 \2/'
+    rm -f "$t"
+}
+
 if false
 then
-    sample() {
-	local t=$(mktemp)
-	local preload=$1
-	local exe=$2
-	LD_PRELOAD=$preload $exe > $t
-	grep "Survived" $t | sed 's/Survived, \([0-9]*\) read events and \([0-9]*\) write events.*/\1 \2/'
-	rm -f "$t"
-    }
     cat buglist | while read nr name
     do
 	: > ${name}~0.perf_data
 	for i in `seq 1 20`
 	do
-	    sample "${prefix}/bug${nr}~0.fix.so" "${prefix}/bug${nr}.exe" >>  ${name}~0.perf_data
+	    sample_noncrashing "${prefix}/bug${nr}~0.fix.so" "${prefix}/bug${nr}.exe" >>  ${name}~0.perf_data
+	done
+    done
+fi
+
+sample_crashing() {
+    local t=$(mktemp)
+    local exe=$1
+    for i in `seq 1 100`
+    do
+	$exe > $t && break
+    done
+    grep "Survived" $t | sed 's/Survived, \([0-9]*\) read events and \([0-9]*\) write events.*/\1 \2/'
+    rm -f "$t"
+}
+
+if false
+then
+    cat buglist| while read nr name
+    do
+	: > ${name}.perf_data
+	for i in `seq 1 20`
+	do
+	    sample_crashing "${prefix}/bug${nr}.exe" >>  ${name}.perf_data
 	done
     done
 fi
 
 if false
 then
-    sample() {
-	local t=$(mktemp)
-	local exe=$1
-	for i in `seq 1 100`
-	do
-	    $exe > $t && break
-	done
-	grep "Survived" $t | sed 's/Survived, \([0-9]*\) read events and \([0-9]*\) write events.*/\1 \2/'
-	rm -f "$t"
-    }
-    cat buglist | while read nr name
+    : > special/multi_bugs.perf_data
+    for i in `seq 1 20`
     do
-	: > ${name}.perf_data
+	sample_crashing "${prefix}/bug9.exe" >>  special/multi_bugs.perf_data
+    done
+fi
+
+if true
+then
+    t=$(mktemp)
+    for f in 0 1
+    do
+	: > special/multi_bugs~${f}.perf_data
 	for i in `seq 1 20`
 	do
-	    sample "${prefix}/bug${nr}.exe" >>  ${name}.perf_data
+	    for j in `seq 1 100`
+	    do
+		LD_PRELOAD=${prefix}/bug9~${f}.fix.so "${prefix}/bug9.exe" > "$t" && break
+	    done
+	    grep "Survived" $t | sed 's/Survived, \([0-9]*\) read events and \([0-9]*\) write events.*/\1 \2/' >> special/multi_bugs~${f}.perf_data
 	done
+    done
+    rm -f "$t"
+    : > special/multi_bugs~both.perf_data
+    for i in `seq 1 20`
+    do
+	sample_noncrashing "${prefix}/bug9.fix.so" "${prefix}/bug9.exe" >>  special/multi_bugs~both.perf_data
     done
 fi

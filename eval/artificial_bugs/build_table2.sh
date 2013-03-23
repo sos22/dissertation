@@ -33,7 +33,7 @@ def leading_digit(d):
         return cntr
 
 def print_range(lower, mean, higher):
-    d = leading_digit(higher - lower)
+    d = leading_digit(higher - lower) - 1
     def fmt(nr):
         r1 = "%.*f" % (-d, round(nr, -d))
         r2 = []
@@ -148,4 +148,5 @@ do
     fi
 done
 
-rm -f "$t"
+echo $t
+

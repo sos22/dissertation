@@ -1,6 +1,8 @@
 import math
 
 fig_width = 6.0
+max_time = 180
+abscissae = [0.1,0.5,1,2,4,8,16,32,64,180]
 
 decorations = ["", "[dashed]", "[dotted]","[color=black!50]"]
 def fail(msg):
@@ -31,7 +33,7 @@ def round_up(t):
 def perc_to_y(p):
     return (p * 5.0)
 def time_to_x(t):
-    return math.log(t/0.1) * fig_width / math.log(1800.0)
+    return math.log(t/0.1) * fig_width / math.log(max_time * 10)
 
 def read_series(fname):
     f = file(fname, "r")
@@ -52,20 +54,21 @@ def plot_series(data, idx):
     print "  \\draw%s (0,0) " % decorations[idx % len(decorations)],
     last_y = 0
     for (x,y) in data:
-        last_y = y
         if x < 0.1:
             x = 0.1
-        lp = "(%f,%f)" % (time_to_x(x), perc_to_y(y))
-        print " -- %s" % lp,
-    print " -- (%f, %f);" % (time_to_x(180), perc_to_y(last_y))
+        if x < max_time:
+            lp = "(%f,%f)" % (time_to_x(x), perc_to_y(y))
+            last_y = y
+            print " -- %s" % lp,
+    print " -- (%f, %f);" % (fig_width, perc_to_y(last_y))
 
 def print_preamble():
     print "\\begin{tikzpicture}"
     # Draw axes
     print "  \\draw[->] (0,0) -- (0,5);"
-    print "  \\draw[->] (0,0) -- (%f,0);" % time_to_x(180)
+    print "  \\draw[->] (0,0) -- (%f,0);" % fig_width
     # x ticks
-    for i in [0.1,0.5,1,2,4,8,16,32,64,180]:
+    for i in abscissae:
         print "  \\node at (%f,0) [below] {%s};" % (time_to_x(i), i)
     # y ticks
     for i in xrange(0,11,2):
