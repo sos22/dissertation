@@ -217,15 +217,81 @@ the side-condition: if the message operation transition represents the
 merging of the two threads, then it should be able to access both
 threads' local state, and so should be able to evaluate the
 $\mathit{idx1} = \mathit{idx2}$ side-condition.  This is the strategy
-adopted by {\implementation}\footnote{There is an alternative design
-  for the message passing-operation in which the message operations
-  are asynchronous, so the threads never merge, but carry some of the
-  sending thread's local state as a kind of payload, so that the
-  side-condition can be evaluated in the receiving thread before it
-  receives the message.  That would potentially allow greater
-  parallelism, and hence might reduce the overhead of the enforcers,
-  but at the expense of greater implementation complexity.  I have not
-  investigated this alternative strategy in detail.}.
+adopted by {\implementation}.
+
+\begin{figure}
+  \centerline{
+    {\hfill}
+  \subfigure[][An unenforcable control-flow and happens-before graph.]{
+    \begin{tikzpicture}
+      \node (thread0) {Thread 0};
+      \node[CfgInstr, below = of thread0] (A) {$A_0$};
+      \node[CfgInstr, below = of A] (B) {$B_0$};
+      \node[right = 2 of thread0] (thread1) {Thread 1};
+      \node[CfgInstr, below = of thread1] (C) {$C_1$};
+      \node[CfgInstr, below = of C] (D) {$D_1$};
+      \draw[->] (A) -- (B);
+      \draw[->] (C) -- (D);
+      \draw[->,happensBeforeEdge] (A) to node [above,pos=0.25] {$X$} (D);
+      \draw[->,happensBeforeEdge] (C) to node [above,pos=0.25] {$Y$} (B);
+    \end{tikzpicture}
+    \label{fig:reproduce:cyclic_synchronous}
+  }
+    {\hfill}
+  \subfigure[][The graph which is actually enforced.]{
+    \begin{tikzpicture}
+      \node (thread0) {Thread 0};
+      \node[CfgInstr, below = of thread0] (A) {$A_0$};
+      \node[CfgInstr, below = of A] (B) {$B_0$};
+      \node[right = 2 of thread0] (thread1) {Thread 1};
+      \node[CfgInstr] at (thread1 |- B) (C) {$C_1$};
+      \node[CfgInstr, below = of C] (D) {$D_1$};
+      \draw[->] (A) -- (B);
+      \draw[->] (C) -- (D);
+      \draw[->,double] (C) -- (B);
+    \end{tikzpicture}
+    \label{fig:reproduce:cyclic_decyclic}
+  }
+    {\hfill}
+  }
+  \caption{}
+\end{figure}
+
+The use of synchronous messages restricts the class of bugs which can
+be reproduced.  Consider, for instance, the control-flow and
+happens-before graph in Figure~\ref{fig:reproduce:cyclic_synchronous}.
+This graph shows that both threads must complete their first
+instruction before either thread starts its second.  It is clearly
+possible for the program to execute its instructions in this order,
+but this ordering cannot be enforced using synchronous messages: in
+order to enforce edge $X$, $A_0$ and $D_1$ must execute at the same
+time, and so $A_0$ must wait for $D_1$, but in order to enforce edge
+$Y$ $C_1$ must wait for $B_0$.  This creates a cycle in the graph, and
+so this program would deadlock if the enforcer attempted to enforce
+the entire graph.
+
+{\Technique} detects these cycles and resolves them by discarding one
+of the happens-before edges, chosen arbitrarily.  In this particular
+case, that is sufficient to avoid the problem.  Suppose that
+{\technique} selects edge $X$ to discard (the other case is
+symmetrical).  The enforcer will now ensure that $C_1$ waits for $B_0$
+and then executes immediately before it, which is also sufficient to
+ensure that $D_1$ executes after $A_0$, as shown in
+Figure~\ref{fig:reproduce:cyclic_decyclic}.  There is, however, no
+guarantee that this technique will always work for more complex
+graphs.
+
+There is an alternative design for the message passing-operation in
+which the message operations are asynchronous, so the threads never
+merge, but carry some of the sending thread's local state as a kind of
+payload, so that the side-condition can be evaluated in the receiving
+thread before it receives the message.  That would avoid the
+unenforcable graph problem, as the enforcer would then never have to
+introduce additional edges into the graph.  It would also allow
+slightly greater parallelism, which might reduce the overhead of the
+enforcers.  This would, however, be a more complicated scheme to
+implement.  I have not investigated this alternative strategy in
+detail.
 
 \section{Outline of algorithm}
 
