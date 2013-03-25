@@ -7,7 +7,10 @@ import math
 import common
 import times
 
-times.max_time = 15.
+if sys.argv[1] == "opt":
+    times.max_time = 30.
+else:
+    times.max_time = 15.
 
 print "\\begin{tikzpicture}"
 

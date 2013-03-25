@@ -11,6 +11,11 @@ times.gap = 5
 common.height += 5
 common.width -= 2
 
+if sys.argv[1] == "opt":
+    is_opt = True
+else:
+    is_opt = False
+
 # Now extract the data
 series = {}
 max_vcs = 0
@@ -49,6 +54,9 @@ for alpha in common.alphas:
             line = line.strip()
             w = line.split()
             if w[1:] == ["buildStoreMachine", "timed", "out"]:
+                continue
+            if w[0] == "store" and w[1] == "CFG" and w[3:] == ["single", "store", "versus", "single", "shared", "load"]:
+                data.append(0)
                 continue
             if len(w) != 4 or w[1] != "buildStoreMachine" or w[2] != "took":
                 common.fail("%s: wanted BSM line, got %s" % (path, line))
@@ -92,13 +100,20 @@ for alpha in common.alphas:
         max_vcs = nr_vcs
     series[alpha] = (nr_timeouts, data, nr_vcs, nr_pairs)
 
-max_vcs = 600
+if not is_opt:
+    max_vcs = 600
+else:
+    max_vcs = 1000
+
 def nr_vcs_to_y(nr_vcs):
     return times.height1 + times.gap * (nr_vcs/float(max_vcs)) + 0.5
 def perc_vcs_to_y(perc):
     return times.height1 + times.gap * perc + 0.5
 
-times.max_time = 10.
+if not is_opt:
+    times.max_time = 10.
+else:
+    times.max_time = 30.
 
 print "\\begin{tikzpicture}"
 
