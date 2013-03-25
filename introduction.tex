@@ -22,13 +22,13 @@ concurrency bugs.
     \node [block,draw, below = of model] (statemachines) {\STateMachines};
     \node [block,draw, below = of statemachines] (candidates) {\Glspl{verificationcondition}};
     \node [block,draw, below = of candidates] (repro) {Reproduction};
-    \node [block,draw, below = of repro] (fix) {Fixes};
+    \node [block,draw, below = of repro] (fix) {{\Genfixes}};
     \path [line,->] (dynamic) to node [right] {Dynamic analysis} (model);
     \path [line,->] (model) to node [right] {Program abstraction} (statemachines);
     \path [line,->] (statemachines) to node [right] {Symbolic execution} (candidates);
     \path [line,->] (candidates) to node [right] {\Glspl{bugenforcer}} (repro);
     \path [line,->] (dynamic.west) to [bend right=45] (repro.west);
-    \path [line,->] (repro) to node [right] {Fix generation} (fix);
+    \path [line,->] (repro) to node [right] {{\Genfix} generation} (fix);
   \end{tikzpicture}
 \end{center}
 \caption{Basic pipeline}
@@ -39,20 +39,20 @@ The basic approach is shown in Figure~\ref{fig:basic_pipeline}.  The
 process starts by building a \gls{programmodel}, showing how the
 program behaves when it is operating normally, using a combination of
 static and dynamic analyses (\autoref{sect:program_model}).  This
-\gls{programmodel} is then used to locate potentially relevant fragments
-of the program and to build {\StateMachines} which model their
-behaviour (\autoref{sect:derive}).  These {\StateMachines} are
-then \backref{symbolically executed} to determine whether they might
-exhibit the bug under investigation, and, if so, under what
-circumstances; the results are summarised as a set
-of \glspl{verificationcondition}.  This set usually contains a large
-number of false positives, and so the next step is to prune it back
-down using \glspl{bugenforcer}: special schedulers which, when applied
-to the running program, make it far more likely that the bug will
-reproduce quickly (\autoref{sect:reproducing_bugs}).  Any bugs which do
-reproduce can then be passed to the final \backref{fix generation}
-phase which binary patches the program to introduce synchronisation
-which eliminates the bug (\autoref{sect:fix_global_lock}).
+\gls{programmodel} is then used to locate potentially relevant
+fragments of the program and to build {\StateMachines} which model
+their behaviour (\autoref{sect:derive}).  These {\StateMachines} are
+then symbolically executed to determine whether they might exhibit the
+bug under investigation, and, if so, under what circumstances; the
+results are summarised as a set of \glspl{verificationcondition}.
+This set usually contains a large number of false positives, and so
+the next step is to prune it back down using \glspl{bugenforcer}:
+special schedulers which, when applied to the running program, make it
+far more likely that the bug will reproduce quickly
+(\autoref{sect:reproducing_bugs}).  Any bugs which do reproduce can
+then be passed to the final {\genfix} generation phase which binary
+patches the program to introduce synchronisation which eliminates the
+bug (\autoref{sect:fix_global_lock}).
 
 One important decision which must be made when designing this kind of
 tool is how much higher-level semantic information to use, and in
@@ -101,10 +101,11 @@ percent in more realistic tests.
 \section{Type of bug considered}
 
 {\Technique} considers only a subset of concurrency bugs: those where
-one thread, referred to as the ``crashing thread'', is reading from
-shared data structure while another thread, the ``interfering
-thread'', simultaneously modifies it, and these concurrent updates
-cause the crashing thread to crash quickly.  In a little more detail:
+one thread, referred to as the ``\gls{crashingthread}'', is reading
+from shared data structure while another thread, the
+``\gls{interferingthread}'', simultaneously modifies it, and these
+concurrent updates cause the crashing thread to crash quickly.  In a
+little more detail:
 
 \begin{itemize}
 \item The threads must be operating on a data structure located
@@ -125,17 +126,17 @@ cause the crashing thread to crash quickly.  In a little more detail:
   running those regions in parallel can crash but running them
   atomically, in either order, will not.
 \item The crashing thread must crash quickly.  {\Technique} uses a
-  finite \introduction{analysis window} \introduction{$\alpha$} and
-  will only consider reordering concurrent operations which occur at
-  most \backref{$\alpha$} instructions before the crash.  Bugs which
-  require knowledge of the program behaviour beyond that window cannot
-  be analysed.  Equivalently, {\technique} only considers bugs which
-  can be fixed by small critical sections containing fewer than
-  $\alpha$ dynamic instructions.  \backref{$\alpha$} can, in
-  principle, be arbitrarily large, but computational constraints mean
-  that in practice it will be limited to a few dozen to a few hundred
-  instructions, depending on the program to be analysed and how much
-  information about the bug is available before analysis starts.
+  finite \gls{analysiswindow} \gls{alpha} and will only consider
+  reordering concurrent operations which occur at most \gls{alpha}
+  instructions before the crash.  Bugs which require knowledge of the
+  program behaviour beyond that window cannot be analysed.
+  Equivalently, {\technique} only considers bugs which can be fixed by
+  small critical sections containing fewer than $\alpha$ dynamic
+  instructions.  \gls{alpha} can, in principle, be arbitrarily large,
+  but computational constraints mean that in practice it will be
+  limited to a few dozen to a few hundred instructions, depending on
+  the program to be analysed and how much information about the bug is
+  available before analysis starts.
 \end{itemize}
 
 This clearly does not include every possible type of concurrent bug
@@ -179,9 +180,6 @@ Crashing thread:          & Interfering thread: \\
 \caption{Truncation of the example in Figure~\ref{fig:mandatory_concurrency1}.}
 \label{fig:mandatory_concurrency2}
 \end{figure}
-
-\todo{Not convinced that this really belongs here; maybe pull up to
-  introduction.}
 
 This definition has one non-obvious property: the ``quality'' of the
 results is not monotonically increasing with \gls{alpha}.  Consider,
@@ -292,9 +290,9 @@ Program slices are conceptually very similar to {\StateMachines},
 which also approximate a program so as to allow some aspect to be more
 easily explored.  The key difference is that a classical program slice
 will be expressed in the same language as the original program,
-whereas as a {\StateMachine} translates the program's machine code
-into an analysis language.  This makes them much easier to analyse,
-but at the expense of making them more difficult to derive.
+whereas a {\StateMachine} translates the program's machine code into
+an analysis language.  This makes them much easier to analyse, but at
+the expense of making them more difficult to derive.
 
 \subsection{The happens-before graph}
 

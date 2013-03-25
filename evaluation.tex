@@ -134,9 +134,8 @@ those markers\editorial{Could last time I tried it, probably worth
 \subsubsection{Generating candidate bugs}
 
 The first step in the analysis is to build the CFG for the
-\backref{crashing thread} (see
-Section~\ref{sect:derive:build_static_cfg}), which in this case is
-straightforward; the result is shown in
+\gls{crashingthread} (see Section~\ref{sect:derive:build_static_cfg}),
+which in this case is straightforward; the result is shown in
 Figure~\ref{fig:eval:simple_toctou:cfg}.  This can then be compiled to
 produce the {\StateMachine} shown in
 Figure~\ref{fig:eval:simple_toctou:sm}.
@@ -176,21 +175,21 @@ Figure~\ref{fig:eval:simple_toctou:sm}.
     \end{tikzpicture}
     \label{fig:eval:simple_toctou:sm}
   }
-  \caption{\backref{CFG} and {\STateMachine} for the crashing thread
+  \caption{\Gls{cfg} and {\STateMachine} for the crashing thread
     in Figure~\ref{fig:eval:simple_toctou:compiled}.}
 \end{figure}
 
-The next step is to build the \backref{interfering stores} set (see
+The next step is to build the \glspl{interferingstore} set (see
 Section~\ref{sect:derive:write_side}).  The crashing {\StateMachine}
 contains two loads, at \texttt{400694} and \texttt{4006a0}, and so the
-analysis will ask\editorial{ick} the \backref{program model} what
-stores might interact with them, and the \backref{program model} will
-use the results of the \backref{dynamic alias analysis} (see
+analysis will ask\editorial{ick} the \gls{programmodel} what stores
+might interact with them, and the \gls{programmodel} will use the
+results of the dynamic alias analysis (see
 Section~\ref{sect:program_model:dynamic_alias}) to return the set
 \{\texttt{400884}, \texttt{4008fb}\}.  The \texttt{STOP\_ANALYSIS()}
 markers prevent these from being clustered together, and there are no
-other \backref{communicating instructions}, and so there will be two
-\backref{interfering thread} CFGs, shown in
+other \glspl{communicatinginstruction}, and so there will be two
+\glspl{interferingthread} \glspl{cfg}, shown in
 Figures~\ref{fig:eval:simple_toctou:interfering_cfg1}
 and~\ref{fig:eval:simple_toctou:interfering_cfg2}.
 
@@ -239,21 +238,21 @@ Figure~\ref{fig:eval:simple_toctou:inferred_assumption1}. The fixed
 register and static aliasing analyses will both eliminate this
 candidate bug, as either is capable of showing that $\smReg{rbp}{2}$
 is a pointer into thread 2's stack frame, and hence that it is a valid
-pointer.  The \backref{interfering store} at \texttt{4008fb}, on the
-other hand, does represent a valid bug, as interleaving it with the
-\backref{crashing thread} could lead to a crash, and it produces the
-\backref{verification condition} shown in
+pointer.  The \gls{interferingstore} at \texttt{4008fb}, on the other
+hand, does represent a valid bug, as interleaving it with the
+\gls{crashingthread} could lead to a crash, and it produces the
+\gls{verificationcondition} shown in
 Figure~\ref{fig:eval:simple_toctou:inferred_assumption2}.
 
 \begin{figure}
   \begin{tabular}{lll}
-    \backref{CI atomic}: & $\smLoad{\mathrm{global\_ptr}} = 0$ &\!\!\!$\vee\,\, \neg\smBadPtr{\smLoad{\mathrm{global\_ptr}}}$ \\
-    \backref{IC atomic}: & $\smReg{rbp}{2} = 0$                &\!\!\!$\vee\,\, \neg\smBadPtr{\smReg{rbp}{2}}$\\
-    \backref{Verification condition}: & \multicolumn{2}{l}{$\happensBefore{\mai{cfg1}{1}}{\mai{cfg5}{2}} \wedge \happensBefore{\mai{cfg5}{2}}{\mai{cfg4}{2}} \wedge \smBadPtr{\smReg{rbp}{2}}  \wedge$}\\
+    \gls{ci-atomic}: & $\smLoad{\mathrm{global\_ptr}} = 0$ &\!\!\!$\vee\,\, \neg\smBadPtr{\smLoad{\mathrm{global\_ptr}}}$ \\
+    \gls{ic-atomic}: & $\smReg{rbp}{2} = 0$                &\!\!\!$\vee\,\, \neg\smBadPtr{\smReg{rbp}{2}}$\\
+    \Gls{verificationcondition}: & \multicolumn{2}{l}{$\happensBefore{\mai{cfg1}{1}}{\mai{cfg5}{2}} \wedge \happensBefore{\mai{cfg5}{2}}{\mai{cfg4}{2}} \wedge \smBadPtr{\smReg{rbp}{2}}  \wedge$}\\
                                       & $\smLoad{\mathrm{global\_ptr}} \not= 0$\\
   \end{tabular}
-  \caption{\backref{Inferred assumption} and \backref{verification
-      condition} produced using the crashing {\StateMachine} in
+  \caption{\Gls{inferredassumption} and \gls{verificationcondition}
+    produced using the crashing {\StateMachine} in
     Figure~\ref{fig:eval:simple_toctou:sm} and the interfering
     {\StateMachine} in
     Figure~\ref{fig:eval:simple_toctou:interfering_sm1}.}
@@ -262,12 +261,12 @@ Figure~\ref{fig:eval:simple_toctou:inferred_assumption2}.
 
 \begin{figure}
   \begin{tabular}{lll}
-    \backref{CI atomic}: & $\smLoad{\mathrm{global\_ptr}} = 0$ &\!\!\!$\vee\,\, \neg\smBadPtr{\smLoad{\mathrm{global\_ptr}}}$ \\
-    \backref{IC atomic}: & \true\\
-    \backref{Verification condition}: & \multicolumn{2}{l}{$\happensBefore{\mai{cfg1}{1}}{\mai{cfg6}{2}} \wedge \happensBefore{\mai{cfg6}{2}}{\mai{cfg4}{2}} \wedge \smLoad{\mathrm{global\_ptr}} \not= 0$}\\
+    \gls{ci-atomic}: & $\smLoad{\mathrm{global\_ptr}} = 0$ &\!\!\!$\vee\,\, \neg\smBadPtr{\smLoad{\mathrm{global\_ptr}}}$ \\
+    \gls{ic-atomic}: & \true\\
+    \Gls{verificationcondition}: & \multicolumn{2}{l}{$\happensBefore{\mai{cfg1}{1}}{\mai{cfg6}{2}} \wedge \happensBefore{\mai{cfg6}{2}}{\mai{cfg4}{2}} \wedge \smLoad{\mathrm{global\_ptr}} \not= 0$}\\
   \end{tabular}
-  \caption{\backref{Inferred assumption} and \backref{verification
-      condition} produced using the crashing {\StateMachine} in
+  \caption{\Gls{inferredassumption} and \gls{verificationcondition}
+    produced using the crashing {\StateMachine} in
     Figure~\ref{fig:eval:simple_toctou:sm} and the interfering
     {\StateMachine} in
     Figure~\ref{fig:eval:simple_toctou:interfering_sm2}.}
@@ -284,9 +283,9 @@ take to process a very simple bug; any realistic program will take far
 longer than this to process.
 
 \subsubsection{Reproducing the bug}
-This \backref{verification condition} can now be turned into a
-\backref{crash enforcer}.  The only happens-before graph will be the
-one shown in Figure~\ref{fig:eval:simple_toctou:hb_graph}, and it will
+This \gls{verificationcondition} can now be turned into a
+\gls{bugenforcer}.  The only happens-before graph will be the one
+shown in Figure~\ref{fig:eval:simple_toctou:hb_graph}, and it will
 have the side condition that $\smLoad{\mathrm{global\_ptr}} \not= 0$.
 This side condition can be evaluated completely at either
 $\mai{cfg1}{1}$ or $\mai{cfg6}{2}$, and so the crash enforcement plan
@@ -695,21 +694,20 @@ when interleaved with the stores which set the globals to 7, but
 missed the fact that it can also crash when interleaved with the ones
 which set them to 5.  This is because of an interaction between the
 second \texttt{STOP\_ANALYSIS()} in the interfering thread and the
-\backref{inferred assumption}, discussed in
+\gls{inferredassumption}, discussed in
 Section~\ref{sect:derive:inferred_assumption}.  The
 \texttt{STOP\_ANALYSIS()} causes the two stores to be converted into
 independent {\StateMachines}.  Consider the first store; the other is
 symmetrical.  Figure~\ref{fig:eval:multi_variable:other_bug} shows how
-the \backref{inferred assumption} is derived for this bug\footnote{The
+the \gls{inferredassumption} is derived for this bug\footnote{The
   actual analysis performs this derivation using {\StateMachines},
   rather than by concatenating the program's actual code, but that
-  makes no difference in this case.}.  The \backref{CI atomic}
-constraint shows that the initial values of \texttt{global1} and
-\texttt{global2} must be equal, and the \backref{IC atomic} constraint
-shows that the initial value of \texttt{global2} must be 5.  Combining
-these two shows that the initial value of \texttt{global} must also be
-5, and so the store operation becomes a no-op and no candidate bug is
-reported.
+  makes no difference in this case.}.  The \gls{ci-atomic} constraint
+shows that the initial values of \texttt{global1} and \texttt{global2}
+must be equal, and the \gls{ic-atomic} constraint shows that the
+initial value of \texttt{global2} must be 5.  Combining these two
+shows that the initial value of \texttt{global} must also be 5, and so
+the store operation becomes a no-op and no candidate bug is reported.
 
 \begin{figure}
   \subfigure[][CI atomic]{
@@ -743,7 +741,8 @@ reported.
   }\\
   \\
   Inferred assumption: $\smLoad{\texttt{global2}} = 5 \wedge \smLoad{\texttt{global1}} = 5$
-  \caption{Deriving the \backref{inferred assumption} for the other bug in the multi\_variable bug.}
+  \caption{Deriving the \gls{inferredassumption} for the other bug in
+    the multi\_variable bug.}
   \label{fig:eval:multi_variable:other_bug}
 \end{figure}
 
@@ -1187,8 +1186,8 @@ that the program contains calls to \texttt{pthread\_mutex\_lock} and
 \texttt{pthread\_mutex\_unlock} which prevent the bug from ever
 reproducing.  As discussed previously\editorial{ref?}, {\technique}
 has no global model of the program's synchronisation, and so can only
-analyse synchronisation within the analysis window \backref{$\alpha$}.
-The analysis will therefore be aware of the synchronisation in the
+analyse synchronisation within the analysis window \gls{alpha}.  The
+analysis will therefore be aware of the synchronisation in the
 existing\_sync\_visible crashing thread,
 Figure~\ref{fig:eval:existing_sync:visible}, but not that in the
 existing\_sync\_invisible crashing thread,
@@ -1627,15 +1626,15 @@ programs from the STAMP benchmark suite\needCite{}.
 \todo{I'm tempted to treat this as an artificial bug instead of a
   semi-artificial one.}
 
-glibc is a kernel of glibc bug 2644 \cite{glibc2644}, which affected
-versions of glibc up to 2.5 and could lead to a crash if multiple
-threads were shut down at the same time.  A simplified version of the
-code involved is shown in Figure~\ref{fig:eval:glibc}, where
-\texttt{forcedunwind} and \texttt{done\_init} are global variables.
-The program will crash if the load of \texttt{forcedunwind} on line 1
-loads a \texttt{NULL} pointer and the load of \texttt{done\_init} on
-line 3 loads 1.  This is clearly possible due to interleaving with the
-stores on lines 5 and 6.
+glibc is a kernel of glibc bug 2644 \cite{Cambell2006}, which
+affected versions of glibc up to 2.5 and could lead to a crash if
+multiple threads were shut down at the same time.  A simplified
+version of the code involved is shown in Figure~\ref{fig:eval:glibc},
+where \texttt{forcedunwind} and \texttt{done\_init} are global
+variables.  The program will crash if the load of
+\texttt{forcedunwind} on line 1 loads a \texttt{NULL} pointer and the
+load of \texttt{done\_init} on line 3 loads 1.  This is clearly
+possible due to interleaving with the stores on lines 5 and 6.
 
 Note that the bug here depends on the compiler's optimizer, and is not
 apparent at the source-code level\footnote{Unfortunately, only the
@@ -1816,9 +1815,11 @@ unable to link the load of \texttt{*gridPointPtr} on line 3 to the
 store in the \texttt{memcpy} on line 8, preventing it from discovering
 the bug's concurrency behaviour.
 
-\todo{Should probably say more about this e.g. what \backref{$\alpha$}
-  you'd need to analyse it and how far I was actually able to push
-  it.}
+\todo{Should probably say more about this e.g. what \gls{alpha} you'd
+  need to analyse it and how far I was actually able to push it.}
+
+Static analysis took $2.28 \pm 0.05$ seconds, mean and standard
+deviation of ten runs.
 
 \subsection{bayes}
 
@@ -1909,18 +1910,50 @@ completely cover the actual critical sections in the program.
   the SD drops to something sane, but I don't think that would be
   terribly meaningful.}
 
+Static analysis took $4.01 \pm 0.06$ seconds, mean and standard
+deviation of ten runs.
+
 \section{Experiments with real programs}
 \label{sect:eval:real}
 
 \subsection{pbzip2}
 
-I ran {\implementation} in its bug-finding mode on pbzip2.  This
+\todo{This is a bit sad; basically a negative result.  Oh well.}  I
+ran {\implementation} in its bug-finding mode on pbzip2.  This
 included building a program model, generating all {\StateMachines},
 converting them to enforcers, and then running pbzip2 under each
 enforcer in turn.  This did not find any bugs in pbzip2.
 
-\todo{This is a bit sad.  I'm just going to put in some measurements
-  of how long things take to run in here.}
+Static analysis took $4.29 \pm 0.05$ seconds, mean and standard
+deviation of ten runs.  Building the \glspl{verificationcondition}
+took $1140 \pm 30$ seconds.  This involved analysing 154
+potentially-crashing instructions:
+
+\begin{itemize}
+\item For 7 instructions, building the crashing {\StateMachine} timed
+  out.  This timeout was set to one minute.
+\item Ignoring those 7 crashing instructions, instruction generated
+  the complete set of interfering \glspl{cfg}.  There were 244
+  interfering \glspl{cfg} in total.
+\item 8 of the interfering \glspl{cfg} timed out in one of the
+  symbolic execution steps.  The timeout here was again one minute.
+\item 26 of the interfering \glspl{cfg} generated
+  \glspl{verificationcondition} which the satisfiability checker was
+  unable to eliminate.
+\item There were no other failures generating
+  \glspl{verificationcondition}.
+\item 24 of the \glspl{verificationcondition} were converted to
+  \glspl{bugenforcer}; the other two timed out after one minute.
+\end{itemize}
+
+\todo{Whoops: only recorded which instructions timed out for the last
+  run.  Re-do that.}
+
+
+\todo{Conversion to enforcers?}  \todo{How
+  long do the enforcers take to run?}  \todo{Timeout settings?}
+\todo{How many VCs generated?}  \todo{Version of pbzip2?}
+\todo{Compile settings?}  \todo{Value of $\alpha$?}
 
 \subsection{Thunderbird}
 
@@ -1951,19 +1984,19 @@ enforcer in turn.  This did not find any bugs in pbzip2.
   \label{fig:eval:thunderbird}
 \end{figure}
 
-\verb|thunderbird| is Mozilla bug number
-391259\cite{thunderbird39125}, a simple time-of-check, time-of-use
-race in the IMAP client component of Thunderbird, a popular
-open-source e-mail client.  The relevant parts of the program are
-shown in Figure~\ref{fig:eval:thunderbird}.  If \verb|m_transport| is
-set to \verb|NULL| by \verb|CloseStreams()| in between the two
-accesses in \verb|ProcessCurrentURL| then the program will crash.  The
-simplest way to trigger this behaviour is for the user to click on an
-IMAP folder and to then immediately close Thunderbird.  For these
-experiments, I assumed that the crashing instruction had already been
-identified, and so I had {\implementation} investigate that one
-instruction rather than generating every possible
-\glspl{verificationcondition} and \glspl{bugenforcer}.
+\verb|thunderbird| is Mozilla bug number 391259\cite{Mery2007}, a
+simple time-of-check, time-of-use race in the IMAP client component of
+Thunderbird, a popular open-source e-mail client.  The relevant parts
+of the program are shown in Figure~\ref{fig:eval:thunderbird}.  If
+\verb|m_transport| is set to \verb|NULL| by \verb|CloseStreams()| in
+between the two accesses in \verb|ProcessCurrentURL| then the program
+will crash.  The simplest way to trigger this behaviour is for the
+user to click on an IMAP folder and to then immediately close
+Thunderbird.  For these experiments, I assumed that the crashing
+instruction had already been identified, and so I had
+{\implementation} investigate that one instruction rather than
+generating every possible \glspl{verificationcondition} and
+\glspl{bugenforcer}.
 
 This is essentially the same bug as simple\_toctou, but embedded in a
 much large program.  As such, {\implementation} produces a very
@@ -2030,6 +2063,7 @@ computation, but not if each requires several minutes of user
 interaction.
 
 \subsection{mysql}
+\label{sect:eval:mysql}
 
 This is MySQL bug 56324\needCite{}.  A simplified version of the buggy
 code is shown in Figure~\ref{fig:eval:mysqld}.  This is, again, a
