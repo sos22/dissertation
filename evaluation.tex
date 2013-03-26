@@ -6,12 +6,14 @@
 \begin{itemize}
 \item Re-do labyrinth experiments and actually track the results.
 \item Re-do Bayes with current version of tool.
-\item Re-do pbzip2 and collect numbers
+\item Re-do pbzip2 and collect numbers.  \todo{Run on ise overnight.}
 \item Re-do unoptimised mysql.  Time static and main analysis phases.
   Check number of candidates generated.  Run candidates.
+  \todo{Running on hogun now.}
 \item Re-do optimised mysql.  Time static and main analysis phases.
   Check number of candidates generated.  Run candidates.
 \item The convergence experiments for the dynamic analysis phase.
+  Need to do some other test, rather than just the one mysql test.
 \end{itemize}
 
 \section{Eval}
@@ -1950,10 +1952,9 @@ potentially-crashing instructions:
   run.  Re-do that.}
 
 
-\todo{Conversion to enforcers?}  \todo{How
-  long do the enforcers take to run?}  \todo{Timeout settings?}
-\todo{How many VCs generated?}  \todo{Version of pbzip2?}
-\todo{Compile settings?}  \todo{Value of $\alpha$?}
+\todo{How long do the enforcers take to run?}  \todo{Timeout
+  settings?}  \todo{Version of pbzip2?}  \todo{Compile settings?}
+\todo{Value of $\alpha$?}
 
 \subsection{Thunderbird}
 
@@ -2295,9 +2296,10 @@ and so takes longer to process.  \todo{Not sure there's much to say
 
 \subsection{Dynamic analysis}
 
-I want to say something about how good/bad the dynamic analysis is.
-Things to measure:
+\todo{I want to say something about how good/bad the dynamic analysis
+  is.  Things to measure:}
 
+\todo{
 \begin{itemize}
 \item How much it slows programs down.  The answer is ``a lot'', but
   it'd be good to quantify that.
@@ -2307,9 +2309,35 @@ Things to measure:
   I've already done that for thunderbird; should probably do it for
   mysql and pbzip as well.  The artificial tests converge too quickly
   to be interesting.
-\item Something about the necessary level of code coverage.  My plan
-  there is just to run all of the mysql tests one after another and
-  see how much commonality there is between them.  This will be
-  normalised for code coverage.  My metric of badness is the number of
-  missing edges between A and B where A and B were both observed.
 \end{itemize}
+}
+
+There are two obvious concerns with the dynamic analysis phase: how
+long does it take to achieve reasonable coverage of the program's
+behaviour, and how much does it slow the program down while it is
+being analysed?  I investigate the first concern first.
+
+For this experiment, I monitored mysql while running the
+rpl\_change\_master test out of its test suite under the dynamic
+analysis and arrange to take a snapshot of the aliasing table every
+1,000,000 basic blocks.  This corresponded to running for roughly
+100ms between snapshots.  I treated the aliasing table obtained after
+running for quarter of an hour as a ground truth and calculated the
+proportion of ground truth aliasing pairs which were present in each
+snapshot.  The results are shown in
+Figure~\ref{fig:eval:dyn_convergence}.  Note that this test involves
+starting and restarting mysql several times; the vertical dashed bars
+show where it restarted.
+
+This graph shows that the dynamic analysis achieved reasonable
+coverage for this test after five minutes, and essentially complete
+coverage after ten.
+
+\begin{figure}
+  \input{eval/dyn_convergence/dyn_convergence.tex}
+  \caption{Dynamic convergence}
+  \label{fig:eval:dyn_convergence}
+\end{figure}
+
+
+\todo{Repeat for some of the other programs.}
