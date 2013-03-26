@@ -140,8 +140,7 @@ the interfering one), so that no single thread can evaluate the
 condition by itself.  
 
 \begin{figure}
-  \begin{centering}
-    \hfill
+  \centerline{
   \begin{tikzpicture}
     \node[draw] (A) {A};
     \node[draw, above right = of A] (X) {X};
@@ -156,8 +155,7 @@ condition by itself.
     \draw[->,happensBeforeEdge] (B) -- (Y);
     \draw[->,happensBeforeEdge] (Y) -- (C);
   \end{tikzpicture}
-  \hfill
-  \end{centering}
+  }
   \caption{A happens-before graph which cannot be reproduced by
     inserting a simple delay.  The bug of interest reproduces only for
     the access ordering A, X, B, Y, C.}
@@ -169,14 +167,14 @@ example.  The graph would be difficult to enforce by simply inserting
 fixed delays between instructions within a given thread.  Consider,
 for instance, the delay between X and Y.  This must be sized so as to
 increase the probability of Y happening after B, but without overly
-increasing the probability of Y happening after C.  Similarly, the
-delay between A and B must be sized such that B occurs after X but
-before Y.  Solving that kind of constraint requires detailed
-information about the program's timing, and this information is both
-difficult to collect and highly configuration-specific\editorial{Cite,
-  maybe?}.
+increasing the probability of Y happening
+after C.  Similarly, the delay between A and B must be sized such that
+B occurs after X but before Y.  Solving that kind of constraint
+requires detailed information about the program's timing, and this
+information is both difficult to collect and highly
+configuration-specific \todo{Cite, maybe?}.
 
-{\Technique} solves these problems by modelling the program as a
+\Technique{} solves these problems by modelling the program as a
 message-passing system.  The core idea is to model a happens-before
 ordering X before Y as a message which is sent by X, after it
 completes, and collected by Y, before it starts.  In the first
@@ -185,9 +183,11 @@ example, there will be two messages, one from \texttt{l2} to
 happens-before graph will be achieved precisely when all of these
 message operations succeed.
 
+These messages are synchronous, in the sense that a message operation
+cannot complete unless both the sender and the receiver are
+simultaneously at the relevant instructions.
 \begin{wrapfigure}{r}{6cm}
-  \vspace{-10pt}
-  \hspace{-5pt}
+  \vspace{-17pt}
   \begin{tikzpicture}
     \node[place,tokens=1,label=above:{before receive}] (beforeRx) {};
     \node[transition,below right=of beforeRx, label=right:{\shortstack[r]{message\\operation}}] (trans) {};
@@ -201,12 +201,9 @@ message operations succeed.
   \end{tikzpicture}
   \caption{Petri net for the message operation.}
   \label{fig:message_petri_net}
-  \vspace{-10pt}
+  \vspace{-20pt}
 \end{wrapfigure}
-These messages are synchronous, in the sense that a message operation
-cannot complete unless both the sender and the receiver are
-simultaneously at the relevant instructions.  This provides a
-convenient place in which to evaluate side-conditions.
+This provides a convenient place in which to evaluate side-conditions.
 Figure~\ref{fig:message_petri_net} gives a Petri net semantics for the
 message operation.  One way of reading this diagram is to say that the
 process starts with two threads, in the two before locations, which
@@ -324,25 +321,140 @@ At a high level, the algorithm used has the following phases:
 \section{Slicing the verification condition by happens-before graph}
 \label{sect:enforce:slice_hb_graph}
 
-\todo{This is a really complicated way of describing BDD reordering.}
+\begin{wrapfigure}{r}{4cm}
+  \vspace{-5mm}
+  \begin{tikzpicture}
+    \node (thread1) {\shortstack{Crashing\\thread}};
+    \node (thread2) [right = 0.5 of thread1] {\shortstack{Interfering\\thread}};
+    \node (A) [below = 0 of thread2] {$A_1$};
+    \node (B) [below = of A] {$B_1$};
+    \node (C) [below = of B] {$C_1$};
+    \node (D0) [below = 0.7 of thread1] {$x = 7$ $D_0$};
+    \node (D1) [below = of D0] {$y = 9$ $D_0$};
+    \draw[->] (A) -- (B);
+    \draw[->] (B) -- (C);
+    \draw[->,happensBeforeEdge] (A) -- (D0);
+    \draw[->,happensBeforeEdge] (D0) -- (B);
+    \draw[->,happensBeforeEdge] (B) -- (D1);
+    \draw[->,happensBeforeEdge] (D1) -- (C);
+  \end{tikzpicture}
+  \vspace{-10mm}
+  \caption{}
+  \vspace{-5mm}
+  \label{fig:reproducing:placement_eg_bug}
+\end{wrapfigure}
+The first step in building a \gls{bugenforcer} is to extract the
+happens-before graph from the \gls{verificationcondition}, so that the
+\gls{bugenforcer} knows what instruction ordering it needs to enforce.
+This is most easily understood as a transformation on the BDD which
+represents the \gls{verificationcondition}.  Consider, for instance,
+the graph shown in Figure~\ref{fig:reproducing:placement_eg_bug}.
+This is intended to indicate that the \gls{crashingthread} has a
+single instruction, $D_0$, that the \gls{interferingthread} has three
+instructions, $A_1$, $B_1$, and $C_1$, and that the bug reproduces if
+either $x = 7$ and $D_0$ happens between $A_1$ and $B_1$ or if $y = 9$
+and $D_0$ happens between $B_1$ and $C_1$.
 
-{\STateMachines} and \glspl{verificationcondition} are capable of
-representing data and control flow dependent happens-before graphs,
-but the message passing mechanism used by \glspl{bugenforcer} is not
-capable of enforcing such things.  It is now therefore necessary to
-remove these dependencies.  The approach taken by {\implementation} is
-to just re-express the verification condition as a function of the
-happens-before graph, deriving a new verification condition for each
-possible graph.  These new conditions can then be treated completely
-independently.
+\begin{figure}
+  \subfigure[][Before re-ordering]{
+    \begin{tikzpicture}
+      \node (n10) [BddNode] {$x = 7$};
+      \node (n01) [BddNode, below left = of n10] {$y = 9$};
+      \node (n21) [BddNode, below right = of n10] {$y = 9$};
+      \node (n02) [BddNode, below = of n01] {$\happensBefore{D_0}{B_1}$};
+      \node (n12) at (n02 -| n10) [BddNode] {$\happensBefore{D_0}{B_1}$};
+      \node (n22) at (n02 -| n21) [BddNode] {$\happensBefore{D_0}{B_1}$};
+      \node (n03) [BddNode, below = of n02] {$\happensBefore{A_1}{D_0}$};
+      \node (n13) at (n03 -| n12) [BddNode] {$\happensBefore{D_0}{C_1}$};
+      \node (true) [BddLeaf, below = of n03] {\true};
+      \node (false) at (true -| n22) [BddLeaf] {\false};
+      \draw[BddTrue] (n01) -- (n02);
+      \draw[BddFalse] (n01) -- (n12);
+      \draw[BddTrue] (n02) -- (n03);
+      \draw[BddFalse] (n02) -- (n13);
+      \draw[BddTrue] (n03) -- (true);
+      \draw[BddFalse] (n03) to [bend right=5] (false);
+      \draw[BddTrue] (n10) -- (n01);
+      \draw[BddFalse] (n10) -- (n21);
+      \draw[BddTrue] (n12) -- (n03);
+      \draw[BddFalse] (n12) to [bend left=10] (false);
+      \draw[BddTrue] (n13) -- (true);
+      \draw[BddFalse] (n13) -- (false);
+      \draw[BddTrue] (n21) -- (n22);
+      \draw[BddFalse] (n21) to [bend left=35] (false);
+      \draw[BddTrue] (n22) -- (n13);
+      \draw[BddFalse] (n22) -- (false);
+    \end{tikzpicture}
+    \label{fig:reproducing:slice_eg:before}
+  }
+  \subfigure[][After re-ordering]{
+    \begin{tikzpicture}
+      \node (n10) [BddNode] {$\happensBefore{D_0}{B_1}$};
+      \node (n01) [BddNode, below left = of n10] {$\happensBefore{A_1}{D_0}$};
+      \node (n21) [BddNode, below right = of n10] {$\happensBefore{D_0}{C_1}$};
+      \node (n02) [BddNode, below = of n01] {$x = 7$};
+      \node [left = 0 of n02] {\circled{1}};
+      \node (n22) [BddNode, below = of n21] {$y = 9$};
+      \node [right = 0 of n22] {\circled{2}};
+      \node (true) [BddLeaf, below = of n02] {\true};
+      \node (false) [BddLeaf, below = of n22] {\false};
+      \draw[BddTrue] (n10) -- (n01);
+      \draw[BddFalse] (n10) -- (n21);
+      \draw[BddTrue] (n01) -- (n02);
+      \draw[BddFalse] (n01) -- (false);
+      \draw[BddTrue] (n02) -- (true);
+      \draw[BddFalse] (n02) -- (false);
+      \draw[BddTrue] (n21) -- (n22);
+      \draw[BddFalse] (n21) to [bend left=30] (false);
+      \draw[BddTrue] (n22) -- (true);
+      \draw[BddFalse] (n22) -- (false);
+    \end{tikzpicture}
+    \label{fig:reproducing:slice_eg:after}
+  }
+  \caption{Example BDD}
+\end{figure}
 
-This re-expression is itself straightforward: enumerate all of the
-$\happensBeforeEdge$ expressions in the verification condition and
-then consider all combinations of those expressions in turn,
-generating a new verification condition for each.  This could
-potentially generate $2^n$ new verification conditions, and hence
-might appear to be computationally unpleasant.  In practice, it is
-usually tolerable, for two main reasons:
+This bug might produce a \gls{verificationcondition} something like
+the one in Figure~\ref{fig:reproducing:slice_eg:before}.  The
+\gls{verificationcondition} correctly represents the intended
+behaviour, but mixes the happens-before tests $\happensBeforeEdge$
+with tests of the program's ordinary state, like the tests of $x = 7$
+and $y = 9$, making it more difficult to determine what instruction
+ordering needs to be enforced.
+Figure~\ref{fig:reproducing:slice_eg:after} shows a
+semantically-equivalent BDD which is slightly easier to work with.
+Now all of the happens-before tests occur before any of the tests of
+ordinary program state, and so can be separated out relatively easily.
+
+This BDD has, in effect, three parts: two conditions on ordinary
+program state, \circled{1} and \circled{2}, and a network of tests of
+$\happensBeforeEdge$ conditions which selects between them.  Each path
+through the initial network corresponds to a different ordering of the
+program's instructions and the conditions on ordinary program state
+provide the side-condition which must be enforced when the program
+follows that path.  In this case, there are only two paths:
+$\happensBefore{D_0}{B_1}$, $\happensBefore{A_1}{D_0}$, \circled{1}
+and ${\neg}\happensBefore{D_0}{B_1}$, $\happensBefore{D_0}{C_1}$,
+\circled{2}.  {\Technique} will therefore try to enforce two
+happens-before graphs, corresponding to the two ways in which the bug
+can reproduce.
+
+This example also illustrates the importance of side-condition
+checking.  One of the ways of reproducing this bug requires that $D_0$
+happens before $B_1$, while the other requires that $D_0$ happens
+after $B_1$.  These clearly cannot both happen at once.  Without
+side-condition checking, {\technique} would always try to enforce the
+first ordering, which would be unfortunate if the second represented a
+real bug and the first did not.  With side-condition checking,
+{\technique} will only try to enforce the first ordering if $x = 7$,
+and, if the side-conditions are correct, enforcing the ordering in
+that case will definitely lead to a crash, and so the fact that the
+two graphs are incompatible does not cause any actual problems.
+
+The computation complexity of BDD re-ordering operations is, in the
+worst case, $O(2^n)$ if the BDD moves from a particularly good
+ordering to a particularly bad one.  In practice, however, the
+complexity is usually tolerable, for several reasons:
 
 \begin{itemize}
 \item
@@ -351,22 +463,20 @@ usually tolerable, for two main reasons:
   al\cite{Musuvathi2007}, for instance, obtained good results while
   limiting the number of happens-before edges to at most 2).
 \item
-  Most bugs do not have a data-dependent happens-before pattern, and
-  so usually all but one of the potentially verification conditions
-  can be eliminated very quickly.  Those which do have data-dependent
-  happens-before requirements will usually only have a very small
-  number of interesting graphs (although it is possible to design
-  artificial bugs which require an arbitrarily large number).
+  The BDD ordering used by {\technique} usually places the
+  $\happensBeforeEdge$ expressions near the root of the BDD anyway,
+  and so the re-ordering does not usually need to touch very much of
+  the tree.
+\item
+  Most bugs do not have very complicated data-dependent happens-before
+  pattern, and so the initial $\happensBeforeEdge$ network part of the
+  re-ordered BDD usually only has to select between a small number of
+  conditions over the program's state.  This restricts the scope for
+  BDD to grow exponentially.
 \end{itemize}
 
-Even better, most of the time, behaviours which require a large number
-of happens-before edges will be quite restricted in when they
-reproduce, and so avoiding one easy case is negatively correlated with
-avoiding the other\editorial{Huh?}.
-
-\todo{Somewhat surprisingly, this is quite a long way from being the
-  most expensive part of the analysis.  Should really try to get some
-  numbers on what the expensive part actually is.}
+The overall result is that this step is usually a small proportion of
+the total cost of building a \gls{bugenforcer}.
 
 Treating the different graphs as completely independent does not,
 therefore, lead to an excessive increase in the cost of generating the

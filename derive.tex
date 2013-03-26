@@ -220,8 +220,15 @@ that the loop can only execute at most once during the
 \label{fig:cyclic_cfg}
 \end{figure}
 
-\begin{figure}
-\begin{center}
+As an example, consider the \gls{cfg} shown at the left of
+Figure~\ref{fig:cyclic_cfg}, which contains a loop between
+instructions $B_0$ and $C_0$.  This loop must be removed from the \gls{cfg}
+while maintaining all paths which terminate at $D_0$ and which contain
+\gls{alpha} or fewer instructions.  The algorithm starts by
+performing a depth-first traversal backwards through the graph from
+$D_0$ until it finds an edge which closes a cycle.
+In this case, that is the edge from $C_0$ to $B_0$.
+\begin{wrapfigure}{r}{3.3cm}
 \begin{tikzpicture}
   [node distance=1 and 0.3]
   \node (A) at (0,2) [CfgInstr] {$A_0$};
@@ -242,33 +249,26 @@ that the loop can only execute at most once during the
     \node (box4) [fill=black!10,fit=(A) (B) (C) (D) (C') (B') (C'')] {};
   \end{pgfonlayer}
 \end{tikzpicture}
-\end{center}
+\vspace{-3mm}
 \caption{Fully unrolled version of the CFG in
   Figure~\ref{fig:cyclic_cfg}, preserving all paths of length six or
   fewer instructions.  Note that an additional root has been
   introduced at $C_2$.}
+\vspace{3mm}
 \label{fig:unrolled_cyclic_cfg}
-\end{figure}
-
-As an example, consider the \gls{cfg} shown at the left of
-Figure~\ref{fig:cyclic_cfg}, which contains a loop between
-instructions $B_0$ and $C_0$.  This loop must be removed from the \gls{cfg}
-while maintaining all paths which terminate at $D_0$ and which contain
-\gls{alpha} or fewer instructions.  The algorithm starts by
-performing a depth-first traversal backwards through the graph from
-$D_0$ until it finds an edge which closes a cycle.  In this case, that
-is the edge from $C_0$ to $B_0$.  {\Technique} will therefore break
-this edge by duplicating the instruction at the start of the edge,
-$C_0$, along with all of its incoming edges (in this case, just the
-$B_0$ to $C_0$ edge).  The $C_0$ to $B_0$ edge can then be redirected
-to be from $C_1$ to $B_0$, producing the next diagram in the sequence.
-All paths which were possible in the old graph will also be possible
-in the new one, if duplicated nodes are treated as semantically
-equivalent, and the loop is now one instruction further away from the
-target instruction $D_0$.  The process then repeats, moving the cycle
-steadily further and further away from $D_0$ until all paths ending of
-length \gls{alpha} ending at $D_0$ are acyclic, at which point
-the cycle can be safely removed from the graph.
+\end{wrapfigure}
+{\Technique} will therefore break this edge by duplicating the
+instruction at the start of the edge, $C_0$, along with all of its
+incoming edges (in this case, just the $B_0$ to $C_0$ edge).  The
+$C_0$ to $B_0$ edge can then be redirected to be from $C_1$ to $B_0$,
+producing the next diagram in the sequence.  All paths which were
+possible in the old graph will also be possible in the new one, if
+duplicated nodes are treated as semantically equivalent, and the loop
+is now one instruction further away from the target instruction $D_0$.
+The process then repeats, moving the cycle steadily further and
+further away from $D_0$ until all paths ending of length \gls{alpha}
+ending at $D_0$ are acyclic, at which point the cycle can be safely
+removed from the graph.
 
 Note that the edge which is modified is the back edge, from $C_0$ to
 $B_0$, which points ``away from $D_0$'', and not the forwards edge
@@ -340,7 +340,7 @@ phase of the analysis rarely accounts for more than a small percentage
 of {\implementation}'s total running time (see
 Section~\ref{sect:eval:time_details} for more details).
 
-\section[Decompiling the \glsentrytext{cfg}]{Decompiling the \gls{cfg}}
+\section{\STateMachines}
 \label{sect:derive:state_machines}
 
 The dynamic \gls{cfg} represents all of the instructions in the
@@ -482,6 +482,33 @@ $\smLoad{expr}$ & The initial value of the memory at location $expr$. \\
 \label{table:state_machine_exprs}
 \end{table}
 
+\subsection{{\STateMachine} expression language}
+\label{sect:sm_expr_language}
+
+Any non-trivial {\StateMachine} will include some expressions over the
+original program's state.  These are expressed using an expression
+language which is described in Table~\ref{table:state_machine_exprs}.
+This language is, for most part, quite conventional, and includes
+simple mechanisms for querying the program's behaviour and state and
+for obtaining the values of {\StateMachine} temporaries, or for
+evaluating simple arithmetic operators.
+
+Note that $\smLoad{}$ expressions always evaluate to the initial value
+of the selected memory location, and not to the current value, which
+may be different if the {\StateMachine} has executed a \state{Store}
+operation.  The only way to access the current contents of memory is
+via a \state{Load} side-effect.  This means that $\smLoad{}$ is a pure
+function and can be re-ordered freely across side-effecting
+operations, simplifying analysis.
+
+This language is missing one important feature: logical connectives
+such as $\wedge$ or $\vee$.  These operators are not represented using
+the expression language, but are instead encoded into binary decision
+diagrams, or BDDs\cite{Brace1990}, which are themselves expressed in
+terms of the expression language.  These BDDs allow much more
+efficient implementations of many common operations than would be
+possible with a scheme based entirely on unconstrained expressions.
+
 \begin{landscape}
 \begin{table}
 \begin{tabular}{lllp{5cm}p{12.8cm}}
@@ -517,35 +544,7 @@ $\smLoad{expr}$ & The initial value of the memory at location $expr$. \\
 \end{table}
 \end{landscape}
 
-\subsection{{\STateMachine} expression language}
-\label{sect:sm_expr_language}
-
-Any non-trivial {\StateMachine} will include some expressions over the
-original program's state.  These are expressed using an expression
-language which is described in Table~\ref{table:state_machine_exprs}.
-This language is, for most part, quite conventional, and includes
-simple mechanisms for querying the program's behaviour and state and
-for obtaining the values of {\StateMachine} temporaries, or for
-evaluating simple arithmetic operators.
-
-Note that $\smLoad{}$ expressions always evaluate to the initial value
-of the selected memory location, and not to the current value, which
-may be different if the {\StateMachine} has executed a \state{Store}
-operation.  The only way to access the current contents of memory is
-via a \state{Load} side-effect.  This means that $\smLoad{}$ is a pure
-function and can be re-ordered freely across side-effecting
-operations, simplifying analysis.
-
-This language is missing one important feature: logical connectives
-such as $\wedge$ or $\vee$.  These operators are not represented using
-the expression language, but are instead encoded into binary decision
-diagrams, or BDDs\cite{Brace1990}, which are themselves expressed in
-terms of the expression language.  These BDDs allow much more
-efficient implementations of many common operations than would be
-possible with a scheme based entirely on unconstrained expressions.
-
-\begin{figure}
-  \begin{center}
+\begin{wrapfigure}{r}{6.5cm}
   \begin{tikzpicture}
     \node (x) [BddNode] {$\smTmp{A} = 72$};
     \node (y) [BddNode, below = of x] {$\smLoad{\smTmp{B}} = 9$};
@@ -559,13 +558,11 @@ possible with a scheme based entirely on unconstrained expressions.
     \draw [BddTrue] (z) -- (true);
     \draw [BddFalse] (z) -- (false);
   \end{tikzpicture}
-  \end{center}
   \caption{An example expression BDD.  This can evaluate to either
     $715$ or $\smTmp{C}$, depending on the values of $\smTmp{A}$,
     $\smTmp{B}$ and the initial contents of program memory.}
   \label{fig:derive:example_expr_bdd}
-\end{figure}
-
+\end{wrapfigure}
 Two types of BDD used in {\StateMachine} states: expression BDDs and
 boolean BDDs.  The difference is that boolean BDDs, or BBDDs, are
 constrained to evaluate to a simple boolean, whereas expression BDDs
@@ -756,12 +753,12 @@ powerful enough to make translating individual instructions in
 isolation completely straightforward\footnote{{\Implementation} uses
   LibVEX \todo{cite} to decode AMD64 machine code before performing
   this compilation.}.  Connecting them together is, however, slightly
-more difficult, as the edges in the dynamic \gls{cfg} no longer match
-up precisely with those in the original program, so that, for
-instance, an instruction which would normally have a single successor
-might have multiple successors in the dynamic \gls{cfg}, or one which
-would normally have multiple successors might only have one, or even
-none at all.  There are three cases which require special care:
+more difficult, as the edges in the dynamic \gls{cfg} do not match up
+precisely with those in the original program, so that, for instance,
+an instruction which would normally have a single successor might have
+multiple successors in the dynamic \gls{cfg}, or one which would
+normally have multiple successors might only have one, or even none at
+all.  There are three cases which require special care:
 
 \begin{itemize}
 \item
@@ -898,6 +895,14 @@ implementation, while all of the other calls to \texttt{free} use the
 non-crashing one\footnote{Note that this includes other calls to
   \texttt{free} in the \gls{crashingthread}.}.
 
+The effects of these implementations are hopefully reasonably clear:
+non-crashing \texttt{free}s set the $\mathit{last\_free}$ address to
+the pointer which was released, and the crashing \texttt{free} then
+asserts that the pointer which it releases is not the one which was
+most recently released.  This scheme is clearly not capable of
+detecting all possible double-free bugs, but it is sufficient for the
+most common kind.
+
 \begin{figure}
   \subfigure[][Crashing \texttt{free}]{
     \begin{tikzpicture}
@@ -928,14 +933,6 @@ non-crashing one\footnote{Note that this includes other calls to
     kernel space.}
   \label{fig:library_free}
 \end{figure}
-
-The effects of these implementations are hopefully reasonably clear:
-non-crashing \texttt{free}s set the $\mathit{last\_free}$ address to
-the pointer which was released, and the crashing \texttt{free} then
-asserts that the pointer which it releases is not the one which was
-most recently released.  This scheme is clearly not capable of
-detecting all possible double-free bugs, but it is sufficient for the
-most common kind.
 
 \begin{figure}
   \centerline{
@@ -1752,19 +1749,6 @@ state\footnote{Note, in particular, that paths which end at
 The \gls{inferredassumption} itself is then formed from the
 conjunction of these two sub-constraints.
 
-This scheme can be simplified slightly when the \gls{w-isolation}
-assumption holds.  In that case, the \gls{crashingthread} cannot
-influence the behaviour of the \gls{interferingthread}, and so the
-concatenation of the \gls{crashingthread} and \gls{interferingthread}
-will crash precisely when either of the threads would crash when run
-in isolation.  \Gls{ci-atomic} is therefore equal to $C \wedge I$,
-where $C$ is the condition for the \gls{crashingthread} to survive
-when run atomically and $I$ that for the \gls{interferingthread}.  $C$
-is purely a property of the \gls{crashingthread}, and so only needs to
-be computed once even when there are multiple
-\glspl{interferingthread}, which reduces the amount of symbolic
-execution which must be done.
-
 Concatenating {\StateMachines} is straightforward: simply take the
 first {\StateMachine} and replace all of its {\stSurvive} states
 with branches to the start of the second {\StateMachine}.
@@ -2466,16 +2450,25 @@ The \gls{w-isolation} assumption enables three main optimisations:
   and all of the other \glspl{communicatinginstruction} can be
   discarded.
 \item
-  It simplifies the calculation of the \gls{ci-atomic} constraint;
-  see \autoref{sect:derive:inferred_assumption}.
+  It simplifies the calculation of the \gls{ci-atomic} constraint.  If
+  the \gls{w-isolation} holds then the \gls{crashingthread} cannot
+  influence the behaviour of the interfering one, and so
+  \gls{ci-atomic} becomes simply C-atomic~$\wedge$~I-atomic, where
+  C-atomic is the condition for the \gls{crashingthread} to survive
+  when run in isolation and I-atomic the equivalent condition on the
+  \gls{interferingthread}.  I-atomic is then always implied by
+  \gls{ic-atomic}, because of the way the latter is constructed, and
+  so \gls{ci-atomic} can be replaced with just C-atomic.  C-atomic
+  depends on the \gls{crashingthread} only, and so does not need to be
+  recalculated for every \gls{interferingthread}, which can provide a
+  useful performance when there are a large number of
+  \glspl{interferingthread} for a single crashing one.
 \end{itemize}
 
 The analysis is almost always faster with the \gls{w-isolation}
 assumption, but cannot handle as broad a class of program behaviour.
 I evaluate these effects experimentally in
 \autoref{sect:eval:w_isolation}.
-
-
 
 \section{Finding unknown bugs}
 \label{sect:derive:unknown_bugs}
