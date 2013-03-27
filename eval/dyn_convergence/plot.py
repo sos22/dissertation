@@ -3,9 +3,9 @@
 import sys
 
 fig_width = 13
-fig_height = 10
+fig_height = 7
 
-f = file("dynamic_convergence.data", "r")
+f = file(sys.argv[1], "r")
 
 series = []
 cur_series = None

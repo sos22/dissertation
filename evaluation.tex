@@ -6,14 +6,14 @@
 \begin{itemize}
 \item Re-do labyrinth experiments and actually track the results.
 \item Re-do Bayes with current version of tool.
-\item Re-do pbzip2 and collect numbers.  \todo{Run on ise overnight.}
+\item pbzip2 text needs rewriting,
 \item Re-do unoptimised mysql.  Time static and main analysis phases.
   Check number of candidates generated.  Run candidates.
   \todo{Running on hogun now.}
 \item Re-do optimised mysql.  Time static and main analysis phases.
   Check number of candidates generated.  Run candidates.
 \item The convergence experiments for the dynamic analysis phase.
-  Need to do some other test, rather than just the one mysql test.
+  \todo{running now}
 \end{itemize}
 
 \section{Eval}
@@ -1946,11 +1946,10 @@ potentially-crashing instructions:
   \glspl{verificationcondition}.
 \item 24 of the \glspl{verificationcondition} were converted to
   \glspl{bugenforcer}; the other two timed out after one minute.
+\item Converting the \glspl{verificationcondition} to
+  \glspl{bugenforcer} took $950 \pm 2$ seconds, mean and standard
+  deviation of mean for ten runs, or a little over quarter of an hour.
 \end{itemize}
-
-\todo{Whoops: only recorded which instructions timed out for the last
-  run.  Re-do that.}
-
 
 \todo{How long do the enforcers take to run?}  \todo{Timeout
   settings?}  \todo{Version of pbzip2?}  \todo{Compile settings?}
@@ -2317,27 +2316,38 @@ long does it take to achieve reasonable coverage of the program's
 behaviour, and how much does it slow the program down while it is
 being analysed?  I investigate the first concern first.
 
-For this experiment, I monitored mysql while running the
-rpl\_change\_master test out of its test suite under the dynamic
-analysis and arrange to take a snapshot of the aliasing table every
-1,000,000 basic blocks.  This corresponded to running for roughly
-100ms between snapshots.  I treated the aliasing table obtained after
-running for quarter of an hour as a ground truth and calculated the
-proportion of ground truth aliasing pairs which were present in each
-snapshot.  The results are shown in
-Figure~\ref{fig:eval:dyn_convergence}.  Note that this test involves
-starting and restarting mysql several times; the vertical dashed bars
-show where it restarted.
+For this experiment, I modified the dynamic analysis tool so that it
+periodically recorded a snapshot of the aliasing table, and I then
+examined these snapshots to quantify the rate at which aliasing pairs
+were added to the table.  The results for mysql, Thunderbird, and
+pbzip2 are shown in Figures~\ref{fig:eval:dyn_convergence:mysqld},
+\ref{fig:eval:dyn_convergence:thunderbird}, and \todo{do pbzip2 test},
+respectively.  These graphs show the number of aliasing pairs in the
+table at time $t$, as a percentage of the number of pairs in the final
+table.  These tests involved starting and restarting the program
+several times; such restarts are shown as dashed vertical lines.  The
+most important result here is that the dynamic aliasing analysis
+achieves reasonable coverage reasonably quickly, usually within ten
+minutes to quarter of an hour.  Asking users to run this dynamic
+analysis before using {\technique} is therefore not an unreasonable
+burden.
 
-This graph shows that the dynamic analysis achieved reasonable
-coverage for this test after five minutes, and essentially complete
-coverage after ten.
+This is arguably a somewhat unfair test: taking a snapshot can itself
+take several hundred milliseconds, depending on how complete the
+aliasing table is at the time, and so this experiment actually spent
+most of its time taking snapshots rather than running the test
+program.  A more realistic test would probably show faster
+convergence.
 
 \begin{figure}
-  \input{eval/dyn_convergence/dyn_convergence.tex}
-  \caption{Dynamic convergence}
-  \label{fig:eval:dyn_convergence}
+  \input{eval/dyn_convergence/rpl_change_master.tex}
+  \caption{Dynamic aliasing coverage against time for MySQL}
+  \label{fig:eval:dyn_convergence:mysqld}
 \end{figure}
 
-
-\todo{Repeat for some of the other programs.}
+\begin{figure}
+  \input{eval/dyn_convergence/thunderbird.tex}
+  \caption{Dynamic aliasing coverage against time for Thunderbird.}
+  \label{fig:eval:dyn_convergence:thunderbird}
+\end{figure}
+?
