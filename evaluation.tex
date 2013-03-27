@@ -6,14 +6,11 @@
 \begin{itemize}
 \item Re-do labyrinth experiments and actually track the results.
 \item Re-do Bayes with current version of tool.
-\item pbzip2 text needs rewriting,
 \item Re-do unoptimised mysql.  Time static and main analysis phases.
   Check number of candidates generated.  Run candidates.
   \todo{Running on hogun now.}
 \item Re-do optimised mysql.  Time static and main analysis phases.
   Check number of candidates generated.  Run candidates.
-\item The convergence experiments for the dynamic analysis phase.
-  \todo{running now}
 \end{itemize}
 
 \section{Eval}
@@ -1926,34 +1923,41 @@ included building a program model, generating all {\StateMachines},
 converting them to enforcers, and then running pbzip2 under each
 enforcer in turn.  This did not find any bugs in pbzip2.
 
-Static analysis took $4.29 \pm 0.05$ seconds, mean and standard
-deviation of ten runs.  Building the \glspl{verificationcondition}
-took $1140 \pm 30$ seconds.  This involved analysing 154
-potentially-crashing instructions:
+Building the \glspl{bugenforcer} took a total of $2090 \pm 50$
+seconds, mean and standard deviation of mean for ten runs.  The
+largest single component of this was building the
+\glspl{verificationcondition}, which took $1140 \pm 30$ seconds,
+followed by converting the \glspl{verificationcondition} to
+\glspl{bugenforcer}, which took $950 \pm 20$ seconds.  The static
+analysis phase was much faster, taking $4.29 \pm 0.05$ seconds.
+
+{\Implementation} produced a total of 24 \glspl{bugenforcer} for this
+test:
 
 \begin{itemize}
-\item For 7 instructions, building the crashing {\StateMachine} timed
-  out.  This timeout was set to one minute.
-\item Ignoring those 7 crashing instructions, instruction generated
-  the complete set of interfering \glspl{cfg}.  There were 244
-  interfering \glspl{cfg} in total.
-\item 8 of the interfering \glspl{cfg} timed out in one of the
-  symbolic execution steps.  The timeout here was again one minute.
-\item 26 of the interfering \glspl{cfg} generated
-  \glspl{verificationcondition} which the satisfiability checker was
-  unable to eliminate.
-\item There were no other failures generating
+\item There were 154 potentially-crashing instructions in the
+  program binary.
+\item Of those, 7 failed to generate a crashing {\StateMachine} due to
+  a timeout.
+\item The remaining 147 \glspl{crashingthread} generated 244
+  interfering \glspl{cfg}.  There were no timeouts or other failures
+  generating interfering \glspl{cfg}.
+\item Of those 244 interfering \glspl{cfg}, 8 timed out. Ignoring
+  those timeouts, all of the remaining 236 interfering \glspl{cfg}
+  were successfully symbolically executed to produce
   \glspl{verificationcondition}.
-\item 24 of the \glspl{verificationcondition} were converted to
-  \glspl{bugenforcer}; the other two timed out after one minute.
-\item Converting the \glspl{verificationcondition} to
-  \glspl{bugenforcer} took $950 \pm 2$ seconds, mean and standard
-  deviation of mean for ten runs, or a little over quarter of an hour.
+\item 210 of those \glspl{verificationcondition} were shown to be
+  unsatisfiable by the satisfiability checker, leaving 26 in need of
+  dynamic checking.
+\item There were two further timeouts converting
+  \glspl{verificationcondition} to \glspl{bugenforcer}.
 \end{itemize}
 
-\todo{How long do the enforcers take to run?}  \todo{Timeout
-  settings?}  \todo{Version of pbzip2?}  \todo{Compile settings?}
-\todo{Value of $\alpha$?}
+All timeouts were set to one minute in this experiment.  The same
+operations suffered timeouts in every repeat of the experiment.
+
+\todo{How long do the enforcers take to run?} \todo{Version of
+  pbzip2?} \todo{Compile settings?} \todo{Value of $\alpha$?}
 
 \subsection{Thunderbird}
 
@@ -2295,26 +2299,10 @@ and so takes longer to process.  \todo{Not sure there's much to say
 
 \subsection{Dynamic analysis}
 
-\todo{I want to say something about how good/bad the dynamic analysis
-  is.  Things to measure:}
-
-\todo{
-\begin{itemize}
-\item How much it slows programs down.  The answer is ``a lot'', but
-  it'd be good to quantify that.
-\item How long it takes to converge.  That'll be a graph with time
-  running under analysis on the x-axis and number of aliasing pairs on
-  the y axis, showing that it tends to a constant fairly quickly.
-  I've already done that for thunderbird; should probably do it for
-  mysql and pbzip as well.  The artificial tests converge too quickly
-  to be interesting.
-\end{itemize}
-}
-
 There are two obvious concerns with the dynamic analysis phase: how
 long does it take to achieve reasonable coverage of the program's
-behaviour, and how much does it slow the program down while it is
-being analysed?  I investigate the first concern first.
+behaviour, and how much \todo{does it slow the program down while it
+  is being analysed}?  I investigate the first concern first.
 
 For this experiment, I modified the dynamic analysis tool so that it
 periodically recorded a snapshot of the aliasing table, and I then
@@ -2332,16 +2320,47 @@ minutes to quarter of an hour.  Asking users to run this dynamic
 analysis before using {\technique} is therefore not an unreasonable
 burden.
 
-This is arguably a somewhat unfair test: taking a snapshot can itself
-take several hundred milliseconds, depending on how complete the
-aliasing table is at the time, and so this experiment actually spent
-most of its time taking snapshots rather than running the test
-program.  A more realistic test would probably show faster
-convergence.
+For all tests, the dynamic analysis tool was configured to take one
+snapshot every 1,000,000 Valgrind basic blocks, which corresponds to a
+couple of hundred milliseconds of execution time. This is arguably a
+somewhat unfair test: taking a snapshot can itself take several
+hundred milliseconds, depending on the size of aliasing table is at
+the time, and so this experiment actually spent most of its time
+taking snapshots rather than running the test program.  A more
+realistic test would probably show faster convergence.
+
+The precise behaviour of the dynamic analysis depends, in part, on the
+workload which is being used to exercise the program.  For these
+experiments, I used the following workloads:
+
+\begin{itemize}
+\item For MySQL, I used four tests out of the MySQL test suite. The
+  first of these, rpl\_change\_master, was chosen to match the bug
+  discussed in \autoref{sect:eval:mysql}.  The other three were chosen
+  at random.
+\item For Thunderbird, I tried to use the program in roughly the way
+  an ordinary user would for a few minutes.  It is difficult to
+  specify workloads precisely in a highly interactive GUI
+  program\editorial{Excuses...}.
+\item For pbzip2, I compressed three randomly generated 10MiB files in
+  series.
+\end{itemize}
 
 \begin{figure}
-  \input{eval/dyn_convergence/rpl_change_master.tex}
-  \caption{Dynamic aliasing coverage against time for MySQL}
+  \subfigure[][rpl\_change\_master]{
+    \input{eval/dyn_convergence/rpl_change_master.tex}
+  }
+  \subfigure[][innodb\_multi\_update]{
+    \input{eval/dyn_convergence/innodb_multi_update.tex}
+  }
+  \subfigure[][binlog\_stm\_drop\_tbl]{
+    \input{eval/dyn_convergence/binlog_stm_drop_tbl.tex}
+  }
+  \subfigure[][timestamp\_basic]{
+    \input{eval/dyn_convergence/timestamp_basic.tex}
+  }
+  \caption{Dynamic aliasing coverage against time for MySQL, using
+    some tests out of the test suite.}
   \label{fig:eval:dyn_convergence:mysqld}
 \end{figure}
 
@@ -2350,4 +2369,10 @@ convergence.
   \caption{Dynamic aliasing coverage against time for Thunderbird.}
   \label{fig:eval:dyn_convergence:thunderbird}
 \end{figure}
-?
+
+\begin{figure}
+  \input{eval/dyn_convergence/pbzip2.tex}
+  \caption{Dynamic aliasing coverage against time for pbzip2.}
+  \label{fig:eval:dyn_convergence:pbzip2}
+\end{figure}
+
