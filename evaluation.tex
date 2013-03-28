@@ -29,12 +29,12 @@ following parts:
   slightly more realistic bugs.  These include a simplified version of
   a real bug in glibc\needCite{} and some bugs which I deliberately
   introduced into the STAMP benchmark suite\needCite{}.
-\item Section~\ref{sect:eval:real} applies the tool to some large
+\item Section~\ref{sect:eval:real} applies the tool to some larger
   programs: pbzip2\needCite{}, MySQL\needCite{}, and
   Thunderbird\needCite{}.  I show that the analysis completes in a
-  tolerable amount of time even for some very large programs,
-  and demonstrate that it can both reproduce and fix a (small)
-  number of real bugs.
+  tolerable amount of time even for some very large programs, and
+  demonstrate that it can both reproduce and fix a (small) number of
+  real bugs.
 \item Section~\ref{sect:eval:time_details} then investigates the
   tool's performance on large programs in slightly more detail,
   showing how the time taken breaks down across the various phases
@@ -126,8 +126,7 @@ analysis from exploring past that point when building the CFGs from
 which {\StateMachines} are constructed.  It is used here to help keep
 the crash summaries generated simple and easily explained;
 {\implementation} is able to reproduce and fix the bug even without
-those markers\editorial{Could last time I tried it, probably worth
-  checking that again with the current version.}.
+those markers.
 
 \subsubsection{Generating candidate bugs}
 
@@ -139,8 +138,9 @@ produce the {\StateMachine} shown in
 Figure~\ref{fig:eval:simple_toctou:sm}.
 
 \begin{figure}
-  \subfigure[][Control flow graph.  $\varnothing$ indicates that the
-    thread has left the CFG.]{
+  \centerline{
+  \subfigure[][Control flow graph]{
+    \centering
     \begin{tikzpicture}
       \node (cfg1) [CfgInstr] {\texttt{400694}: cfg1};
       \node (cfg2) [CfgInstr,below=of cfg1] {\texttt{40069b}: cfg2};
@@ -156,6 +156,7 @@ Figure~\ref{fig:eval:simple_toctou:sm}.
     \end{tikzpicture}
     \label{fig:eval:simple_toctou:cfg}
   }
+  {\hfill}
   \subfigure[][{\STateMachine}]{
     \begin{tikzpicture}
       \node (l1) at (0,2) [stateSideEffect] {\stLoad{1}{\mathrm{global\_ptr}} @ cfg1 };
@@ -173,16 +174,19 @@ Figure~\ref{fig:eval:simple_toctou:sm}.
     \end{tikzpicture}
     \label{fig:eval:simple_toctou:sm}
   }
-  \caption{\Gls{cfg} and {\STateMachine} for the crashing thread
-    in Figure~\ref{fig:eval:simple_toctou:compiled}.}
+  }
+  \caption{\Gls{cfg} and {\STateMachine} for the crashing thread in
+    Figure~\ref{fig:eval:simple_toctou:compiled}.  $\varnothing$
+    indicates that the thread has left the \gls{cfg}. Dotted lines
+    indicate the false successor of a conditional.}
 \end{figure}
 
 The next step is to build the \glspl{interferingstore} set (see
 Section~\ref{sect:derive:write_side}).  The crashing {\StateMachine}
 contains two loads, at \texttt{400694} and \texttt{4006a0}, and so the
-analysis will ask\editorial{ick} the \gls{programmodel} what stores
-might interact with them, and the \gls{programmodel} will use the
-results of the dynamic alias analysis (see
+analysis will query the \gls{programmodel} to find what stores might
+interact with them, and the \gls{programmodel} will use the results of
+the dynamic alias analysis (see
 Section~\ref{sect:program_model:dynamic_alias}) to return the set
 \{\texttt{400884}, \texttt{4008fb}\}.  The \texttt{STOP\_ANALYSIS()}
 markers prevent these from being clustered together, and there are no
@@ -192,33 +196,41 @@ Figures~\ref{fig:eval:simple_toctou:interfering_cfg1}
 and~\ref{fig:eval:simple_toctou:interfering_cfg2}.
 
 \begin{figure}
-  \begin{tabular}{cc}
+  \begin{tabular}{b{0.5\textwidth}b{0.5\textwidth}}
     \subfigure[][CFG for interfering store \texttt{400884}]{
+      \centerline{
       \begin{tikzpicture}
         \node (a) [CfgInstr] {\texttt{400884}: cfg5};
         \node (b) [below = of a] {$\varnothing$};
         \draw[->] (a) -- (b);
       \end{tikzpicture}
+      }
       \label{fig:eval:simple_toctou:interfering_cfg1}
     } &
-    \subfigure[][{\STateMachine} for interfering store \texttt{400884}, without static analysis]{
+    \subfigure[][{\STateMachine} for interfering store \texttt{400884}, without \gls{programmodel}]{
+      \centerline{
       \begin{tikzpicture}
         \node [stateSideEffect] {\stStore{\smReg{rbp}{2}}{\mathrm{global\_ptr}} @ cfg5};
       \end{tikzpicture}
+      }
       \label{fig:eval:simple_toctou:interfering_sm1}
     } \\
     \subfigure[][CFG for interfering store \texttt{4008fb}]{
+      \centerline{
       \begin{tikzpicture}
         \node (a) [CfgInstr] {\texttt{4008fb}: cfg6};
         \node (b) [below = of a] {$\varnothing$};
         \draw[->] (a) -- (b);
       \end{tikzpicture}
+      }
       \label{fig:eval:simple_toctou:interfering_cfg2}
     } &
     \subfigure[][{\STateMachine} for interfering store \texttt{4008fb}]{
+      \centerline{
       \begin{tikzpicture}
         \node [stateSideEffect] {\stStore{0}{\mathrm{global\_ptr}} @ cfg6};
       \end{tikzpicture}
+      }
       \label{fig:eval:simple_toctou:interfering_sm2}
     }
   \end{tabular}
@@ -226,18 +238,18 @@ and~\ref{fig:eval:simple_toctou:interfering_cfg2}.
 \end{figure}
 
 Consider the interfering store at \texttt{400884} first.  Without the
-static analysis phases, this would produce the {\StateMachine} shown
-in Figure~\ref{fig:eval:simple_toctou:interfering_sm1}.  There is no
-way for the program to crash due to interleaving this {\StateMachine}
-with the crashing thread, as $\smReg{rbp}{2}$ is never a bad pointer,
-but the {\StateMachines} do not contain enough information to show
-that.  The analysis will produce the verification condition shown in
-Figure~\ref{fig:eval:simple_toctou:inferred_assumption1}. The fixed
-register and static aliasing analyses will both eliminate this
-candidate bug, as either is capable of showing that $\smReg{rbp}{2}$
-is a pointer into thread 2's stack frame, and hence that it is a valid
-pointer.  The \gls{interferingstore} at \texttt{4008fb}, on the other
-hand, does represent a valid bug, as interleaving it with the
+\gls{programmodel}, this would produce the {\StateMachine} shown in
+Figure~\ref{fig:eval:simple_toctou:interfering_sm1}.  There is no way
+for the program to crash due to interleaving this {\StateMachine} with
+the crashing thread, as $\smReg{rbp}{2}$ is never a bad pointer, but
+the {\StateMachines} do not contain enough information to show that.
+The analysis will produce the verification condition shown in
+Figure~\ref{fig:eval:simple_toctou:inferred_assumption1}. The
+\gls{programmodel}'s static analyses, on the other hand, are
+sufficient to show that $\smReg{rbp}{2}$ is a valid pointer,
+eliminating the spurious \gls{verificationcondition}.  The
+\gls{interferingstore} at \texttt{4008fb}, on the other hand, does
+represent a valid bug, as interleaving it with the
 \gls{crashingthread} could lead to a crash, and it produces the
 \gls{verificationcondition} shown in
 Figure~\ref{fig:eval:simple_toctou:inferred_assumption2}.
@@ -295,7 +307,7 @@ does arrive, the enforcer will make the crashing thread wait for the
 interfering thread to complete its store before proceeding to the load
 at \texttt{4006a0}.  This will be sufficient to reproduce the bug.
 
-\begin{figure}
+\begin{wrapfigure}{r}{7cm}
   \begin{tikzpicture}
     \node[draw] (l1) {\texttt{400694}: $\mai{cfg1}{1}$};
     \node[draw, below right = of l1] (l2) {\texttt{4008fb}: $\mai{cfg6}{2}$ };
@@ -306,23 +318,7 @@ at \texttt{4006a0}.  This will be sufficient to reproduce the bug.
   \end{tikzpicture}
   \caption{Happens-before graph to be enforced for simple\_toctou}
   \label{fig:eval:simple_toctou:hb_graph}
-\end{figure}
-
-\begin{figure}
-  \begin{tikzpicture}
-    \node[draw] (l1) {\texttt{400694}: $\mai{cfg1}{1}$};
-    \node[left = 0 of l1] {$\smLoad{\mathrm{global\_ptr}} \not= 0$};
-    \node[draw, below right = of l1] (l2) {\texttt{4008fb}: $\mai{cfg6}{2}$ };
-    \node[right = 0 of l2] {$\smLoad{\mathrm{global\_ptr}} \not= 0$};
-    \node[draw, below left = of l2] (l3) {\texttt{4006a0}: $\mai{cfg4}{1}$ };
-    \draw[->] (l1) -- (l3);
-    \draw[->, happensBeforeEdge] (l1) -- (l2);
-    \draw[->, happensBeforeEdge] (l2) -- (l3);
-  \end{tikzpicture}
-  \caption{Crash enforcement plan for simple\_toctou}
-  \label{fig:eval:simple_toctou:enforce_plan}
-\end{figure}
-
+\end{wrapfigure}
 This enforcer is effective at reproducing the bug.  Without the
 enforcer, the mean time taken to reproduce the bug is $4.3 \pm 0.4$
 seconds, mean and standard deviation of mean for 100 runs; with it,
@@ -345,6 +341,21 @@ approach is likely to be some variant of this procedure:
 \item Test whether the bug has been fixed.
 \item If so, stop.  Otherwise, start again from the beginning.
 \end{itemize}
+
+\begin{figure}
+  \begin{tikzpicture}
+    \node[draw] (l1) {\texttt{400694}: $\mai{cfg1}{1}$};
+    \node[left = 0 of l1] {$\smLoad{\mathrm{global\_ptr}} \not= 0$};
+    \node[draw, below right = of l1] (l2) {\texttt{4008fb}: $\mai{cfg6}{2}$ };
+    \node[right = 0 of l2] {$\smLoad{\mathrm{global\_ptr}} \not= 0$};
+    \node[draw, below left = of l2] (l3) {\texttt{4006a0}: $\mai{cfg4}{1}$ };
+    \draw[->] (l1) -- (l3);
+    \draw[->, happensBeforeEdge] (l1) -- (l2);
+    \draw[->, happensBeforeEdge] (l2) -- (l3);
+  \end{tikzpicture}
+  \caption{Crash enforcement plan for simple\_toctou}
+  \label{fig:eval:simple_toctou:enforce_plan}
+\end{figure}
 
 Bugs with a long tail of reproduction times make the third step
 difficult.  The obvious way of testing whether a bug has been fixed is
@@ -373,13 +384,17 @@ of course, take far longer.
 
 \subsubsection{Fixing the bug}
 {\Implementation} can also generate a fix for this bug.  In this case,
-the CFG fragments to be protected will be the complete CFGs of both
-threads, as the first and last CFG nodes in both threads are involved
-in happens-before edges.  This corresponds to modifying the program as
-shown in Figure~\ref{fig:eval:simple_toctou:fix}.  This correctly
-fixes the bug.
+the CFG fragments to be protected will be the complete CFGs shown in
+Figures~\ref{fig:eval:simple_toctou:cfg}
+and~\ref{fig:eval:simple_toctou:interfering_cfg2}, as the first and
+last CFG nodes in both threads are involved in happens-before edges.
+This corresponds to modifying the program as shown in
+Figure~\ref{fig:eval:simple_toctou:fix}.  This correctly fixes the
+bug.
 
 \begin{figure}
+  \centerline{
+    {\hfill}
   \subfigure[][Crashing thread]{
     \texttt{
       \begin{tabular}{lll}
@@ -395,7 +410,8 @@ fixes the bug.
         \multicolumn{3}{l}{\}}\\
       \end{tabular}
     }
-  }\hfill %
+  }
+  {\hfill}
   \subfigure[][Interfering thread]{
     \texttt{
       \begin{tabular}{ll}
@@ -411,7 +427,8 @@ fixes the bug.
       \end{tabular}
     }
   }\hfill
-  \caption{The fix generated by {\implementation} for the simple\_toctou bug..}
+  }
+  \caption{The fix generated by {\implementation} for the simple\_toctou bug.}
   \label{fig:eval:simple_toctou:fix}
 \end{figure}
 
@@ -454,8 +471,8 @@ infrastructure.
   \caption{Performance of some variants of the fix, in millions of
     loop iterations completed per second.  The original program
     completed $352.5 \pm 0.2$ million iterations per second, when it
-    did not crash.  All measurements mean and standard deviation of
-    ten runs.}
+    did not crash.  All measurements mean and population standard
+    deviation of ten runs.}
   \label{table:eval:simple_toctou:other_fixes}
 \end{table}
 
@@ -463,7 +480,8 @@ As a further point of comparison, I also produced a version of this
 fix which used debug breakpoints to gain control of the program rather
 than branches.  This completed $6379000 \pm 7000$ loop iterations per
 second, even with the actual locking disabled, giving it an overhead
-of roughly a factor of 55.
+of roughly a factor of 55.  This would be problematic in a production
+environment.
 
 \todo{Give details of the machine the test is running on.}\smh{Yes}
 
@@ -539,7 +557,7 @@ enforcer without side-condition checking will often slow the program
 down in order to impose the happens-before graph even in situations
 where doing so is unlikely to trigger the bug, and this causes the
 buggy code to run far less frequently than it otherwise would.  The
-full CDF is shown in Figure~\ref{fig:eval:indexed_toctou:no_scs}.
+full CDFs are shown in Figure~\ref{fig:eval:indexed_toctou:no_scs}.
 
 \begin{figure}
   \input{eval/artificial_bugs/special/indexed_toctou_no_scs.tex}
@@ -581,7 +599,7 @@ generator.  The complex behaviour of an apparently simple test is
 reflective of the general complexity of concurrency-related bugs, and
 is one of the reasons why they are often difficult for programmers to
 correctly diagnose\needCite{}.  The chart with the enforcer, by
-contrast, avoids this peculiar behaviour.  This would make the bug far
+contrast, shows much simpler behaviour.  This would make the bug far
 easier for a programmer to fix, even without the significant reduction
 in the time take to reproduce it.
 
@@ -699,15 +717,17 @@ independent {\StateMachines}.  Consider the first store; the other is
 symmetrical.  Figure~\ref{fig:eval:multi_variable:other_bug} shows how
 the \gls{inferredassumption} is derived for this bug\footnote{The
   actual analysis performs this derivation using {\StateMachines},
-  rather than by concatenating the program's actual code, but that
-  makes no difference in this case.}.  The \gls{ci-atomic} constraint
-shows that the initial values of \texttt{global1} and \texttt{global2}
-must be equal, and the \gls{ic-atomic} constraint shows that the
-initial value of \texttt{global2} must be 5.  Combining these two
-shows that the initial value of \texttt{global} must also be 5, and so
-the store operation becomes a no-op and no candidate bug is reported.
+  rather than by concatenating the program's code, but that makes no
+  difference in this case.}.  The \gls{ci-atomic} constraint shows
+that the initial values of \texttt{global1} and \texttt{global2} must
+be equal, and the \gls{ic-atomic} constraint shows that the initial
+value of \texttt{global2} must be 5.  Combining these two shows that
+the initial value of \texttt{global} must also be 5, and so the store
+operation becomes a no-op and no candidate bug is reported.
 
 \begin{figure}
+  \centerline{
+    {\hfill}
   \subfigure[][CI atomic]{
     \begin{tabular}{l}
       \hspace{-5mm}\texttt{
@@ -722,7 +742,7 @@ the store operation becomes a no-op and no candidate bug is reported.
       $\smLoad{\texttt{global1}} = \smLoad{\texttt{global2}}$\\
     \end{tabular}
   }
-  \hfill
+  {\hfill}
   \subfigure[][IC atomic]{
     \begin{tabular}{l}
       \hspace{-5mm}\texttt{
@@ -737,10 +757,12 @@ the store operation becomes a no-op and no candidate bug is reported.
       $\smLoad{\texttt{global2}} = 5$\\
     \end{tabular}
   }\\
-  \\
-  Inferred assumption: $\smLoad{\texttt{global2}} = 5 \wedge \smLoad{\texttt{global1}} = 5$
+  {\hfill}
+  }
+  \vspace{12pt}
+  \centerline{Inferred assumption: $\smLoad{\texttt{global2}} = 5 \wedge \smLoad{\texttt{global1}} = 5$}
   \caption{Deriving the \gls{inferredassumption} for the other bug in
-    the multi\_variable bug.}
+    the multi\_variable test.}
   \label{fig:eval:multi_variable:other_bug}
 \end{figure}
 
@@ -756,34 +778,6 @@ correctly prevents the program from crashing.
 
 \subsection{Write-to-read hazard (write\_to\_read)}
 
-\begin{figure}
-  \subfigure[][Crashing thread]{
-    \texttt{
-      \begin{tabular}{ll}
-        \multicolumn{2}{l}{while (1) \{}\\
-        &STOP\_ANALYSIS();\\
-        &global\_ptr = \&t;\\
-        &*global\_ptr = 5;\\
-        &STOP\_ANALYSIS();\\
-        \multicolumn{2}{l}{\}}\\
-      \end{tabular}
-    }
-  }
-  \hfill
-  \subfigure[][Interfering thread]{
-    \texttt{
-      \begin{tabular}{ll}
-        \multicolumn{2}{l}{while (1) \{}\\
-        &STOP\_ANALYSIS();\\
-        &global\_ptr = NULL;\\
-        &STOP\_ANALYSIS();\\
-        \multicolumn{2}{l}{\}}\\
-      \end{tabular}
-    }
-  }
-  \caption{The write\_to\_read test case.}
-  \label{fig:eval:write_to_read}
-\end{figure}
 
 This test investigates a form of write-write-read race, whereas all of
 the previous ones have considered only write-read ones.  It is shown
@@ -808,12 +802,73 @@ an interrupt in precisely the wrong place.  The {\technique}-generated
 bug enforcer, by contrast, can reliably reproduce the bug in a few
 hundred milliseconds.
 
+\begin{figure}
+  \centerline{
+    {\hfill}
+  \subfigure[][Crashing thread]{
+    \texttt{
+      \begin{tabular}{ll}
+        \multicolumn{2}{l}{while (1) \{}\\
+        &STOP\_ANALYSIS();\\
+        &global\_ptr = \&t;\\
+        &*global\_ptr = 5;\\
+        &STOP\_ANALYSIS();\\
+        \multicolumn{2}{l}{\}}\\
+      \end{tabular}
+    }
+  }
+  \hfill
+  \subfigure[][Interfering thread]{
+    \texttt{
+      \begin{tabular}{ll}
+        \multicolumn{2}{l}{while (1) \{}\\
+        &STOP\_ANALYSIS();\\
+        &global\_ptr = NULL;\\
+        &STOP\_ANALYSIS();\\
+        \multicolumn{2}{l}{\}}\\
+        \\
+      \end{tabular}
+    }
+  }
+    {\hfill}
+    }
+  \caption{The write\_to\_read test case.}
+  \label{fig:eval:write_to_read}
+\end{figure}
+
 {\Technique} can also generate a fix for this bug.  The difficulty of
 reproducing the bug makes it difficult to validate experimentally that
 the generated fix is correct, but manual inspection suggested that it
 is.
 
 \subsection{Multiple bugs (multi\_bugs)}
+
+
+This test combines simple\_toctou and write\_to\_read into a single
+test, demonstrating {\technique}'s ability to exercise several bugs
+using a single enforcer.  The test program is shown in
+Figure~\ref{fig:eval:multi_bugs}.  The behaviour of
+\texttt|select\_test| is configurable at run time, and will either
+always select simple\_toctou, always select write\_to\_read, or select
+randomly.  The dynamic analysis phases were run with it configured to
+select randomly.
+
+{\Implementation} is able to generate a candidate bug for each of the
+component bugs in the test, each of which can be instantiated into an
+enforcer, and these enforcers succeed in reproducing their respective
+bugs.  As expected, neither enforcer is able to reproduce both bugs.
+On the other hand, if both bugs' happens-before graphs are loaded into
+the enforcer then it is able to reproduce either bug, as desired.
+Perhaps more surprisingly, when the test is configured to exercise
+both bugs the enforcer consistently reproduces the write\_to\_read
+bug.  This is simply because the enforcer reproduces the
+write\_to\_read bug before the simple\_toctou interfering critical
+section ever runs.
+
+In the same way, both candidate bugs can be instantiated into
+individual fixes, both of which correctly fix their respective bug
+while leaving the other bug in place.  Alternatively, a combined fix
+can be generated, and this successfully fixes both bugs.
 
 \begin{figure}
   \subfigure[][Crashing thread]{
@@ -854,37 +909,11 @@ is.
   \label{fig:eval:multi_bugs}
 \end{figure}
 
-This test combines simple\_toctou and write\_to\_read into a single
-test, demonstrating {\technique}'s ability to exercise several bugs
-using a single enforcer.  The test program is shown in
-Figure~\ref{fig:eval:multi_bugs}.  The behaviour of
-\texttt|select\_test| is configurable at run time, and will either
-always select simple\_toctou, always select write\_to\_read, or select
-randomly.  The dynamic analysis phases were run with it configured to
-select randomly.
-
-{\Implementation} is able to generate a candidate bug for each of the
-component bugs in the test, each of which can be instantiated into an
-enforcer, and these enforcers succeed in reproducing their respective
-bugs.  As expected, neither enforcer is able to reproduce both bugs.
-On the other hand, if both bugs' happens-before graphs are loaded into
-the enforcer then it is able to reproduce either bug, as desired.
-Perhaps more surprisingly, when the test is configured to exercise
-both bugs the enforcer consistently reproduces the write\_to\_read
-bug.  This is simply because the enforcer reproduces the
-write\_to\_read bug before the simple\_toctou interfering critical
-section ever runs.
-
 \begin{figure}
   \input{eval/artificial_bugs/special/multi_bugs.tex}
   \caption{Reproduction times CDFs, in seconds, for the multi\_bug
     test.}
 \end{figure}
-
-In the same way, both candidate bugs can be instantiated into
-individual fixes, both of which correctly fix their respective bug
-while leaving the other bug in place.  Alternatively, a combined fix
-can be generated, and this successfully fixes both bugs.
 
 \subsection{Multiple crashing and interfering threads (multi\_threads)}
 
@@ -1174,7 +1203,7 @@ re-introducing the fixed bug.
       \end{tabular}
     }
   }
-  \caption{Threads for the existing\_sync\_visible and existing\_sync\_invisible tests.}
+  \caption{Threads for the existing\_sync\_visible and existing\_sync\_invisible tests.  \todo{Ugly diagram.}}
   \label{fig:eval:existing_sync}
 \end{figure}
 
@@ -1184,8 +1213,8 @@ that the program contains calls to \texttt{pthread\_mutex\_lock} and
 \texttt{pthread\_mutex\_unlock} which prevent the bug from ever
 reproducing.  As discussed previously\editorial{ref?}, {\technique}
 has no global model of the program's synchronisation, and so can only
-analyse synchronisation within the analysis window \gls{alpha}.  The
-analysis will therefore be aware of the synchronisation in the
+analyse synchronisation within the \gls{analysiswindow}.  The analysis
+will therefore be aware of the synchronisation in the
 existing\_sync\_visible crashing thread,
 Figure~\ref{fig:eval:existing_sync:visible}, but not that in the
 existing\_sync\_invisible crashing thread,
@@ -1284,6 +1313,8 @@ they both work in the expected way.
 \subsection{A bug which lacks the W isolation property (w\_isolation)}
 
 \begin{figure}
+  \centerline{
+    {\hfill}
   \subfigure[][Crashing thread]{
     \texttt{
       \begin{tabular}{ll}
@@ -1298,6 +1329,7 @@ they both work in the expected way.
       \end{tabular}
     }
   }
+    {\hfill}
   \subfigure[][Interfering thread]{
     \texttt{
       \begin{tabular}{lll}
@@ -1311,6 +1343,8 @@ they both work in the expected way.
         \multicolumn{3}{l}{\}}\\
       \end{tabular}
     }
+  }
+    {\hfill}
   }
   \caption{Racing threads for the w\_isolation test.  Garbage
     collection-related code is not shown.}
@@ -1689,83 +1723,11 @@ present any additional complexity.
 \end{figure}
 
 
-\todo{Placement of delays is quite subtle here to avoid a deadlock.
-  Problem is that I haven't come up with a good way of explaining it,
-  and there isn't an easily generalisable moral.  Meh.}
-
-%% \begin{figure}
-%%   \begin{tikzpicture}
-%%     \node (A) {Thread 1};
-%%     \node (CA) [rectangle,draw, below = 2 of A, minimum size = 4cm] {Crashing fragment};
-%%     \node (IA) [rectangle,draw, below = of CA, minimum size = 4cm] {Interfering fragment};
-%%     \node (dummyA1) at (0,-12.1) {};
-
-%%     \draw[->] (CA) -- (IA);
-%%     \draw[->] (IA) -- (dummyA1);
-%%     \draw[->] (0,-12.5) .. controls (0,-14.5) and (-2.5, -14.5) .. (-2.5,-12.5) -- (-2.5,-2.3) .. controls (-2.5, -0.3) and (0,-0.3) .. (0,-2.3);
-
-
-%%     \node (B) [right = 6cm of A] {Thread 2};
-%%     \node (CB) [rectangle,draw, below = 2 of B, minimum size = 4cm] {Crashing fragment};
-%%     \node (IB) [rectangle,draw, below = of CB, minimum size = 4cm] {Interfering fragment};
-%%     \node (dummyB1) at (7.9,-12.1) {};
-
-%%     \draw[->] (CB) -- (IB);
-%%     \draw[->] (IB) -- (dummyB1);
-%%     \draw[->] (7.9,-12.5) .. controls (7.9,-14.5) and (10.4, -14.5) .. (10.4,-12.5) -- (10.4,-2.3) .. controls (10.4, -0.3) and (7.9,-0.3) .. (7.9,-2.3);
-
-%%     \filldraw (-2,-12) rectangle (10,-12.5);
-
-%%     \draw[->,happensBeforeEdge] (IB) -- (CA);
-%%     \draw[->,happensBeforeEdge] (IA) -- (CB);
-%%   \end{tikzpicture}
-%%   \caption{Happens-before structure of the glibc test.  Note that the
-%%     happens-before edges here are those imposed implicitly by the
-%%     enforcer in order to run the code fragments in parallel, and not
-%%     those of the bug itself.}
-%%   \label{fig:eval:glibc:structure}
-%% \end{figure}
-
-%% \begin{figure}
-%%   \texttt{
-%%     \begin{tabular}{ll}
-%%       \multicolumn{2}{l}{while (1) \{}\\
-%%       &pthread\_barrier();\\
-%%       &\_Unwind\_ForcedUnwind();\\
-%%       &pthread\_barrier();\\
-%%       &done\_init = 0;\\
-%%       &forcedunwind = NULL;\\
-%%       \multicolumn{2}{l}{\}}
-%%     \end{tabular}
-%%   }
-%%   \caption{Test harness for the glibc test case.}
-%%   \label{fig:eval:glibc:harness}
-%% \end{figure}
-
-%% This bug demonstrates a subtlety in the placement of delays (see
-%% Section~\ref{sect:using:timeout_balancing}): it will not reproduce if
-%% every message operation is given the same timeout.  To understand why,
-%% consider the happens-before graph shown in
-%% Figure~\ref{fig:eval:glibc:structure}.  The crashing program fragment,
-%% when run in thread 1, must wait for the interfering fragment in thread
-%% 2.  At the same time, the crashing fragment in thread 2 must wait for
-%% the interfering fragment in thread 1.  Since the interfering fragment
-%% always runs after the crashing one, we have a deadlock.  This is
-%% exacerbated by the structure of the test harness, shown in
-%% Figure~\ref{fig:eval:glibc:harness}, which imposes a barrier between
-%% every iteration of the test and acts to re-synchronise threads;
-%% without that, they would eventually drift far enough out of synchrony
-%% to avoid the issue, but not until after a significant delay.
-%% {\Implementation}'s policy of strongly prefer not to delay at both
-%% ends of a message operation.
-
-
 \subsection{labyrinth}
 
-\todo{Not sure how much this adds, to be honest.} This test consists
-of the labyrinth component of the STAMP benchmark suite\needCite{},
-converted to use locks rather than transactional memory and with one
-of its critical sections removed.  It is shown in
+This test consists of the labyrinth component of the STAMP benchmark
+suite\needCite{}, converted to use locks rather than transactional
+memory and with one of its critical sections removed.  It is shown in
 Figure~\ref{fig:eval:labyrinth}.  This program is structured as a
 read-modify-writeback operation: the \texttt{memcpy} on line 8 takes a
 local copy of a shared structure, which is then worked on by
@@ -1827,19 +1789,19 @@ in any detail.
 \subsection{bayes}
 
 This test is, like labyrinth, formed by taking one of the STAMP
-benchmark programs, in this case bayes, and removing one of the
-critical sections.  A simplified version of the original program is
-shown in Figure~\ref{fig:eval:bayes}.  It implements a task queue as a
+benchmark programs and removing one of the critical sections.  A
+simplified version of the original program is shown in
+Figure~\ref{fig:eval:bayes}.  It implements a task queue as a
 singly-linked list with a C++-like iterator protocol\needCite{}.  When
 a worker thread is ready to start a new task, it gets the first
-element from the list (line 14), checks whether the list was empty
-(line 15), and, if it was not, removes the element from the list (line
-16) and proceeds to use it.  The \texttt{list\_remove} operation works
+element from the list (line 12), checks whether the list was empty
+(line 13), and, if it was not, removes the element from the list (line
+14) and proceeds to use it.  The \texttt{list\_remove} operation works
 by scanning the list (\texttt{findPrevious}, line 1) to find the
 element prior to the one to be removed (which in this case will be a
 special dummy head element), using that to check whether the element
 to be removed is present (line 3) and, if it is, removing the target
-element from the list (lines 4 to 8).
+element from the list (lines 4 to 6).
 
 \begin{figure}
   \texttt{
@@ -1937,11 +1899,11 @@ the combined fix restores the program to its correct functionality.
 
 \subsection{pbzip2}
 
-\todo{This is a bit sad; basically a negative result.  Oh well.}  I
-ran {\implementation} in its bug-finding mode on pbzip2.  This
-included building a program model, generating all {\StateMachines},
-converting them to enforcers, and then running pbzip2 under each
-enforcer in turn.  This did not find any bugs in pbzip2.
+\todo{Writing in this section is horrible.}  I ran {\implementation}
+in its bug-finding mode on pbzip2.  This included building a program
+model, generating all {\StateMachines}, converting them to enforcers,
+and then running pbzip2 under each enforcer in turn.  This did not
+find any bugs in pbzip2.
 
 Building the \glspl{bugenforcer} took a total of $2090 \pm 50$
 seconds, mean and standard deviation of mean for ten runs.  The
@@ -2024,17 +1986,17 @@ generating every possible \glspl{verificationcondition} and
 
 This is essentially the same bug as simple\_toctou, but embedded in a
 much large program.  As such, {\implementation} produces a very
-similar candidate bug, bug enforcer, and fix.  The enforcer is,
-however, much more difficult to use in this case.  Triggering this bug
-requires user interaction, and it is difficult to perform the
-necessary operations in {\implementation}'s default 200ms timeout.
-Increasing the timeout to five seconds made it trivial to trigger the
-desired behaviour: of ten attempts with the enforcer loaded and using
-a five second timeout, every one reproduced the bug.  Without the
-enforcer, or using the 200ms timeout, ten attempts to reproduce the
-bug all failed.  The code involved in the bug runs quite rarely, and
-in a background thread, and so the user interface was perfectly usable
-even with this very long delay.
+similar \gls{verificationcondition}, \gls{bugenforcer}, and fix.  The
+enforcer is, however, much more difficult to use in this case.
+Triggering this bug requires user interaction, and it is difficult to
+perform the necessary operations in {\implementation}'s default 200ms
+timeout.  Increasing the timeout to five seconds made it trivial to
+trigger the desired behaviour: of ten attempts with the enforcer
+loaded and using a five second timeout, every one reproduced the bug.
+Without the enforcer, or using the 200ms timeout, ten attempts to
+reproduce the bug all failed.  The code involved in the bug runs quite
+rarely, and in a background thread, and so the user interface was
+perfectly usable even with this very long delay.
 
 {\Implementation} produced two \glspl{verificationcondition} for this
 bug: one representing the expected race, and one representing a race
@@ -2042,15 +2004,15 @@ with another part of Thunderbird which can also set
 \texttt{m\_transport} to \texttt{NULL}.  The second
 \gls{verificationcondition} is a false positive: that part of
 Thunderbird is correctly synchronised, and so cannot reproduce the
-bug.  For all other stores to \texttt{m\_transport}, the static
-analysis component of {\implementation} is able to show that the
-stored value is a valid pointer, and so no
-\glspl{verificationcondition} are generated.  {\Implementation} can
-generated \glspl{bugenforcer} for both \glspl{verificationcondition},
-or it can generate a combined \gls{bugenforcer} which tries to check
-both bugs.  All of these \glspl{bugenforcer} have the expected effect:
-the false positive one has no apparent effect, the true positive and
-combined ones successfully reproduce the bug.
+bug.  For all other stores to \texttt{m\_transport}, the
+\gls{programmodel} is able to show that the stored value is a valid
+pointer, and so no \glspl{verificationcondition} are generated.
+{\Implementation} can generated \glspl{bugenforcer} for both
+\glspl{verificationcondition}, or it can generate a combined
+\gls{bugenforcer} which tries to check both bugs.  All of these
+\glspl{bugenforcer} have the expected effect: the false positive one
+has no apparent effect, whereas the true positive and combined ones
+both successfully reproduce the bug.
 
 The analysis time was quite reasonable here:
 

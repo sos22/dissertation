@@ -4,23 +4,31 @@
 \todo{This is maybe a bit short to have its own chapter?}
 
 The discussion of building crash enforcers in
-Section~\ref{sect:reproducing_bugs} assumes that it can gain control
-of the program at any point.  This section describes one possible way
-of doing so.  {\Implementation} does so by modifying the original
-program to contain branches into the plan interpreter where necessary.
-This has very low runtime overhead and avoids modifying the program's
-state, but carries one important complication: the instruction at
-which {\implementation} needs to gain control might be smaller than a
-branch instruction, and so inserting the branch might cause additional
-instructions in the program binary to be corrupted.  {\Implementation}
-must then ensure that the program never attempts to execute one of
-these corrupted instructions.  For performance reasons, we would also
-like to minimise the number of instructions which must be run in the
-interpreter.
+\autoref{sect:reproducing_bugs} assumes that it can gain control of
+the program at any point.  This section describes one possible way of
+doing so.  The basic idea is quite simple: to replace some
+instructions of the original program with branch instructions which
+transfer control to the entry point of the plan interpreter.  This is
+efficient and avoids unnecessarily modifying the program's state.  In
+an instruction set with fixed-size instructions, such as
+ARM\needCite{} or Alpha\needCite{}, this would be quite
+straightforward, but when applied to an instruction set with
+variable-sized instructions, such as AMD64, there is an important
+complication: the instruction to be patched might itself be smaller
+than a branch instruction, and so this modification might corrupt
+other instructions in the program.  {\Implementation} must ensure that
+the program never attempts to execute one of these corrupted
+instructions\footnote{It is also possible, albeit somewhat less
+  likely, for a fixed-size instruction set to suffer a similar
+  problem.  Most such architectures cannot express a branch to an
+  arbitrary location in the address space as a single instruction, and
+  if the patch must use a multi-instruction sequence to implement the
+  branch then it is possible for the later instructions in the
+  sequence to corrupt other instructions.}.
 
-\todo{Slightly abrupt?} This is most easily understood as a kind of
-search problem\cite{Russell1995}.  The algorithm starts in a state in
-which the original program is not modified at all, but with a list of
+{\Implementation} solves this problem using a simple A*-like search
+algorithm\cite{Russell1995}.  The algorithm starts in a state in which
+the original program is not modified at all, but with a list of
 instructions at which it must gain control; it must then find a path
 to a state in which it is guaranteed to gain control at all necessary
 points and the program is guaranteed never to branch to a corrupted
@@ -86,23 +94,21 @@ This algorithm relies on being able to calculate the predecessors of
 an instruction, much like the \gls{cfg} building algorithm in
 Section~\ref{sect:derive:build_static_cfg}, and it also uses the
 program model to do so, as described in
-Section~\ref{sect:program_model:instr_predecessors}.  \todo{This
-  depends on some details of the program model which I haven't
-  discussed yet.  Hmm.} There is one important difference, though: if
-the \gls{cfg} building algorithm misses a predecessor, the analysis might be
-incomplete, which is irritating but tolerable; if the patch strategy
-misses a predecessor, the program will crash, which is much worse.
-There is one important case where the program model returns incorrect
-information, and that is when a function in the main program is called
-by a library.  The program model does not include any information
-about libraries, and so will be unable to locate all of the callers.
-On the other hand, it can locate all of the \emph{called}
-instructions.  {\Technique} can then avoid the issue by disabling any
-rule which requires the predecessor set for an instruction which a
-library branches to (so \textbf{Prefix} cannot be used for
-instructions which are branched to from libraries and
-\textbf{PatchDirect} cannot be used if it would corrupt any
-instructions which are branched to from libraries).
+Section~\ref{sect:program_model:instr_predecessors}.  There is one
+important difference, though: if the \gls{cfg} building algorithm
+misses a predecessor, the analysis might be incomplete, which is
+irritating but tolerable; if the patch strategy misses a predecessor,
+the program will crash, which is much worse.  There is one important
+case where the program model returns incorrect information, and that
+is when a function in the main program is called by a library.  The
+program model does not include any information about libraries, and so
+will be unable to locate all of the callers.  On the other hand, it
+can locate all of the \emph{called} instructions.  {\Technique} can
+then avoid the issue by disabling any rule which requires the
+predecessor set for an instruction which a library branches to (so
+\textbf{Prefix} cannot be used for instructions which are branched to
+from libraries and \textbf{PatchDirect} cannot be used if it would
+corrupt any instructions which are branched to from libraries).
 
 This can sometimes lead to the patch problem being unsolvable if the
 entire function is smaller than a single branch instruction, as in

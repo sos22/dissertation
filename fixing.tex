@@ -8,10 +8,10 @@ instructions, preventing them from executing in parallel and hence
 preventing the bug from occurring.  The relevant instructions are
 duplicated into a binary patch, unrolling loops and tracing across
 function boundaries in a way which reflects the function inlining and
-loop unrolling performed during the initial \gls{cfg} generation phase, and
-the duplicates modified to acquire and release the lock at appropriate
-points.  The original program is then patched to branch to the
-duplicates when necessary.
+loop unrolling performed during the initial dynamic \gls{cfg}
+generation phase, and the duplicates modified to acquire and release
+the lock at appropriate points.  The original program is then patched
+to branch to the duplicates when necessary.
 
 \section{Identifying the instructions which must be protected}
 
@@ -46,14 +46,8 @@ duplicates when necessary.
 
 The first step in producing such a fix is correctly identifying the
 instructions which must be included in the critical sections.  These
-will be roughly a subset of the instructions involved in the
-control-flow graphs associated with \StateMachines; a ``subset''
-because some instructions in the \gls{cfg} do not need to be protected, and
-``roughly'' because some instructions not in the \gls{cfg} will also be
-included in the critical section.
-
-As an example of the former\editorial{Any examples of the latter?},
-consider the threads illustrated in
+will be a subset of the instructions involved in the dynamic
+\gls{cfg}.  As an example, consider the threads illustrated in
 Figure~\ref{fig:fix_bug:complex_local}.  Here, the crashing thread
 computes some pointer using entirely local operations, loads from it
 once and then, if the result is non-\texttt{NULL}, loads from it again
@@ -67,12 +61,10 @@ requires the two pointers to match up.  This extra information is
 useful when analysing the bug
 (Section~\ref{sect:using:check_realness}) or when attempting to
 reproduce it (Section~\ref{sect:reproducing_bugs}), but cannot be used
-by this kind of instruction-level fix\footnote{But see future work
-  Section~\ref{sect:future_work:better_fixes} for a possible
-  alternative scheme which would make use of it.}, so including it in
-the fix is unhelpful and would tend to lead to unnecessarily large
-critical sections.  The fix generating process must therefore select a
-useful subset of the instructions in the control-flow graph.
+by this kind of instruction-level fix, so including it in the fix is
+unhelpful and would tend to lead to unnecessarily large critical
+sections.  The fix generating process must therefore select a useful
+subset of the instructions in the control-flow graph.
 
 The approach taken here is simple:
 
@@ -95,8 +87,6 @@ The approach taken here is simple:
 
 In this way the \gls{cfg} is restricted to just those instructions which are
 involved in the interleaving which is to be prevented.
-
-\todo{This is essentially the AFix algorithm (although I did it first).}
 
 \begin{figure}
   \centerline{
@@ -142,24 +132,48 @@ the verification condition contains enough information to determine
 whether dropping the lock is safe, but {\technique} does not make use
 of this information, and always uses the former strategy.
 
+This algorithm is quite similar to that used in AFix
+\cite{Jin2011}\footnote{But note that the present author implemented
+  that part of {\implementation} before AFix was published.}.  There
+are, however, several differences between them.  Most obviously, the
+AFix algorithm considers only simple two-access critical sections,
+whereas this algorithm can enforce more complex $n$-access ones.  Even
+where there are precisely two accesses to be protected the set of
+instructions in the critical section can differ slightly, because
+{\technique} will exit the critical section if the thread leaves the
+\gls{cfg} in the {\StateMachine}, whereas AFix exits if the thread
+cannot reach another protected instruction in the current function
+invocation.  This is sometimes an advantage and sometimes a
+disadvantage, depending on why an instruction is missing from the
+{\StateMachine} \gls{cfg}.  Some instructions will be missing because
+they were cut off by the \gls{alpha} limit on the
+\gls{analysiswindow}; releasing the lock for these instructions is
+usually undesirable, as it re-introduces some of the concurrent
+interleavings which the patch was supposed to eliminate.  Other
+instructions will be missing because an earlier analysis phase has
+shown that the program cannot suffer the bug if it follows that path;
+releasing the lock here is safe, and can sometimes lead to better
+parallelism and liveness behaviour.
+
 \section{The interpreter}
 
-The simplest way of applying these fix plans is by modifying a machine
-code interpreter so that it performs the necessary synchronisation
-operations as the program run, and I describe such an approach in this
-section.  This is effective, but has extremely high overhead, due to
-the need to run the entire program under an interpreter.  Later
-sections will show to reduce this overhead, first by allowing the
-unprotected components of the program to run without the interpreter
-and then by dispensing with the interpreter completely.
+The conceptually simplest way of introducing these synchronisation
+operations is by modifying a machine code interpreter so that it
+performs the necessary synchronisation operations as the program run,
+and I describe such an approach in this section.  This is effective,
+but has extremely high overhead, due to the need to run the entire
+program under an interpreter.  Later sections will show to reduce this
+overhead, first by allowing the unprotected components of the program
+to run without the interpreter and then by dispensing with the
+interpreter completely.
 
 \todo{Linkage} The goal of the interpreter is to emulate the original
 program's machine code in a way which ensures that if one thread
 enters a protected region then no other thread is able to enter a
 protected region until the original thread has left its protected
 region.  As with the happens-before edges of an enforcer, these
-regions are defined in terms of the unrolled \gls{cfg}, which might
-not match up with program's actual \gls{cfg}, and the interpreter must
+regions are defined in terms of the dynamic \gls{cfg}, which might not
+match up with program's static \gls{cfg}, and the interpreter must
 still maintain the protected regions correctly even when its position
 in the \gls{cfg} is ambiguous.  Even when the mapping between the two
 \glspl{cfg} is unambiguous, the protected regions might overlap, and
@@ -251,7 +265,7 @@ One slight complication here is that the patch strategy might need to
 modify the program in places other than the instructions at which it
 must gain control, and so might have to extend the set of instructions
 which are to be interpreted; in the terminology of
-Section~\ref{sect:enforce:gain_control}, it might have a non-empty
+\autoref{sect:enforce:gain_control}, it might have a non-empty
 $\mathit{Cont}$ set.  If so, the implementation of the \textbf{Return}
 phase must be careful not to return to an instruction in the
 $\mathit{Cont}$ set and must instead continue interpreting.  This is
@@ -282,9 +296,9 @@ the protected code back into machine code with the necessary
 additional synchronisation added, completely eliminating the run-time
 interpreter.  One productive way of thinking of this is to say that
 the interpreter has been supercompiled\cite{Sorensen2008} or partially
-evaluated\cite{Jones1993} so as to fix both the fix plan and the
-original program's machine code, leaving only the original program's
-external inputs unspecified.
+evaluated\cite{Jones1993} so as to fix both the desired
+synchronisation and the original program's machine code, leaving only
+the original program's external inputs unspecified.
 
 The main complication here is that the compiled fix has no good way of
 storing its state: registers and the stack are unavailable, as they
@@ -327,19 +341,18 @@ evaluation:
 \item \textbf{Unlock} phases likewise evaluate to either the machine
   code for an unlock operation or a no-op.
 \item \textbf{Return} partially evaluates to either a no-op (usually)
-  or a branch back to the original program (if the set of active \gls{cfg}
-  nodes is empty and the current instruction pointer is not in
-  $\mathit{Cont}$).
+  or a branch back to the original program (if the set of active
+  \gls{cfg} nodes is empty and the current instruction pointer is not
+  in the $\mathit{Cont}$ set).
 
 \item \textbf{CheckForEntry} evaluates to a fragment of machine code
   which compares the current instruction pointer and stack to those
-  present in the entry points of the various \gls{cfg} fragments which are
-  to be protected, branching to an appropriate
+  present in the entry points of the various \gls{cfg} fragments which
+  are to be protected, branching to an appropriate
   \textsc{InterpreterState} if one matches.  In many cases the
   information in the current \textsc{InterpreterState} will be
   sufficient to determine where all of these branches will go, in
-  which case the resulting machine code fragment will be
-  empty\editorial{Not sure how clear that is}.
+  which case the resulting machine code fragment will be empty.
 
 \item \textbf{Emul} and \textbf{Succ} will usually partially evaluate
   to the program's original instruction, which can be emitted
@@ -356,7 +369,7 @@ together to form the new patch.
 \section{Control flow instructions}
 
 Most of the program's original instructions are copied into the patch
-verbatim as part of the \textbf{Issue} phase.  The main exceptions are
+verbatim as part of the \textbf{Emul} phase.  The main exceptions are
 control flow instructions, which set the instruction pointer to some
 other value.  If these were included verbatim in the patch then
 {\implementation} would lose control of the program's execution, with
@@ -366,12 +379,14 @@ indirect transfers.  I consider each in turn.
 
 \subsection{Direct jumps}
 
-\todo{This is maybe a bit short to need its own section?} Direct jump
-instructions set the current instruction pointer to a constant value.
-They are the easiest type of branch instruction to handle.  All that
-needs to be done is to update the $\mathit{active}$ component of the
-\textsc{InterpreterState} to reflect the new set of active \gls{cfg} nodes
-and jump to the new state.
+Direct jump instructions set the current instruction pointer to a
+constant value.  In the interpreter, they just have the effect of
+updating the $\mathit{active}$ set to reflect the thread's new
+potential locations in the dynamic \gls{cfg}.  Since the target of the
+branch is a constant, precisely the same approach can be taken in the
+compiler, except that in this case the updating the $\mathit{active}$
+means emitting a \texttt{jmp} instruction to the appropriate
+\textsc{InterpreterState}.
 
 \subsection{Direct call instructions}
 
@@ -381,31 +396,31 @@ current instruction pointer on the stack and to then set the current
 instruction pointer to a given target value.  {\Implementation}'s
 behaviour here depends on the function which is to be called.
 
-The simplest case is that the called function might itself need to be
-protected.  These can be handled by converting the \texttt{call}
+\texttt{Call}s to functions in the program itself are the easiest to
+handle.  The simplest case is when the called function itself needs to
+be protected.  These can be handled by converting the \texttt{call}
 instruction into a \texttt{push} instruction, pushing the return
 address on the stack, followed by a \texttt{jmp} instruction which
 branches to the part of the patch which implements the called
-function.
+function.  Alternatively, it might be that the called function does
+not need to be protected.  In that case, the lock, if held, should be
+released and control transferred back to the original program.
 
-Alternatively, it might be that the called function does not need to
-be protected.  In that case, the lock, if held, should be released and
-control transferred back to the original program.
-
-Finally, the called function might be a library function, such as
-\texttt{malloc} or \texttt{printf}.  The main analysis
-phase of {\technique} treats library functions as if they were a
-special kind of instruction (see
-Section~\ref{sect:derive:library_functions}), with the result that the \gls{cfg} to be
-protected will sometimes include calls to library functions even when
-the definitions of those library functions are unavailable.  The fix
-generation process has two options for handling them, both bad:
+\texttt{Call}s to library functions, such as \texttt{malloc} or
+\texttt{printf}, require more care.  The main analysis phase of
+       {\technique} treats library functions as if they were a special
+       kind of instruction (see
+       Section~\ref{sect:derive:library_functions}), with the result
+       that the \gls{cfg} to be protected will sometimes include calls
+       to library functions even when the definitions of those library
+       functions are unavailable.  The fix generation process has two
+       options for handling them, both bad:
 
 \begin{itemize}
 \item It could call into the library function whilst holding the lock.
-  This ensures that the desired atomic blocks really do behave
-  atomically, but at the cost of a significant risk of deadlocks if
-  the called function is something like \texttt{pthread\_mutex\_lock}.
+  This ensures that the desired atomic blocks behave atomically, but
+  at the cost of a significant risk of deadlocks if the called
+  function is something like \texttt{pthread\_mutex\_lock}.
 \item It could release the lock while calling into the library
   function.  This is much less likely to deadlock, but also much
   less likely to correctly eliminate the bug.

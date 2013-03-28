@@ -550,7 +550,15 @@ the same program instruction created by the loop unrolling algorithm
 indistinguishable in the original program, but only $D_0$ can receive
 the happens-before edge N.
 
-\begin{figure}
+The side-condition to this bug depends on various values which have to
+be collected from the running program, referred to as the condition's
+inputs: $\textsc{rax}_1$, $\textsc{rbx}_1$, $\textsc{rcx}_1$,
+$\textsc{rcx}_2$, and $\controlEdge{1}{C}{D_0}$.  It is important not
+to evaluate any part of the side condition before that part's inputs
+become available.  The availability of inputs for this example is
+shown in Figure~\ref{fig:place_conditions_example:availability}.
+
+\begin{figure}[t]
   \begin{tikzpicture}
     \node (t1) {Thread 1};
     \node[right = 4.5cm of t1] (t2) {Thread 2};
@@ -584,13 +592,6 @@ the happens-before edge N.
   \label{fig:place_conditions_example:availability}
 \end{figure}
 
-The side-condition to this bug depends on various values which have to
-be collected from the running program, referred to as the condition's
-inputs: $\textsc{rax}_1$, $\textsc{rbx}_1$, $\textsc{rcx}_1$,
-$\textsc{rcx}_2$, and $\controlEdge{1}{C}{D_0}$.  It is important not
-to evaluate any part of the side condition before that part's inputs
-become available.  The availability of inputs for this example is
-shown in Figure~\ref{fig:place_conditions_example:availability}.
 
 \begin{itemize}
 \item $\textsc{rax}_1$ and $\textsc{rcx}_1$ represent the initial
@@ -1104,25 +1105,25 @@ program, which might contain an arbitrary number of threads, and must
 somehow select which of these concrete threads correspond to which of
 the two abstract threads in the plan.  Less obviously, the
 happens-before edges in the plan are expressed between nodes in the
-unrolled \gls{cfg} (see Section~\ref{sect:derive:handling_loops}), and do
-not necessarily correspond closely to instructions in the actual
-program.  The plan might require different actions at different \gls{cfg}
-nodes which are hard to distinguish in a running program.
+dynamic \gls{cfg} (see Section~\ref{sect:derive:handling_loops}), and
+do not necessarily correspond closely to instructions in the actual
+program.  The plan might require different actions at different
+\gls{cfg} nodes which are hard to distinguish in a running program.
 
 The solution to these problems is the same: to decide as much as
 possible lazily.  When {\implementation} encounters a branch in the
-unrolled \gls{cfg} which does not correspond to one in the program \gls{cfg}, it
-does not try to figure out which way it should go immediately, but
-instead defers the decision for as long as possible by forking its
-state, with one fork taking one branch of the unrolled \gls{cfg} and the
-other taking the other, and maintains both forks until it becomes
-clear which fork was correct.  Similarly, if it has a choice of
-synchronising between several possible threads, it creates sufficient
-forks of its internal state to represent synchronising with each of
-them, and then decides later on which fork is correct\footnote{Note
-  that these forks are entirely internal to the enforcer itself,
-  rather than, for instance, being implemented with the \texttt{fork}
-  system call.}.
+dynamic \gls{cfg} which does not correspond to one in the static
+\gls{cfg}, it does not try to figure out which way it should go
+immediately, but instead defers the decision for as long as possible
+by forking its state, with one fork taking one branch of the dynamic
+\gls{cfg} and the other taking the other, and maintains both forks
+until it becomes clear which fork was correct.  Similarly, if it has a
+choice of synchronising between several possible threads, it creates
+sufficient forks of its internal state to represent synchronising with
+each of them, and then decides later on which fork is
+correct\footnote{Note that these forks are entirely internal to the
+  enforcer itself, rather than, for instance, being implemented with
+  the \texttt{fork} system call.}.
 
 The result is conceptually similar to the power set construction used
 to simulate non-deterministic finite state automata using
@@ -1176,39 +1177,37 @@ loop:
   {\Technique}'s design ensures that every LLI in a program thread
   will reach the \textbf{Emul} state at the same time, and will be
   executing the same program instruction\footnote{They might, however,
-    be executing at different points in the unrolled \gls{cfg}, as a single
-    program instruction can correspond to multiple \gls{cfg} nodes.}, and so
-  this is straightforward to arrange
+    be executing at different points in the dynamic \gls{cfg}, as a
+    single program instruction can correspond to multiple \gls{cfg}
+    nodes.}, and so this is straightforward to arrange.  \todo{That's
+    a bit of a forwards reference, so might be unclear to some people,
+    but I think it's set up well enough to get away with it.}
 
 \item \textbf{TX} Send any messages required by the plan.
 
-\item \textbf{Succ} Determine which node in the unrolled \gls{cfg} the
+\item \textbf{Succ} Determine which node in the dynamic \gls{cfg} the
   thread is going to execute next.  In the low-level interpreter, this
   is very easy: compare the instruction pointer of the next
   instruction (generated by the \textbf{Emul} phase) to the
   instruction pointers of all of the potential successor nodes in the
-  unrolled \gls{cfg} and select one using the non-deterministic choice
+  dynamic \gls{cfg} and select one using the non-deterministic choice
   operator.  If there are no possible successors then the plan has
   failed and the low-level interpreter exits.
 \end{itemize}
 
 A new low-level interpreter is started whenever any thread in the
-program reaches the starting point of any of the \glspl{cfg} involved in one
-of the happens-before graphs which are to be enforced\editorial{Orphan
-  sentence?}.
+program reaches the starting point of any of the \glspl{cfg} involved
+in one of the happens-before graphs which are to be enforced.
 
 The LLI message operation is illustrated in
 Figure~\ref{fig:enforce:lli_message}.  The operation starts by
-selecting a remote LLI with which to perform the message operation.
-If this is the first message operation performed by this LLI then it
-will select its peer using a non-deterministic choice operator,
-described in Section~\ref{sect:enforce:hli_messages}, and bind to it.
-Otherwise, the LLI will just select its bound LLI.  In either case,
-the LLI will wait for its remote LLI to arrive.  The two LLIs are then
-merged together to perform the message operation itself, by evaluating
-the side condition and copying state between the two LLIs, after which
-they are unmerged and continue at the appropriate place in the LLI
-loop.  \todo{Binding should maybe be mentioned a little bit sooner?}
+selecting a remote LLI with which to perform the message operation;
+the mechanism for doing so is described in
+Section~\ref{sect:enforce:hli_messages}.  The LLI then waits for its
+remote LLI to arrive.  The two LLIs are then merged together to
+perform the message operation itself, by evaluating the side condition
+and copying state between the two LLIs, after which they are unmerged
+and continue at the appropriate place in the LLI loop.
 
 \begin{figure}
   \centerline{
@@ -1303,28 +1302,26 @@ describes how to emulate those operators in a realisable fashion.  As
 discussed previously, the basic approach is to switch from emulating
 the LLI itself to emulating sets of LLIs, so that the choice operators
 can be implemented by adding more LLIs to these sets and an LLI exit
-can be implemented by removing one.  The resulting interpreter is
+can be implemented by removing one.  The resulting meta-interpreter is
 referred to as the high-level interpreter, or HLI.
 
 The simplest use of the operator is in the \textbf{Succ} phase.  The
 aim of this phase in the LLI is to determine which node in the
-unrolled \gls{cfg} a given program thread is going to execute next.  The
+dynamic \gls{cfg} a given program thread is going to execute next.  The
 equivalent operation in the HLI is to convert the current set of LLIs
 into a new set of LLIs, where each of the new LLIs is formed by taking
-one of the old LLIs and updating its location in the unrolled \gls{cfg} in a
+one of the old LLIs and updating its location in the dynamic \gls{cfg} in a
 way which is consistent with the results of the \textbf{Emul} phase.
 The new set of LLIs is given by
 \begin{displaymath}
-\{l' | l \in \mathit{llis}, n'.\mathrm{RIP} = \mathbf{Emul}.\mathrm{RIP}, (l.n, n') \in \mathit{CFG}, l' = l[n = n'] \}
+\{l' | l \in \mathit{llis}, (l.n, n') \in \mathit{CFG}, n'.\mathrm{RIP} = \mathbf{Emul}.\mathrm{RIP}, l' = l[n = n'] \}
 \end{displaymath}
-
-This perhaps deserves further explanation:
-
+This perhaps needs further explanation:
 \begin{itemize}
 \item $\mathit{llis}$ is the current set of LLIs, and $l$ is a member of it.
   $l'$ is a member of the new set of LLIs.
-\item $n'$ is a node in the unrolled \gls{cfg}.
-\item $l.n$ is LLI $l$'s current node in the unrolled \gls{cfg}.  $l[n =
+\item $n'$ is a node in the dynamic \gls{cfg}.
+\item $l.n$ is LLI $l$'s current node in the dynamic \gls{cfg}.  $l[n =
   n']$ is a new LLI constructed by taking the LLI $l$ and setting its
   current \gls{cfg} node to $n'$.
 \item $n'.\mathrm{RIP}$ is the raw instruction pointer associated with
@@ -1332,9 +1329,8 @@ This perhaps deserves further explanation:
   instruction pointer which was generated by the $\mathbf{Emul}$
   phase.
 \item $(l.n, n') \in \mathit{CFG}$ is true precisely when $n'$ is one
-  of the successors of $l.n$ in the unrolled \gls{cfg}.
+  of the successors of $l.n$ in the dynamic \gls{cfg}.
 \end{itemize}
-
 In other words, the resulting set will contain one LLI for every
 combination of existing LLI and \gls{cfg} node, provided that the new \gls{cfg}
 node is a successor of the current \gls{cfg} node and provided that the new
@@ -1354,7 +1350,7 @@ LLIs in the input set.  There are four interesting cases:
   the LLI has moved from its current node in the \gls{cfg} to one of that
   node's successors.
 
-\item The LLI might have reached the end of the unrolled \gls{cfg}, as
+\item The LLI might have reached the end of the dynamic \gls{cfg}, as
   indicated by a special marker on the \gls{cfg} node, and has hence
   completed its part of the plan.  The LLI's node in the \gls{cfg} will have
   no successors, and so the LLI will not contribute anything to the
@@ -1378,15 +1374,18 @@ LLIs in the input set.  There are four interesting cases:
 \label{sect:enforce:hli_messages}
 
 As discussed previously, the first message operation in a low-level
-interpreter must select which remote LLI it will communicate with.
-This is referred to as binding, and all subsequent message operations
-in that LLI will be with the bound LLI.  The low-level message
-operation described above leaves it unspecified precisely how this
-selection is to be made.  One reasonable behaviour would be for each
-\textbf{RX} and \textbf{TX} operation to define an interval in the
-program's execution such that communication happens whenever these
-intervals overlap, as illustrated in
-Figure~\ref{fig:enforce:message_windows}.
+interpreter must select which remote LLI it will communicate with.  If
+the LLI has previously communicated with a remote LLI, this is simple:
+the interpreter will always choose to communicate with the same LLI.
+The two LLIs are said to have been bound together.
+
+The behaviour of the first message operation in an LLI is more
+complex.  The low-level message operation described above leaves it
+unspecified precisely how this selection is to be made.  One
+reasonable behaviour would be for each \textbf{RX} and \textbf{TX}
+operation to define an interval in the program's execution such that
+communication happens whenever these intervals overlap, as illustrated
+in Figure~\ref{fig:enforce:message_windows}.
 
 \begin{figure}
   \subfigure[][Intervals overlap; message is sent]{
@@ -1515,38 +1514,37 @@ Figure~\ref{fig:enforce:message_windows:failed}\footnote{{\Implementation}
 
 This algorithm solves the problem of not knowing how long to wait by
 always waiting for the maximum possible time, and the problem of not
-knowing which of many possible peers to synchronise with by simply
+knowing which of many possible peers to synchronise with by
 synchronising with all of them.  That is similar to but not quite
 identical to the desired behaviour.  In particular, in the desired
 semantics, when a message operation is destined to fail, it should not
 wait at all, whereas here failing operations wait for the maximum
 possible time.  In other words, the non-deterministic part of the
 desired behaviour is correctly implemented, but the non-causal part is
-not.  In practice, the only effect of this is to sometimes cause poor
-performance, by introducing completely redundant delays.  If it were
-necessary, the correct behaviour could be achieved using a
-deterministic replay system\cite{Choi1998} and techniques similar to a
-time-travelling debugger\cite{Xu2003}, but doing so would almost
-certainly not fix the performance problems.  I have not investigate
-this at all.\editorial{Lots of weak sentences; rewrite.}
+not.  This can sometimes lead to threads delaying for longer than
+necessary.  If it were necessary, the correct behaviour could be
+achieved using a deterministic replay system\cite{Choi1998} and
+techniques similar to a time-travelling debugger\cite{Xu2003}, but at
+the probable expense of further impairing performance.  I have not
+investigated this at all.
 
 This algorithm assumes that it is possible to delay an arbitrary LLI
-for as long as want, whenever we want, with no adverse effects on any
-other part of the program.  This is not entirely true.  In particular,
-it is common for a single HLI, and hence a single concrete program
-thread, to run multiple LLIs, and it is not possible to delay one LLI
-in a thread without also delaying all of the others.  What effect will
-these spurious delays have on the program and the enforcer?  Delaying
-an unbound LLI is generally safe, as it just causes the enforcement
-plan to start a little later, which might lead to poor performance but
-will not completely prevent the plan from succeeding.  Delaying a
-bound LLI is much more dangerous.  The problem is that delaying a
-bound LLI will have knock-on effects on the LLI to which it has bound,
-which might cause \emph{that} LLI to fail its part of the plan, and in
-the extreme case might completely prevent certain bugs from
-reproducing.  To be a little more concrete, suppose that the plan
-requires that LLI $l_1$ be delayed but does not impose any delay on
-LLI $l_2$, which is in the same HLI, and that $l_2$ is bound to the
+for as long as desired, whenever desired, with no adverse effects on
+any other part of the program.  This is not entirely true.  In
+particular, it is common for a single HLI, and hence a single concrete
+program thread, to run multiple LLIs, and it is not possible to delay
+one LLI in a thread without also delaying all of the others.  What
+effect will these spurious delays have on the program and the
+enforcer?  Delaying an unbound LLI is generally safe, as it just
+causes the enforcement plan to start a little later, which might lead
+to poor performance but will not completely prevent the plan from
+succeeding.  Delaying a bound LLI is much more dangerous.  The problem
+is that delaying a bound LLI will have knock-on effects on the LLI to
+which it has bound, which might cause \emph{that} LLI to fail its part
+of the plan, and in the extreme case might completely prevent certain
+bugs from reproducing.  To be a little more concrete, suppose that the
+plan requires that LLI $l_1$ be delayed but does not impose any delay
+on LLI $l_2$, which is in the same HLI, and that $l_2$ is bound to the
 LLI $l_3$ in another HLI.  $l_3$ will eventually advance to a point
 which requires further communication with $l_2$.  If $l_2$ is
 excessively delayed then this message operation will time out, causing
@@ -1564,9 +1562,9 @@ issue\editorial{Or at least, it does the one case I've actually seen
   this, and I think it does in the general case as well.}.
 
 The interactions with the \textbf{Succ} phase present a further
-complication.  The \textbf{Succ} thread will sometimes need to
-duplicate an LLI in order to handle ambiguities in the \gls{cfg}, and it
-must ensure that the relationships between bound LLIs are correctly
+complication.  The \textbf{Succ} phase sometimes needs to duplicate an
+LLI in order to handle ambiguities in the \gls{cfg}, and it must
+ensure that the relationships between bound LLIs are correctly
 maintained as it does so.  For instance, if $l_1$ and $l_2$ are bound
 together and $l_1$ is duplicated to $l_1'$, the HLI should also
 duplicate $l_2$ to $l_2'$ so that it can bind $l_1'$ and $l_2'$.  The
