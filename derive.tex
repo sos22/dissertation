@@ -349,94 +349,7 @@ principle contains all of the information needed to analyse the bug.
 It is, however, very close to machine code, and is therefore difficult
 to work with.  The next step in the algorithm is to decompile it into
 a more amenable form.  In the case of {\technique}, this is a
-{\StateMachine}.
-
-A {\StateMachine} is a simple representation of an acyclic fragment of
-a program.  It is structured as a directed acyclic graph of states,
-described in Table~\ref{table:state_machine_states}.  {\StateMachines}
-have a number of important properties:
-
-\begin{itemize}
-\item
-  They can cross function boundaries, and so can be used to model
-  cross-function properties of the program.
-\item
-  {\STateMachines} are themselves completely deterministic, aiding
-  simple analysis, but can contain information from multiple program
-  threads, and so can accurately capture all of the threads relevant
-  to a particular race, but are themselves completely deterministic,
-  aiding simple analysis.  In particular, the {\StateMachine} for a
-  particular bug can be used to build the happens-before graph
-  necessary for that bug to reproduce (including when that
-  happens-before graph is data-dependent).
-\item
-  {\STateMachines} can incorporate information obtained by the initial
-  static and dynamic analysis passes in a reasonably straightforward
-  way.
-\item
-  Control-flow within a {\StateMachine} is not necessarily the same as
-  control flow within the original program, and memory accesses within
-  a {\StateMachine} do not necessarily correspond to specific memory
-  accesses in the original program.  This means that intermediate
-  analysis steps have a great deal of flexibility to rewrite
-  {\StateMachines} and hence to remove unnecessary information.  On
-  the other hand, it also means that translating the results of the
-  analysis back from {\StateMachines} to the original program requires
-  a some care.  This is discussed in more detail in
-  Section~\ref{sect:reproducing_bugs}.
-\item
-  They can be symbolically executed to determine what initial states
-  might lead to the bug, expressed in terms of the program's initial
-  state, its happens-before graph, and its control flow.
-\item
-  Individual {\StateMachines} must complete in a finite, bounded,
-  number of operations, reflecting the way in which they are derived
-  from dynamic \glspl{cfg}.  This makes them far easier to analyse,
-  but at the expense of somewhat limiting their expressive power.  In
-  the particular case of {\technique}, we are only interested in bugs
-  related to fairly small fragments of the program (those which should
-  have been critical sections, but aren't) and so this is a tolerable
-  limitation; it might be more of a concern in other applications.
-  Section~\ref{sect:future_work:generalising} briefly discusses some
-  possible ways of removing this restriction.
-\end{itemize}
-
-{\STateMachines} are in many respects similar to executable program
-slices of the original program, with the key difference that, unlike a
-program slice, a {\StateMachine} is not expressed in the same language
-as the original program.  This is to some extent a forced decision
-({\technique} operates on binaries, whereas most program slicing
-systems operate on source code; programming languages are not usually
-particularly convenient intermediate forms, but machine code is far
-worse), but the extra flexibility can sometimes make this more
-convenient than more conventional source-level program slices.
-
-A somewhat closer analogy is with the abstract models commonly used in
-formal verification systems such as Promela\cite{Holzmann1991}.  The
-difference here is in the semantic structure of the program to be
-modelled: {\technique} models machine-code programs, and hence has no
-knowledge of higher-level constructs such as variables, arrays, or
-compound structures, whereas tools like Promela or
-SAL\cite{Howard2006}\editorial{That's citing completely the wrong
-  thing!} work with source code and hence (mostly\editorial{But not
-  always; dig up some references.}) assume that such information is
-available.  This gives them a great deal of analytical power, but
-makes it more difficult for them to model details of the program which
-are more apparent in machine code than source code, and, as already
-mentioned, these details are often important when investigating
-concurrency issues.
-
-\subsection{Semantics of {\StateMachines}}
-
-A {\StateMachine} is, at its core, a simplified version of a fragment
-of the program expressed in a simple (non-Turing complete) analysis
-language, along with some ancillary structures showing how that
-fragment relates to the original program.  Programs in the analysis
-language consist of a directed acyclic graph of states, starting from
-some designated root state and ending at one of the three terminal
-states.  Internal states of the graph are either simple two-way
-conditionals or side-effect states representing the program's actions.
-An overview of the available state types is given in
+{\StateMachine}: a directed acyclic graph of states, described in
 Table~\ref{table:state_machine_states}.
 
 It is important to emphasise at this stage that {\StateMachines}
@@ -457,12 +370,11 @@ values of expressions and the results of \state{Load} operations can
 be stored.  Temporaries can only store simple values, with no internal
 structure, and there is no concept analogous to a pointer to a
 temporary\footnote{For {\implementation}, {\StateMachine} temporaries
-  are simple 128-bit values, so as to be able to store the contents of
-  an XMM register in one temporary, but other choices would be
-  possible.}.  It is important to note that {\StateMachine}
-temporaries do not necessarily correspond to any particular bit of
-program state, and that most program state will not be represented by
-any temporary.
+  are 128-bit values, so as to be able to store the contents of an XMM
+  register in one temporary, but other choices would be possible.}.
+It is important to note that {\StateMachine} temporaries do not
+necessarily correspond to any particular bit of program state, and
+that most program state will not be represented by any temporary.
 
 \begin{table}
 \begin{tabular}{lp{11.3cm}}
@@ -481,33 +393,6 @@ $\smLoad{expr}$ & The initial value of the memory at location $expr$. \\
   operators such as $\wedge$ and $\vee$ are not.}
 \label{table:state_machine_exprs}
 \end{table}
-
-\subsection{{\STateMachine} expression language}
-\label{sect:sm_expr_language}
-
-Any non-trivial {\StateMachine} will include some expressions over the
-original program's state.  These are expressed using an expression
-language which is described in Table~\ref{table:state_machine_exprs}.
-This language is, for most part, quite conventional, and includes
-simple mechanisms for querying the program's behaviour and state and
-for obtaining the values of {\StateMachine} temporaries, or for
-evaluating simple arithmetic operators.
-
-Note that $\smLoad{}$ expressions always evaluate to the initial value
-of the selected memory location, and not to the current value, which
-may be different if the {\StateMachine} has executed a \state{Store}
-operation.  The only way to access the current contents of memory is
-via a \state{Load} side-effect.  This means that $\smLoad{}$ is a pure
-function and can be re-ordered freely across side-effecting
-operations, simplifying analysis.
-
-This language is missing one important feature: logical connectives
-such as $\wedge$ or $\vee$.  These operators are not represented using
-the expression language, but are instead encoded into binary decision
-diagrams, or BDDs\cite{Brace1990}, which are themselves expressed in
-terms of the expression language.  These BDDs allow much more
-efficient implementations of many common operations than would be
-possible with a scheme based entirely on unconstrained expressions.
 
 \begin{landscape}
 \begin{table}
@@ -544,6 +429,33 @@ possible with a scheme based entirely on unconstrained expressions.
 \end{table}
 \end{landscape}
 
+\subsection{{\STateMachine} expression language}
+\label{sect:sm_expr_language}
+
+Any non-trivial {\StateMachine} will include some expressions over the
+original program's state.  These are expressed using an expression
+language which is described in Table~\ref{table:state_machine_exprs}.
+This language is, for most part, quite conventional, and includes
+simple mechanisms for querying the program's behaviour and state and
+for obtaining the values of {\StateMachine} temporaries, or for
+evaluating simple arithmetic operators.
+
+Note that $\smLoad{}$ expressions always evaluate to the initial value
+of the selected memory location, and not to the current value, which
+may be different if the {\StateMachine} has executed a \state{Store}
+operation.  The only way to access the current contents of memory is
+via a \state{Load} side-effect.  This means that $\smLoad{}$ is a pure
+function and can be re-ordered freely across side-effecting
+operations, simplifying analysis.
+
+This language is missing one important feature: logical connectives
+such as $\wedge$ or $\vee$.  These operators are not represented using
+the expression language, but are instead encoded into binary decision
+diagrams, or BDDs\cite{Brace1990}, which are themselves expressed in
+terms of the expression language.  These BDDs allow much more
+efficient implementations of many common operations than would be
+possible with a scheme based entirely on unconstrained expressions.
+
 \begin{wrapfigure}{r}{6.5cm}
   \begin{tikzpicture}
     \node (x) [BddNode] {$\smTmp{A} = 72$};
@@ -562,6 +474,7 @@ possible with a scheme based entirely on unconstrained expressions.
     $715$ or $\smTmp{C}$, depending on the values of $\smTmp{A}$,
     $\smTmp{B}$ and the initial contents of program memory.}
   \label{fig:derive:example_expr_bdd}
+  \vspace{-5mm}
 \end{wrapfigure}
 Two types of BDD used in {\StateMachine} states: expression BDDs and
 boolean BDDs.  The difference is that boolean BDDs, or BBDDs, are
@@ -582,8 +495,8 @@ algorithms.  They do, however, mean that expression and boolean BDDs
 are only canonical to the extent that expressions in the expression
 language can be canonicalised.  Unfortunately, completely
 canonicalising general expressions is impossible\footnote{If nothing
-  else, doing so would make it trivial to solve Hilbert's tenth
-  problem, which is impossible\cite{Davis1973}.}, and so while
+  else, doing so would provide a solution to Hilbert's tenth problem,
+  which is known to be impossible\cite{Davis1973}.}, and so while
 ordinary BDDs are canonical representations of boolean functions those
 used by {\technique} are not.  This lack of canonicalisation can
 sometimes lead to poor performance if a single function is represented
@@ -648,7 +561,7 @@ Section~\ref{sect:implementation_hacks:bdd_ordering}.
     \draw[->] (l4) -- (l5);
     \draw[->,ifFalse] (l5) -- (l3);
     \draw[->,ifTrue] (l5) -- (l6);
-  \end{tikzpicture}\hspace{-20mm}
+  \end{tikzpicture}\hspace{-10mm}
   \label{fig:derive:single_threaded_machine}
   }
   \subfigure[][Interfering {\StateMachine}, generated from the machine code in Figure~\ref{fig:derive:single_threaded_machine_inp:interfering}.]{
@@ -762,24 +675,25 @@ all.  There are three cases which require special care:
 
 \begin{itemize}
 \item
-  Some edges will be erased from the dynamic \gls{cfg}, so that the
-  program can branch from the instruction corresponding to $C_1$ to
-  $D_0$ but the dynamic \gls{cfg} does not allow that to happen.
-  These are converted to branches to the special {\stUnreached} state,
-  reflecting the fact that these paths are of no interest to the rest
-  of the analysis.
+  Some edges will be erased from the dynamic \gls{cfg}.  For instance,
+  in Figure~\ref{fig:unrolled_cyclic_cfg}, the program's original
+  \gls{cfg} contained an edge from $C_0$ to $D_0$ but the unrolled
+  \gls{cfg} does not include any branches from $C_1$ to a $D$-like
+  instructions.  These are converted to branches to the special
+  {\stUnreached} state, reflecting the fact that these paths are of no
+  interest to the rest of the analysis.
 
 \item
   Some additional edges will have been introduced which do not
-  correspond to anything in the original program.  In the example in
-  Figure~\ref{fig:unrolled_cyclic_cfg}, instruction $A_0$ had a single
-  successor, $B_0$, in the original program, but has multiple
-  successors in the dynamic \gls{cfg}.  Each of the $B_i$ \gls{cfg}
-  nodes will be represented by a separate {\StateMachine} state, but
-  there is no condition on the original program's state which can be
-  evaluated at $A_0$ which could determine which of $B_i$ states the
-  {\StateMachine} must execute next.  {\Technique} handles these by
-  converting them into \StateMachine-level control flow using
+  correspond to anything in the original program.  In the example,
+  instruction $A_0$ had a single successor, $B_0$, in the original
+  program, but has multiple successors in the dynamic \gls{cfg}.  Each
+  of the $B_i$ \gls{cfg} nodes will be represented by a separate
+  {\StateMachine} state, but there is no condition on the original
+  program's state which can be evaluated at $A_0$ which could
+  determine which of $B_i$ states the {\StateMachine} must execute
+  next.  {\Technique} handles these by converting them into
+  \StateMachine-level control flow using
   $\controlEdge{}{}{}$\editorial{Looks a bit ugly like that.}
   expressions which test the program's path through the \gls{cfg}.
   See, for instance, state $A_0'$ in
@@ -1847,80 +1761,6 @@ Figure~\ref{fig:cross_product_output}\footnote{These {\StateMachines}
   not shown.}.  I highlight a couple of the more important features of
 this diagram:
 
-\begin{itemize}
-\item The {\StateMachine} starts in the configuration (\{$A$,
-  {\false}\}, \{$E$, {\false}\}), indicating that the crashing thread
-  {\StateMachine} is in state $A$, is not in an atomic block, and has
-  not issued any memory accesses, and that the interfering thread
-  {\StateMachine} is in state $E$, is not in an atomic block, and has
-  not issued any memory accesses.  The first state in the interfering
-  thread is an \state{If}, which is always thread-local, and so it is
-  able to advance immediately.  The resulting state in the output
-  {\StateMachine} is therefore an \state{If} state testing the same
-  condition as the input \state{If}.  The successor states in the
-  output state are then the starting output state with the interfering
-  thread's state updated to reflect the result of the conditional
-  test.  In other words, when the condition is true, the output
-  {\StateMachine} moves to configuration (\{$A$, {\false}\}, \{$I$,
-  {\false}\}), because the interfering thread {\StateMachine} will
-  move from state E to state I, and when the condition is false the
-  output {\StateMachine} moves to configuration (\{$A$, {\false}\},
-  \{$F$, {\false}\}), because the interfering thread {\StateMachine}
-  moves from $E$ to $F$.
-
-  There is a slight ambiguity here which occurs if both input
-  {\StateMachines} are at purely local states.  In that case,
-  {\technique} prefers to advance the {\StateMachine} whose current
-  state has the smallest number of successor states, as this tends to
-  result in the smallest possible output {\StateMachine}.  When both
-  input {\StateMachines} have the same number of successor states it
-  advances the crashing thread {\StateMachine}.
-
-\item One of the successors of the initial configuration is (\{$A$,
-  {\false}\}, \{$I$, {\false}\}).  The interfering thread
-  {\StateMachine} has now reached a terminal state, $I$, without
-  either input {\StateMachine} issuing any memory accesses.  This
-  indicates that both {\StateMachines} have completed atomically,
-  which is not an interesting case to investigate, and so {\technique}
-  instantiates this output state as {\stUnreached}.  The later
-  analysis phases will therefore not investigate this path.  In
-  general, any time one of the input {\StateMachines} reaches a
-  terminal state and either input {\StateMachine} has failed to issue
-  an access the output state should be {\stUnreached}.
-
-\item In the other successor of the initial state, (\{$A$, {\false}\},
-  \{$F$, {\false}\}), both {\StateMachines} have reached a memory
-  accessing state.  {\Technique} now looks ahead in both input
-  {\StateMachines} to determine whether the accesses might involve
-  some cross-{\StateMachine} interaction (see below for more details
-  of this process).  In this case, they can interact, and so the
-  cross-product algorithm uses a happens-before test
-  $\happensBeforeEdge{}$ to consider both possible orderings of the
-  accesses.  If $\happensBefore{A}{F}$ then the memory access in state
-  $A$ should happen before that in state $F$, and so the output
-  {\StateMachine} issues the state A access and moves to configuration
-  (\{$B$, {\true}\}, \{$F$, {\false}\}).  Otherwise, $F$ should happen
-  before $A$, and so it issues the state $F$ access and moves to
-  (\{$A$, {\false}\}, \{$I$, {\true}\}).  Other
-  potentially-interfering memory accesses are handled similarly.
-
-\item In the configuration (\{$C$, {\true}\}, \{$I$, {\true}\}),
-  the crashing thread {\StateMachine} is at a memory accessing state
-  $C$ while the interfering thread {\StateMachine} is at a terminal
-  state $I$.  There can therefore be no interaction between the access
-  at $C$ and any future accesses issued by the interfering thread, and
-  so the output {\StateMachine} can issue the $C$ access without needing
-  any further $\happensBeforeEdge$ tests.
-
-\item The $F$ state has been duplicated into two places in the output
-  {\StateMachine}.  In this case, this is not actually a problem, but
-  if F had been a variable-defining state such as \state{Load} or
-  \state{Copy} then this would have broken the SSA form.  {\Technique}
-  uses a further post-processing step to restore the SSA invariant,
-  introducing additional variables and \state{$\Phi$} side-effects as
-  necessary.
-\end{itemize}
-
 \begin{figure}
   \begin{subfloat}
     \begin{tikzpicture}
@@ -2000,6 +1840,80 @@ this diagram:
   \label{fig:cross_product_output}
 \end{figure}
 
+\begin{itemize}
+\item The {\StateMachine} starts in the configuration (\{$A$,
+  {\false}\}, \{$E$, {\false}\}), indicating that the crashing thread
+  {\StateMachine} is in state $A$, is not in an atomic block, and has
+  not issued any memory accesses, and that the interfering thread
+  {\StateMachine} is in state $E$, is not in an atomic block, and has
+  not issued any memory accesses.  The first state in the interfering
+  thread is an \state{If}, which is always thread-local, and so it is
+  able to advance immediately.  The resulting state in the output
+  {\StateMachine} is therefore an \state{If} state testing the same
+  condition as the input \state{If}.  The successor states in the
+  output state are then the starting output state with the interfering
+  thread's state updated to reflect the result of the conditional
+  test.  In other words, when the condition is true, the output
+  {\StateMachine} moves to configuration (\{$A$, {\false}\}, \{$I$,
+  {\false}\}), because the interfering thread {\StateMachine} will
+  move from state E to state I, and when the condition is false the
+  output {\StateMachine} moves to configuration (\{$A$, {\false}\},
+  \{$F$, {\false}\}), because the interfering thread {\StateMachine}
+  moves from $E$ to $F$.
+
+  There is a slight ambiguity here which occurs if both input
+  {\StateMachines} are at purely local states.  In that case,
+  {\technique} prefers to advance the {\StateMachine} whose current
+  state has the smallest number of successor states, as this tends to
+  result in the smallest possible output {\StateMachine}.  When both
+  input {\StateMachines} have the same number of successor states it
+  advances the crashing thread {\StateMachine}.
+
+\item One of the successors of the initial configuration is (\{$A$,
+  {\false}\}, \{$I$, {\false}\}).  The interfering thread
+  {\StateMachine} has now reached a terminal state, $I$, without
+  either input {\StateMachine} issuing any memory accesses.  This
+  indicates that both {\StateMachines} have completed atomically,
+  which is not an interesting case to investigate, and so {\technique}
+  instantiates this output state as {\stUnreached}.  The later
+  analysis phases will therefore not investigate this path.  In
+  general, any time one of the input {\StateMachines} reaches a
+  terminal state and either input {\StateMachine} has failed to issue
+  an access the output state should be {\stUnreached}.
+
+\item In the other successor of the initial state, (\{$A$, {\false}\},
+  \{$F$, {\false}\}), both {\StateMachines} have reached a memory
+  accessing state.  {\Technique} now looks ahead in both input
+  {\StateMachines} to determine whether the accesses might involve
+  some cross-{\StateMachine} interaction (see below for more details
+  of this process).  In this case, they can interact, and so the
+  cross-product algorithm uses a happens-before test
+  $\happensBeforeEdge{}$ to consider both possible orderings of the
+  accesses.  If $\happensBefore{A}{F}$ then the memory access in state
+  $A$ should happen before that in state $F$, and so the output
+  {\StateMachine} issues the state A access and moves to configuration
+  (\{$B$, {\true}\}, \{$F$, {\false}\}).  Otherwise, $F$ should happen
+  before $A$, and so it issues the state $F$ access and moves to
+  (\{$A$, {\false}\}, \{$I$, {\true}\}).  Other
+  potentially-interfering memory accesses are handled similarly.
+
+\item In the configuration (\{$C$, {\true}\}, \{$I$, {\true}\}),
+  the crashing thread {\StateMachine} is at a memory accessing state
+  $C$ while the interfering thread {\StateMachine} is at a terminal
+  state $I$.  There can therefore be no interaction between the access
+  at $C$ and any future accesses issued by the interfering thread, and
+  so the output {\StateMachine} can issue the $C$ access without needing
+  any further $\happensBeforeEdge$ tests.
+
+\item The $F$ state has been duplicated into two places in the output
+  {\StateMachine}.  In this case, this is not actually a problem, but
+  if F had been a variable-defining state such as \state{Load} or
+  \state{Copy} then this would have broken the SSA form.  {\Technique}
+  uses a further post-processing step to restore the SSA invariant,
+  introducing additional variables and \state{$\Phi$} side-effects as
+  necessary.
+\end{itemize}
+
 Importantly, the cross-product {\StateMachine} can itself be
 simplified using the usual {\StateMachine} simplification passes, and
 this can often lead to useful simplifications even when the input
@@ -2013,42 +1927,10 @@ when $y = 0 \wedge \happensBefore{A}{F} \wedge LD(x) \not= 0 \wedge
 value of $x$ is non-zero, and statement F intercedes between
 statements A and C, precisely as desired.
 
-\begin{figure}
-  \begin{centering}
-  \begin{tikzpicture}
-    \node[stateSideEffect, initial] (A) {\stAssert{y = 0 \wedge \happensBefore{A}{F} \wedge \smLoad{x} \not= 0 \wedge \happensBefore{F}{C}} };
-    \node[stateTerminal, below = of A] (B) {\stCrash };
-    \draw[->] (A) -- (B);
-  \end{tikzpicture}
-  \end{centering}
-  \caption{Result of simplifying {\StateMachine} shown in
-    Figure~\ref{fig:cross_product_output}.}
-  \label{fig:cross_product_output_opt}
-\end{figure}
-
 The simplifications needed in this example are quite simple, and it
 would have been possible to include equivalent optimisations in the
 symbolic execution engine itself.  This would be more difficult for
 more complex simplifications, for two reasons:
-
-\begin{itemize}
-\item Simplification passes can easily look ahead in the
-  {\StateMachine}, whereas symbolic execution primarily considers a
-  single state at a time.  Dead code elimination, for example, is much
-  easier to implement as a simplification to the {\StateMachine} than
-  as a change to the symbolic execution engine.
-\item The results of a simplification pass are inherently shared
-  across all paths which reach a particular state, whereas the
-  symbolic execution engine needs to perform additional work in order
-  to share results.\editorial{Cite someone doing that.}
-\end{itemize}
-
-There is also an engineering consideration which argues in favour of
-building and simplifying the cross-product {\StateMachine}, rather
-than integrating equivalent optimisations into the symbolic execution
-engine: {\technique} already needs all of the simplifiers in order to
-build the input {\StateMachines} to begin with, and so re-using them
-here halves the implementation effort.
 
 \begin{landscape}
 \begin{figure}
@@ -2148,155 +2030,37 @@ here halves the implementation effort.
 \end{figure}
 \end{landscape}
 
-\subsubsection{Identifying cross-{\StateMachine} accesses}
-
-\todo{This uses lots of words to say something fairly obvious.  See if
-  I can find a cite saying something similar.}
-
-The cross-product algorithm given here assumes that it can identify
-accesses which might have cross-{\StateMachine} effects, so as to only
-introduce happens-before $\happensBeforeEdge$ tests for cross-thread
-accesses.  This is not completely trivial.  In particular, it is
-\emph{not} sufficient to simply ask whether a given access might
-communicate with the next access to be issued in the other
-{\StateMachine}, and the cross-product algorithm must instead look
-ahead through the {\StateMachines} to find any possible future
-accesses which might interact with the current one.
-
-\begin{wrapfigure}{r}{4cm}
-  \begin{tikzpicture}
-    \node[draw] (L1) {A: L1};
-    \node[draw, below = of L1] (L2) {B: L2};
-    \node[draw, right = of L1] (S1) {C: S1};
-    \node[draw, below = of S1] (S2) {D: S2};
-    \draw[->] (L1) -- (L2);
-    \draw[->] (S1) -- (S2);
-    \draw[<->, dashed] (L1) -- (S2);
-    \draw[<->, dashed] (L2) -- (S1);
-  \end{tikzpicture}
-  \caption{An example aliasing and control flow graph.}
-  \label{fig:cross_product:example_aliasing}
-  \vspace{-10pt}
-\end{wrapfigure}
-
-To understand why, consider
-Figure~\ref{fig:cross_product:example_aliasing}.  This is supposed to
-indicate that both {\StateMachines} have two memory accessing
-operations, that the first operation of the first {\StateMachine}
-aliases with the second operation of the second {\StateMachine}, and
-that the second operation of the first {\StateMachine} aliases with
-the first operation of the second {\StateMachine}.  The cross-product
-building algorithm will start in configuration (L1, S1), indicating
-that both input {\StateMachines} are in their initial state.  These
-two accesses do not alias, but must still be considered to have
-cross-{\StateMachine} effects.  Otherwise, the cross-product building
-algorithm will only consider one possible (arbitrarily chosen)
-ordering of the two accesses, which would clearly be inadequate here.
-For instance, if it chose to issue L1 before S1 it would produce the
-cross-product {\StateMachine} shown in
-Figure~\ref{fig:incorrect_cross_product}\footnote{Assume for the
-  purposes of the example that both {\StateMachines} have already
-  issued some memory accesses, so that the part of the algorithm which
-  avoids considering paths where one {\StateMachine} completes
-  atomically are not relevant.}, which does not model the valid memory
-access sequence S1, L1, L2, S2 (or any sequence which can be obtained
-from that one by exchanging non-interfering operations).  This is
-clearly incorrect.  Conversely, if it had chosen to issue S1 before L1
-then it would have omitted L1, S1, L2, S2.
-
-\begin{figure}
-  \begin{tikzpicture}
-    \node[stateSideEffect, initial above] (AC) {\shortstack{(A, C)\\L1}};
-    \node[stateSideEffect, right = of AC] (BC) {\shortstack{(B, C)\\\stIf{\happensBefore{B}{C}}}};
-
-    \node[stateSideEffect, above right = of BC] (B) {\shortstack{B\\L2}};
-    \node[stateSideEffect, right = of B] (0C) {\shortstack{($\varnothing$, C)\\S1}};
-    \node[stateSideEffect, right = of 0C] (0D) {\shortstack{($\varnothing$, D)\\S2}};
-    \node[stateSideEffect, right = of 0D] (001) {\shortstack{$\varnothing$\\$\happensBefore{L1}{S2}$\\$\happensBefore{L2}{S1}$}};
-
-    \node[stateSideEffect, below right = of BC] (C) {\shortstack{B\\S1}};
-    \node[stateSideEffect, right = of C] (BD) {\shortstack{(B, D)\\L2}};
-    \node[stateSideEffect, right = of BD] (0D2) {\shortstack{($\varnothing$, D)\\S2}};
-    \node[stateSideEffect, right = of 0D2] (002) {\shortstack{$\varnothing$\\$\happensBefore{L1}{S2}$\\$\happensBefore{S1}{L2}$}};
-
-    \draw[->] (AC) -- (BC);
-    \draw[->,ifTrue] (BC) -- (B);
-    \draw[->] (B) -- (0C);
-    \draw[->] (0C) -- (0D);
-    \draw[->] (0D) -- (001);
-
-    \draw[->,ifFalse] (BC) -- (C);
-    \draw[->] (C) -- (BD);
-    \draw[->] (BD) -- (0D2);
-    \draw[->] (0D2) -- (002);
-  \end{tikzpicture}
-  \caption{An incorrect cross-product of the {\StateMachines} in
-    Figure~\ref{fig:cross_product:example_aliasing}.  \todo{Not
-      particularly clear what this actually means.}}
-  \label{fig:incorrect_cross_product}
-\end{figure}
-
-Fortunately, this problem is easy to fix: the cross-product algorithm
-must look ahead through the {\StateMachines} to find possible future
-aliasing accesses before concluding that the current accesses are
-thread-local.  In the example, from configuration (L1, S1), it could
-look ahead through the second {\StateMachine} to find that L1 aliases
-with S2, and is therefore not thread-local, or it could look ahead
-through the first {\StateMachine} to find that S1 aliases with L2.  In
-either case, it will have to generate a happens-before test for L1 and
-S1, producing the cross-product {\StateMachine} shown in
-Figure~\ref{fig:correct_cross_product}.  This {\StateMachine}
-correctly captures all interesting interleavings of accesses of the
-memory accesses.
-
 \begin{figure}
   \begin{centering}
-    \hfill
   \begin{tikzpicture}
-    \node[stateSideEffect, initial] (AC) {\shortstack{(A, C)\\\stIf{\happensBefore{A}{C}}}};
-    \node[stateSideEffect, below left = of AC] (A1) {\shortstack{A\\L1}};
-    \node[stateSideEffect, below = of A1] (BC) {\shortstack{(B, C)\\\stIf{\happensBefore{B}{C}} }};
-    \node[stateSideEffect, below left = of BC] (B) {\shortstack{B\\L2}};
-    \node[stateSideEffect, below = of B] (0C) {\shortstack{($\varnothing$, C)\\S1}};
-    \node[stateSideEffect, below = of 0C] (0D) {\shortstack{($\varnothing$, D)\\S2}};
-    \node[stateSideEffect, below = of BC] (C1) {\shortstack{C\\S1}};
-    \node[stateSideEffect, below right = of C1] (BD) {\shortstack{(B, D)\\L2}};
-    \node[stateSideEffect, below = of BD] (0D2) {\shortstack{($\varnothing$, D)\\S2}};
-
-    \node[stateSideEffect, below right = of AC] (C0) {\shortstack{C\\S1}};
-    \node[stateSideEffect, below = of C0] (AD) {\shortstack{(A, D)\\\stIf{\happensBefore{A}{D}}}};
-    \node[stateSideEffect, below = of AD] (A2) {\shortstack{A\\L1}};
-    \node[stateSideEffect, below right = of AD] (D) {\shortstack{D\\S2}};
-    \node[stateSideEffect, below = of D] (A0) {\shortstack{(A, $\varnothing$)\\L1}};
-    \node[stateSideEffect, below = of A0] (B0) {\shortstack{(B, $\varnothing$)\\L2}};
-
-    \draw[->, ifTrue] (AC) -- (A1);
-    \draw[->, ifTrue] (BC) -- (B);
-    \draw[->, ifTrue] (AD) -- (A2);
-    \draw[->, ifFalse] (AC) -- (C0);
-    \draw[->, ifFalse] (BC) -- (C1);
-    \draw[->, ifFalse] (AD) -- (D);
-
-    \draw[->] (A1) -- (BC);
-    \draw[->] (C1) -- (BD);
-    \draw[->] (BD) -- (0D2);
-    \draw[->] (C0) -- (AD);
-    \draw[->] (A2) -- (BD);
-    \draw[->] (D) -- (A0);
-    \draw[->] (A0) -- (B0);
-
-    \draw[->] (B) -- (0C);
-    \draw[->] (0C) -- (0D);
-
+    \node[stateSideEffect, initial] (A) {\stAssert{y = 0 \wedge \happensBefore{A}{F} \wedge \smLoad{x} \not= 0 \wedge \happensBefore{F}{C}} };
+    \node[stateTerminal, below = of A] (B) {\stCrash };
+    \draw[->] (A) -- (B);
   \end{tikzpicture}
-    \hfill
   \end{centering}
-  \caption{Correct cross-product of the {\StateMachines} shown in
-    Figure~\ref{fig:cross_product:example_aliasing}.  Note that the
-    first state must test whether A happens before C, even though A
-    and C can never alias.}
-  \label{fig:correct_cross_product}
+  \caption{Result of simplifying {\StateMachine} shown in
+    Figure~\ref{fig:cross_product_output}.}
+  \label{fig:cross_product_output_opt}
 \end{figure}
+
+\begin{itemize}
+\item Simplification passes can easily look ahead in the
+  {\StateMachine}, whereas symbolic execution primarily considers a
+  single state at a time.  Dead code elimination, for example, is much
+  easier to implement as a simplification to the {\StateMachine} than
+  as a change to the symbolic execution engine.
+\item The results of a simplification pass are inherently shared
+  across all paths which reach a particular state, whereas the
+  symbolic execution engine needs to perform additional work in order
+  to share results.\editorial{Cite someone doing that.}
+\end{itemize}
+
+There is also an engineering consideration which argues in favour of
+building and simplifying the cross-product {\StateMachine}, rather
+than integrating equivalent optimisations into the symbolic execution
+engine: {\technique} already needs all of the simplifiers in order to
+build the input {\StateMachines} to begin with, and so re-using them
+here halves the implementation effort.
 
 \subsubsection{Other important features of the algorithm}
 
