@@ -4,8 +4,7 @@
 \section{Experiments I still need to run}
 
 \begin{itemize}
-\item Re-do labyrinth experiments and actually track the results.
-\item Re-do Bayes with current version of tool.
+\item The performance breakdown stuff.
 \item Re-do unoptimised mysql.  Time static and main analysis phases.
   Check number of candidates generated.  Run candidates.
   \todo{Running on hogun now.}
@@ -1763,9 +1762,10 @@ present any additional complexity.
 
 \subsection{labyrinth}
 
-This test consists of the labyrinth component of the STAMP benchmark
-suite\needCite{}, converted to use locks rather than transactional
-memory and with one of its critical sections removed.  It is shown in
+\todo{Not sure how much this adds, to be honest.} This test consists
+of the labyrinth component of the STAMP benchmark suite\needCite{},
+converted to use locks rather than transactional memory and with one
+of its critical sections removed.  It is shown in
 Figure~\ref{fig:eval:labyrinth}.  This program is structured as a
 read-modify-writeback operation: the \texttt{memcpy} on line 8 takes a
 local copy of a shared structure, which is then worked on by
@@ -1807,18 +1807,22 @@ introduces a race which can trigger this crash.
 test, and is therefore unable to generate an enforcer or a fix for it.
 The reason is simple: \texttt{PdoExpansion} and \texttt{PdoTraceback}
 are both large functions, and {\implementation} takes an unreasonable
-amount of time and memory to analyse them\editorial{Should probably
-  say what I mean by unreasonable there; answer is a couple of days
-  and all the memory in the machine, respectively.}.  It is therefore
-unable to link the load of \texttt{*gridPointPtr} on line 3 to the
-store in the \texttt{memcpy} on line 8, preventing it from discovering
-the bug's concurrency behaviour.
+amount of time and memory to analyse them.  It is therefore unable to
+link the load of \texttt{*gridPointPtr} on line 3 to the store in the
+\texttt{memcpy} on line 8, preventing it from discovering the bug's
+concurrency behaviour.
 
-\todo{Should probably say more about this e.g. what \gls{alpha} you'd
-  need to analyse it and how far I was actually able to push it.}
-
-Static analysis took $2.28 \pm 0.05$ seconds, mean and standard
-deviation of ten runs.
+Manual inspection of the machine code suggested in order to correctly
+analyse this bug, \gls{alpha} would need to be set to at least 570
+instructions, of which 265 correspond to \texttt{PdoExpansion} and 195
+to \texttt{PdoTraceback}.  As discussed in \autoref{sect:eval:alpha},
+it is difficult to push \gls{alpha} above a few dozen with the current
+implementation, and so analysing the entire path is unlikely to be
+feasible.  On the other hand, if {\technique} could use procedure
+summaries\needCite{} to represent \texttt{PdoExpansion} and
+\texttt{PdoTraceback}, it would only have to analyse 76 instructions,
+which is far more plausible.  I have not investigated this possibility
+in any detail.
 
 \subsection{bayes}
 
@@ -1847,70 +1851,86 @@ element from the list (lines 4 to 8).
       4 & & & prev->next = node->next;\\
       5 & & & node->next = NULL;\\
       6 & & & free(node);\\
-      7 & & & list->size -= 1;\\
-      8 & & & assert(list->size >= 0);\\
-      9 & & & return TRUE;\\
-      10 & & \multicolumn{2}{l}{\}}\\
-      11 & & \multicolumn{2}{l}{return FALSE;}\\
-      12 & \multicolumn{3}{l}{\}}\\
+      7 & & & return TRUE;\\
+      8 & & \multicolumn{2}{l}{\}}\\
+      9 & & \multicolumn{2}{l}{return FALSE;}\\
+      10 & \multicolumn{3}{l}{\}}\\
       \\
-      13 & \multicolumn{3}{l}{acquire\_lock();}\\
-      14 & \multicolumn{3}{l}{it = taskList->begin();}\\
-      15 & \multicolumn{3}{l}{if (it != taskList->end();) \{}\\
-      16 & & \multicolumn{2}{l}{status = list\_remove(taskList, it->get());}\\
-      17 & & \multicolumn{2}{l}{assert(status);}\\
-      18 & \multicolumn{3}{l}{\}}\\
-      19 & \multicolumn{3}{l}{release\_lock();}\\
+      11 & \multicolumn{3}{l}{acquire\_lock();}\\
+      12 & \multicolumn{3}{l}{it = taskList->begin();}\\
+      13 & \multicolumn{3}{l}{if (it != taskList->end();) \{}\\
+      14 & & \multicolumn{2}{l}{status = list\_remove(taskList, it->get());}\\
+      15 & & \multicolumn{2}{l}{assert(status);}\\
+      16 & \multicolumn{3}{l}{\}}\\
+      17 & \multicolumn{3}{l}{release\_lock();}\\
     \end{tabular}
   }
   \caption{The bayes test program.}
   \label{fig:eval:bayes}
 \end{figure}
 
-For this test, I removed the lock operations on lines 13 and 19.
-This introduced several possible crashing bugs:
+For this test, I removed the lock operations on lines 11 and 17.  This
+introduced several possible crashing bugs.  I ran the program 100
+times without any modifications so as to establish a baseline:
 
 \begin{itemize}
-\item The assertion on line 8 would sometimes fire, if the size of the
-  list became negative.
-\item The assertion on line 17 would sometimes fire, if a list removal
-  failed because the relevant item had already been removed.
-\item Similarly, the \texttt{free} on line 6 would sometimes release
-  already-released memory, leading to a crash in the C library, if
-  the same item was removed twice.
-\item Other assertions later in the program also occasionally fired
-  due to running the same task twice.
+\item The assertion on line 15 fired 12 times.
+\item The \texttt{free} on line 6 caused a double-free crash in the C
+  library 12 times.
+\item All other runs completed without apparent errors.
 \end{itemize}
 
-\todo{I haven't run this test since I added double-free support to the
-  tool.  Should fix that.}
+The Bayes program was invoked with the parameters \texttt{-v32 -r1024
+  -n2 -p20 -i2 -e2 -s1 -t 2}.
 
-The first two bugs are of the correct form to be investigated by
-{\technique}; the other two are not.  I therefore generated enforcers
-for the first two bugs which, as expected, caused those bugs to
-reproduce rapidly and reliably (i.e. when one of those enforcers was
-applied the target bug consistently reproduced before any of the other
-bugs had a chance to).  I also generated fixes for the two bugs.
-These both worked in the sense that they were able to prevent the
-target bug from reproducing.  Unfortunately, the fix for the first bug
-also made the double-free bug reproduce far more frequently, and so
-the overall effect was that the program crashed more quickly.  On the
-other hand, the fix for the second bug fixed all four bugs, as the
-critical sections introduced by the fix were large enough to
-completely cover the actual critical sections in the program.
+Both of these bugs are in the current form to be investigated by
+{\technique}, and so I produced \glspl{bugenforcer} for both of them.
+I investigated the assertion failure first.  The race here is
+essentially a time-of-check, time-of-use one, where the list element
+might be removed by another thread in between the check on lines 12
+and 13 in the caller and the call to \texttt{findPrevious} on line 1.
+The path from line 12 to the crash on line 15 is 48 instructions long,
+and so I analysed this bug with an \gls{analysiswindow} of 50
+instructions.  This produced a single \gls{verificationcondition},
+which I converted to a \gls{bugenforcer}.  The enforcer was moderately
+effective: of 100 runs of the program, 26 suffered the bug under
+investigation, while 74 suffered the double-free bug.  This is not
+quite the desired result, which would have been for the program to
+suffer the bug under investigation every time, but would still
+probably be useful to a programmer investigating the bug.
 
-\todo{More discussion of how the fixes work should go here.}
+I next investigated the double-free bug on line 6.  The race in this
+case is that another thread might release the node in between the load
+on line 2 and the free on line 6.  The path in this case is 28
+instructions, and so I analysed this bug with \gls{alpha} set to 30
+instructions\footnote{Unfortunately, attempting to analyse this bug
+  with a \gls{analysiswindow} of 50 instructions ran out of memory on
+  my 8GiB test machine without producing any
+  \glspl{verificationcondition}.}.  This, again, produced a single
+\gls{bugenforcer}.  I ran the program 100 times with this enforcer
+and all of these runs suffered the double free bug, precisely as
+desired.
 
-\todo{Somewhat surprisingly, given that it was taken from what's
-  nominally a benchmark suite, unmodified bayes shows multiple order
-  of magnitude performance differences from run to run in the default
-  configuration, which makes it quite hard to talk about the
-  performance cost of the fix.  I could just average enough runs that
-  the SD drops to something sane, but I don't think that would be
-  terribly meaningful.}
+{\Technique} can generate fixes for both of these bugs.  I ran the
+program 100 times with each of the fixes applied.  With the
+double-free only fix applied, the program completed successfully 90
+times, suffered the assertion failure five times, and suffered five
+other crashes elsewhere in the program.  With the assertion-only fix
+applied, the program completed 95 runs successfully but failed an
+assertion elsewhere in the program in the remaining 5 cases.  As
+expected, both partial fixes eliminate the bug which they are designed
+for, and marginally improve the program's reliability over the
+baseline case, but do not fix any of the other bugs in the program.
 
-Static analysis took $4.01 \pm 0.06$ seconds, mean and standard
-deviation of ten runs.
+{\Technique} can also generate a combined fix which fixes both bugs.
+I ran the program 100 times with that combined fix applied.  In that
+case, every run completed successfully.  This is because the union of
+the critical sections for the two bugs is the same as the critical
+section which I removed in order to produce the test program, and so
+the combined fix restores the program to its correct functionality.
+
+\todo{Could maybe give some more details here?  e.g. perf numbers,
+  details of fixes and enforcers?}
 
 \section{Experiments with real programs}
 \label{sect:eval:real}
@@ -2141,6 +2161,7 @@ The performance effect should be a small win, and we should see that
 the quality of the results goes up.}
 
 \subsection{Effects of $\alpha$}
+\label{sect:eval:alpha}
 
 \todo{This is for the unoptimised build of mysql; should also do it
   for the optimised one, because the results are different in an
@@ -2376,3 +2397,22 @@ experiments, I used the following workloads:
   \label{fig:eval:dyn_convergence:pbzip2}
 \end{figure}
 
+I also briefly investigated the performance cost of the analysis.  The
+time taken by pbzip2 to compress a 100MiB file without the dynamic
+analysis was $7.8 \pm 0.1$ seconds on this machine, mean and standard
+deviation of mean for ten runs with independent randomly-generated
+files; with the dynamic analysis, this increased to $274 \pm 2$
+seconds, a factor of nearly thirty-five.  This is a rather large
+overhead, and would be completely infeasible in a production
+environment, but is probably tolerable for something which needs to
+run for a few tens of minutes in a development one.
+
+For comparison, a null Valgrind skin completed this test in $226.6 \pm
+0.5$ seconds, an overhead of a factor of twenty-nine.  That suggests
+that most of the overhead of the dynamic analysis tool comes simply
+from the fact that it is implemented as a Valgrind skin, and that
+re-implementing it in a faster analysis framework such as
+PIN\needCite{} might provide a useful speed-up.
+
+\todo{Do I need perf numbers for any other test programs?  It'd make
+  it much more convincing, but they'd be a nuisance to produce.}
