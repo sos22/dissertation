@@ -1051,38 +1051,6 @@ reduces the complexity of symbolically executing them, giving a useful
 reduction in the total time to analyse a program.  \todo{Could maybe
   give an explicit program slicing reference here?}
 
-\subsection{Stack canonicalisation}
-
-\todo{Need to eval how effective this is.  Could just drop it.}
-
-The aim of the {\StateMachine} building algorithm is to share work
-between different contexts in which the crashing instruction is found
-by combining the contexts into a single {\StateMachine}.  This is much
-easier if the we can arrange for the stack pointer to always have the
-same value at the end of the {\StateMachine}, regardless of where the
-{\StateMachine} starts, so that local variable accesses in the
-function containing the purported crashing instruction match up
-properly\footnote{Of course, this means that stack references near the
-  start of the {\StateMachine} will be less likely to match up.  This
-  is usually a reasonable trade-off, as all paths through the
-  {\StateMachine} end in the same way but might start in completely
-  different function contexts.}.  This is not completely trivial if
-the starting points are themselves in different functions.  This
-problem can be solved by examining the generated {\StateMachine} and
-determining, for each entry point, how the stack pointer changes
-between that entry point and the end and then inserting an opposite
-change immediately before the entry point.  Most of the time, the only
-change to the stack pointer is adding or subtracting a constant, and
-so this is easy.  Otherwise, it fails.  The fact that the stack has
-been massaged in this way is recorded in the {\StateMachine} structure
-so that it can be undone later when building data-dependent crash
-enforcers.
-
-\todo{Possibly interesting: this means that once you've converted to
-  SSA, the initial generation of the stack pointer refers to its value
-  at the \emph{end} of the {\StateMachine}, whereas for every other
-  register it refers to the value at the \emph{beginning}.}
-
 \section{Building the interfering thread's \StateMachines}
 \label{sect:derive:write_side}
 
