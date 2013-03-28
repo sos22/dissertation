@@ -999,16 +999,17 @@ the crashing thread, and so cannot possibly affect whether the program
 crashes.  They can therefore be completely discarded.
 
 Beyond that, it is also possible to discard instructions prior to the
-first communicating instruction.  A communicating instruction is
-either one of the \glspl{interferingstore} or a load operation which
-might alias with one of the stores in the \gls{crashingthread}
-{\StateMachine}.  Instructions prior to the first communicating
-instruction can influence the behaviour of the interfering thread, but
-only by restricting the possible values of thread-local state, such as
-machine registers or memory locations, when the interfering thread
-starts.  In the absence of any such information, {\technique} will
-consider all possible starting configurations, and so discarding these
-instructions is sound.
+first \gls{communicatinginstruction}.  A
+\gls{communicatinginstruction} is either one of the
+\glspl{interferingstore} or a load operation which might alias with
+one of the stores in the \gls{crashingthread} {\StateMachine}.
+Instructions prior to the first communicating instruction can
+influence the behaviour of the interfering thread, but only by
+restricting the possible values of thread-local state, such as machine
+registers or memory locations, when the interfering thread starts.  In
+the absence of any such information, {\technique} will consider all
+possible starting configurations, and so discarding these instructions
+is sound.
 
 On the other hand, it is not always desirable to discard these
 instructions, if the restrictions would have provided useful hints to
@@ -2253,3 +2254,271 @@ of the analysis remains high but tolerable, and that it is likely to
 become faster as hardware becomes increasingly parallel, which is
 precisely the scenario in which it would be most useful.
 
+\section{The program model}
+\label{sect:program_model}
+
+{\Technique} models the part of the program which is directly involved
+in a crash via the {\StateMachine} mechanism, but these are only
+capable of analysing relatively small fragments of the program.  This
+means that they cannot express global properties such as the structure
+of the heap.  {\Technique} instead captures these properties in its
+\gls{programmodel}, a model of some important aspects of the program
+built before the main analysis starts.
+
+\todo{Say more.}
+
+\subsection{Memory access model}
+\label{sect:program_model:dynamic_alias}
+
+\todo{There's a tension here between precision and soundness which
+  I've completely ignored.  Oh well.}
+
+The most important part of the \gls{programmodel} is the memory access
+model, which shows how the program accesses memory during normal
+operation.  This is used both for aliasing analysis during
+{\StateMachine} simplification (Section~\ref{sect:derive:simplify_sm})
+and to find the \glspl{communicatinginstruction} when building the
+interfering \gls{cfg} (Section~\ref{sect:derive:write_side}).  The
+memory access model is itself composed of two parts: a model of how
+the program accesses its stack and a model of accesses to non-stack
+memory.
+
+The stack model is built using a fairly conventional function-local
+static pointer escape analysis and I give only a high-level
+description of it here.  The core idea is to observe that stack frames
+are in some sense ``created'' when a function starts, and so there
+should not be any pointers to function-local variables unless the
+function being analysed creates one.  If the analysis can show that
+one pointer is to a local variable and another pointer existed before
+the function started then it is safe to assume that the two pointers
+definitely do not alias.  This static analysis therefore attempts to
+track which registers and memory locations might contain pointers to
+the local stack frame.  This is usually sufficient for the
+{\StateMachine} simplifiers to be able to determine which, if any,
+stack frames a given memory access might refer to that.  Simple
+arithmetic considerations are then usually sufficient to determine
+accesses to local variables.
+
+The non-stack memory model is more complex.  It is much more difficult
+to characterise the structure of non-stack memory, such as the heap,
+using static analysis, for two main reasons:
+
+\begin{itemize}
+\item First, the structure of non-stack memory is almost always more
+  complex than the structure of a stack frame, in terms of what
+  objects point at which other objects.  Heap objects are often part
+  of complicated pointer graphs, and will both contain and be referred
+  to by pointers, whereas most stack locations are simple variables.
+\item Non-stack locations can be accessed from anywhere in the
+  program, with little indication of which instructions access which
+  objects.  Stack locations, by contrast, are almost always accessed
+  only by the function which allocated them, with the vast majority of
+  other accesses made by functions called by that one.
+\end{itemize}
+
+These problems make it difficult to accurately model the heap even
+when the analysis tool has full access to the program's source
+code\needCite{}, and attempting to do so given only a binary is
+completely infeasible.
+
+\todo{This is a slightly abstract way of describing this.  I think
+  it's still probably the best way of thinking about it, but perhaps
+  not the best way of explaining it.}
+
+{\Technique} instead relies on a dynamic analysis to model accesses to
+non-stack locations.  The result of this analysis is a table showing
+which pairs of instructions might access the same memory locations.
+In the pessimal case, where every instruction might alias with every
+other, this table will contain $n^2$ entries, where $n$ is the number
+of memory accessing instructions in the program.  That would be
+unfeasibly large for non-trivial programs.  Fortunately, the table is
+in practice very sparse, and so is usually perfectly manageable.
+
+The intuition behind this analysis is that most fields in most data
+structures are accessed by a relatively small number of instructions
+in the program, and so if it were possible to identify the field being
+accessed by a given instruction then that would make it easy to
+determine whether two instructions might interfere.  More concretely,
+if we had an instruction $\mathit{instr\_to\_fields}(i)$ mapping from
+an instruction to the set of fields which it can access then
+\begin{displaymath}
+\mathit{alias}(i, i') = (\mathit{instr\_to\_fields}(i) \cap \mathit{instr\_to\_fields}(i') \not= \varnothing)
+\end{displaymath}
+where $\mathit{alias}(i, i')$ is an alias function which is true when
+there is some possibility of instructions $i$ and $i'$ accessing the
+same memory location.  Unfortunately, the $\mathit{instr\_to\_field}$
+function is difficult to express for binary programs, even with
+perfect information, because fields are a high-level language
+construct and {\technique} must operate at the level of machine code.
+
+A little bit of algebra allows us to re-express $\mathit{alias}$ like
+so:
+\begin{displaymath}
+\mathit{alias}(i, i') = \left(i' \in \bigcup_{f \in \mathit{instr\_to\_fields}(i)} \mathit{field\_to\_instrs}(f)\right)
+\end{displaymath}
+We now have two functions which are defined in terms of fields,
+$\mathit{instr\_to\_fields}$ and $\mathit{field\_to\_instrs}$, rather
+than one, which might appear to have made the problem worse.  The
+composition of the two functions, $\mathit{instr\_label}(i) =
+\{\mathit{field\_to\_instrs}(f) | f \in
+\mathit{instr\_to\_fields}(i)\}$, however, does not require the caller
+to make any reference to fields.  This suggests that it should be
+implementable, and it is this function which the dynamic analysis
+computes\footnote{In fact, the actual output of the {\implementation}
+  dynamic analysis phase is the function $i \rightarrow \cup
+  \mathit{instr\_label}(i)$, which flattens one level of
+  $\mathit{instr\_label}$'s set structure, as that is the most
+  convenient form for the later phases of the analysis.  Internally,
+  it computes the full $\mathit{instr\_label}$ function.}.
+
+The types of these functions are perhaps informative:
+
+\begin{itemize}
+\item $\mathit{instr\_to\_fields}: \mathit{instruction} \rightarrow \mathit{set}(\mathit{field})$
+\item $\mathit{field\_to\_instrs}: \mathit{field} \rightarrow \mathit{set}(\mathit{instruction})$
+\item $\mathit{instr\_label}: \mathit{instruction} \rightarrow \mathit{set}(\mathit{set}(\mathit{instruction}))$
+\end{itemize}
+
+In other words, $\mathit{instr\_label}$ is formed from
+$\mathit{instr\_to\_fields}$ by identifying fields with sets of
+instructions.  This can be thought of as analogous to the conceptual
+switch between data types in a functional language and those in an
+object-oriented language\editorial{Little bit too philosophical.}.  In
+a functional language, a data type is identified with a set of
+values\needCite{}, whereas in an object-oriented one the type is
+identified with a set of operators which can be applied to
+values\needCite{}.  In the same way, the intended semantics of this
+analysis talks about the set of fields which an instruction can
+access, which is in some sense like the set of values on which it can
+operate, whereas the actual analysis discovers the set of instructions
+with which it can interact, which is analogous to a set of operations.
+
+\todo{Maybe draw an explicit analogy with de Bruijn indices?}
+
+Given this conceptual work, implementing the dynamic analysis itself
+is quite simple.  {\Implementation} does so using a Valgrind skin.
+The program's memory is divided into fixed-size chunks\footnote{These
+  chunks are 8 bytes, for {\implementation}.}, each of which has a
+label consisting of a set of accessing
+instructions\footnote{{\Implementation} also tracks which accesses are
+  reads, which writes, and which both, as this simplifies the
+  implementation of the later analysis phases, but this does not
+  meaningfully change the algorithm.}.  Any instruction which accesses
+that memory chunk adds itself to the set.  The set of all labels
+generated by the program, suitable indexed, is then an approximation
+to the $\mathit{instr\_label}$ function; if the dynamic analysis is
+able to observe all relevant program behaviour then it is precisely
+equal to $\mathit{instr\_label}$.
+
+This scheme, as presented, has one important weakness, which is that
+it assigns labels to addresses in memory.  Mapping back to high-level
+language constructs, this means that it is assuming that each address
+in the program, once allocated, corresponds to the same type of data
+structure throughout the program's life.  In other words, it assumes
+that memory is type stable\cite{Greenwald1996}.  This is generally
+reasonable for statically-allocated structures, such as those in the
+BSS segment\cite[Section~7.6]{Stevens}, but not for
+dynamically-allocated structures such as those allocated via
+\texttt{malloc} or \texttt{operator new}.  {\Implementation} relies on
+being able to identify such dynamic memory allocators so that it can
+reset the labels on memory addresses.  This is easy for allocators
+provided by standard system libraries, such as \texttt{malloc}, but
+much harder for program-specific allocators.  It might be possible to
+identify such allocators using a variant of the techniques described
+by Cozzie et al.\cite{Cozzie2008}, but I have not investigated that at
+this time.  Instead, {\implementation} relies on manually annotating
+allocation functions in the program.  This is not an unreasonable
+burden: for mysql, the necessary annotations amount to an additional
+twenty lines across the entire program, and none of the other programs
+examined in the evaluation required any annotations at all.
+
+{\Implementation} includes one minor refinement to the basic analysis
+described above.  It is fairly common for programs to allocate new
+heap structures using a function such as \texttt{malloc} and to then
+initialise this structure using a series of stores.  These stores will
+never race, so it would be helpful to avoid spending excessive time
+considering what would happen if they did.  The approach taken is
+simple: when a block is returned from \texttt{malloc} it is marked as
+thread-private, and remains so until it is stored to non-stack memory.
+Entries in the aliasing table then include a flag indicating whether
+the access is thread-private or potentially racing.  Later analysis
+phases can then assume that two thread-private accesses in different
+threads cannot alias with each other.
+
+This policy might seem to be overly conservative: a block of memory is
+marked as shared whenever a pointer to it is stored into any non-stack
+memory, even when that non-stack memory is itself marked as
+thread-private.  This is necessary because the analysis does not
+attempt to track the heap reachability graph, and in particular cannot
+map from one block to the set of blocks reachable from that block.  It
+is therefore not safe to ``upgrade'' a block from thread-private to
+thread-shared if there is any possibility of that block containing a
+thread-private pointer; upgrading blocks early and pessimistically
+means that it is never necessary to do so.
+
+\todo{Talk about what happens if this is incomplete?}
+
+\subsection{Finding the predecessors of an instruction}
+\label{sect:program_model:instr_predecessors}
+
+The algorithm for building the \gls{crashingthread} \gls{cfg} given in
+Section~\ref{sect:derive:build_crashing_cfg} assumes that there is
+some function $\mathit{predecessors}$ which maps from an instruction
+to the set of instructions which might execute immediately before it.
+This is not completely trivial given only a binary program.  One
+obvious approach would be to simply build the program's entire
+\gls{cfg}, starting from its entry point and disassembling forwards
+from there until the complete set of successor instructions is known
+for every instruction.  This \gls{cfg} would then make determining the
+predecessors of a given instruction trivial.  Unfortunately, building
+it is itself quite complicated:
+
+\begin{itemize}
+\item Finding the set of entry points is not always easy, as there can
+  be branches into the main program from libraries or from the
+  operating system.
+\item Any non-trivial program will contain indirect branches:
+  instructions whose successors can only be determined at run time.
+\end{itemize}
+
+{\Implementation} avoids these issues by using information from the
+dynamic analysis.  In addition to the program's memory accessing
+patterns, the dynamic analysis also tracks the targets of all indirect
+branches and all branches into the program from outside of it, and
+then simply assumes that this information is complete.  This allows
+the program's complete \gls{cfg} to be computed, making the
+instruction predecessor problem trivial.
+
+\subsection{Other information in the program model}
+
+The \gls{programmodel} also includes some information obtained from
+static analysis:
+
+\begin{itemize}
+\item As discussed previously, a pointer escape analysis used to
+  determine when a value loaded from memory might contain a pointer to
+  a local variable.
+\item A function discovery pass is used to identify the program's
+  functions, including those which are not contiguous in
+  memory\editorial{Cite Zhou 2005 or US patent 2007/0089106, unless I
+    can find something better.  Also mention that MSVC does this in
+    real programs.} and in the presence of most forms of tail call
+  elimination\needCite{}.
+\item A liveness analysis is used to identify the arguments to
+  functions, which provides useful hints to some of the other analysis
+  steps.
+\item A function characterisation analysis identifies some simple
+  wrappers around functions such as \texttt{free} and \texttt{abort}.
+  These functions can then be replaced by the appropriate library
+  model (see Section~\ref{sect:derive:library_functions}) rather than
+  needing to be translated into {\StateMachines}.
+\item A variant of Value Set Analysis\needCite{} is used to determine
+  some simple properties of registers at particular instructions.
+  This includes showing that the register definitely is or definitely
+  is not a valid pointer, or that one register is equal to another
+  register plus or minus a constant.
+\end{itemize}
+
+These analyses collectively act to give {\technique} some limited
+sensitivity beyond its \gls{analysiswindow} with only modest
+computational cost.
