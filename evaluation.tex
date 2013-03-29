@@ -2091,37 +2091,7 @@ bugs, as desired.
   don't have compiler optimisations, because otherwise the compiler
   caches \texttt{PSI\_server} in a register and avoids the crash.}
 
-\section{Detailed performance analysis}
-\label{sect:eval:time_details}
-
-I will now investigate the performance of {\implementation}, and how
-that depends on different aspects of the implementation.  For these
-investigations, I selected 1000 potentially-crashing instructions at
-random out of the optimised and unoptimised versions of mysql and
-looked at how long the tool took to analyse each of those instructions
-in a variety of different configurations.
-
-\todo{Basic approach here is going to be to take a random sample of
-  the instructions in mysql, run the analysis on them, and measure how
-  much time is spent in each phase.  I think I'll probably have to say
-  something about the distributions there, since you usually find that
-  you spend a lot of your time in the outliers.}
-
-\todo{I'd also like to show how the different variants affect
-  performance.  That'll mean doing compare-and-contrast on variants
-  with:
-\begin{itemize}
-\item Base thing
-\item No dynamic aliasing analysis
-\item No static aliasing analysis, fixed regs on
-\item No fixed regs analysis, static aliasing on
-\item Neither fixed regs nor static aliasing
-\item All the clever bits on, W isolation on
-\end{itemize}
-The performance effect should be a small win, and we should see that
-the quality of the results goes up.}
-
-\subsection{Effects of $\alpha$}
+\section{Effects of the $\alpha$ parameter}
 \label{sect:eval:alpha}
 
 \todo{This is for the unoptimised build of mysql; should also do it
@@ -2279,18 +2249,30 @@ program fits more complicated behaviour into the \gls{analysiswindow}
 and so takes longer to process.  \todo{Not sure there's much to say
   about that.}
 
-\subsection{Dynamic analysis}
+\section{W isolation}
 
-There are two obvious concerns with the dynamic analysis phase: how
-long does it take to achieve reasonable coverage of the program's
-behaviour, and how much \todo{does it slow the program down while it
-  is being analysed}?  I investigate the first concern first.
+\todo{This is going to be pretty cursory: just run it once with the W
+  isolation assumption made, then again without the assumption, and
+  see how many additional VCs we need, how many more timeouts we get,
+  and how much longer it takes when we don't get timeouts.}
 
-For this experiment, I modified the dynamic analysis tool so that it
-periodically recorded a snapshot of the aliasing table, and I then
-examined these snapshots to quantify the rate at which aliasing pairs
-were added to the table.  The results for mysql, Thunderbird, and
-pbzip2 are shown in Figures~\ref{fig:eval:dyn_convergence:mysqld},
+\section{Dynamic analysis}
+
+\subsection{Effects on analysis performance and correctness}
+
+\todo{This'll be pretty basic: run the analysis with input from the
+  dynamic analysis, then run without, and see how much longer it
+  takes.}
+
+\subsection{Convergence times}
+
+One obvious question with a dynamic analysis is how long it takes to
+achieve reasonable coverage.  This experiment aims to investigate
+that.  For this experiment, I modified the dynamic analysis tool so
+that it periodically recorded a snapshot of the aliasing table, and I
+then examined these snapshots to quantify the rate at which aliasing
+pairs were added to the table.  The results for mysql, Thunderbird,
+and pbzip2 are shown in Figures~\ref{fig:eval:dyn_convergence:mysqld},
 \ref{fig:eval:dyn_convergence:thunderbird}, and \todo{do pbzip2 test},
 respectively.  These graphs show the number of aliasing pairs in the
 table at time $t$, as a percentage of the number of pairs in the final
@@ -2358,6 +2340,8 @@ experiments, I used the following workloads:
   \label{fig:eval:dyn_convergence:pbzip2}
 \end{figure}
 
+\subsection{Performance concerns}
+
 I also briefly investigated the performance cost of the analysis.  The
 time taken by pbzip2 to compress a 100MiB file without the dynamic
 analysis was $7.8 \pm 0.1$ seconds on this machine, mean and standard
@@ -2377,3 +2361,10 @@ PIN\needCite{} might provide a useful speed-up.
 
 \todo{Do I need perf numbers for any other test programs?  It'd make
   it much more convincing, but they'd be a nuisance to produce.}
+
+\section{Analysis performance}
+
+\todo{This'll just be some pretty noddy profiling things showing how
+  the analysis time breaks down into the different phases for the
+  ``normal'' configuration (i.e. how much in copy prop, how much in
+  symbolic execution, etc.).}
