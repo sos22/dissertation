@@ -14,6 +14,7 @@ series = [("indexed_toctou.crash_times_data", "No enforcer"),
 for i in xrange(len(series)):
     s = read_series(series[i][0])
     plot_series(s[0], i)
+
 print "\\end{tikzpicture}\\\\"
 
 print "\\centerline{"

@@ -9,14 +9,14 @@ def print_trailer(test_name):
     print "\\label{fig:eval:crash_cdf:%s}" % test_name
 
 def draw_one_test(test_name):
-    print_preamble()
+    print_preamble(False)
     # Draw the series.
     series = [(".crash_times_data", "No enforcer"),
               ("~0.crash_times_data", "Enforcer"),
               ("~0.dc.crash_times_data", "Data collider")]
     i = 0
     for (fname, _descr) in series:
-        s = read_series("%s%s" % (test_name, name))
+        s = read_series("%s%s" % (test_name, fname))
         print "  \\draw%s (0,0) " % decorations[i % len(decorations)],
         last_y = 0
         for (x,y) in s[0]:
@@ -30,7 +30,14 @@ def draw_one_test(test_name):
 
     print_trailer(test_name)
 
-legend = "Cumulative distribution functions of the time taken by the test cases to crash.  Solid lines show time without an enforcer; dashed lines show time with an enforcer; dotted lines show time with the DataCollider-like tool.  All tests were run 100 times with a 180 second timeout.  Note log scale."
+legend = "Cumulative distribution functions of the time taken by the test cases to crash.  X-axis is time to reproduce, in seconds.  All tests were run 100 times.  Note log scale on x-axis.\\\\\\\\\n"
+legend = legend + "\\shortstack[l]{\n"
+def do_one(idx, description):
+    return "  \\raisebox{1mm}{\\tikz{\\draw%s (0,0) -- (1,0);}} %s\n" % (decorations[idx % len(decorations)], description)    
+legend = legend + do_one(0, "No enforcer") + "\\\\"
+legend = legend + do_one(1, "Enforcer") + "\\\\"
+legend = legend + do_one(2, "Data collider")
+legend = legend + "}"
 
 buglist = ["simple_toctou", "indexed_toctou", "crash_indexed_toctou",
            "interfering_indexed_toctou", "context", "cross_function",

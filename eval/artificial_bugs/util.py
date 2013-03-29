@@ -62,7 +62,7 @@ def plot_series(data, idx):
             print " -- %s" % lp,
     print " -- (%f, %f);" % (fig_width, perc_to_y(last_y))
 
-def print_preamble():
+def print_preamble(x_label = True):
     print "\\begin{tikzpicture}"
     # Draw axes
     print "  \\draw[->] (0,0) -- (0,5);"
@@ -70,6 +70,8 @@ def print_preamble():
     # x ticks
     for i in abscissae:
         print "  \\node at (%f,0) [below] {%s};" % (time_to_x(i), i)
+    if x_label:
+        print "  \\node at (%f,-12pt) [below] {Time to reproduce, seconds};" % (fig_width/2)
     # y ticks
     for i in xrange(0,11,2):
         print "  \\node at (0,%f) [left] {%s\\%%};" % (perc_to_y(i/10.0), render_nr(i* 10.0))

@@ -562,16 +562,16 @@ full CDFs are shown in Figure~\ref{fig:eval:indexed_toctou:no_scs}.
 \begin{figure}
   \input{eval/artificial_bugs/special/indexed_toctou_no_scs.tex}
   \caption{Effect of side-condition checking on the time taken to
-    reproduce the indexed\_toctou bug, in seconds.}
+    reproduce the indexed\_toctou bug.}
   \label{fig:eval:indexed_toctou:no_scs}
 \end{figure}
 
 \begin{figure}
-  \subfigure[][Without enforcer]{ \input{eval/indexed_toctou_vary_nr_ptrs_no_enforcer.tex} }
-  \subfigure[][With enforcer]{ \input{eval/indexed_toctou_vary_nr_ptrs_enforcer.tex} }
+  \subfigure[][Without enforcer]{ \input{eval/artificial_bugs/special/indexed_toctou_vary_nr_ptrs_no_enforcer.tex} }
+  \subfigure[][Without enforcer]{ \input{eval/artificial_bugs/special/indexed_toctou_vary_nr_ptrs_enforcer.tex} }
   \caption{Reproduction times with and without an enforcer loaded, for
     varying values of \texttt{NR\_PTRS}.  Note that the two graphs use
-    different scales, and that both use a log y scale.}
+    different scales, and that both use a log scale.}
   \label{fig:eval:indexed_toctou:nr_ptrs}
 \end{figure}
 
@@ -591,17 +591,19 @@ reflects the actual behaviour of the program.  The dips in
 reproduction time around $\texttt{NR\_PTRS} = 200$ and
 $\texttt{NR\_PTRS} = 400$, for instance, are both reproducible, and
 persisted across multiple repeats of the experiment on the same
-machine.  I am unable to explain this precise behaviour, beyond
-speculating that it might be due to some aliasing effect between those
-values of \texttt{NR\_PTRS} and some periodic structure as processor
-cache lines, or possibly even some peculiarity the random number
-generator.  The complex behaviour of an apparently simple test is
-reflective of the general complexity of concurrency-related bugs, and
-is one of the reasons why they are often difficult for programmers to
-correctly diagnose\needCite{}.  The chart with the enforcer, by
-contrast, shows much simpler behaviour.  This would make the bug far
-easier for a programmer to fix, even without the significant reduction
-in the time take to reproduce it.
+machine\footnote{This means that plotting a regression line on the
+  chart is something of an abuse, but I believe that this is the
+  clearest way of presenting this data.}.  I am unable to explain this
+precise behaviour, beyond speculating that it might be due to some
+aliasing effect between those values of \texttt{NR\_PTRS} and some
+periodic structure as processor cache lines, or possibly even some
+peculiarity the random number generator.  The complex behaviour of an
+apparently simple test is reflective of the general complexity of
+concurrency-related bugs, and is one of the reasons why they are often
+difficult for programmers to correctly diagnose\needCite{}.  The chart
+with the enforcer, by contrast, shows much simpler behaviour.  This
+would make the bug far easier for a programmer to fix, even without
+the significant reduction in the time take to reproduce it.
 
 The automatic fix generator works well with this bug, and produces
 roughly the same fix as it did in the simple\_toctou bug: one critical
@@ -640,8 +642,8 @@ find the best possible placement, it does avoid some very poor ones.
 \begin{figure}
   \input{eval/artificial_bugs/special/delay_positioning.tex}
   \caption{CDF of time taken to reproduce the crash\_indexed\_toctou
-    and interfering\_indexed\_toctou bugs in different configurations,
-    in seconds.  All experiments were repeated one hundred times.}
+    and interfering\_indexed\_toctou bugs in different configurations.
+    All configurations were repeated one hundred times.}
   \label{fig:biassed_indexed_toctou:times}
 \end{figure}
 
@@ -911,8 +913,7 @@ can be generated, and this successfully fixes both bugs.
 
 \begin{figure}
   \input{eval/artificial_bugs/special/multi_bugs.tex}
-  \caption{Reproduction times CDFs, in seconds, for the multi\_bug
-    test.}
+  \caption{Reproduction times CDFs for the multi\_bug test.}
 \end{figure}
 
 \subsection{Multiple crashing and interfering threads (multi\_threads)}
@@ -942,10 +943,8 @@ issue.
 
 \begin{figure}
   \input{eval/artificial_bugs/special/multi_threads.tex}
-  \caption{Effect of the fairness of the enforcer's internal locks on
-    bug reproduction time.  Solid line shows time with no enforcer,
-    dashed line shows time with an enforce and a fair lock, dotted
-    line shows time with an enforcer and an unfair lock.}
+  \caption{CDF of reproduction times with different enforcer lock
+    implementations.}
   \label{fig:eval:multi_threads}
 \end{figure}
 
@@ -2018,7 +2017,7 @@ The analysis time was quite reasonable here:
 
 \begin{itemize}
 \item The static analysis phase of building the \gls{programmodel}
-  took $1240 \pm 10$ seconds.
+  took $1240 \pm 10$ seconds, or about twenty minutes.
 \item Building the \glspl{verificationcondition} took $390 \pm 10$
   milliseconds.
 \item It took $640 \pm 10$ milliseconds to build each of the two
