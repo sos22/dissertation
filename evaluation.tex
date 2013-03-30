@@ -2266,14 +2266,44 @@ and so takes longer to process.  \todo{Not sure there's much to say
 \section{W isolation}
 \label{sect:eval:w_isolation}
 
+\todo{No error bars on some of those measurements!  This section is
+  very noddy.}
+
 I now investigate the effect of the \gls{w-isolation} on the analysis,
 in terms of the time taken and the set of
-\glspl{verificationcondition} generated.
+\glspl{verificationcondition} generated.  I took the same 1000
+instructions from the optimised build of MySQL and analysed them with
+and without the \gls{w-isolation} assumption, with \gls{alpha} set to
+20 in both cases.  The results are shown in
+Table~\ref{table:eval:w-isolation}.  As expected, the
+\gls{w-isolation} assumption modestly decreases both the number of
+\glspl{verificationcondition} which must be checked by run-time
+\glspl{bugenforcer} and the time taken to generate them.
 
-\todo{This is going to be pretty cursory: just run it once with the W
-  isolation assumption made, then again without the assumption, and
-  see how many additional VCs we need, how many more timeouts we get,
-  and how much longer it takes when we don't get timeouts.}
+\begin{table}
+  \begin{tabular}{lll}
+    & \multicolumn{2}{c}{\gls{w-isolation}} \\
+                                                           & Enabled & Disabled \\
+    Timeouts building \gls{crashingthread} {\StateMachines}& 245                    & 245 \\
+    Time to build \gls{crashingthread} {\StateMachine}, seconds & $0.5 \pm 0.1$* & $0.6 \pm 0.1$* \\
+    \Glspl{crashingthread} generating no \glspl{interferingthread} & 456                    & 406 \\
+    Number of \gls{interferingthread} \glspl{cfg} per \gls{crashingthread} & $5.1 \pm 0.5\dagger$ & $6.3 \pm 0.6\dagger$ \\
+    \hspace{5mm}Total number \gls{interferingthread} \gls{cfg} & 3819 & 4778 \\
+    Timeouts building \gls{interferingthread} {\StateMachines} & 17 & 71 \\
+    \hspace{5mm}As percentage of \gls{interferingthread} \glspl{cfg} & 0.4\% & 1.5\% \\
+    Time to build \glspl{interferingthread} {\StateMachines}, seconds & $0.11 \pm 0.02$* & $0.12 \pm 0.01$* \\
+    Timeouts in symbolic execution & 35 & 281 \\
+    \hspace{5mm}As percentage of \glspl{interferingthread} & 0.9\% & 7.6\% \\
+    Symbolic execution time per \glspl{interferingthread}, seconds & $0.96 \pm 0.07$* & $1.31 \pm 0.08$* \\
+    Number of \glspl{verificationcondition} & 682 & 863 \\
+    \hspace{5mm}As percentage of \glspl{interferingthread} & 18\% & 18\% \\
+    \hspace{5mm}Per \gls{crashingthread} & 0.9 & 1.1 \\
+  \end{tabular}
+  \caption{Effects of the \gls{w-isolation} assumption.
+    *: mean and standard deviation of mean for all runs which did not time out.
+    $\dagger$: mean and standard deviation of mean}
+  \label{table:eval:w-isolation}
+\end{table}
 
 \section{Dynamic analysis}
 \label{sect:eval:dynamic_analysis}
