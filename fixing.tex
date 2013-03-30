@@ -132,21 +132,22 @@ the verification condition contains enough information to determine
 whether dropping the lock is safe, but {\technique} does not make use
 of this information, and always uses the former strategy.
 
+\label{sect:fixing:rw_afix}
 This algorithm is quite similar to that used in AFix
 \cite{Jin2011}\footnote{But note that the present author implemented
-  that part of {\implementation} before AFix was published.}.  There
-are, however, several differences between them.  Most obviously, the
-AFix algorithm considers only simple two-access critical sections,
-whereas this algorithm can enforce more complex $n$-access ones.  Even
-where there are precisely two accesses to be protected the set of
-instructions in the critical section can differ slightly, because
-{\technique} will exit the critical section if the thread leaves the
-\gls{cfg} in the {\StateMachine}, whereas AFix exits if the thread
-cannot reach another protected instruction in the current function
-invocation.  This is sometimes an advantage and sometimes a
-disadvantage, depending on why an instruction is missing from the
-{\StateMachine} \gls{cfg}.  Some instructions will be missing because
-they were cut off by the \gls{alpha} limit on the
+  that part of {\implementation} in June 2010, before AFix was
+  published.}.  There are, however, several differences between them.
+Most obviously, the AFix algorithm considers only simple two-access
+critical sections, whereas this algorithm can enforce more complex
+$n$-access ones.  Even where there are precisely two accesses to be
+protected the set of instructions in the critical section can differ
+slightly, because {\technique} will exit the critical section if the
+thread leaves the \gls{cfg} in the {\StateMachine}, whereas AFix exits
+if the thread cannot reach another protected instruction in the
+current function invocation.  This is sometimes an advantage and
+sometimes a disadvantage, depending on why an instruction is missing
+from the {\StateMachine} \gls{cfg}.  Some instructions will be missing
+because they were cut off by the \gls{alpha} limit on the
 \gls{analysiswindow}; releasing the lock for these instructions is
 usually undesirable, as it re-introduces some of the concurrent
 interleavings which the patch was supposed to eliminate.  Other
@@ -285,7 +286,7 @@ critical section to span an entire loop rather than just a single
 iteration of it, which could potentially aggravate the liveness and
 fairness issues which are inherent to any lock-based scheme.
 
-\section{Recompiling the protected code with additional protection}
+\section{Recompiling the protected code with additional synchronisation}
 
 This scheme allows the program to run at native speed when executing
 code which does not have to be protected, but still requires it to be

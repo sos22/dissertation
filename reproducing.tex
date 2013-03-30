@@ -139,7 +139,8 @@ $\mathit{idx1}$ is local to the crashing thread and $\mathit{idx2}$ to
 the interfering one), so that no single thread can evaluate the
 condition by itself.  
 
-\begin{figure}
+\begin{wrapfigure}{l}{7.5cm}
+  \vspace{-12pt}
   \centerline{
   \begin{tikzpicture}
     \node[draw] (A) {A};
@@ -159,9 +160,9 @@ condition by itself.
   \caption{A happens-before graph which cannot be reproduced by
     inserting a simple delay.  The bug of interest reproduces only for
     the access ordering A, X, B, Y, C.}
+  \vspace{-12pt}
   \label{fig:enforce_crash:complex_hb}
-\end{figure}
-
+\end{wrapfigure}
 Figure~\ref{fig:enforce_crash:complex_hb} shows a more complex
 example.  The graph would be difficult to enforce by simply inserting
 fixed delays between instructions within a given thread.  Consider,
@@ -184,8 +185,7 @@ happens-before graph will be achieved precisely when all of these
 message operations succeed.
 
 These messages are synchronous, in the sense that a message operation
-cannot complete unless both the sender and the receiver are
-simultaneously at the relevant instructions.
+cannot
 \begin{wrapfigure}{r}{6cm}
   \vspace{-17pt}
   \begin{tikzpicture}
@@ -203,7 +203,9 @@ simultaneously at the relevant instructions.
   \label{fig:message_petri_net}
   \vspace{-20pt}
 \end{wrapfigure}
-This provides a convenient place in which to evaluate side-conditions.
+complete unless both the sender and the receiver are
+simultaneously at the relevant instructions.  This provides a
+convenient place in which to evaluate side-conditions.
 Figure~\ref{fig:message_petri_net} gives a Petri net semantics for the
 message operation.  One way of reading this diagram is to say that the
 process starts with two threads, in the two before locations, which
@@ -222,10 +224,10 @@ adopted by {\implementation}.
   \subfigure[][An unenforcable control-flow and happens-before graph.]{
     \begin{tikzpicture}
       \node (thread0) {Thread 0};
-      \node[CfgInstr, below = of thread0] (A) {$A_0$};
+      \node[CfgInstr, below = 2.7 of thread0] (A) {$A_0$};
       \node[CfgInstr, below = of A] (B) {$B_0$};
       \node[right = 2 of thread0] (thread1) {Thread 1};
-      \node[CfgInstr, below = of thread1] (C) {$C_1$};
+      \node[CfgInstr, below = 2.7 of thread1] (C) {$C_1$};
       \node[CfgInstr, below = of C] (D) {$D_1$};
       \draw[->] (A) -- (B);
       \draw[->] (C) -- (D);
@@ -1061,7 +1063,7 @@ The replacement for {\tt c} is similar:
     \node (n11) [below = of n10] {};
     \node (n12) [below = of n11] {};
     \node (n13) [below = of n12] {};
-    \node (n14) [below = of n13, CfgInstr] {Receive message 1};
+    \node (n14) [below = 1.35 of n13, CfgInstr] {Receive message 1};
     \node (n24) [right = of n14, CfgInstr] {\shortstack{Return to\\instruction {\tt c}}};
     \node (n15) [below = of n14, CfgInstr] {\tt c: loc1 = 7};
     \node (n16) [below = of n15, CfgInstr] {Send message 2};
@@ -1089,7 +1091,7 @@ The replacement for {\tt c} is similar:
   \end{tikzpicture}
   \caption{Crash enforcement plan for the bug in
     Figure~\ref{fig:enforcement:example_bug}.  Dashed lines indicate
-    message passing operations, and dotted ones indicate error paths.}
+    message passing operations and dotted ones indicate error paths.}
   \label{fig:enforcement:example_bug:plan}
 \end{figure}
 
@@ -1421,6 +1423,8 @@ in Figure~\ref{fig:enforce:message_windows}.
         (13mm,-40mm);
       \draw (19mm,-8mm) -- (21mm,-8mm) -- (21mm,-23mm) -- (19mm,-23mm);
       \draw[->] (TX) -- (RX);
+      \node [right = 0.1 of RX] {};
+      \node [left = 0.1 of TX] {};
     \end{tikzpicture}
     \label{fig:enforce:message_windows:rx_first}
   }
@@ -1440,6 +1444,8 @@ in Figure~\ref{fig:enforce:message_windows}.
       \draw (19mm,-28mm) -- (21mm,-28mm) -- (21mm,-34mm) -- (19mm,-34mm);
 
       \draw[->,dashed] (TX) -- (RX);
+      \node [right = 0.3 of RX] {};
+      \node [left = 0.3 of TX] {};
     \end{tikzpicture}
     \label{fig:enforce:message_windows:failed}
   }
