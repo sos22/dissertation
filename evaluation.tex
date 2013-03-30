@@ -2285,23 +2285,24 @@ Table~\ref{table:eval:w-isolation}.  As expected, the
     & \multicolumn{2}{c}{\gls{w-isolation}} \\
                                                            & Enabled & Disabled \\
     Timeouts building \gls{crashingthread} {\StateMachines}& 245                    & 245 \\
-    Time to build \gls{crashingthread} {\StateMachine}, seconds & $0.5 \pm 0.1$* & $0.6 \pm 0.1$* \\
+    Time to build \gls{crashingthread} {\StateMachine} & $0.5 \pm 0.1$* & $0.6 \pm 0.1$* \\
     \Glspl{crashingthread} generating no \glspl{interferingthread} & 456                    & 406 \\
+    Time to build \gls{interferingthread} \glspl{cfg}, per \gls{crashingthread} & $1.5 \pm 0.3$* & $1.5 \pm 0.3$* \\
     Number of \gls{interferingthread} \glspl{cfg} per \gls{crashingthread} & $5.1 \pm 0.5\dagger$ & $6.3 \pm 0.6\dagger$ \\
     \hspace{5mm}Total number \gls{interferingthread} \gls{cfg} & 3819 & 4778 \\
     Timeouts building \gls{interferingthread} {\StateMachines} & 17 & 71 \\
     \hspace{5mm}As percentage of \gls{interferingthread} \glspl{cfg} & 0.4\% & 1.5\% \\
-    Time to build \glspl{interferingthread} {\StateMachines}, seconds & $0.11 \pm 0.02$* & $0.12 \pm 0.01$* \\
+    Time to build \glspl{interferingthread} {\StateMachines} & $0.11 \pm 0.02$* & $0.12 \pm 0.01$* \\
     Timeouts in symbolic execution & 35 & 281 \\
     \hspace{5mm}As percentage of \glspl{interferingthread} & 0.9\% & 7.6\% \\
-    Symbolic execution time per \glspl{interferingthread}, seconds & $0.96 \pm 0.07$* & $1.31 \pm 0.08$* \\
+    Symbolic execution time per \glspl{interferingthread} & $0.96 \pm 0.07$* & $1.31 \pm 0.08$* \\
     Number of \glspl{verificationcondition} & 682 & 863 \\
     \hspace{5mm}As percentage of \glspl{interferingthread} & 18\% & 18\% \\
     \hspace{5mm}Per \gls{crashingthread} & 0.9 & 1.1 \\
   \end{tabular}
-  \caption{Effects of the \gls{w-isolation} assumption.
-    *: mean and standard deviation of mean for all runs which did not time out.
-    $\dagger$: mean and standard deviation of mean}
+  \caption{Effects of the \gls{w-isolation} assumption.  *: mean and
+    standard deviation of mean for all runs which did not time out,
+    seconds.  $\dagger$: mean and standard deviation of mean}
   \label{table:eval:w-isolation}
 \end{table}
 
@@ -2310,9 +2311,62 @@ Table~\ref{table:eval:w-isolation}.  As expected, the
 
 \subsection{Effects on analysis performance and correctness}
 
-\todo{This'll be pretty basic: run the analysis with input from the
-  dynamic analysis, then run without, and see how much longer it takes
-  and how many more false positives and timeouts we get.}
+\todo{This is another one which is lacking error bars.}
+
+Similarly to the investigation of the effects of the \gls{w-isolation}
+assumption in Section~\ref{sect:eval:w_isolation}, I now investigate
+the effects of the dynamic aliasing analysis on the generation of
+\glspl{verificationcondition}\editorial{gurk}.  It is difficult to
+completely avoid using the information from the dynamic analysis while
+generating \glspl{verificationcondition}, as it is needed to generate
+the \gls{interferingthread} \glspl{cfg}, but it is possible to disable
+the parts of the {\StateMachine} simplifications which depend on it
+and the parts of the symbolic execution engine which use it, and that
+is what I did in this test.  The results are shown in
+Table~\ref{table:eval:effect_of_dyn}.  Note that the aliasing enabled
+column of this table was produced from the same experiment as produced
+the \gls{w-isolation} enabled column in
+Table~\ref{table:eval:w-isolation}.
+
+There are two main observations to draw from this table: discarding
+the information from the dynamic analysis dramatically reduces the
+number of timeouts building the \gls{crashingthread} {\StateMachines},
+but even more dramatically increases the number of timeouts and time
+taken in the other phases of the analysis.  These two observations
+have the same explanation.  The various {\StateMachine} simplification
+steps depend almost completely on the information from the dynamic
+aliasing analysis in order to determine which memory accesses alias.
+Without that information, they can achieve very little, ensuring that
+they exit very quickly and the \gls{crashingthread} {\StateMachines}
+are all built very quickly, but also ensuring that the later analysis
+phases which make use of the {\StateMachines} perform very badly.
+
+\begin{table}
+  \begin{tabular}{lll}
+    & \multicolumn{2}{c}{Dynamic aliasing analysis} \\
+                                                           & Enabled & Disabled \\
+    Timeouts building \gls{crashingthread} {\StateMachines}& 245                    & 9 \\
+    Time to build \gls{crashingthread} {\StateMachine} & $0.5 \pm 0.1$* & $0.7 \pm 0.1$* \\
+    \Glspl{crashingthread} generating no \glspl{interferingthread} & 456                    & 7 \\
+    Timeouts building \gls{interferingthread} \glspl{cfg} & 0 & 2 \\
+    Time to build \gls{interferingthread} \glspl{cfg}, per \gls{crashingthread} & $1.5 \pm 0.3$* & $1.5 \pm 0.4$* \\
+    Number of \gls{interferingthread} \glspl{cfg} per \gls{crashingthread} & $5.1 \pm 0.5\dagger$ & $12 \pm 1\dagger$ \\
+    \hspace{5mm}Total number \gls{interferingthread} \gls{cfg} & 3819 & 4778 \\
+    Timeouts building \gls{interferingthread} {\StateMachines} & 17 & 130\\
+    \hspace{5mm}As percentage of \gls{interferingthread} \glspl{cfg} & 0.4\% & 3\% \\
+    Time to build each \glspl{interferingthread} {\StateMachine} & $0.11 \pm 0.02$* & $1.31 \pm 0.04$* \\
+    Timeouts in symbolic execution & 35 & 1601 \\
+    \hspace{5mm}As percentage of \glspl{interferingthread} & 0.9\% & 34\% \\
+    Symbolic execution time per \glspl{interferingthread} & $0.96 \pm 0.07$* & $3.9 \pm 0.3$* \\
+    Number of \glspl{verificationcondition} & 682 & 656 \\
+    \hspace{5mm}As percentage of \glspl{interferingthread} & 18\% & 14\% \\
+    \hspace{5mm}Per \gls{crashingthread} & 0.9 & 0.7 \\
+  \end{tabular}
+  \caption{Effects of the dynamic aliasing analysis.  *: mean and
+    standard deviation of mean for all runs which did not time out,
+    seconds.  $\dagger$: mean and standard deviation of mean.}
+  \label{table:eval:effect_of_dyn}
+\end{table}
 
 \subsection{Convergence times}
 
