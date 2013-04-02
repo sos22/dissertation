@@ -24,3 +24,7 @@ cd unopt
 ../build_gsc_graph.py > gsc.tex
 ../build_gvc_graph.py unopt > gvc.tex
 cd ../../
+
+cd bubble_charts
+./rebuild.sh
+cd ..

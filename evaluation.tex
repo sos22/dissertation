@@ -2070,6 +2070,8 @@ variant of the simple\_toctou bug, embedded in a much larger program.
 As expected, {\implementation} is able to find the bug, generate an
 enforcer, and generate a fix, and they all behave as expected.
 
+\todo{Put in some performance numbers here.}
+
 \begin{figure}
   \subfigure[][Crashing thread]{
     \texttt{
@@ -2104,6 +2106,185 @@ bugs, as desired.
 \todo{Complication: this bug is only present in builds of mysql which
   don't have compiler optimisations, because otherwise the compiler
   caches \texttt{PSI\_server} in a register and avoids the crash.}
+
+\section{Time spent in the various phases}
+\label{sect:eval:time_details}
+
+This section looks at how the time taken by the analysis breaks down
+across the various phases and components of {\implementation}.  I look
+first at the component which must be run for each potentially-crashing
+instruction.  For this experiment, I selected 1000 memory-accessing
+instructions at random from the optimised build of MySQL, analysed
+them with {\implementation}, and timed how long the various components
+of the analysis took.  The results are shown in
+Figure~\ref{fig:eval:time_breakdown:crashing}.  This chart shows
+several important properties of the analysis:
+
+\begin{figure}
+  \input{eval/bubble_charts/bubble1.tex}
+  \caption{Time taken by the different phases.  See text for detailed
+    description.}
+  \label{fig:eval:time_breakdown:crashing}
+\end{figure}
+
+\begin{itemize}
+\item Each phase of the analysis is represented by a distinct blob.
+  Each blob is formed from a number of horizontal lines, with each
+  line representing a single potentially-crashing instruction which
+  required non-trivial work at that phase of the analysis.  The width
+  of these lines gives the amount of time which that instruction spent
+  in that phase, using the scale immediately below the chart.  This means
+  that several useful properties can be read off from the blobs:
+
+  \begin{itemize}
+  \item The area of a blob is proportional to the total amount of time
+    spent in the corresponding phase, across all potentially-crashing
+    instructions.
+  \item The width of a blob is proportional to the maximum time spent
+    in that phase by any potentially-crashing instruction.
+  \item The shape of the blob shows the level of variability in the
+    time spent in the phase.
+  \item The height of the blob shows how many instructions required
+    analysis in that phase.
+  \end{itemize}
+
+  The lines within a blob are ordered so that they increase
+  monotonically and then decrease monotonically but is otherwise
+  arbitrary.  In particular, the height of a blob's centre is not
+  meaningful.
+
+\item The horizontal position of a blob is given by the average time
+  at which that phase finished, for instructions which required
+  non-trivial work in that phase, using the scale given on the x axis.
+  Note that this is a different scale to the one used for the length
+  of horizontal lines within a blob; this is necessary because the
+  mean and maximum for some of the distributions displayed differ by
+  two orders of magnitude.
+
+\item Not every instruction requires analysis, and the solid line
+  shows how many instructions can be dismissed early.  For instance,
+  roughly 19\% of the instructions analysed were accessing either the
+  stack or a fixed address which is guaranteed to be mapped, and there
+  is no need to perform any analysis on these instructions.
+  Similarly, for 48\% of instructions the {\StateMachine} simplifiers
+  were able to reduce the {\StateMachine} to the point where it did
+  not depend on any memory loads for which the dynamic aliasing model
+  could find \glspl{interferingstore}, and so there were no
+  interfering \glspl{cfg} for these potentially-crashing instructions.
+
+\item Similarly, some instructions do not start later phases because
+  of timeouts earlier in the analysis phase.  The number of timeouts
+  before a particular phase is given by the difference between the
+  solid and dashed lines.  In this case, there was one timeout
+  building the crashing {\StateMachine}, one simplifying it, and
+  five deriving C-atomic.  All timeouts were after one minute.
+\end{itemize}
+
+Three important conclusions can be drawn from this chart:
+
+\begin{itemize}
+\item The most expensive phase of the analysis is processing the
+  interfering \glspl{cfg}.  This will be analysed in more detail next.
+\item The second most expensive phase is generating the C-atomic
+  constraint.  This phase performs much of the work of determining
+  which aliasing between thread-local accesses in the crashing
+  {\StateMachine}, and so this reflects the fact that
+  {\implementation} has only a very primitive model of the program's
+  heap and global memory\footnote{The simplification phase also does
+    some aliasing resolution, but usually defers the most complicated
+    problems to the symbolic execution phase, and so does not see the
+    same explosion in run-time when presented with a hard aliasing
+    problem.}.
+\item Most of the distributions show a quite bimodal pattern: a phase
+  either completes very quickly, often too quickly to be easily seen
+  on this chart, or it takes a very long time indeed.  Many of the
+  algorithms used by {\technique} have worse than exponential worst
+  case running time, and instructions which hit one of the worst cases
+  effectively never complete while those which avoid them complete
+  very quickly.
+\end{itemize}
+
+I now investigate the time taken processing each interfering
+\gls{cfg}.  Figure~\ref{fig:eval:time_breakdown:interfering} shows the
+time taken by the various sub-phases of this, in the same style as the
+previous figure.  The data for this chart was collected in the same
+run of {\implementation} as that for the previous chart.  There were
+2157 interfering \glspl{cfg} in total.
+
+The third phase of this chart, ``rederive crashing {\StateMachine}'',
+perhaps requires further explanation.  Fixing the interfering
+\gls{cfg} fixes the set of instructions which the \gls{crashingthread}
+might race with, which can often allow further simplifications in the
+crashing {\StateMachine} and in C-atomic.  This phase is responsible
+for discovering such simplifications.  In this case, those
+simplifications were sufficient to completely dismiss 56\% of the
+interfering \glspl{cfg}.
+
+\begin{figure}
+  \input{eval/bubble_charts/bubble2.tex}
+  \caption{Time taken by the different phases.  See text for detailed
+    description.}
+  \label{fig:eval:time_breakdown:interfering}
+\end{figure}
+
+Perhaps the most surprising part of this chart is that symbolically
+executing the \gls{ic-atomic} {\StateMachine} is much more expensive
+than symbolically executing the cross-product {\StateMachine}, even
+though the cross-product {\StateMachine} is far more complex.  This is
+in large part a selection effect: if the {\StateMachines} involve
+complicated aliasing, deriving \gls{ic-atomic} is highly likely to
+time out, and so {\implementation} will never reach the stage of
+symbolically executing the cross-product {\StateMachine}.  To confirm
+that hypothesis, I ran {\implementation} in a special mode which skips
+deriving \gls{ic-atomic} and instead just uses C-atomic as the
+\gls{inferredassumption}; the results are shown in
+Figure~\ref{fig:eval:time_breakdown:interfering_no_ic_atomic}.  As
+expected, the time taken processing the cross-product machine
+increased noticeably so that the total reduction in processing time
+was far less than the time taken deriving \gls{ic-atomic}.
+
+\begin{figure}
+  \input{eval/bubble_charts/bubble3.tex}
+  \caption{Time taken by the different phases with \gls{ic-atomic}
+    computation disabled.  See text for detailed description.}
+  \label{fig:eval:time_breakdown:interfering_no_ic_atomic}
+\end{figure}
+
+\todo{More experiments to run here: figure out how much time we're
+  spending in BDD processing, look at how long the different
+  simplification passes take.}
+
+The next thing to look at is how long it takes to convert these
+\glspl{verificationcondition} to \glspl{bugenforcer}.  For this
+experiment, I took the \todo{...} \glspl{verificationcondition}
+generated by the previous experiment and converted each one to an
+enforcer and timed how long each phase took; the results are shown in
+Figure~\ref{fig:eval:time_breakdown:convert_to_enforcer}.  In this
+case, the conversion process failed for one of the
+\gls{verificationcondition}, due to reaching the one-minute timeout
+whilst being sliced by the happens-before graph\footnote{I also tried
+  running that one \gls{verificationcondition} with the timeout
+  disabled and it did not complete within an hour.}.  This is not
+completely surprising: as discussed in
+\autoref{sect:enforce:slice_hb_graph}, the slicing algorithm has
+extremely expensive worst-case behaviour but can almost always avoid
+it in practice, and so is usually extremely cheap except for a small
+number of cases in which it effectively runs forever.
+
+The only other phase which requires a non-trivial amount of time is
+the final one, compiling the enforcer.  This involves converting the
+generated enforcer to C and passing it off to the system compiler (in
+this case, gcc version 4.4.3) to convert it into an ELF library.  The
+time taken by this phase is completely dominated by the time taken by
+the system compiler.
+
+
+\begin{figure}
+  \input{eval/bubble_charts/bubble4.tex}
+  \caption{Time taken by the different phases involved in converting a
+    \gls{verificationcondition} to a \gls{bugenforcer}.}
+  \label{fig:eval:time_breakdown:convert_to_enforcer}
+\end{figure}
 
 \section{Effects of the $\alpha$ parameter}
 \label{sect:eval:alpha}
@@ -2377,16 +2558,16 @@ that it periodically recorded a snapshot of the aliasing table, and I
 then examined these snapshots to quantify the rate at which aliasing
 pairs were added to the table.  The results for mysql, Thunderbird,
 and pbzip2 are shown in Figures~\ref{fig:eval:dyn_convergence:mysqld},
-\ref{fig:eval:dyn_convergence:thunderbird}, and \todo{do pbzip2 test},
-respectively.  These graphs show the number of aliasing pairs in the
-table at time $t$, as a percentage of the number of pairs in the final
-table.  These tests involved starting and restarting the program
-several times; such restarts are shown as dashed vertical lines.  The
-most important result here is that the dynamic aliasing analysis
-achieves reasonable coverage reasonably quickly, usually within ten
-minutes to quarter of an hour.  Asking users to run this dynamic
-analysis before using {\technique} is therefore not an unreasonable
-burden.
+\ref{fig:eval:dyn_convergence:thunderbird}, and
+\ref{fig:eval:dyn_convergence:pbzip2}, respectively.  These graphs
+show the number of aliasing pairs in the table at time $t$, as a
+percentage of the number of pairs in the final table.  These tests
+involved starting and restarting the program several times; such
+restarts are shown as dashed vertical lines.  The most important
+result here is that the dynamic aliasing analysis achieves reasonable
+coverage reasonably quickly, usually within ten minutes to quarter of
+an hour.  Asking users to run this dynamic analysis before using
+{\technique} is therefore not an unreasonable burden.
 
 For all tests, the dynamic analysis tool was configured to take one
 snapshot every 1,000,000 Valgrind basic blocks, which corresponds to a
@@ -2461,15 +2642,7 @@ For comparison, a null Valgrind skin completed this test in $226.6 \pm
 that most of the overhead of the dynamic analysis tool comes simply
 from the fact that it is implemented as a Valgrind skin, and that
 re-implementing it in a faster analysis framework such as
-PIN\needCite{} might provide a useful speed-up.
+PIN~\cite{Luk2005} might provide a useful speed-up.
 
 \todo{Do I need perf numbers for any other test programs?  It'd make
   it much more convincing, but they'd be a nuisance to produce.}
-
-\section{Analysis performance}
-\label{sect:eval:time_details}
-
-\todo{This'll just be some pretty noddy profiling things showing how
-  the analysis time breaks down into the different phases for the
-  ``normal'' configuration (i.e. how much in copy prop, how much in
-  symbolic execution, etc.).}
