@@ -3,7 +3,7 @@
 import sys
 import util
 
-figwidth = 13
+figwidth = 12.5
 figheight = 9
 
 series = []
@@ -20,7 +20,7 @@ while True:
     s = {}
     s["early out"] = False
     s["satisfiable"] = False
-    (start_time, words) = l
+    (sstart_time, words) = l
     if words != ["start", "interfering", "CFG"]:
         util.fail("lost sequence at %s" % str(l))
 
@@ -63,24 +63,26 @@ while True:
             util.lookahead = l
     if s.has_key("derive interfering CFGs") and not s.has_key("derive c-atomic"):
         s["derive c-atomic"] = { "dismiss": False, "failed": False, "time": 0 }
-    series.append((end_time - start_time, s))
+    series.append((end_time - sstart_time, s))
 
 series.sort()
 
-dilation = 40.0
+dilation = 165.0
 (bubbles, max_time, max_nr_samples) = util.transpose_bubbles(series, dilation, bubble_keys)
 
 y_centrums = {"compiling interfering CFG": 0.9,
               "simplifying interfering CFG": 0.75,
               "rederive crashing": 0.6,
               "early-out": 0.5,
-              "build ic-atomic": 0.5,
-              "simplify ic-atomic": 0.3,
+              "build ic-atomic": 0.9,
+              "simplify ic-atomic": 0.8,
               "execute ic-atomic": 0.9,
-              "cross build": 0.68,
-              "cross simplify": 0.53,
+              "cross build": 0.5,
+              "cross simplify": 0.25,
               "cross symbolic": 0.35,
-              "sat check": 0.15}
+              "sat check": 0.15,
+              "GC": 0.5,
+              "defect": 0.5}
 
 def scale_time(t):
     return t/125.0 * figwidth
@@ -88,33 +90,32 @@ def scale_idx(idx):
     return idx / float(max_nr_samples) * figheight
 
 x_labels = []
-for i in xrange(0,3):
-    x_labels.append({"posn": scale_time(i * dilation), "label": "%d.0" % i})
-    x_labels.append({"posn": scale_time((i + 0.5) * dilation), "label": "%d.5" % i})
+for i in xrange(0,8):
+    x_labels.append({"posn": scale_time(i * dilation / 10.0), "label": "0.%d" % i})
 
 util.print_preamble(x_labels, "Proportion of interfering \\glspl{cfg}", scale_time, 60, 10, figwidth, figheight)
 
-labels = {"compiling interfering CFG": {"posn": ((0.5, 0.95), "right"),
+labels = {"compiling interfering CFG": {"posn": ((0.1, 0.95), "right"),
                                         "label": "Compile interfering {\\StateMachine}"},
-          "simplifying interfering CFG": {"posn": ((0.5, 0.83), "right"),
+          "simplifying interfering CFG": {"posn": ((0.1, 0.83), "right"),
                                           "label": "Simplify interfering {\\StateMachine}"},
-          "rederive crashing": {"posn": ((0.5, 0.70), "right"),
+          "rederive crashing": {"posn": ((0.1, 0.70), "right"),
                                 "label": "Rederive crashing {\\StateMachine}"},
-          "build ic-atomic": {"posn": ((0.5, 0.50), "right"),
+          "build ic-atomic": {"posn": ((0.1, 0.60), "right"),
                               "label": "Build \\gls{ic-atomic} {\\StateMachine}"},
-          "simplify ic-atomic": {"posn": ((0.5, 0.06), "right"),
+          "simplify ic-atomic": {"posn": ((0.1, 0.50), "right"),
                                  "label": "Simplify \\gls{ic-atomic} {\\StateMachine}"},
-          "execute ic-atomic": {"posn": ((2.5, 0.5), "above"),
-                                "label": "\\shortstack[c]{Symbolically execute\\\\ \\gls{ic-atomic} {\\StateMachine}}"},
-          "cross build": {"posn": ((2.1, 0.3), "left"),
+          "execute ic-atomic": {"posn": ((0.41, 0.37), "below left = 0"),
+                                "label": "\\shortstack[r]{Symbolically execute\\\\ \\gls{ic-atomic} {\\StateMachine}}"},
+          "cross build": {"posn": ((0.41, 0.19), "left"),
                           "label": "Build cross-product {\\StateMachine}"},
-          "cross simplify": {"posn": ((2.5, 0.20), "right"),
-                          "label": "\\shortstack[l]{Simplify cross-product\\\\{\\StateMachine}}"},
-          "cross symbolic": {"posn": ((2.1, 0.17), "left"),
-                          "label": "\\shortstack[r]{Symbolically execute\\\\cross-product {\\StateMachine}}"},
-          "sat check": {"posn": ((2.5, 0.06), "right"),
-                        "label": "Final satisfiability check"}
+          "cross simplify": {"posn": ((0.41, 0.08), "left"),
+                          "label": "\\shortstack[r]{Simplify cross-product\\\\{\\StateMachine}}"},
+          "cross symbolic": {"posn": ((0.70, 0.55), "above"),
+                             "label": "\\shortstack[r]{Symbolically execute\\\\cross-product {\\StateMachine}}"},
+          "sat check": {"posn": ((0.71, 0.06), "left"),
+                        "label": "\\shortstack[r]{Final satisfia-\\\\bility check}"}
           }
-util.draw_bubbles(bubble_keys, bubbles, labels, y_centrums, scale_time, scale_idx, dilation, figheight)
+util.draw_bubbles(bubble_keys, bubbles, labels, y_centrums, scale_time, scale_idx, dilation, figheight, figwidth)
 util.draw_line_series(scale_idx, scale_time, max_nr_samples, bubble_keys, bubbles, figwidth, figheight)
 util.print_trailer(figwidth, figheight)

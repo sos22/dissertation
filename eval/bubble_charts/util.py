@@ -29,6 +29,15 @@ def get_line():
     return (ts, w[1:])
 
 def transpose_bubbles(series, dilation, bubble_keys):
+    defect_bubble = []
+    for s in series:
+        defect = s[0]
+        for k in bubble_keys:
+            if s[1].has_key(k):
+                defect -= s[1][k]["time"]
+        defect_bubble.append(defect)
+    defect_bubble.sort(reverse=True)
+
     dismiss = 0
     failed = 0
     offset = 0
@@ -49,6 +58,25 @@ def transpose_bubbles(series, dilation, bubble_keys):
         bubbles[k] = b
         offset += w
         max_time = offset + w
+
+    gc = []
+    for s in series:
+        if s[1].has_key("GC"):
+            gc.append(s[1]["GC"]["time"])
+        else:
+            gc.append(0)
+    gc.sort(reverse = True)
+    w = sum(gc) / len(gc)
+    bubbles["GC"] = {"dismiss": 0,
+                     "failed": 0,
+                     "samples": gc,
+                     "offset": (offset + w) * dilation}
+    w = sum(defect_bubble) / len(defect_bubble)
+    bubbles["defect"] = {"dismiss": 0,
+                         "failed": 0,
+                         "samples": defect_bubble,
+                         "offset": (offset + w) * dilation}
+    offset += w + 1
     return (bubbles, max_time, max_nr_samples)
 
 def print_preamble(x_labels, y_legend, scale_time, legend_nr_seconds, legend_step, figwidth, figheight):
@@ -57,6 +85,7 @@ def print_preamble(x_labels, y_legend, scale_time, legend_nr_seconds, legend_ste
     print "  \\draw[->] (0,0) -- (%f,0);" % figwidth
     for l in x_labels:
         print "  \\node at (%f,0) [below] {%s};" % (l["posn"], l["label"])
+    print "  \\node at (%f,0) [below] {Other};" % (figwidth + 1)
     print "  \\node at (%f,-12pt) [below] {Average phase finish times, seconds};" % (figwidth / 2)
 
     print "  %% second x scale"
@@ -75,15 +104,19 @@ def print_preamble(x_labels, y_legend, scale_time, legend_nr_seconds, legend_ste
     print "  \\node at (-30pt,%f) [rotate=90, left, anchor = south] {%s};" % (figheight / 2, y_legend)
 
 
-def label_bubbles(labels, scale_time, scale_idx, bubbles, y_centrums, dilation, fh):
+def label_bubbles(labels, scale_time, scale_idx, bubbles, y_centrums, dilation, fh, fw):
     print "  %% bubble labels"
     for (key, data) in labels.iteritems():
-        print "  \\draw [color=black!50] (%f,%f) node [color=black, %s] {\!\!%s} -- (%f,%f);" % (scale_time(data["posn"][0][0]*dilation),
-                                                                                                 data["posn"][0][1] * fh,
-                                                                                                 data["posn"][1],
-                                                                                                 data["label"],
-                                                                                                 scale_time(bubbles[key]["offset"]),
-                                                                                                 scale_idx(y_centrums[key] * len(bubbles[key]["samples"])))
+        if key == "defect":
+            x = fw + 1
+        else:
+            x = scale_time(bubbles[key]["offset"])
+        print "  \\draw [color=blue!50] (%f,%f) node [color=black, %s] {\!\!%s\!\!} -- (%f,%f);" % (scale_time(data["posn"][0][0]*dilation),
+                                                                                                    data["posn"][0][1] * fh,
+                                                                                                    data["posn"][1],
+                                                                                                    data["label"],
+                                                                                                    x,
+                                                                                                    scale_idx(y_centrums[key] * len(bubbles[key]["samples"])))
 
 def displacement_vector(ptA, ptB):
     return (ptB[0] - ptA[0], ptB[1] - ptA[1])
@@ -100,8 +133,8 @@ def distance(a, b):
 def unit_vector(a):
     return vector_scale(a, 1/vector_magnitude(a))
 
-def draw_bubbles(bubble_keys, bubbles, labels, y_centrums, scale_time, scale_idx, dilation, figheight):
-    label_bubbles(labels, scale_time, scale_idx, bubbles, y_centrums, dilation, figheight)
+def draw_bubbles(bubble_keys, bubbles, labels, y_centrums, scale_time, scale_idx, dilation, figheight, figwidth):
+    bubble_keys = bubble_keys + ["defect"]
     reordered_samples = {}
     for key in bubble_keys:
         bubble = bubbles[key]
@@ -124,16 +157,19 @@ def draw_bubbles(bubble_keys, bubbles, labels, y_centrums, scale_time, scale_idx
         pts = []
         samples = reordered_samples[key]
         bubble = bubbles[key]
-        x_base = bubble["offset"]
+        if key == "defect":
+            x_base = figwidth + 1
+        else:
+            x_base = scale_time(bubble["offset"])
         def add_pt(new_pt):
             if skip_reduction or len(pts) == 0 or distance(new_pt, pts[-1]) >= min_move:
                 pts.append(new_pt)
         for idx in xrange(len(samples)):
-            add_pt((scale_time(x_base - samples[idx] / 2), scale_idx(idx)))
+            add_pt((x_base - scale_time(samples[idx] / 2), scale_idx(idx)))
         for idx in xrange(len(samples) - 1, 0, -1):
-            add_pt((scale_time(x_base + samples[idx] / 2), scale_idx(idx)))
+            add_pt((x_base + scale_time(samples[idx] / 2), scale_idx(idx)))
         points[key] = pts
-    for command in ["\\draw[color=black!10]", "\\fill"]:
+    def draw_blob(command):
         for key in bubble_keys:
             print "  %%%% Bubble for %s" % key
             pts = points[key]
@@ -169,6 +205,9 @@ def draw_bubbles(bubble_keys, bubbles, labels, y_centrums, scale_time, scale_idx
                 idx += nr_pts_in_line
             # Close it off.
             print "        (%f, %f) -- (%f, %f);" % (pts[-1][0], pts[-1][1], pts[0][0], pts[0][1])
+    draw_blob("\\draw[color=black!10]")
+    label_bubbles(labels, scale_time, scale_idx, bubbles, y_centrums, dilation, figheight, figwidth)
+    draw_blob("\\fill")
 
 def draw_line_series(scale_idx, scale_time, max_nr_samples, bubble_keys, bubbles, figwidth, figheight):
     # Plot the dismissed line

@@ -29,7 +29,7 @@ detailed description.
     Stereotyping               & Anomalous behaviour                          & Dynamic         & Anomaly-based IDSes~\cite{Forrest1996a}, Pu and Wei~\cite{Pu2006}, HeapMD~\cite{Chilimbi2006}, DIDUCE~\cite{Hangal2002}, MUVI\cite{Lu2007} \\
                                &                                              & Static          & Bugs as deviant behaviours~\cite{Engler2001}\\
     \hdashline
-    Extended assertions        & \multirow{2}{*}{\parbox{5.5cm}{Violations of programmer-identified properties}} & Dynamic        & TESLA~\needCite{}, Uppuluri et al.~\cite{Uppuluri2005} \\
+    Extended assertions        & \multirow{2}{*}{\parbox{5.5cm}{Violations of programmer-identified properties}} & Dynamic        & TESLA~\cite{Watson2013}\editorial{Need a better cite}, Uppuluri et al.~\cite{Uppuluri2005} \\
                                &                                              & Static          & Meta-compilation\cite{Engler2000a}\\
     \hdashline
     Typestate systems~\cite{Strom1986a}& \multirow{2}{*}{\parbox{5.5cm}{Object access protocol sequencing violations}} & Dynamic & Gradual typestates~\cite{Wolff2011}, 2ndStrike~\cite{Gao2011} \\
@@ -303,26 +303,24 @@ violation bugs will violate at least one of those rules.
 
 \subsection{Extended assertions}
 
-\todo{Really want a bit more here.}
-
 All of the schemes discussed so far in this section are intended to
-discover concurrency bugs automatically.  An alternative approach,
-advocated by the TESLA project\needCite{}, amongst others, is just to
-make it easier for programmers to find bugs themselves.  The core idea
-here is to provide programmers with a language for expressing temporal
-and concurrent properties of the program and to then check these
-properties as the program runs, reporting an error if they ever fail.
-This is conceptually rather similar to {\technique}'s enforcers, with
-the difference that a TESLA assertion simply checks whether a bug has
-happened, whereas a {\technique} enforcer will adjust the program's
-schedule so as to make the target bug more likely.  One potentially
-interesting avenue for future work would be to combine the two
-techniques: take a TESLA assertion and convert it to a
-{\implementation}-style message passing automaton which would make it
-easier to reproduce the bug detected by the assertion.  Meta-level
-compilation~\cite{Engler2000a} is a very similar idea, except that the
-extended assertions are checked as part of the compilation process
-rather than at run-time.
+discover concurrency bugs automatically.  An alternative approach is
+to instead make it easier for the programmer to find the errors
+themselves.  Meta-level compilation~\cite{Engler2000a}, which allows
+programmers to extend the compiler with system-specific static
+checking rules, is one example of such a system.
+
+The TESLA project~\cite{Watson2013}\editorial{still need a better
+  cite} represents another approach to this idea.  In the TESLA model,
+the programmer provides an approximation of the desired state machine
+for some fragment of the program, expressed as a formula in a
+linear-time temporal logic.  This is then compiled into a program
+monitor which runs alongside the program and checks that it conforms
+to this state machine.  There are close parallels here with
+{\technique}'s \glspl{bugenforcer}.  It be interesting to try to
+combine the two approaches by, for instance, using TESLA assertions as
+input to the \gls{bugenforcer} building algorithm, rather than trying
+to infer them directly from the binary.
 
 \subsection{Typestate systems}
 

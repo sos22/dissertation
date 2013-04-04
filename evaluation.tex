@@ -2068,9 +2068,36 @@ This is MySQL bug 56324\needCite{}.  A simplified version of the buggy
 code is shown in Figure~\ref{fig:eval:mysqld}.  This is, again, a
 variant of the simple\_toctou bug, embedded in a much larger program.
 As expected, {\implementation} is able to find the bug, generate an
-enforcer, and generate a fix, and they all behave as expected.
+enforcer, and generate a fix, and they all behave as expected.  For
+this experiment, I selected a test out of the MySQL test suite which
+exercises the buggy code (rpl\_change\_master) and ran it under the
+dynamic analysis.  I then used the results of that dynamic analysis to
+build a \gls{programmodel}, and used the resulting \gls{programmodel}
+to analyse the crashing instruction, with \gls{alpha} set to 20.  This
+produced two \glspl{verificationcondition}: the expected one
+representing the dangerous interleaving, and a spurious one
+representing an interleaving with the code which initialises
+\texttt{PSI\_server} when the program starts up.  I converted these to
+a single combined \gls{bugenforcer} and ran the rpl\_change\_master
+test ten times under that test, and every run reproduced the bug.  By
+comparison, ten runs without an enforcer failed to reproduce the bug
+at all.
 
 \todo{Put in some performance numbers here.}
+
+{\Technique} can also generate a fix for this bug.  In this case, the
+fix consists of two critical sections, one which covers the store in
+the \gls{interferingthread} and another which covers the two loads of
+\texttt{PSI\_server} in the \gls{crashingthread}.  This is sufficient
+to eliminate the identified bad interleaving, but is probably not the
+fix which a human programmer would have produced, as it does not cover
+the actual call to \texttt{delete\_current\_thread}.  As such, it is
+possible for the fixed program to call
+\texttt{delete\_current\_thread} after \texttt{PSI\_server} is set to
+\texttt{NULL}, or to call \texttt{delete\_current\_thread} multiple
+times.  Fortunately, \texttt{delete\_current\_thread} itself only
+accesses thread-local variables and is idempotent, and so the fix is
+still effective.
 
 \begin{figure}
   \subfigure[][Crashing thread]{
@@ -2107,7 +2134,7 @@ bugs, as desired.
   don't have compiler optimisations, because otherwise the compiler
   caches \texttt{PSI\_server} in a register and avoids the crash.}
 
-\section{Time spent in the various phases}
+\section{Performance exploration}
 \label{sect:eval:time_details}
 
 This section looks at how the time taken by the analysis breaks down
@@ -2175,33 +2202,30 @@ several important properties of the analysis:
 \item Similarly, some instructions do not start later phases because
   of timeouts earlier in the analysis phase.  The number of timeouts
   before a particular phase is given by the difference between the
-  solid and dashed lines.  In this case, there was one timeout
-  building the crashing {\StateMachine}, one simplifying it, and
-  five deriving C-atomic.  All timeouts were after one minute.
+  solid and dashed lines.  In this case, the only timeout occurred
+  while simplifying the crashing {\StateMachine}.  The timeout was set
+  to one minute.
+
+\item The chart only shows time spent in the most important phases.
+  Any remaining time is shown in an ``Other'' blob on the right of the
+  chart.
 \end{itemize}
 
-Three important conclusions can be drawn from this chart:
+The chart shows three features which are worth noting:
 
 \begin{itemize}
-\item The most expensive phase of the analysis is processing the
-  interfering \glspl{cfg}.  This will be analysed in more detail next.
-\item The second most expensive phase is generating the C-atomic
-  constraint.  This phase performs much of the work of determining
-  which aliasing between thread-local accesses in the crashing
-  {\StateMachine}, and so this reflects the fact that
-  {\implementation} has only a very primitive model of the program's
-  heap and global memory\footnote{The simplification phase also does
-    some aliasing resolution, but usually defers the most complicated
-    problems to the symbolic execution phase, and so does not see the
-    same explosion in run-time when presented with a hard aliasing
-    problem.}.
-\item Most of the distributions show a quite bimodal pattern: a phase
-  either completes very quickly, often too quickly to be easily seen
-  on this chart, or it takes a very long time indeed.  Many of the
-  algorithms used by {\technique} have worse than exponential worst
-  case running time, and instructions which hit one of the worst cases
-  effectively never complete while those which avoid them complete
-  very quickly.
+\item Most of the time is spent in the ``Process interfering
+  \glspl{cfg}'' phase.  This is discussed in more detail later.
+\item The ``Derive C-atomic'' phase is tiny.  This indicates that the
+  {\StateMachine} simplifiers are doing a good job for these
+  {\StateMachines}, and so the symbolic execution engine has very
+  little to do.
+\item All of the distributions have very large positive outliers,
+  indicating that most potential bugs can be dismissed very easily but
+  the remaining ones require a significant amount of analysis.  This
+  is unsurprising: many of the algorithms involved have very bad but
+  very rare worst-case complexity; steps which avoid those worst cases
+  are processed quickly, but those which hit them perform very badly.
 \end{itemize}
 
 I now investigate the time taken processing each interfering
@@ -2209,7 +2233,7 @@ I now investigate the time taken processing each interfering
 time taken by the various sub-phases of this, in the same style as the
 previous figure.  The data for this chart was collected in the same
 run of {\implementation} as that for the previous chart.  There were
-2157 interfering \glspl{cfg} in total.
+2174 interfering \glspl{cfg} in total.
 
 The third phase of this chart, ``rederive crashing {\StateMachine}'',
 perhaps requires further explanation.  Fixing the interfering
@@ -2227,57 +2251,70 @@ interfering \glspl{cfg}.
   \label{fig:eval:time_breakdown:interfering}
 \end{figure}
 
-Perhaps the most surprising part of this chart is that symbolically
-executing the \gls{ic-atomic} {\StateMachine} is much more expensive
-than symbolically executing the cross-product {\StateMachine}, even
-though the cross-product {\StateMachine} is far more complex.  This is
-in large part a selection effect: if the {\StateMachines} involve
-complicated aliasing, deriving \gls{ic-atomic} is highly likely to
-time out, and so {\implementation} will never reach the stage of
-symbolically executing the cross-product {\StateMachine}.  To confirm
-that hypothesis, I ran {\implementation} in a special mode which skips
-deriving \gls{ic-atomic} and instead just uses C-atomic as the
-\gls{inferredassumption}; the results are shown in
-Figure~\ref{fig:eval:time_breakdown:interfering_no_ic_atomic}.  As
-expected, the time taken processing the cross-product machine
-increased noticeably so that the total reduction in processing time
-was far less than the time taken deriving \gls{ic-atomic}.
+Perhaps the most surprising property of this chart is that
+symbolically executing the cross-product {\StateMachine} is less
+expensive than executing the \gls{ic-atomic} one, despite having to
+handle far more complex instruction schedules.  There are two reasons
+for this.  First, the cross-product construction converts the
+program's concurrency behaviour into control flow operations, and the
+{\StateMachine} simplifiers are particularly good at simplifying
+control flow.  The symbolic execution phase therefore never sees most
+of the interleaving-related complexity (although the cross-product
+simplification phase does, and therefore takes modestly longer than
+the other simplification phases).  Second, the cross-product symbolic
+execution has more information than the \gls{ic-atomic} one.  The
+entire reason for deriving \gls{ic-atomic} is to constraint the set of
+environments in which the threads might execute, and the cross-product
+symbolic execution can take advantage of that to eliminate some
+potential paths from consideration.
 
-\begin{figure}
-  \input{eval/bubble_charts/bubble3.tex}
-  \caption{Time taken by the different phases with \gls{ic-atomic}
-    computation disabled.  See text for detailed description.}
-  \label{fig:eval:time_breakdown:interfering_no_ic_atomic}
-\end{figure}
+\todo{I'd like to say more about what's causing those timeouts, but
+  that's tricky because I don't really know; my guess is that they're
+  mostly cause by bad BDD orderings.}
 
-\todo{More experiments to run here: figure out how much time we're
-  spending in BDD processing, look at how long the different
-  simplification passes take.}
-
-The next thing to look at is how long it takes to convert these
+The next thing to look at is how long it takes to convert
 \glspl{verificationcondition} to \glspl{bugenforcer}.  For this
-experiment, I took the \todo{...} \glspl{verificationcondition}
-generated by the previous experiment and converted each one to an
-enforcer and timed how long each phase took; the results are shown in
-Figure~\ref{fig:eval:time_breakdown:convert_to_enforcer}.  In this
-case, the conversion process failed for one of the
-\gls{verificationcondition}, due to reaching the one-minute timeout
-whilst being sliced by the happens-before graph\footnote{I also tried
-  running that one \gls{verificationcondition} with the timeout
-  disabled and it did not complete within an hour.}.  This is not
-completely surprising: as discussed in
-\autoref{sect:enforce:slice_hb_graph}, the slicing algorithm has
-extremely expensive worst-case behaviour but can almost always avoid
-it in practice, and so is usually extremely cheap except for a small
-number of cases in which it effectively runs forever.
+experiment, I chose 5000 \glspl{verificationcondition} at random from
+those generated by analysing the whole of MySQL, converted each one to
+an enforcer, and timed how long each phase took; the results are shown
+in Figure~\ref{fig:eval:time_breakdown:convert_to_enforcer}\footnote{I
+  also performed a similar experiment using the 297
+  \glspl{verificationcondition} generated by the previous phase.  The
+  results were broadly similar, but the smaller sample set meant that
+  some low-probability outcomes were completely unrepresented in the
+  results.}.  Not all of the \glspl{verificationcondition} were
+converted successfully:
+
+\begin{itemize}
+\item 49 of the \glspl{verificationcondition}, or about 1\%, reached
+  the one-minute timeout while slicing the \gls{verificationcondition}
+  by happens-before graph.  As discussed in
+  \autoref{sect:enforce:slice_hb_graph}, the slicing algorithm has an
+  extremely bad worst-case complexity but very rarely actually
+  encounters it, and so this is not particularly surprising.
+\item 11 \glspl{verificationcondition}, or about 0.2\%, ran out of
+  memory during the side-condition placement phase, on a system with
+  8GiB of memory.  Like the slicing algorithm, the placement algorithm
+  has a very bad worst case which rarely happens in practice, and so
+  again this is not entirely surprising\footnote{This rate probably
+    overstates the rate which would be observed by a real
+    implementation of {\technique}: {\implementation} manages most of
+    the relevant data structures using a garbage collector, but, for
+    implementation reasons, the GC is disabled during side-condition
+    placement.  This is likely to have significantly increased
+    {\technique}'s memory usage in a way which is not completely
+    reflective of the algorithm's actual requirements.}.
+\item Three \glspl{verificationcondition} reached the one-minute
+  timeout while computing a patch strategy (see
+  \autoref{sect:enforce:gain_control}).  \todo{Explain why it failed.}
+\end{itemize}
 
 The only other phase which requires a non-trivial amount of time is
 the final one, compiling the enforcer.  This involves converting the
 generated enforcer to C and passing it off to the system compiler (in
 this case, gcc version 4.4.3) to convert it into an ELF library.  The
 time taken by this phase is completely dominated by the time taken by
-the system compiler.
-
+the external compiler.
 
 \begin{figure}
   \input{eval/bubble_charts/bubble4.tex}
