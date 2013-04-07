@@ -4,98 +4,90 @@ import os
 import sys
 import math
 import common
-import times
 
-series = {}
-max_nr = 0
-for alpha in common.alphas:
-    data = []
-    nr_timeouts1 = 0
-    nr_timeouts2 = 0
-    for logfile in os.listdir("%d" % alpha):
-        path = "%d/%s" % (alpha, logfile)
-        l = file(path)
-        line = l.readline().strip()
-        if line == "buildProbeMachine timed out":
-            nr_timeouts1 += 1
-            continue
-        line = l.readline().strip()
-        if line in ["no conflicting stores", "No conflicting stores (1775)", "No conflicting stores (1794)"]:
-            data.append(0)
-            continue
-        if line in ["atomicSurvivalConstraint timed out", "removeAnnotations failed", "removeAnnotations timed out (1768)"]:
-            nr_timeouts2 += 1
-            continue
-        w = line.split()
-        if w[0] == "atomicSurvivalConstraint" and w[1] == "took":
-            line = l.readline().strip()
-            if line == "getStoreCFGs timed out":
-                nr_timeouts2 += 1
-                continue
-            w = line.split()
-            if w[0] == "getStoreCFGs" and w[1] == "took":
-                item = int(w[-1])
-                if item > max_nr:
-                    max_nr = item
-                data.append(item)
-                continue
-            common.fail("%s: Bad GSC line %s" % (path, line))
-        common.fail("%s: Bad ASC line %s" % (path, line))
-    data.sort()
-    series[alpha] = (nr_timeouts1, data, nr_timeouts2)
+common.figheight = 7.0
+timeoutheight = 3
+figsep = 1
 
-max_nr = 12
-def nr_to_y(nr):
-    return nr / float(max_nr) * times.height1
+max_cnt = 20.0
+min_cnt = 0.0
+min_time = 0.0001
+max_time = 60
 
-def print_legend(x, y, descriptions):
-    print "  \\node at (%f,%f) [above left] {\\shortstack[l]{" % (x, y)
-    for idx in xrange(len(descriptions)):
-        if idx != 0:
-            print "\\\\"
-        print "    \\raisebox{1mm}{\\tikz{\\draw%s (0,0) -- (0.5,0);}} %s" % (common.decoration(idx), descriptions[idx]),
-    print "  }};"
+def count_to_y(cnt):
+    if cnt <= min_cnt:
+        return 0
+    elif cnt > max_cnt:
+        return common.figheight
+    else:
+        return (cnt - min_cnt) / (max_cnt - min_cnt) * common.figheight
 
-print "\\begin{tikzpicture}"
-common.draw_alpha_axis()
-times.draw_timeout_axis()
-print "  \\draw[->] (0,0) -- (0,%f);" % (times.height1)
-for p in xrange(0, max_nr+1):
-    y = nr_to_y(p)
-    print "  \\node at (0,%f) [left] {%d};" % (y, p)
-    print "  \\draw[color=black!10] (0,%f) -- (%f,%f);" % (y, common.width, y)
-print "  \\node at (0,%f) [rotate=90, left = 1,anchor=south] {Number of interfering CFGs};" % (times.height1 / 2)
+def time_to_y(time):
+    if time < min_time:
+        return 0
+    elif time > max_time:
+        return common.figheight
+    else:
+        return math.log(time / min_time) / math.log(max_time / min_time) * common.figheight
 
+series = common.read_input()
+common.preamble()
+common.alpha_axis(series)
 
-print "  \\draw (%f,%f)" % (common.alpha_to_x(0), times.timeout_to_y(0))
-for alpha in common.alphas:
-    s = series[alpha]
-    timeout_rate = float(s[0] + s[2]) / (s[0] + s[2] + len(s[1]))
-    print "        -- (%f, %f)" % (common.alpha_to_x(alpha), times.timeout_to_y(timeout_rate))
-print "        ;"
-print "  \\draw (%f,%f)" % (common.alpha_to_x(0), times.timeout_to_y(0))
-for alpha in common.alphas:
-    s = series[alpha]
-    timeout_rate = float(s[0]) / (s[0] + s[2] + len(s[1]))
-    print "        -- (%f, %f)" % (common.alpha_to_x(alpha), times.timeout_to_y(timeout_rate))
-print "        ;"
+print "  %% Number of store CFGs"
+print "  \\draw[->] (0,0) -- (0,%f); " % common.figheight
+for t in xrange(0,21,2):
+    print "  \\node at (0, %f) [left] {%s};" % (count_to_y(float(t)), t)
+    print "  \\draw[color=black!10] (0,%f) -- (%f,%f);" % (count_to_y(float(t)), common.figwidth, count_to_y(float(t)))
+print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {Number of interfering \\glspl{cfg}};" % (common.figheight / 2)
+for (alpha, data) in series.iteritems():
+    samples = [x["nr_store_cfgs"] for x in data if x["gsc_timed_out"] == False]
+    (mean, sd) = common.mean(samples)
+    common.draw_box_plot(common.alpha_to_x(alpha), count_to_y, samples, mean, sd)
 
-print "  \\node at (%f,%f) [below left] {\\shortstack[c]{Timeouts building\\\\crashing thread}};" % (common.alpha_to_x(100), times.timeout_to_y(-.1))
-print "  \\draw (%f,%f) -- (%f,%f);" % (common.alpha_to_x(85), times.timeout_to_y(0.25), common.alpha_to_x(85), times.timeout_to_y(-0.1))
+offset = common.figheight + figsep
 
-print "  \\node at (%f,%f) [above right] {\\shortstack[r]{Timeouts building\\\\interfering CFGs}};" % (common.alpha_to_x(0), times.timeout_to_y(.1))
-print "  \\draw (%f,%f) -- (%f,%f);" % (common.alpha_to_x(45), times.timeout_to_y(0.16), common.alpha_to_x(29), times.timeout_to_y(0.3))
-print "  \\draw[dotted] (%f, %f) -- (%f, %f);" % (common.alpha_to_x(45), times.timeout_to_y(0.04), common.alpha_to_x(45), times.timeout_to_y(.255))
+print "  %% Time to build store CFGs"
+print "  \\draw[->] (0,%f) -- (0,%f);" % (offset, offset + common.figheight)
+for t in ["0.0001", "0.001", "0.01", "0.1", "1", "10", "60"]:
+    print "  \\node at (0,%f) [left] {%s};" % (offset + time_to_y(float(t)), t)
+    print "  \\draw[color=black!10] (0,%f) -- (%f,%f);" % (offset + time_to_y(float(t)), common.figwidth, offset + time_to_y(float(t)))
+print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {Time taken deriving \\glspl{cfg}, seconds};" % (offset + common.figheight / 2)
+for (alpha, data) in series.iteritems():
+    samples = [x["gsc_time"] for x in data if x["gsc_timed_out"] == False]
+    nr_timeouts = len([x for x in data if x["gsc_timed_out"] == True])
+    (mean, sd) = common.mean(samples)
 
-print "  \\node at (%f,%f) [below right] {All timeouts};" % (common.alpha_to_x(29), times.timeout_to_y(.7))
-print "  \\draw (%f, %f) -- (%f, %f);" % (common.alpha_to_x(63), times.timeout_to_y(.4115), common.alpha_to_x(49), times.timeout_to_y(.59))
+    samples += [max_time] * nr_timeouts
+    print
+    print "  %%%% alpha = %d" % alpha
+    common.draw_box_plot(common.alpha_to_x(alpha), lambda t: offset + time_to_y(t), samples, mean, sd)
 
-times.include_timeouts = False
-times.lines = [(times.mk_percento(0.75), "75\\%"),
-               (times.mk_percento(0.90), "90\\%"),
-               (times.mean, "Mean")]
-times.plot_times(series, False, nr_to_y)
+offset += common.figheight + figsep
 
-print_legend(common.width, 0, [x[1] for x in times.lines])
+# Now do the timeout rate
+bpm_data = []
+gsc_data = []
+for (alpha, data) in series.iteritems():
+    bpm_timeouts = len([x for x in data if x["bpm_time"] == None])
+    gsc_timeouts = len([x for x in data if x["gsc_timed_out"] == True])
+    no_timeout = len([x for x in data if x["gsc_timed_out"] == False])
+    tot = float(no_timeout + gsc_timeouts + bpm_timeouts)
+    bpm_data.append((alpha, bpm_timeouts / tot))
+    gsc_data.append((alpha, (gsc_timeouts + bpm_timeouts) / tot))
+    sys.stderr.write("Alpha = %d, %d bpm timeouts, %d gsc timeouts, %d non timeout, rates %f, %f\n" % (alpha, bpm_timeouts,
+                                                                                                       gsc_timeouts, no_timeout,
+                                                                                                       bpm_timeouts / tot,
+                                                                                                       (bpm_timeouts + gsc_timeouts) / tot))
+common.timeout_chart(offset, timeoutheight, 1.0, {"": bpm_data, " ": gsc_data}, 20)
+if len(sys.argv) > 1 and sys.argv[1] == "opt":
+    delta1 = "below "
+    delta2 = "above "
+else:
+    delta1 = ""
+    delta2 = ""
+print "  \\node at (%f,%f) [%sright] {\\shortstack[l]{Building crashing\\\\thread only}};" % (common.figwidth, offset + timeoutheight * bpm_data[-1][1],delta1)
+print "  \\node at (%f,%f) [%sright] {Building both threads};" % (common.figwidth, offset + timeoutheight * gsc_data[-1][1],delta2)
+common.box_legend(0)
 
 print "\\end{tikzpicture}"

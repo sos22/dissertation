@@ -15,14 +15,16 @@ cd ..
 
 cd alpha
 cd opt
-../build_bpm_graph.py opt > bpm.tex
-../build_gsc_graph.py > gsc.tex
-../build_gvc_graph.py opt > gvc.tex
+../build_bpm_graph.py > bpm.tex
+../build_gsc_graph.py opt > gsc.tex
+../build_gvc_graph.py > gvc.tex
+../build_crashing_size_graph.py > crashing_size.tex
 cd ..
 cd unopt
-../build_bpm_graph.py unopt > bpm.tex
+../build_bpm_graph.py > bpm.tex
 ../build_gsc_graph.py > gsc.tex
-../build_gvc_graph.py unopt > gvc.tex
+../build_gvc_graph.py > gvc.tex
+../build_crashing_size_graph.py > crashing_size.tex
 cd ../../
 
 cd bubble_charts

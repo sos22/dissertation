@@ -1,3 +1,8 @@
-../build_bpm_graph.py > bpm.tex
+#! /bin/sh
+
+set -e
+set -x
+
+../build_bpm_graph.py unopt > bpm.tex
 ../build_gsc_graph.py > gsc.tex
-../build_gvc_graph.py > gvc.tex
+../build_gvc_graph.py unopt > gvc.tex

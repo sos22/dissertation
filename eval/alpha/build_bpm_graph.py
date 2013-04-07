@@ -1,45 +1,55 @@
 #! /usr/bin/env python
 
-import os
-import sys
 import math
-
 import common
-import times
 
-if sys.argv[1] == "opt":
-    times.max_time = 30.
-else:
-    times.max_time = 15.
+timeoutheight = 3.0
+common.figheight = 7.0
+figsep = 1
 
-print "\\begin{tikzpicture}"
+max_time = 60.0
+min_time = 0.001
 
-common.draw_alpha_axis()
-times.draw_time_axes(5)
+def time_to_y(time):
+    if time < min_time:
+        return 0
+    elif time > max_time:
+        return common.figheight
+    else:
+        return math.log(time / min_time) / math.log(max_time / min_time) * common.figheight
 
-# Now extract the data
-series = {}
-for alpha in common.alphas:
-    nr_timeouts = 0
-    data = []
-    for logfile in os.listdir("%d" % alpha):
-        path = "%d/%s" % (alpha, logfile)
-        l = file(path)
-        line = l.readline().strip()
-        w = line.split()
-        if len(w) != 3 or w[0] != "buildProbeMachine":
-            fail("%s doesn't start with bpm line" % path)
-        if w[1:] == ["timed", "out"]:
-            nr_timeouts += 1
-            continue
-        if w[1] != "took":
-            fail("%s is not a bpm line (%s)" % (line, path))
-        data.append(float(w[2]))
-    data.sort()
-    series[alpha] = (nr_timeouts, data)
+series = common.read_input()
+common.preamble()
+common.alpha_axis(series)
 
-# Plot the timeout chart
-times.plot_timeout_chart(series)
-times.plot_times(series, True, times.time_to_y)
+print "  %% Y axis"
+print "  \\draw[->] (0,0) -- (0,%f);" % common.figheight
+for t in ["0.001", "0.01", "0.1", "1", "10", "60"]:
+    print "  \\node at (0,%f) [left] {%s};" % (time_to_y(float(t)), t)
+    print "  \\draw [color=black!10] (0,%f) -- (%f,%f);" % (time_to_y(float(t)), common.figwidth, time_to_y(float(t)))
+print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {Time in seconds};" % (common.figheight / 2)
+
+# Now plot the series
+for (alpha, data) in series.iteritems():
+    samples = [x["bpm_time"] for x in data]
+    nr_timeouts = len([x for x in samples if x == None])
+    times = [x for x in samples if x != None]
+    (mean, sd) = common.mean(times)
+
+    times += [max_time] * nr_timeouts
+    print
+    print "  %%%% alpha = %d" % alpha
+
+    common.draw_box_plot(common.alpha_to_x(alpha), time_to_y, times, mean, sd)
+common.box_legend(0)
+
+# And now for the timeout rate
+timeout_data = []
+for (alpha, data) in series.iteritems():
+    samples = [x["bpm_time"] for x in data]
+    nr_timeouts = len([x for x in samples if x == None])
+    nr_non_timeout = len([x for x in samples if x != None])
+    timeout_data.append((alpha, float(nr_timeouts) / (nr_timeouts + nr_non_timeout)))
+common.timeout_chart(common.figheight + figsep, timeoutheight, 1.0, {"": timeout_data}, 20)
 
 print "\\end{tikzpicture}"

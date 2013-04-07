@@ -969,8 +969,13 @@ which represents all of the program's behaviour in the
 \gls{analysiswindow} and transform it to one which represents only the
 behaviour which is most relevant to the bug under investigation.  This
 reduces the complexity of symbolically executing them, giving a useful
-reduction in the total time to analyse a program.  \todo{Could maybe
-  give an explicit program slicing reference here?}
+reduction in the total time to analyse a program\footnote{There is a
+  close analogy here with program slicing~\cite{Weiser1981}.  The
+  important difference is one of intent: program slices are intended
+  to make a bug easier for a human to understand, whereas
+  {\technique}'s simplifiers are intended to make it easier for a
+  symbolic execution engine to process.  This is discussed in more
+  detail in \autoref{sect:rw:auto_characterise}.}.
 
 \section{Building the interfering thread's \StateMachines}
 \label{sect:derive:write_side}
@@ -1571,14 +1576,9 @@ brief overview of the most important features here:
   engine must execute a \state{Load} operation and cannot immediately
   determine which \state{Store} operation to use, it does not cause an
   immediate fork of its state, but instead causes the \state{Load} to
-  return an expression BDD (see Section~\ref{sect:sm_expr_language})
-  whose internal nodes describe the alias query and whose leaves
-  select the appropriate result.  
-
-  \todo{I want to say that's faster, and I genuinely believe that it
-    is, but I don't have a great deal of evidence to back it up.
-    Also, might need a better explanation of that. Need to check how
-    novel this is.  I suspect it's been done before.}
+  return an expression BDD (see \autoref{sect:sm_expr_language}) whose
+  internal nodes describe the alias query and whose leaves select the
+  appropriate result.
 
 \item The engine does not use any kind of incremental abstraction
   technique such as CEGAR\cite{Clarke2000}.  This is primarily because
@@ -1672,10 +1672,6 @@ and simplifying it before symbolic execution starts is far cheaper
 than trying to symbolically execute the {\StateMachines} in isolation
 and then stitch them together via the end and start symbolic states.
 \todo{I really don't have a great deal of evidence for that.}
-
-\todo{I would really like to say at this point that deriving the IC
-  atomic constraint is the single most expensive part of the analysis
-  pipeline.}
 
 \subsection{Building cross-product {\StateMachines}}
 \label{sect:using:build_cross_product}
@@ -2031,10 +2027,9 @@ more complex simplifications, for two reasons:
 
     \end{array}
   \end{displaymath}
-  \caption{The cross product algorithm as a graph grammar
-    \todo{Cite?}.  Only the most important features of the algorithm
-    are shown here; refer to the text for a more complete
-    description.}
+  \caption{The cross product algorithm as a node replacement graph
+    grammar.  Only the most important features of the algorithm are
+    shown here; refer to the text for a more complete description.}
 \end{figure}
 \end{landscape}
 
@@ -2060,7 +2055,7 @@ more complex simplifications, for two reasons:
 \item The results of a simplification pass are inherently shared
   across all paths which reach a particular state, whereas the
   symbolic execution engine needs to perform additional work in order
-  to share results.\editorial{Cite someone doing that.}
+  to share results.
 \end{itemize}
 
 There is also an engineering consideration which argues in favour of
@@ -2221,9 +2216,8 @@ is obviously only feasible if the majority of instructions can be
 dismissed quickly.  Fortunately, they can be: {\implementation} takes,
 on average, a few hundred of milliseconds per instruction on fairly
 modest hardware, allowing even large programs with millions of
-instructions to be analysed in a few days\editorial{Put some actual
-  numbers in here.}.  Parallelisation would allow this time to be
-reduced further if necessary.
+instructions to be analysed in a few days.  Parallelisation would
+allow this time to be reduced further if necessary.
 
 Identifying instructions which might crash depends on the type of bug
 which is to be investigated, but is generally straightforwards.
@@ -2274,9 +2268,6 @@ built before the main analysis starts.
 
 \subsection{Memory access model}
 \label{sect:program_model:dynamic_alias}
-
-\todo{There's a tension here between precision and soundness which
-  I've completely ignored.  Oh well.}
 
 The most important part of the \gls{programmodel} is the memory access
 model, which shows how the program accesses memory during normal
@@ -2397,8 +2388,6 @@ analysis talks about the set of fields which an instruction can
 access, which is in some sense like the set of values on which it can
 operate, whereas the actual analysis discovers the set of instructions
 with which it can interact, which is analogous to a set of operations.
-
-\todo{Maybe draw an explicit analogy with de Bruijn indices?}
 
 Given this conceptual work, implementing the dynamic analysis itself
 is quite simple.  {\Implementation} does so using a Valgrind skin.

@@ -31,7 +31,7 @@ while True:
         break
     s = {}
     (sstart_time, words) = l
-    if words != ["start", "build", "enforcer"]:
+    if words[:-1] != ["start", "build", "enforcer"]:
         util.fail("lost sequence at %s" % str(l))
 
     while True:
@@ -66,7 +66,7 @@ while True:
 
 series.sort()
 
-dilation = 50.0
+dilation = 170.0
 (bubbles, max_time, max_nr_samples) = util.transpose_bubbles(series, dilation, bubble_keys)
 y_centrums = {"canonicalise": 0.9,
               "prepare summary": 0.5,
@@ -88,18 +88,18 @@ def scale_idx(idx):
     return idx / float(max_nr_samples) * figheight
 
 x_labels = []
-for i in xrange(0,10,1):
-    x_labels.append({"posn": scale_time(i * dilation * 0.1), "label": "0.%d" % i})
+for i in xrange(0,35,5):
+    x_labels.append({"posn": scale_time(i * dilation * 0.01), "label": "0.%02d" % i})
 x_labels.append({"posn": scale_time(dilation), "label": "1.0"})
 
 util.print_preamble(x_labels, "Proportion of interfering \\glspl{cfg}", scale_time, 60, 10, figwidth, figheight)
 
 labels = {
-          "slice by hb": {"posn": ((0.6, .9), "left"), "label": "\\shortstack[r]{Slice by happens-\\\\before graph}"},
-          "determine input availability": { "posn": ((0.6, .6), "left"), "label": "Determine input availability"},
-          "place side conditions": {"posn": ((0.6, .45), "left"), "label": "Place side-conditions"},
-          "build strategy": {"posn": ((0.63, .23), "left"), "label": "Build patch strategy"},
-          "gcc": {"posn": ((1.05, .17), "right"), "label": "\\shortstack[l]{Compiling\\\\enforcer}"},
+          "slice by hb": {"posn": ((0.14, .9), "left"), "label": "\\shortstack[r]{Slice by happens-\\\\before graph}"},
+          "determine input availability": { "posn": ((0.14, .6), "left"), "label": "\\shortstack[r]{Determine input\\\\availability}"},
+          "place side conditions": {"posn": ((0.21, .55), "right"), "label": "Place side-conditions"},
+          "build strategy": {"posn": ((0.21, .3), "right"), "label": "\\shortstack[l]{Determine patch\\\\points}"},
+          "gcc": {"posn": ((0.33, .2), "right"), "label": "\\shortstack[l]{Compile\\\\enforcer}"},
 
           "prepare summary": {"posn": ((0.02, .8), "right"), "label": "Canonicalise"},
           "canonicalise": {"posn": ((0.02, .9), "right"), "label": "Canonicalise"},
@@ -120,7 +120,7 @@ for k in bubble_keys:
 print "        ;"
 # Legend
 print "  \\node at (%f,%f) [right] {" % (scale_time(0.01 * dilation), figheight * 0.05)
-print "      \\raisebox{1mm}{\\tikz{\\draw[dashed] (0,0) -- (1,0);}} Timeouts"
+print "      \\raisebox{1mm}{\\tikz{\\draw[dashed] (0,0) -- (1,0);}} Out of memory"
 print "  };"
 
 util.print_trailer(figwidth, figheight)

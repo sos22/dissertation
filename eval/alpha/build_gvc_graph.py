@@ -5,148 +5,99 @@ import sys
 import math
 
 import common
-import times
 
-times.gap = 5
-common.height += 5
-common.width -= 2
+common.figheight = 7.0
+timeoutheight = 3
 
-if sys.argv[1] == "opt":
-    is_opt = True
-else:
-    is_opt = False
+figsep = 1
 
-# Now extract the data
-series = {}
-max_vcs = 0
-for alpha in common.alphas:
-    nr_timeouts = 0
-    nr_pairs = 0
-    nr_vcs = 0
-    data = []
-    for logfile in os.listdir("%d" % alpha):
-        path = "%d/%s" % (alpha, logfile)
-        l = file(path)
-        line = l.readline().strip()
-        if line == "buildProbeMachine timed out":
-            continue
-        w = line.split()
-        if len(w) != 3 or w[:2] != ["buildProbeMachine", "took"]:
-            common.fail("%s doesn't start with bpm line" % path)
-        line = l.readline().strip()
-        if line in ["no conflicting stores", "No conflicting stores (1775)", "No conflicting stores (1794)",
-                    "atomicSurvivalConstraint timed out", "removeAnnotations failed", "removeAnnotations timed out (1768)"]:
-            continue
-        w = line.split()
-        if len(w) != 3 or w[:2] != ["atomicSurvivalConstraint", "took"]:
-            common.fail("%s: wanted ASC line, got %s" % (path, line))
-        line = l.readline().strip()
-        if line == "getStoreCFGs timed out":
-            continue
-        w = line.split()
-        if len(w) != 6 or w[:2] != ["getStoreCFGs", "took"] or w[3:5] != ["seconds,", "produced"]:
-            common.fail("%s: wanted GSC line, got %s" % (path, line))
-        nr_pairs += int(w[-1])
-        while 1:
-            line = l.readline()
-            if line == "":
-                break
-            line = line.strip()
-            w = line.split()
-            if w[1:] == ["buildStoreMachine", "timed", "out"]:
-                continue
-            if w[0] == "store" and w[1] == "CFG" and w[3:] == ["single", "store", "versus", "single", "shared", "load"]:
-                data.append(0)
-                continue
-            if len(w) != 4 or w[1] != "buildStoreMachine" or w[2] != "took":
-                common.fail("%s: wanted BSM line, got %s" % (path, line))
-            t = float(w[-1])
-            line = l.readline().strip()
-            w = line.split()
-            doit = False
-            if len(w) == 4 and w[0] == "localiseLoads1" and w[2] == "timed" and w[3] == "out":
-                nr_timeouts += 1
-            elif len(w) == 9 and w[1:8] == ["single", "store", "versus", "single",
-                                            "load,", "after", "localise"]:
-                doit = True
-            elif len(w) == 5 and w[1:4] == ["IC", "is", "false"]:
-                doit = True
-            elif len(w) == 4 and w[1] == "crash" and w[2] == "impossible":
-                doit = True
-            elif len(w) == 4 and w[1] == "generated" and w[2] == "VC":
-                doit = True
-                nr_vcs += 1
-            elif len(w) == 5 and w[1:] == ["IC", "atomic", "timed", "out"]:
-                nr_timeouts += 1
-            elif len(w) == 6 and w[1:] == ["rederive", "CI", "atomic", "timed", "out"]:
-                nr_timeouts += 1
-            elif len(w) == 4 and w[1:] == ["crash", "timed", "out"]:
-                nr_timeouts += 1
-            elif len(w) == 5 and w[1:] == ["invert", "crash", "timed", "out"]:
-                nr_timeouts += 1
-            elif len(w) == 5 and w[1:] == ["build", "VC", "timed", "out"]:
-                nr_timeouts += 1
-            else:
-                common.fail("%s: expected proc line, got %s (%s)" % (path, line, str(w)))
-            if doit:
-                if w[-1][0] != '(' or w[-1][-1] != ')':
-                    common.fail("%s: expected proc line, got %s (B)" % (path, line))
-                t += float(w[-1][1:-1])
-                if t > times.max_time:
-                    times.max_time = t
-                data.append(t)
-    data.sort()
-    if nr_vcs > max_vcs:
-        max_vcs = nr_vcs
-    series[alpha] = (nr_timeouts, data, nr_vcs, nr_pairs)
+min_count = 0.0
+max_count = 1000.0
+min_time = 0.0001
+max_time = 60
 
-if not is_opt:
-    max_vcs = 600
-else:
-    max_vcs = 1000
+def count_to_y(cnt):
+    return (cnt - min_count) / (max_count - min_count) * common.figheight
+def prop_to_y(cnt):
+    return cnt * common.figheight
+def time_to_y(time):
+    if time < min_time:
+        return 0
+    elif time > max_time:
+        return common.figheight
+    else:
+        return math.log(time / min_time) / math.log(max_time / min_time) * common.figheight
 
-def nr_vcs_to_y(nr_vcs):
-    return times.height1 + times.gap * (nr_vcs/float(max_vcs)) + 0.5
-def perc_vcs_to_y(perc):
-    return times.height1 + times.gap * perc + 0.5
+series = common.read_input()
 
-if not is_opt:
-    times.max_time = 10.
-else:
-    times.max_time = 30.
+s = {}
+for (alpha, data) in series.iteritems():
+    d = []
+    for sample in data:
+        i = sample["interferers"]
+        if i != None:
+            d += i
+    s[alpha] = d
+series = s
 
-print "\\begin{tikzpicture}"
+common.preamble()
+common.alpha_axis(series)
 
-common.draw_alpha_axis()
-times.draw_time_axes(10)
-# Draw nr_vcs axes.
+offset = 0
 
-print "  \\draw[->] (0,%f) -- (0,%f);" % (nr_vcs_to_y(0), nr_vcs_to_y(max_vcs))
-for p in xrange(0,max_vcs+1,100):
-    y = nr_vcs_to_y(p)
-    print "  \\node at (0,%f) [left] {%d};" % (y, p)
-    print "  \\draw[color=black!10] (0,%f) -- (%f,%f);" % (y, common.width, y)
-print "  \\node at (0,%f) [rotate=90, left = 1,anchor=south] {\\parbox{%fcm}{\\centering Number of verification conditions (solid)}};" % ((nr_vcs_to_y(0) + nr_vcs_to_y(max_vcs)) / 2, times.gap - 1)
+s = series.items()
+s.sort()
 
-print "  \\draw[->] (%f,%f) -- (%f,%f);" % (common.width, perc_vcs_to_y(0), common.width, perc_vcs_to_y(1))
-for p in xrange(0,101,20):
-    y = perc_vcs_to_y(p/100.0)
-    print "  \\node at (%f,%f) [right] {%d\\%%};" % (common.width, y, p)
-print "  \\node at (%f,%f) [rotate=-90, right = 1,anchor=south] {\\parbox{%fcm}{\\centering Fraction generating verification conditions (dashed)}};" % (common.width, (perc_vcs_to_y(0) + perc_vcs_to_y(1)) / 2, times.gap - 1)
-
-print "  \\draw[color=black!50] (0,%f) -- (%f,%f);" % (nr_vcs_to_y(0), common.width, nr_vcs_to_y(0))
-
-times.plot_timeout_chart(series)
-times.plot_times(series, True, times.time_to_y)
-
-# Plot the number of VCs generated
-print "  \\draw (%f, %f)" % (common.alpha_to_x(0), nr_vcs_to_y(0))
-for alpha in common.alphas:
-    print "        -- (%f, %f)" % (common.alpha_to_x(alpha), nr_vcs_to_y(series[alpha][2]))
+print "  %% Number of VCs generated"
+print "  \\draw[->] (0,%f) -- (0,%f);" % (offset, offset + common.figheight)
+for t in xrange(0,max_count+1,200):
+    print "  \\node at (0, %f) [left] {%s};" % (offset + count_to_y(float(t)), t)
+    print "  \\draw [color=black!10] (0,%f) -- (%f, %f);" % (offset + count_to_y(float(t)), common.figwidth, offset + count_to_y(float(t)))
+print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {\\shortstack{Total number of\\\\\\glspl{verificationcondition}\\\\(solid)}};" % (offset + common.figheight / 2)
+print "  \\draw (0, %f)" % (offset)
+for (alpha, data) in s:
+    samples = [x["generated_vc"] for x in data if x["generated_vc"] != False]
+    print "        -- (%f, %f)" % (common.alpha_to_x(alpha), count_to_y(len([x for x in samples if x == True])) + offset)
 print "        ;"
-print "  \\draw[dashed] (%f, %f)" % (common.alpha_to_x(0), perc_vcs_to_y(0))
-for alpha in common.alphas:
-    print "        -- (%f, %f)" % (common.alpha_to_x(alpha), perc_vcs_to_y(series[alpha][2]/float(series[alpha][3])))
+
+print "  %% Proportion generating VCs"
+print "  \\draw[->] (%f,%f) -- (%f,%f);" % (common.figwidth, offset, common.figwidth, offset + common.figheight)
+for t in xrange(0,101,20):
+    print "  \\node at (%f, %f) [right] {%d\\%%};" % (common.figwidth, prop_to_y(t/100.0), t)
+print "  \\node at (%f, %f) [rotate=-90, anchor=south] {\\shortstack{Proportion generating \\\\\\glspl{verificationcondition}\\\\(dashed)}};" % (common.figwidth + .8, offset + common.figheight / 2)
+print "  \\draw[dashed] (0, %f)" % (offset)
+for (alpha, data) in s:
+    samples = [x["generated_vc"] for x in data if x["generated_vc"] != None]
+    print "        -- (%f, %f)" % (common.alpha_to_x(alpha), prop_to_y(len([x for x in samples if x == True]) / float(len(samples))) + offset)
 print "        ;"
+
+offset = common.figheight + figsep
+
+print "  %% Time to generate VCs"
+print "  \\draw[->] (0,%f) -- (0,%f);" % (offset, offset + common.figheight)
+for t in ["0.001", "0.01", "0.1", "1", "10", "60"]:
+    print "  \\node at (0,%f) [left] {%s};" % (offset + time_to_y(float(t)), t)
+    print "  \\draw [color=black!10] (0,%f) -- (%f, %f);" % (offset + time_to_y(float(t)), common.figwidth, offset + time_to_y(float(t)))
+print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {\\shortstack{Time to derive \\glspl{verificationcondition}\\\\(seconds)}};" % (offset + common.figheight / 2)
+for (alpha, data) in series.iteritems():
+    samples = [x["gvc_time"] for x in data if x["gvc_timeout"] == False]
+    nr_timeouts = len([x for x in data if x["gvc_timeout"] != False])
+    (mean, sd) = common.mean(samples)
+
+    samples += [max_time] * nr_timeouts
+    print
+    print "  %%%% alpha = %d" % alpha
+    print "  %%%% samples = %s" % str(samples)
+    print "  %%%% nr_timeout = %d" % nr_timeouts
+    common.draw_box_plot(common.alpha_to_x(alpha), lambda t: offset + time_to_y(t), samples, mean, sd)
+common.box_legend(offset)
+
+offset += common.figheight + figsep
+
+timeout_data = []
+for (alpha, data) in series.iteritems():
+    timeouts = len([x for x in data if x["bsm_time"] == None or x["gvc_timeout"] == True])
+    timeout_data.append((alpha, timeouts / float(len(data))))
+common.timeout_chart(offset, timeoutheight, 1.0, {"": timeout_data}, 20)
 
 print "\\end{tikzpicture}"
