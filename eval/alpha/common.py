@@ -264,7 +264,7 @@ def box_legend(offset, include_geom = True):
     print "  \\node at (%f, %f) [left] {90\\%%};" % (fl - box_width / 2, figheight * d(5) + offset)
     print "  \\node at (%f, %f) [left] {\\shortstack[r]{Mean $\\pm$ sd\\\\of mean}};" % (fl - box_width / 2, figheight * 0.07 + offset)
     if include_geom:
-        print "  \\node at (%f, %f) [left] {\\shortstack[r]{Geometric\\\\mean}};" % (fl - box_width / 2, figheight * 0.22 + offset)
+        print "  \\node at (%f, %f) [left] {\\shortstack[r]{Geometric\\\\mean}};" % (fl - box_width / 2, figheight * 0.12 + offset)
 
 def timeout_chart(y_base, height, max_rate, data, step):
     print

@@ -4,6 +4,10 @@
 \section{Experiments I still need to run}
 
 \begin{itemize}
+\item Consider doing an ordering violation artificial bug, just to
+  show the bug hiding problem?
+\item It'd be nice to have something showing the effectiveness of the
+  simplification bits.
 \item Re-do unoptimised MySQL.  Time static and main analysis phases.
   Check number of candidates generated.  Run candidates.
   \todo{Running on hogun now.}
@@ -190,7 +194,7 @@ Figure~\ref{fig:eval:simple_toctou:sm}.
     indicate the false successor of a conditional.}
 \end{figure}
 
-The next step is to build the \glspl{interferingstore} set (see
+The next step is to build the $\beta$ set (see
 Section~\ref{sect:derive:write_side}).  The crashing {\StateMachine}
 contains two loads, at \texttt{400694} and \texttt{4006a0}, and so the
 analysis will query the \gls{programmodel} to find what stores might
@@ -198,8 +202,8 @@ interact with them, and the \gls{programmodel} will use the results of
 the dynamic alias analysis (see
 Section~\ref{sect:program_model:dynamic_alias}) to return the set
 \{\texttt{400884}, \texttt{4008fb}\}.  The \texttt{STOP\_ANALYSIS()}
-markers prevent these from being clustered together, and there are no
-other \glspl{communicatinginstruction}, and so there will be two
+markers prevent these from being clustered together, and these are the
+only members of $\beta$, and so there will be two
 \glspl{interferingthread} \glspl{cfg}, shown in
 Figures~\ref{fig:eval:simple_toctou:interfering_cfg1}
 and~\ref{fig:eval:simple_toctou:interfering_cfg2}.
@@ -256,11 +260,10 @@ The analysis will produce the verification condition shown in
 Figure~\ref{fig:eval:simple_toctou:inferred_assumption1}. The
 \gls{programmodel}'s static analyses, on the other hand, are
 sufficient to show that $\smReg{rbp}{2}$ is a valid pointer,
-eliminating the spurious \gls{verificationcondition}.  The
-\gls{interferingstore} at \texttt{4008fb}, on the other hand, does
-represent a valid bug, as interleaving it with the
-\gls{crashingthread} could lead to a crash, and it produces the
-\gls{verificationcondition} shown in
+eliminating the spurious \gls{verificationcondition}.  The $i2c$
+instruction at \texttt{4008fb}, on the other hand, does represent a
+valid bug, as interleaving it with the \gls{crashingthread} could lead
+to a crash, and it produces the \gls{verificationcondition} shown in
 Figure~\ref{fig:eval:simple_toctou:inferred_assumption2}.
 
 \begin{figure}
@@ -2190,10 +2193,9 @@ several important properties of the analysis:
   stack or a fixed address which is guaranteed to be mapped, and there
   is no need to perform any analysis on these instructions.
   Similarly, for 48\% of instructions the {\StateMachine} simplifiers
-  were able to reduce the {\StateMachine} to the point where it did
-  not depend on any memory loads for which the dynamic aliasing model
-  could find \glspl{interferingstore}, and so there were no
-  interfering \glspl{cfg} for these potentially-crashing instructions.
+  were able to reduce the {\StateMachine} to the point where it
+  produced an empty $\beta$ set, and so there were no interfering
+  \glspl{cfg} for these potentially-crashing instructions.
 
 \item Similarly, some instructions do not start later phases because
   of timeouts earlier in the analysis phase.  The number of timeouts

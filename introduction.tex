@@ -2,18 +2,19 @@
 \label{sect:intro:overview}
 
 Commodity hardware is becoming increasingly concurrent, whether due to
-more packages per machine, per cores per package, or more threads per
+more packages per machine, more cores per package, or more threads per
 core, and software is adapting to make use of this greater
-concurrency.  This promises greater performance, but at the same time
-introduces a greater risk of serious concurrency bugs.  Concurrency
-bugs are particularly difficult to fix, due to their inherent
-non-determinism, and so it would be useful to have some tools to
-assist in this.  This dissertation presents automated techniques to
-discover, characterise, reproduce, and then fix a certain class of
-concurrency bugs.
-
-\begin{figure}
-\begin{center}
+concurrency.  This promises potentially greatly increased performance.
+Unfortunately, it also promises greatly reduced reliability.
+Highly-concurrent software is particularly prone to complex,
+unpredictable, and hard-to-reproduce bugs, and so as concurrent
+software development techniques become more widespread, especially
+amongst less able developers, we should expect to see the frequency of
+serious bugs in important software increase.  It would therefore be
+useful to have some tools to help
+\begin{wrapfigure}{r}{6.9cm}
+  \vspace{-5mm}
+\centerline{
   \begin{tikzpicture}
     [block/.style = rectangle,draw,fill=blue!20,
       line/.style = draw, -latex']
@@ -30,25 +31,29 @@ concurrency bugs.
     \path [line,->] (dynamic.west) to [bend right=45] (repro.west);
     \path [line,->] (repro) to node [right] {{\Genfix} generation} (fix);
   \end{tikzpicture}
-\end{center}
+}
 \caption{Basic pipeline}
 \label{fig:basic_pipeline}
-\end{figure}
+\end{wrapfigure}
+developers deal with this kind of
+error.  This dissertation presents automated techniques to discover,
+characterise, reproduce, and then fix a certain class of concurrency
+bug.
 
 The basic approach is shown in Figure~\ref{fig:basic_pipeline}.  The
 process starts by building a \gls{programmodel}, showing how the
-program behaves when it is operating normally, using a combination of
-static and dynamic analyses (\autoref{sect:program_model}).  This
-\gls{programmodel} is then used to locate potentially relevant
-fragments of the program and to build {\StateMachines} which model
-their behaviour (\autoref{sect:derive}).  These {\StateMachines} are
-then symbolically executed to determine whether they might exhibit the
-bug under investigation, and, if so, under what circumstances; the
-results are summarised as a set of \glspl{verificationcondition}.
-This set usually contains a large number of false positives, and so
-the next step is to prune it back down using \glspl{bugenforcer}:
-special schedulers which, when applied to the running program, make it
-far more likely that the bug will reproduce quickly
+program behaves when it is operating normally, using primarily dynamic
+analysis (\autoref{sect:program_model}).  This \gls{programmodel} is
+then used to locate potentially relevant fragments of the program and
+to build {\StateMachines} which model their behaviour
+(\autoref{sect:derive}).  These {\StateMachines} are then symbolically
+executed to determine whether they might exhibit the bug under
+investigation, and, if so, under what circumstances; the results are
+summarised as a set of \glspl{verificationcondition}.  This set
+usually contains a large number of false positives, and so the next
+step is to prune it back down using \glspl{bugenforcer}: special
+schedulers which, when applied to the running program, make it far
+more likely that the bug will reproduce quickly
 (\autoref{sect:reproducing_bugs}).  Any bugs which do reproduce can
 then be passed to the final {\genfix} generation phase which binary
 patches the program to introduce synchronisation which eliminates the
@@ -95,10 +100,10 @@ artificial ones and some from real programs (including one which was
 unknown to the author before writing the tool), and a demonstration
 that the analysis scales to realistically large programs with
 acceptable computational cost.  I also show that the fixes generated
-often have sufficiently low overhead to be useful; usually a few
-percent in more realistic tests.
+often have sufficiently low overhead to be useful.
 
 \section{Type of bug considered}
+\label{sect:types_of_bugs}
 
 {\Technique} considers only a subset of concurrency bugs: those where
 one thread, referred to as the ``\gls{crashingthread}'', is reading
@@ -142,7 +147,9 @@ little more detail:
 This clearly does not include every possible type of concurrent bug
 (it does not, for instance, include any but the most trivial deadlock
 bugs, and complicated memory corruption bugs are difficult to handle),
-but it does include some interesting bugs.
+but it does include some interesting ones.
+
+\subsection{Order-violation bugs}
 
 \begin{figure}
 \begin{centering}
@@ -159,7 +166,7 @@ Crashing thread:\hfill         & Interfering thread: \\
 \end{tabular}
 \hfill
 \end{centering}
-\caption{Example of threads with mandatory concurrency.}
+\caption{An order violation bug.}
 \label{fig:mandatory_concurrency1}
 \end{figure}
 
@@ -169,132 +176,108 @@ Crashing thread:\hfill         & Interfering thread: \\
 \begin{tabular}{p{8cm}l}
 Crashing thread:          & Interfering thread: \\
 \\
-3: Load $t_1$ from loc1   & 6: Load $t_3$ from loc1 \\
-4: Load $t_2$ from loc2   & 7: Store $t_3$ to loc2 \\
-5: Crash if $t_1 = t_2$   & 8: Store $t_3 + 1$ to loc2
+1: Load $t_0$ from loc1        & 6: Load $t_3$ from loc1 \\
+2: Store $t_0+1$ to loc2       & 7: Store $t_3$ to loc2 \\
+\textit{Something complicated} & 8: Store $t_3 + 1$ to loc2 \\
+3: Load $t_1$ from loc1        & \\
+4: Load $t_2$ from loc2        & \\
+5: Crash if $t_1 = t_2$ & \\
 \end{tabular}
 \hfill
 \end{centering}
-\caption{Truncation of the example in Figure~\ref{fig:mandatory_concurrency1}.}
+\caption{Partial fix for the bug in Figure~\ref{fig:mandatory_concurrency1}.}
 \label{fig:mandatory_concurrency2}
 \end{figure}
 
-This definition has one non-obvious property: the ``quality'' of the
-results is not monotonically increasing with \gls{alpha}.  Consider,
-for instance, the example in Figure~\ref{fig:mandatory_concurrency1}.
-The \gls{crashingthread} copies the contents of loc1 to loc2, performs
-some complex local calculation, and then asserts that loc1 and loc2
-are no longer equal.  Meanwhile, the \gls{interferingthread} sets loc1
-and loc2 to $t_3$, then sets loc2 to $t_3 + 1$.  Running the
-\gls{crashingthread} atomically is guaranteed to lead to a crash, and
-so this bug is not caused by concurrent updates, according to the
-definition used by {\technique}, and will not be reported by
-{\technique}.  On the other hand, if the threads were truncated as
-shown in Figure~\ref{fig:mandatory_concurrency2} a candidate bug would
-be reported.  The program will always avoid crashing when the two
-threads are run atomically, in either order, but interleaving their
-statements might cause a crash, and so this program does have a
-concurrency bug which can be detected by {\technique}.  The original
-program threads clearly did contain a bug, and truncating them is
-equivalent to reducing $\alpha$, and so decreasing $\alpha$ has
-removed a false negative from the set of reported bugs.
+The class of bugs described above does not include order violation
+bugs, and so {\technique} will never report any.  Order violation bugs
+in the program can, however, still sometimes affect the results.
+Consider, for instance, the threads shown in
+Figure~\ref{fig:mandatory_concurrency1}.  These threads have an order
+violation bug, in that the thread on the left will crash if it can get
+from statement 2 to statement 3 before the thread on the right
+executes.  As expected, {\technique} will discover that running the
+left-hand thread in isolation always leads to a crash, and so will not
+report a bug here.  Suppose now that the ordering violation bug is
+fixed as shown in Figure~\ref{fig:mandatory_concurrency2}.
+{\Technique} \emph{will} report a potential bug in this program:
+running the two threads atomically, in either order, will not crash,
+for any starting values of loc1 and loc2, but interleaving them might
+(consider, for instance, the order 1, 2, 6, 7, 3, 4, 5).  In other
+words, the ordering violation bug has hidden the atomicity violation
+one and {\technique} will not find either.
 
 This is an irritating property for {\technique} to have.  Fortunately,
-one could reasonably expect this problem to be rare in real programs.
-In general, real programs will only contain bugs which are at least a
-little bit difficult to reproduce.  In this case, that means that the
-complicated local computation in the \gls{crashingthread} must take
-long enough to be almost certain that the \gls{interferingthread} will
-intercede, which means that it must, at the very least, be large
-relative to scheduling jitter.  At the same time, this problem will
-only occur if the local computation is of a similar size to
-{\technique}'s \gls{analysiswindow}.  Practical considerations mean
-that the \gls{analysiswindow} can rarely exceed a hundred or so
-instructions, which is usually very small relative to scheduling
-jitter.  As such, it is quite unlikely that any bug could
-simultaneously have a large enough complex local calculation to avoid
-being fixed quickly by the programmer, but also a large enough one
-that it could trigger this behaviour.
+it is unlikely to be a serious issue in real programs.  Most
+concurrency bugs in real programs tend to be at least moderately
+difficult to reproduce, as otherwise the developers of the software
+will fix them quickly, and for this class of bugs that means that the
+complicated computation between statements 2 and 3 must take long
+enough that the interfering thread is almost certain to intercede.
+That means, at a minimum, that it must be large relative to the
+system's scheduling jitter.  This will usually be at least tens of
+microseconds, and is often several milliseconds, which is usually
+sufficient to execute thousands to hundreds of thousands of
+instructions.  At the same time, there is only any possibility of an
+ordering violation bug hiding an atomicity violation one if both bugs
+fit into {\technique}'s \gls{analysiswindow}, which, in practice,
+cannot exceed a couple of hundred instructions.  As such, it is quite
+unlikely that real programs would be able to trigger this behaviour.
 
 \section{Execution model}
 
 In addition to restricting the class of bugs, {\technique} also
 somewhat restricts the class of programs and execution environments
-which it considers.  In particular, it uses a somewhat restrictive
-memory model:
+which it considers.  In particular, it assumes that the processor
+implements a strongly-ordered memory model in which memory accesses
+are never re-ordered.  This is not actually true for any processors in
+wide-spread use today, but is a reasonable approximation for the
+widely-used AMD64 architecture\needCite{}.  Architectures with a
+weaker memory ordering, such as Alpha\needCite{} or ARM\needCite{},
+would require more involved processing.
+
+{\Technique} also assumes that the program has no real-time
+constraints.  This means that it cannot find any bugs which manifest
+by violating one of those constraints.  It also means that the bug
+fixing and bug reproducing stages, which rely on being able to
+arbitrarily delay instructions, might introduce additional such bugs.
+Modelling real-time properties of a program is in general very hard,
+even with unrestricted access to a program's source code and
+significant manual assistance\needCite{}; attempting to infer the
+necessary properties directly from machine code is completely
+impractical.  Fortunately, most programs have only very soft real-time
+constraints, which can be violated on occasion with only moderate loss
+of functionality, and so this is a tolerable limitation.
+
+{\Implementation}, my implementation of {\technique}, makes some
+additional simplifying assumptions beyond these:
 
 \begin{itemize}
-\item It assumes that the processor implements a strongly-ordered
-  memory model, so that accesses issued by a single are never
-  reordered.  The behaviour of modern processors is far more complex
-  than this~\cite{Sarkar2009}, and so {\technique} cannot precisely
-  model any widely-used processor.  On the other hand, the current
-  most widely-used architecture, AMD64\needCite{}, implements a
-  reasonably strong memory ordering where this is not a completely
-  unreasonable approximation, and so this limitation is not completely
-  crippling.
-
-\item {\Technique} also assumes that the program does not make use of
-  any unaligned memory accesses.  For many architectures this would be
-  a sound assumption, as most processors do not support such accesses.
-  Even where they are supported, they are generally very slow, and so
-  most programs will avoid them wherever possible.  This is therefore
-  not a major limitation.
-
-\item {\Technique} assumes that the only thing which could possibly
-  modify memory is the program itself, and system calls invoked by the
-  program.  It does not consider, for instance, races which are
-  mediated through inter-process shared memory, or the effects of APIs
-  like \texttt{ptrace}.
+\item It assumes that the program does not make use of any unaligned
+  memory accesses.  For many architectures this would be a sound
+  assumption, as most processors do not support such accesses.  Even
+  where they are supported, they tend very slow, and so most programs
+  will avoid them as far as possible.  This is therefore a reasonable
+  approximation.
 
 \item Similarly, it uses a very simple model of the program's address
   space in which every address is either fully accessible or
-  completely inaccessible.  Read-only or no-execute memory\needCite{},
-  for instance, is not considered.
+  completely inaccessible.  Read-only and no-execute memory\needCite{}
+  are not considered.
 
 \item The only type of concurrency considered is multi-threading.
-  {\Technique} does not, for instance, consider the effects of
+  {\Implementation} does not, for instance, consider the effects of
   asynchronous signal handlers or other upcall mechanisms.
+
+\item It assumes that the only thing which could possibly modify
+  memory is the program itself and system calls invoked by the
+  program.  It does not consider, for instance, races which are
+  mediated through inter-process shared memory, or the effects of APIs
+  like \texttt{ptrace}.
 \end{itemize}
 
-These assumptions are clearly not trivial, and do exclude some
-interesting behaviour.  On the other hand, they are not excessively
-strong, either, and much interesting concurrency behaviour will still
-fall within these parameters.
-
-{\Technique} also assumes that the program has no real-time
-constraints, so that it can safely delay program instructions
-arbitrarily.  This is necessary for both the fixes and the
-\glspl{bugenforcer} generated by {\technique} to make sense.
-
-\section{Background}
-
-\todo{I'm not entirely convinced this section adds all that much.}
-
-\subsection{The happens-before graph}
-
-A happens-before graph\needCite{} is a directed acyclic graph whose
-vertices are events in the program execution and which contains an
-edge from event A to event B if A is ordered before B by some form of
-synchronisation or communication operation.  They are usually used to
-describe the ordering of operations in weakly-ordered concurrent
-systems, where there is not guaranteed to be a single total ordering
-of all events, as they can conveniently express the possibility of two
-events being unordered with respect to each other.  They are a natural
-way of describing the memory ordering associated with a particular
-concurrency bug, and it is in that capacity that {\technique} uses
-them.
-
-There is a slight conceptual subtlety here.  As discussed above,
-{\technique} assumes that the processor implements a strongly ordered
-memory model, so that memory accesses form a total order.  The
-happens-before graph for a single execution is therefore a trivial
-straight line.  Representing this with a full happens-before graph is
-needless complexity.  The advantage of using a happens-before graph is
-that it allows certain aspects of the ordering to be discarded, so
-that several total orderings can be considered at the same time with
-no additional work.  In other words, a {\technique} happens-before
-graph represents a family of total orderings, rather than a single
-partial ordering.  This makes very little practical difference.
-
-
+Fixing the first three would be a simple matter of programming, with
+no deep conceptual changes needed.  Removing the final assumption
+would require {\implementation} to be able to model the behaviour of
+several processes at once, which would require significant changes to
+the implementation but only modest ones to {\technique} itself.

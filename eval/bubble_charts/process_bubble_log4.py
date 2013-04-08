@@ -34,6 +34,7 @@ while True:
     if words[:-1] != ["start", "build", "enforcer"]:
         util.fail("lost sequence at %s" % str(l))
 
+    cnt = 0
     while True:
         l = util.get_line()
         if l[1] == ["stop", "build", "enforcer"]:
@@ -43,30 +44,29 @@ while True:
         assert l[1][0] == "start"
         start_time = l[0]
         t = l[1][1:]
-        l = util.get_line()
-        assert l[1][0] == "stop"
-        assert l[1][1:] == t
         k = " ".join(t)
-
         if keymergemap.has_key(k):
-            k= keymergemap[k]
-
+            k = keymergemap[k]
         assert k in bubble_keys
-
         if not s.has_key(k):
             s[k] = { "failed": False, "dismiss": False, "time": 0 }
-        s[k]["time"] += l[0] - start_time
 
         l = util.get_line()
-        if l[1][0] == "failed":
+        s[k]["time"] += l[0] - start_time
+        cnt += l[0] - start_time
+        if l[1] in [["out", "of",  "memory"], ["timeout"]]:
             s[k]["failed"] = True
+            end_time = l[0]
+            break
         else:
-            util.lookahead = l
+            assert l[1][0] == "stop"
+            assert l[1][1:] == t
+    sys.stderr.write("%f %s %s\n" % (end_time - sstart_time - cnt, words[-1], str(s)))
     series.append((end_time - sstart_time, s))
 
 series.sort()
 
-dilation = 170.0
+dilation = 100.0
 (bubbles, max_time, max_nr_samples) = util.transpose_bubbles(series, dilation, bubble_keys)
 y_centrums = {"canonicalise": 0.9,
               "prepare summary": 0.5,
@@ -80,7 +80,7 @@ y_centrums = {"canonicalise": 0.9,
               "compile": 0.1,
               "gcc": 0.1,
               "GC": 0.5,
-              "defect": 0.5}
+              "defect": 0.3}
 
 def scale_time(t):
     return t/60.0 * figwidth

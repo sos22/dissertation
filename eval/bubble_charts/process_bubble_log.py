@@ -33,24 +33,27 @@ while True:
         assert l[1][0] == "start"
         start_time = l[0]
         t = l[1][1:]
-        l = util.get_line()
-        assert l[1][0] == "stop"
-        assert l[1][1:] == t
         k = " ".join(t)
+        assert k in bubble_keys or k == "GC"
         if not s.has_key(k):
             s[k] = { "dismiss": False,
                      "failed": False,
                      "time": 0 }
-        s[k]["time"] += l[0] - start_time
-        assert k in bubble_keys or k == "GC"
 
         l = util.get_line()
-        if l[1] in [["early", "out"], ["no", "interfering", "stores"]]:
-            s[k]["dismiss"] = True
-        elif l[1][0] == "failed":
+        if l[1][0] == "timeout":
             s[k]["failed"] = True
+            s[k]["time"] += l[0] - start_time
         else:
-            util.lookahead = l
+            assert l[1][0] == "stop"
+            assert l[1][1:] == t
+            s[k]["time"] += l[0] - start_time
+
+            l = util.get_line()
+            if l[1] in [["early", "out"], ["no", "interfering", "stores"]]:
+                s[k]["dismiss"] = True
+            else:
+                util.lookahead = l
     if s.has_key("derive interfering CFGs") and not s.has_key("derive c-atomic"):
         s["derive c-atomic"] = { "dismiss": False, "failed": False, "time": 0 }
     series.append((end_time - sstart_time, s))
@@ -67,7 +70,7 @@ y_centrums = {"early-out check": 0.5,
               "defect": 0.5,
               "GC": 0.5}
 
-dilation = 40
+dilation = 35
 (bubbles, max_time, max_nr_samples) = util.transpose_bubbles(series, dilation, bubble_keys)
 
 def scale_time(t):
@@ -78,8 +81,7 @@ def scale_idx(idx):
 x_labels = []
 for i in xrange(0,4):
     x_labels.append({"posn": scale_time(i * dilation), "label": "%d.0" % i})
-    if i != 3:
-        x_labels.append({"posn": scale_time((i+.5) * dilation), "label": "%d.5" % i})
+    x_labels.append({"posn": scale_time((i+.5) * dilation), "label": "%d.5" % i})
 
 util.print_preamble(x_labels, "Proportion of crashing instructions", scale_time, 60, 10, figwidth, figheight)
 
@@ -93,7 +95,7 @@ labels = {"build crashing CFG": {"posn": ((0.2, 0.95), "right"),
                                        "label": "Derive C-atomic"},
           "derive interfering CFGs": {"posn": ((0.7, .25), "right"),
                                        "label": "Derive interfering \\glspl{cfg}"},
-          "process interfering CFGs": {"posn": ((2.6, .4), "above"),
+          "process interfering CFGs": {"posn": ((3.0, .5), "above"),
                                        "label": "Process interfering \\glspl{cfg}"}
           }
 
