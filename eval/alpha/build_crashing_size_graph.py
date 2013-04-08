@@ -44,8 +44,8 @@ def do_one(offset, alpha, key, data):
     samples = [x[key] for x in data if x[key] != None]
     if len(samples) == 0:
         return
-    (mean, sd) = common.mean(samples)
-    common.draw_box_plot(common.alpha_to_x(alpha) + offset, count_to_y, samples, mean, sd)
+    mean = common.mean(samples)
+    common.draw_box_plot(common.alpha_to_x(alpha) + offset, count_to_y, samples, mean)
 keys = ["nr_crashing_instrs", "initial_crashing_states", "simplified_crashing_states"]
 descrs = ["Instructions", "Unsimplified states", "Simplified states"]
 for k in xrange(len(keys)):

@@ -34,13 +34,13 @@ for (alpha, data) in series.iteritems():
     samples = [x["bpm_time"] for x in data]
     nr_timeouts = len([x for x in samples if x == None])
     times = [x for x in samples if x != None]
-    (mean, sd) = common.mean(times)
+    mean = common.mean(times)
 
     times += [max_time] * nr_timeouts
     print
     print "  %%%% alpha = %d" % alpha
 
-    common.draw_box_plot(common.alpha_to_x(alpha), time_to_y, times, mean, sd)
+    common.draw_box_plot(common.alpha_to_x(alpha), time_to_y, times, mean)
 common.box_legend(0)
 
 # And now for the timeout rate

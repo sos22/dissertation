@@ -82,14 +82,14 @@ print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {\\shortstack{Time to d
 for (alpha, data) in series.iteritems():
     samples = [x["gvc_time"] for x in data if x["gvc_timeout"] == False]
     nr_timeouts = len([x for x in data if x["gvc_timeout"] != False])
-    (mean, sd) = common.mean(samples)
+    mean = common.mean(samples)
 
     samples += [max_time] * nr_timeouts
     print
     print "  %%%% alpha = %d" % alpha
     print "  %%%% samples = %s" % str(samples)
     print "  %%%% nr_timeout = %d" % nr_timeouts
-    common.draw_box_plot(common.alpha_to_x(alpha), lambda t: offset + time_to_y(t), samples, mean, sd)
+    common.draw_box_plot(common.alpha_to_x(alpha), lambda t: offset + time_to_y(t), samples, mean)
 common.box_legend(offset)
 
 offset += common.figheight + figsep

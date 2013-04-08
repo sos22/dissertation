@@ -1,10 +1,13 @@
 import sys
 import os
+import math
 
 figheight = 10.0
 figwidth = 11.0
 legendwidth = 2.5
 box_width = 0.3
+
+mintime = 0.0001
 
 def fail(msg):
     sys.stderr.write("%s\n" % msg)
@@ -69,7 +72,7 @@ def read_input():
             line = line.strip()
             if line in ["no conflicting stores", "No conflicting stores (1951)", "No conflicting stores (1925)"]:
                 sample["nr_store_cfgs"] = 0
-                sample["gsc_time"] = 0
+                sample["gsc_time"] = mintime
                 sample["gsc_timed_out"] = False
                 continue
             if line in ["atomicSurvivalConstraint timed out", "removeAnnotations timed out", "removeAnnotations timed out (1915)",
@@ -87,7 +90,7 @@ def read_input():
                 continue
             if line == "":
                 sample["gsc_timed_out"] = False
-                sample["gsc_time"] = 0
+                sample["gsc_time"] = mintime
                 sample["nr_store_cfgs"] = 0
                 continue
             w = line.split()
@@ -123,8 +126,8 @@ def read_input():
                 if w == ["buildStoreMachine", "timed", "out"]:
                     continue
                 if w == ["single", "store", "versus", "single", "shared", "load"]:
-                    sample["bsm_time"] = 0
-                    sample["gvc_time"] = 0
+                    sample["bsm_time"] = mintime
+                    sample["gvc_time"] = mintime
                     sample["gvc_timeout"] = False
                     sample["generated_vc"] = False
                     continue
@@ -178,7 +181,7 @@ def get_quantile(data, quant):
         return data[-1]
     return data[idx_low] + (data[idx_high] - data[idx_low]) * (idx - idx_low)
 
-def _draw_box_plot(x_coord, y_scaler, mini, maxi, p10, p25, p50, p75, p90, mean, sd):
+def _draw_box_plot(x_coord, y_scaler, mini, maxi, p10, p25, p50, p75, p90, (mean, sd, mean2, mean2a, mean2b)):
     print "  \\draw (%f, %f) -- (%f, %f);" % (x_coord, y_scaler(mini),
                                               x_coord, y_scaler(p25))
     print "  \\draw (%f, %f) -- (%f, %f);" % (x_coord, y_scaler(p75),
@@ -190,6 +193,8 @@ def _draw_box_plot(x_coord, y_scaler, mini, maxi, p10, p25, p50, p75, p90, mean,
     print "  \\draw [fill,color=black!50] (%f, %f) rectangle (%f, %f);" % (x1, y_scaler(p25),
                                                                            x2, y_scaler(p75))
     print "  \\draw (%f, %f) -- (%f, %f);" % (x1, y_scaler(p50), x2, y_scaler(p50))
+
+    # Arithmetic mean
     m = y_scaler(mean)
     print "  \\draw (%f, %f) -- (%f, %f) -- (%f, %f) -- (%f, %f);" % (x_coord - 0.1, m - 0.1,
                                                                       x_coord - 0.1, m + 0.1,
@@ -202,12 +207,26 @@ def _draw_box_plot(x_coord, y_scaler, mini, maxi, p10, p25, p50, p75, p90, mean,
     print "  \\draw (%f, %f) -- (%f, %f);" % (x_coord - 0.05, bottom_whisk, x_coord + 0.05, bottom_whisk)
     print "  \\draw (%f, %f) -- (%f, %f);" % (x_coord, bottom_whisk, x_coord, m + 0.05)
 
-def draw_box_plot(x_coord, y_scaler, data, mean, sd):
+    if mean2 != None:
+        # Geometric/log mean
+        m2 = y_scaler(mean2)
+        print "  \\draw (%f, %f) -- (%f, %f);" % (x_coord - 0.1, m2 - 0.1,
+                                                  x_coord + 0.1, m2 + 0.1)
+        print "  \\draw (%f, %f) -- (%f, %f);" % (x_coord - 0.1, m2 + 0.1,
+                                                  x_coord + 0.1, m2 - 0.1)
+        top_whisk = y_scaler(mean2a)
+        bottom_whisk = y_scaler(mean2b)
+        print "  \\draw (%f, %f) -- (%f, %f);" % (x_coord - 0.05, top_whisk, x_coord + 0.05, top_whisk)
+        print "  \\draw (%f, %f) -- (%f, %f);" % (x_coord, top_whisk, x_coord, m2)
+        print "  \\draw (%f, %f) -- (%f, %f);" % (x_coord - 0.05, bottom_whisk, x_coord + 0.05, bottom_whisk)
+        print "  \\draw (%f, %f) -- (%f, %f);" % (x_coord, bottom_whisk, x_coord, m2)
+
+def draw_box_plot(x_coord, y_scaler, data, mean):
     data.sort()
     _draw_box_plot(x_coord, y_scaler, min(data), max(data), get_quantile(data, .10),
                    get_quantile(data, 0.25), get_quantile(data, 0.50),
                    get_quantile(data, 0.75), get_quantile(data, 0.90),
-                   mean, sd)
+                   mean)
 
 def alpha_to_x(alpha):
     return alpha / 100.0 * figwidth
@@ -221,14 +240,21 @@ def alpha_axis(series):
         print "  \\node at (%f,0) [below] {%d};" % (alpha_to_x(alpha), alpha)
     print "  \\node at (%f,-12pt) [below] {Value of \\gls{alpha}};" % (figwidth / 2)
     
-def box_legend(offset):
+def box_legend(offset, include_geom = True):
     print
     print "  %% Legend"
     fl = figwidth + legendwidth
     def d(idx):
-        return 0.2 + idx * 0.8 / 6
+        if include_geom:
+            return 0.35 + idx * 0.65 / 6
+        else:
+            return 0.2 + idx * 0.8 / 6
+    if include_geom:
+        mean = (0.07, 0.05, None, None, None)
+    else:
+        mean = (0.07, 0.05, 0.17, 0.12, 0.23)
     _draw_box_plot(figwidth + legendwidth, lambda x: x * figheight + offset,
-                   d(0), d(6), d(1), d(2), d(3), d(4), d(5), 0.07, 0.05)
+                   d(0), d(6), d(1), d(2), d(3), d(4), d(5), mean)
     print "  \\node at (%f, %f) [left] {Min};" % (fl - box_width / 2, figheight * d(0) + offset)
     print "  \\node at (%f, %f) [left] {Max};" % (fl - box_width / 2, figheight * d(6) + offset)
     print "  \\node at (%f, %f) [left] {10\\%%};" % (fl - box_width / 2, figheight * d(1) + offset)
@@ -237,6 +263,8 @@ def box_legend(offset):
     print "  \\node at (%f, %f) [left] {75\\%%};" % (fl - box_width / 2, figheight * d(4) + offset)
     print "  \\node at (%f, %f) [left] {90\\%%};" % (fl - box_width / 2, figheight * d(5) + offset)
     print "  \\node at (%f, %f) [left] {\\shortstack[r]{Mean $\\pm$ sd\\\\of mean}};" % (fl - box_width / 2, figheight * 0.07 + offset)
+    if include_geom:
+        print "  \\node at (%f, %f) [left] {\\shortstack[r]{Geometric\\\\mean}};" % (fl - box_width / 2, figheight * 0.22 + offset)
 
 def timeout_chart(y_base, height, max_rate, data, step):
     print
@@ -258,4 +286,16 @@ def timeout_chart(y_base, height, max_rate, data, step):
 def mean(data):
     m = sum(data) / len(data)
     var = sum([(x - m) ** 2 for x in data]) / len(data)
-    return (m, (var / (len(data) - 1)) ** .5)
+    has_negs = len([x for x in data if x <= 0]) != 0
+    if has_negs:
+        m2 = None
+        m2a = None
+        m2b = None
+    else:
+        d2 = [math.log(x) for x in data]
+        m2 = sum(d2) / len(d2)
+        sd2 = (sum([(x - m2) ** 2 for x in d2]) / (len(d2) * (len(d2) - 1))) ** .5
+        m2a = math.e ** (m2 + sd2)
+        m2b = math.e ** (m2 - sd2)
+        m2 = math.e ** m2
+    return (m, (var / (len(data) - 1)) ** .5, m2, m2a, m2b)

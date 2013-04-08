@@ -42,8 +42,8 @@ for t in xrange(0,21,2):
 print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {Number of interfering \\glspl{cfg}};" % (common.figheight / 2)
 for (alpha, data) in series.iteritems():
     samples = [x["nr_store_cfgs"] for x in data if x["gsc_timed_out"] == False]
-    (mean, sd) = common.mean(samples)
-    common.draw_box_plot(common.alpha_to_x(alpha), count_to_y, samples, mean, sd)
+    mean = common.mean(samples)
+    common.draw_box_plot(common.alpha_to_x(alpha), count_to_y, samples, mean)
 
 offset = common.figheight + figsep
 
@@ -56,12 +56,12 @@ print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {Time taken deriving \\
 for (alpha, data) in series.iteritems():
     samples = [x["gsc_time"] for x in data if x["gsc_timed_out"] == False]
     nr_timeouts = len([x for x in data if x["gsc_timed_out"] == True])
-    (mean, sd) = common.mean(samples)
+    mean = common.mean(samples)
 
     samples += [max_time] * nr_timeouts
     print
     print "  %%%% alpha = %d" % alpha
-    common.draw_box_plot(common.alpha_to_x(alpha), lambda t: offset + time_to_y(t), samples, mean, sd)
+    common.draw_box_plot(common.alpha_to_x(alpha), lambda t: offset + time_to_y(t), samples, mean)
 
 offset += common.figheight + figsep
 
@@ -88,6 +88,6 @@ else:
     delta2 = ""
 print "  \\node at (%f,%f) [%sright] {\\shortstack[l]{Building crashing\\\\thread only}};" % (common.figwidth, offset + timeoutheight * bpm_data[-1][1],delta1)
 print "  \\node at (%f,%f) [%sright] {Building both threads};" % (common.figwidth, offset + timeoutheight * gsc_data[-1][1],delta2)
-common.box_legend(0)
+common.box_legend(0, False)
 
 print "\\end{tikzpicture}"
