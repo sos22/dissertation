@@ -2253,6 +2253,37 @@ of the analysis remains high but tolerable, and that it is likely to
 become faster as hardware becomes increasingly parallel, which is
 precisely the scenario in which it would be most useful.
 
+\subsection{Timeouts}
+
+Many of the algorithms used by {\technique} require far more time in
+their worst case than in their expected case, in many cases by many
+orders of magnitude.  This is quite irritating when the analysis is
+being used to investigate a specific bug, as it will occasionally take
+so long that it effectively fails to complete ever.  In effect, the
+analysis has some failure rate, which is tolerable when the failure
+rate is quite small.  It is more of a problem when the analysis is
+applied speculatively to a very large number of potential bugs, as
+even a very small number of instructions which take a very long time
+would cause the entire analysis to take an implausible amount of time.
+Suppose, for instance, that the analysis completes in 500ms in 99.99\%
+of cases but takes three years in the remaining 0.01\% of cases.  An
+analysis which fails 0.01\% of the time would still be quite useful,
+and so this is reasonable for analysing specific bugs.  On the other
+hand, if the analysis is run 10,000 times then the probability of one
+of the steps taking three years is 63\%, and an analysis which fails
+two times in three is much less useful.
+
+{\Technique} works around this problem by applying timeouts to the
+various analysis steps.  This ensures that {\technique} can still
+produce some useful results in a reasonable time even when it
+occasionally encounters one of its bad cases.  {\Grapefruit} uses two
+independent timeouts: one for the per-\gls{crashingthread} work, such
+as deriving the crashing {\StateMachine} or the interfering
+\glspl{cfg}, and one for the per-\gls{interferingthread} work, such as
+deriving \gls{ic-atomic} or the final satisfiability check.  These
+timeouts are both set by default to 60 seconds.  I discuss the effects
+of these timeouts in more detail in the evaluation.
+
 \section{The program model}
 \label{sect:program_model}
 
