@@ -6,6 +6,7 @@ import math
 
 import common
 
+common.mintime = 0.001
 common.figheight = 7.0
 timeoutheight = 3
 
@@ -34,9 +35,11 @@ s = {}
 for (alpha, data) in series.iteritems():
     d = []
     for sample in data:
+        if sample["early-out"] or sample["skip_gsc"]:
+            continue
         i = sample["interferers"]
         if i != None:
-            d += i
+            d += i.values()
     s[alpha] = d
 series = s
 
@@ -56,7 +59,7 @@ for t in xrange(0,max_count+1,200):
 print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {\\shortstack{Total number of\\\\\\glspl{verificationcondition}\\\\(solid)}};" % (offset + common.figheight / 2)
 print "  \\draw (0, %f)" % (offset)
 for (alpha, data) in s:
-    samples = [x["generated_vc"] for x in data if x["generated_vc"] != False]
+    samples = [x["generated_vc"] for x in data if not x["gvc_timeout"] and x["generated_vc"] != None]
     print "        -- (%f, %f)" % (common.alpha_to_x(alpha), count_to_y(len([x for x in samples if x == True])) + offset)
 print "        ;"
 
@@ -67,37 +70,35 @@ for t in xrange(0,101,20):
 print "  \\node at (%f, %f) [rotate=-90, anchor=south] {\\shortstack{Proportion generating \\\\\\glspl{verificationcondition}\\\\(dashed)}};" % (common.figwidth + .8, offset + common.figheight / 2)
 print "  \\draw[dashed] (0, %f)" % (offset)
 for (alpha, data) in s:
-    samples = [x["generated_vc"] for x in data if x["generated_vc"] != None]
+    samples = [x["generated_vc"] for x in data if not x["gvc_timeout"] and x["generated_vc"] != None]
     print "        -- (%f, %f)" % (common.alpha_to_x(alpha), prop_to_y(len([x for x in samples if x == True]) / float(len(samples))) + offset)
 print "        ;"
 
 offset = common.figheight + figsep
 
-print "  %% Time to generate VCs"
-print "  \\draw[->] (0,%f) -- (0,%f);" % (offset, offset + common.figheight)
-for t in ["0.001", "0.01", "0.1", "1", "10", "60"]:
-    print "  \\node at (0,%f) [left] {%s};" % (offset + time_to_y(float(t)), t)
-    print "  \\draw [color=black!10] (0,%f) -- (%f, %f);" % (offset + time_to_y(float(t)), common.figwidth, offset + time_to_y(float(t)))
-print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {\\shortstack{Time to derive \\glspl{verificationcondition}\\\\(seconds)}};" % (offset + common.figheight / 2)
+common.kde_axis(offset, True, False, True, True)
 for (alpha, data) in series.iteritems():
-    samples = [x["gvc_time"] for x in data if x["gvc_timeout"] == False]
-    nr_timeouts = len([x for x in data if x["gvc_timeout"] != False])
-    mean = common.mean(samples)
+    nr_dismiss = 0
+    samples = []
+    nr_timeouts = 0
+    nr_oom = 0
+    for x in data:
+        if x["early-out"]:
+            nr_dismiss += 1
+            continue
+        if x["gvc_timeout"]:
+            nr_timeouts += 1
+            continue
+        if x["gvc_oom"]:
+            nr_oom += 1
+            continue
+        samples.append(x["gvc_time"])
 
-    samples += [max_time] * nr_timeouts
     print
     print "  %%%% alpha = %d" % alpha
     print "  %%%% samples = %s" % str(samples)
     print "  %%%% nr_timeout = %d" % nr_timeouts
-    common.draw_box_plot(common.alpha_to_x(alpha), lambda t: offset + time_to_y(t), samples, mean)
-common.box_legend(offset)
-
-offset += common.figheight + figsep
-
-timeout_data = []
-for (alpha, data) in series.iteritems():
-    timeouts = len([x for x in data if x["bsm_time"] == None or x["gvc_timeout"] == True])
-    timeout_data.append((alpha, timeouts / float(len(data))))
-common.timeout_chart(offset, timeoutheight, 1.0, {"": timeout_data}, 20)
+    common.kde_chart(offset, common.alpha_to_x(alpha), nr_dismiss,
+                     None, samples, nr_timeouts, nr_oom)
 
 print "\\end{tikzpicture}"

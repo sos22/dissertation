@@ -8,12 +8,155 @@ cache = "data_cache.pkl"
 figheight = 10.0
 figwidth = 11.0
 legendwidth = 2.5
-box_width = 0.3
+box_width = 0.5
 
-mintime = 0.0001
+mintime = 0.01
 
 def fail(msg):
     sys.stderr.write("%s\n" % msg)
+
+def parse_interfering(path, l, cntr):
+    line = l.readline().strip()
+    if line == "":
+        return None
+    sample = {}
+    sample["gvc_oom"] = False
+    sample["gvc_timeout"] = False
+    sample["early-out"] = False
+    sample["generated_vc"] = None
+    sample["gvc_time"] = None
+    w = line.split()[1:]
+    if len(w) != 5 or w[:3] != ["Interfering", "CFG", "has"]:
+        fail("%s got bad ich line %s" % (path, line))
+    assert cntr == int(line.split()[0].split("/")[0])
+    sample["nr_instrs"] = int(w[3])
+
+    line = l.readline().strip()
+    if line == "Child timed out in run_in_child":
+        sample["gvc_timeout"] = True
+        return sample
+    w = line.split()[1:]
+    if w == ["single", "store", "versus", "single", "shared", "load"]:
+        sample["early-out"] = True
+        sample["generated_vc"] = False
+        return sample
+    if len(w) != 6 or w[:4] != ["Initial", "interfering", "StateMachine", "has"]:
+        fail("%s got bad ich2 line %s" % (path, line))
+    sample["initial_interfering_states"] = int(w[4])
+                
+    line = l.readline().strip()
+    if line == "OOM kill in checkWhetherInstructionCanCrash()":
+        sample["gvc_oom"] = True
+        return sample
+    if line == "Child timed out in run_in_child":
+        sample["gvc_timeout"] = True
+        return sample
+    w = line.split()[1:]
+    if len(w) != 6 or w[:4] != ["Simplified", "interfering", "StateMachine", "has"]:
+        fail("%s got bad ich3 line %s" % (path, line))
+    sample["simplified_interfering_states"] = int(w[4])
+
+    line = l.readline().strip()
+    w = line.split()[1:]
+    if len(w) != 3 or w[:2] != ["buildStoreMachine", "took"]:
+        fail("%s got bad ich4 line %s" % (path, line))
+    sample["bsm_time"] = float(w[2])
+
+    line = l.readline().strip()
+    if line == "Child timed out in run_in_child":
+        sample["gvc_timeout"] = True
+        return sample
+
+    w = line.split()[1:]
+    if line == "OOM kill in checkWhetherInstructionCanCrash()":
+        sample["gvc_oom"] = True
+        return sample
+    if w[:-1] in [["single", "store", "versus", "single", "load,", "after", "localise"],
+                  ["generated", "VC"],
+                  ["crash", "impossible"],
+                  ["IC", "is", "false"]]:
+        t = float(w[-1][1:-1])
+        sample["gvc_time"] = t
+        sample["gvc_timeout"] = False
+        sample["generated_vc"] = w[:-1] == ["generated", "VC"]
+        return sample
+    fail("Huh? %s, %s" % (path, line))
+
+def parse_crashing(path, l, start_cntr = 0):
+    sample = {}
+    sample["nr_crashing_instrs"] = None
+    sample["initial_crashing_states"] = None
+    sample["simplified_crashing_states"] = None
+    sample["bpm_time"] = None
+    sample["gvc_time"] = None
+    sample["gvc_timeout"] = None
+    sample["generated_vc"] = None
+
+    line = l.readline().strip()
+    if line != "Start processing":
+        fail("Expected start processing line in %s, got %s" % (path, line))
+    line = l.readline().strip()
+    if line == "Early out":
+        sample["early-out"] = True
+        l.close()
+        return sample
+    sample["early-out"] = False
+                
+    w = line.split()
+    if len(w) != 5 or w[0:3] != ["Crashing", "CFG", "has"] or w[-1] != "instructions":
+        fail("%s doesn't start with CChi line (%s)" % (path, line))
+    sample["nr_crashing_instrs"] = int(w[3])
+    if int(w[3]) < 10:
+        fail("%s has too few instructions (%s)" % (path, line))
+    assert int(w[3]) >= 10
+
+    line = l.readline().strip()
+    w = line.split()
+    if len(w) != 6 or w[0:4] != ["Initial", "crashing", "machine", "has"] or w[-1] != "states":
+        fail("%s missing ICMS line (%s)" % (path, line))
+    sample["initial_crashing_states"] = int(w[4])
+
+    line = l.readline().strip()
+    w = line.split()
+    if len(w) != 6 or w[0:4] != ["Simplified", "crashing", "machine", "has"] or w[-1] != "states":
+        fail("%s missing SCMS line (%s)" % (path, line))
+    sample["simplified_crashing_states"] = int(w[4])
+
+    line = l.readline().strip()
+    w = line.split()
+    if len(w) != 3 or w[0] != "buildProbeMachine" or w[1] != "took":
+        fail("%s doesn't start with bpm line (%s)" % (path, line))
+    sample["bpm_time"] = float(w[2])
+
+    line = l.readline()
+    line = line.strip()
+    if line in ["no conflicting stores", "No conflicting stores (1847)", "No conflicting stores (1825)"]:
+        sample["skip_gsc"] = True
+        return sample
+    sample["skip_gsc"] = False
+    w = line.split()
+    if len(w) != 3 or w[0] != "atomicSurvivalConstraint" or w[1] != "took":
+        fail("%s lacks an ASC line (%s)" % (path, line))
+    sample["asc_time"] = float(w[2])
+
+    line = l.readline().strip()
+    w = line.split()
+    if len(w) != 6 or w[0] != "getStoreCFGs" or w[1] != "took" or w[3] != "seconds," or w[4] != "produced":
+        fail("%s lacks a GSC line (%s)" % (path, line))
+    sample["gsc_timed_out"] = False
+    sample["nr_store_cfgs"] = int(w[5])
+    sample["gsc_time"] = float(w[2])
+
+    intf = {}
+    cntr = start_cntr
+    while True:
+        s = parse_interfering(path, l, cntr)
+        if s == None:
+            break
+        intf[cntr] = s
+        cntr += 1
+    sample["interferers"] = intf
+    return sample
 
 def read_input():
     try:
@@ -24,161 +167,34 @@ def read_input():
     except:
         pass
     series = {}
-    for alpha in [10,20,30,40,50,75,100]:
+    for alpha in [10, 20]:
         nr_timeouts = 0
-        data = []
+        base = {}
+        deltas = {}
         for logfile in os.listdir("%d" % alpha):
+            w = logfile.split(".")
             path = "%d/%s" % (alpha, logfile)
-
-            sample = {}
-            sample["nr_crashing_instrs"] = None
-            sample["initial_crashing_states"] = None
-            sample["simplified_crashing_states"] = None
-            sample["bpm_time"] = None
-            sample["asc_time"] = None
-            sample["gsc_time"] = None
-            sample["gsc_timed_out"] = None
-            sample["nr_store_cfgs"] = None
-            sample["interferers"] = None
-            data.append(sample)
-
             l = file(path)
-            
-            line = l.readline().strip()
-            if line == "buildProbeMachine timed out":
-                continue
-            w = line.split()
-            if len(w) != 5 or w[0:3] != ["Crashing", "CFG", "has"] or w[-1] != "instructions":
-                fail("%s doesn't start with CChi line (%s)" % (path, line))
-            sample["nr_crashing_instrs"] = int(w[3])
-            assert int(w[3]) >= 10
-
-            line = l.readline().strip()
-            if line == "buildProbeMachine timed out":
-                continue
-            w = line.split()
-            if len(w) != 6 or w[0:4] != ["Initial", "crashing", "machine", "has"] or w[-1] != "states":
-                fail("%s missing ICMS line (%s)" % (path, line))
-            sample["initial_crashing_states"] = int(w[4])
-
-            line = l.readline().strip()
-            if line == "buildProbeMachine timed out":
-                continue
-            w = line.split()
-            if len(w) != 6 or w[0:4] != ["Simplified", "crashing", "machine", "has"] or w[-1] != "states":
-                fail("%s missing SCMS line (%s)" % (path, line))
-            sample["simplified_crashing_states"] = int(w[4])
-
-            line = l.readline().strip()
-            w = line.split()
-            if len(w) != 3 or w[0] != "buildProbeMachine" or w[1] != "took":
-                fail("%s doesn't start with bpm line (%s)" % (path, line))
-            sample["bpm_time"] = float(w[2])
-
-            line = l.readline()
-            if line == "":
-                l.close()
-                continue
-            line = line.strip()
-            if line in ["no conflicting stores", "No conflicting stores (1951)", "No conflicting stores (1925)"]:
-                sample["nr_store_cfgs"] = 0
-                sample["gsc_time"] = mintime
-                sample["gsc_timed_out"] = False
-                continue
-            if line in ["atomicSurvivalConstraint timed out", "removeAnnotations timed out", "removeAnnotations timed out (1915)",
-                        "removeAnnotations failed"]:
-                sample["gsc_timed_out"] = True
-                continue
-            w = line.split()
-            if len(w) != 3 or w[0] != "atomicSurvivalConstraint" or w[1] != "took":
-                fail("%s lacks an ASC line (%s)" % (path, line))
-            sample["asc_time"] = float(w[2])
-
-            line = l.readline().strip()
-            if line == "getStoreCFGs timed out":
-                sample["gsc_timed_out"] = True
-                continue
-            if line == "":
-                sample["gsc_timed_out"] = False
-                sample["gsc_time"] = mintime
-                sample["nr_store_cfgs"] = 0
-                continue
-            w = line.split()
-            if len(w) != 6 or w[0] != "getStoreCFGs" or w[1] != "took" or w[3] != "seconds," or w[4] != "produced":
-                fail("%s lacks a GSC line (%s)" % (path, line))
-            sample["gsc_timed_out"] = False
-            sample["nr_store_cfgs"] = int(w[5])
-            sample["gsc_time"] = float(w[2])
-
-            intf = []
-            sample["interferers"] = intf
-            while True:
-                sample = {}
-                sample["nr_instrs"] = None
-                sample["initial_interfering_states"] = None
-                sample["simplified_interfering_states"] = None
-                sample["bsm_time"] = None
-                sample["gvc_time"] = None
-                sample["gvc_timeout"] = None
-                sample["generated_vc"] = None
-
-                line = l.readline().strip()
-                if line == "":
-                    break;
-                intf.append(sample)
-                w = line.split()[1:]
-                if len(w) != 5 or w[:3] != ["Interfering", "CFG", "has"]:
-                    fail("%s got bad ich line %s" % (path, line))
-                sample["nr_instrs"] = int(w[3])
-
-                line = l.readline().strip()
-                w = line.split()[1:]
-                if w == ["buildStoreMachine", "timed", "out"]:
-                    continue
-                if w == ["single", "store", "versus", "single", "shared", "load"]:
-                    sample["bsm_time"] = mintime
-                    sample["gvc_time"] = mintime
-                    sample["gvc_timeout"] = False
-                    sample["generated_vc"] = False
-                    continue
-                if len(w) != 6 or w[:4] != ["Initial", "interfering", "StateMachine", "has"]:
-                    fail("%s got bad ich2 line %s" % (path, line))
-                sample["initial_interfering_states"] = int(w[4])
-                
-                line = l.readline().strip()
-                w = line.split()[1:]
-                if w == ["buildStoreMachine", "timed", "out"]:
-                    continue
-                if len(w) != 6 or w[:4] != ["Simplified", "interfering", "StateMachine", "has"]:
-                    fail("%s got bad ich3 line %s" % (path, line))
-                sample["simplified_interfering_states"] = int(w[4])
-
-                line = l.readline().strip()
-                w = line.split()[1:]
-                if len(w) != 3 or w[:2] != ["buildStoreMachine", "took"]:
-                    fail("%s got bad ich4 line %s" % (path, line))
-                sample["bsm_time"] = float(w[2])
-
-                line = l.readline().strip()
-                w = line.split()[1:]
-                if w[:-1] in [["single", "store", "versus", "single", "load,", "after", "localise"],
-                              ["generated", "VC"],
-                              ["crash", "impossible"],
-                              ["IC", "is", "false"]]:
-                    t = float(w[-1][1:-1])
-                    sample["gvc_time"] = t
-                    sample["gvc_timeout"] = False
-                    sample["generated_vc"] = w[:-1] == ["generated", "VC"]
-                    continue
-                if w in [["crash", "timed", "out"],
-                         ["IC", "atomic", "timed", "out"],
-                         ["rederive", "CI", "atomic", "timed", "out"]]:
-                    sample["gvc_timeout"] = True
-                    continue
-                fail("Huh? %s, %s" % (path, line))
-
+            if w[-1] == "slog":
+                sample = parse_crashing(path, l, int(w[1]))
+                assert not deltas.has_key(w[0])
+                deltas[w[0]] = sample
+            else:
+                sample = parse_crashing(path, l)
+                assert not base.has_key(w[0])
+                base[w[0]] = sample
             l.close()
-        series[alpha] = data
+        for (dynrip, sample) in deltas.iteritems():
+            assert base.has_key(dynrip)
+            b = base[dynrip]
+            assert b.has_key("interferers")
+            assert sample.has_key("interferers")
+            bi = b["interferers"]
+            si = sample["interferers"]
+            for (i_key, i_data) in si.iteritems():
+                assert bi.has_key(i_key)
+                bi[i_key] = i_data
+        series[alpha] = base.values()
 
     f = file(cache, "w")
     cPickle.dump(series, f)
@@ -253,7 +269,16 @@ def alpha_axis(series):
     print "  \\draw[->] (0,0) -- (%f,0);" % figwidth
     for alpha in series:
         print "  \\node at (%f,0) [below] {%d};" % (alpha_to_x(alpha), alpha)
-    print "  \\node at (%f,-12pt) [below] {Value of \\gls{alpha}};" % (figwidth / 2)
+    def area_for_prob(p):
+        return p * box_width * 2
+    def len_for_prob(p):
+        return area_for_prob(p) ** .5
+
+    prob = 10
+    l = len_for_prob(prob / 100.0)
+    print "  \\node at (%f,-12pt) [below] {Value of \\gls{alpha}.  \\tikz{\\draw [fill] (0,0) rectangle (%f,%f);} = %d\\%%};" % (figwidth / 2,
+                                                                                                                                 l, l, prob)
+
     
 def box_legend(offset, include_geom = True):
     print
@@ -265,9 +290,9 @@ def box_legend(offset, include_geom = True):
         else:
             return 0.2 + idx * 0.8 / 6
     if include_geom:
-        mean = (0.07, 0.05, None, None, None)
+        mean = (0.07, 0.05, 0.21, 0.18, 0.24)
     else:
-        mean = (0.07, 0.05, 0.17, 0.12, 0.23)
+        mean = (0.07, 0.05, None, None, None)
     _draw_box_plot(figwidth + legendwidth, lambda x: x * figheight + offset,
                    d(0), d(6), d(1), d(2), d(3), d(4), d(5), mean)
     print "  \\node at (%f, %f) [left] {Min};" % (fl - box_width / 2, figheight * d(0) + offset)
@@ -279,7 +304,7 @@ def box_legend(offset, include_geom = True):
     print "  \\node at (%f, %f) [left] {90\\%%};" % (fl - box_width / 2, figheight * d(5) + offset)
     print "  \\node at (%f, %f) [left] {\\shortstack[r]{Mean $\\pm$ sd\\\\of mean}};" % (fl - box_width / 2, figheight * 0.07 + offset)
     if include_geom:
-        print "  \\node at (%f, %f) [left] {\\shortstack[r]{Geometric\\\\mean}};" % (fl - box_width / 2, figheight * 0.12 + offset)
+        print "  \\node at (%f, %f) [left] {\\shortstack[r]{Geometric\\\\mean}};" % (fl - box_width / 2, figheight * 0.21 + offset)
 
 def timeout_chart(y_base, height, max_rate, data, step):
     print
@@ -314,3 +339,174 @@ def mean(data):
         m2b = math.e ** (m2 - sd2)
         m2 = math.e ** m2
     return (m, (var / (len(data) - 1)) ** .5, m2, m2a, m2b)
+
+height_pre_dismiss_box = 0.5
+height_pre_failure_box = 0.5
+height_post_timeout_box = 0.5
+height_post_oom_box = 0.5
+maxtime = 300
+def kde_chart(offset, x_coord, nr_pre_dismiss, nr_pre_failure, data, nr_post_timeout, nr_post_oom):
+    tot_samples = float(len(data))
+    if nr_pre_dismiss != None:
+        tot_samples += nr_pre_dismiss
+    if nr_pre_failure != None:
+        tot_samples += nr_pre_failure
+    if nr_post_timeout != None:
+        tot_samples += nr_post_timeout
+    if nr_post_oom != None:
+        tot_samples += nr_post_oom
+    frac_in_data = len(data) / tot_samples
+
+    ldata = map(math.log, data)
+    mean = sum(ldata) / len(ldata)
+    sd = (sum([ (x - mean)**2 for x in ldata]) / len(ldata))**.5
+    bandwidth = sd / (len(ldata) ** .2)
+
+    area = 0
+    base_y = 0
+
+    def limmed_rectangle(width, y0, y1):
+        print "  \\draw [color=black!50,dotted] (%f, %f) rectangle (%f, %f);" % (x_coord - density_pre_dismiss * box_width,
+                                                                                 offset + base_y,
+                                                                                 x_coord + density_pre_dismiss * box_width,
+                                                                                 height_pre_dismiss_box + offset)
+    # Draw the box parts
+    if nr_pre_dismiss != None:
+        density_pre_dismiss = nr_pre_dismiss / (tot_samples * height_pre_dismiss_box)
+        print "  \\draw [fill] (%f, %f) rectangle (%f, %f);" % (x_coord - density_pre_dismiss * box_width,
+                                                                offset + base_y,
+                                                                x_coord + density_pre_dismiss * box_width,
+                                                                height_pre_dismiss_box + offset)
+        base_y += height_pre_dismiss_box
+        area += density_pre_dismiss * 2 * box_width * height_pre_dismiss_box
+        sys.stderr.write("nr_pre_dismiss %d/%d -> area %f = %f * 2 * %f * %f\n" % (nr_pre_dismiss, tot_samples, area, density_pre_dismiss, box_width, height_pre_dismiss_box))
+    if nr_pre_failure != None:
+        density_pre_failure = nr_pre_failure / (tot_samples * height_pre_failure_box)
+        print "  \\draw [dashed] (%f, %f) rectangle (%f, %f);" % (x_coord - density_pre_failure * box_width,
+                                                                  offset + base_y,
+                                                                  x_coord + density_pre_failure * box_width,
+                                                                  height_pre_failure_box + offset + base_y)
+        base_y += height_pre_failure_box
+        area += density_pre_failure * 2 * box_width * height_pre_failure_box
+    tot_height = figheight - base_y
+    if nr_post_oom != None:
+        density_post_oom = nr_post_oom / (tot_samples * height_post_oom_box)
+        print "  \\draw [dotted] (%f, %f) rectangle (%f, %f);" % (x_coord - density_post_oom * box_width,
+                                                                  offset + tot_height,
+                                                                  x_coord + density_post_oom * box_width,
+                                                                  offset + tot_height - height_post_oom_box)
+        tot_height -= height_post_oom_box
+        area += density_post_oom * 2 * box_width * height_post_oom_box
+    if nr_post_timeout != None:
+        density_post_timeout = nr_post_timeout / (tot_samples * height_post_timeout_box)
+        print "  \\draw [dashed] (%f, %f) rectangle (%f, %f);" % (x_coord - density_post_timeout * box_width,
+                                                                  offset + tot_height,
+                                                                  x_coord + density_post_timeout * box_width,
+                                                                  offset + tot_height - height_post_timeout_box)
+        tot_height -= height_post_timeout_box
+        area += density_post_timeout * 2 * box_width * height_post_timeout_box
+
+
+    # Scale will be y = alpha log(t) + beta
+    alpha = (tot_height - base_y) / (math.log(maxtime) - math.log(mintime))
+    beta = base_y -alpha * math.log(mintime)
+
+    _kfnorm = (math.pi * 2) **.5
+    def kernel_function(bandwidth, delta):
+        delta /= bandwidth
+        return (math.e ** (-0.5 * delta**2)) / (_kfnorm * bandwidth)
+    def density_at(val):
+        return sum([kernel_function(bandwidth, d - val) for d in ldata]) * frac_in_data / len(ldata)
+
+    sys.stderr.write("Kernel bandwidth %e\n" % bandwidth)
+    #_acc = 0
+    #_foox = -10
+    #while _foox < 10:
+    #    _acc += kernel_function(bandwidth, _foox)
+    #    _foox += 0.00001
+    #sys.stderr.write("Kernel function -> %f\n" % (_acc * 0.00001))
+
+    points_per_cm = 100.0
+
+    # Sanity check: is the area about right?
+    main_area = 0
+    y = base_y
+    while y < tot_height:
+        time = math.e ** ( (y - base_y - beta) / alpha )
+        d = density_at(math.log(time))
+        main_area += d / (points_per_cm * alpha)
+        y += 1 / points_per_cm
+    main_area *= box_width * 2
+    sys.stderr.write("alpha = %f, Area: %f + %f = %f, frac_in_data = %f\n" % (alpha, area, main_area, area + main_area, frac_in_data))
+
+    # Now do the actual density plot
+    print "  \\draw [fill] ",
+    isFirst = True
+    y = base_y
+    while y < tot_height:
+        # Convert y to time
+        time = math.e ** ( (y - base_y - beta) / alpha )
+        # Get the density
+        d = density_at(math.log(time))
+        # Actually put in the point
+        if not isFirst:
+            print "        -- ",
+        isFirst = False
+        print "(%f,%f) %%%% %f" % (x_coord - d * box_width, y + offset, time)
+        # Move on to next point
+        y += 1 / points_per_cm
+    # And back down the other side
+    while y > base_y:
+        time = math.e ** ( (y - base_y - beta) / alpha )
+        d = density_at(math.log(time))
+        print "        -- (%f,%f) %%%% %f" % (x_coord + d * box_width, y + offset, time)
+        y -= 1 / points_per_cm
+    # Done
+    print "        ;"
+
+    def time_to_y(time):
+        return alpha * math.log(time) + beta
+
+    # Put in the mean and sd of mean
+    mean = sum(data) / len(data)
+    sd = (sum([ (x - mean)**2 for x in data]) / (len(data) * (len(data) - 1)))**.5
+    print "  \\draw [color=black!50] (%f,%f) -- (%f, %f);" % (x_coord - box_width,
+                                                              time_to_y(mean) + offset,
+                                                              x_coord + box_width,
+                                                              time_to_y(mean) + offset)
+    print "  \\draw [color=black!50] (%f, %f) rectangle (%f, %f);" % (x_coord - box_width,
+                                                                      time_to_y(mean - sd) + offset,
+                                                                      x_coord + box_width,
+                                                                      time_to_y(mean + sd) + offset)
+    
+def kde_axis(offset, include_pre_dismiss, include_pre_failure,
+             include_post_oom, include_post_timeout):
+    print "  %% KDE axis"
+    base_y = 0
+    if include_pre_dismiss:
+        print "  \\node at (0, %f) [left] {Pre-dismissed};" % (height_pre_dismiss_box / 2 + offset)
+        base_y += height_pre_dismiss_box
+    if include_pre_failure:
+        print "  \\node at (0, %f) [left] {Pre-failed};" % (base_y + height_pre_failure_box / 2 + offset)
+        base_y += height_pre_failure_box
+
+    tot_height = figheight - base_y
+    if include_post_oom:
+        print "  \\node at (0, %f) [left] {Out of memory};" % (tot_height - height_post_oom_box / 2 + offset)
+        tot_height -= height_post_oom_box
+    if include_post_timeout:
+        print "  \\node at (0, %f) [left] {Timeout};" % (tot_height - height_post_timeout_box / 2 + offset)
+        tot_height -= height_post_timeout_box
+
+    # Scale will be y = alpha log(t) + beta
+    alpha = (tot_height - base_y) / (math.log(maxtime) - math.log(mintime))
+    beta = base_y - alpha * math.log(mintime)
+    def time_to_y(time):
+        return alpha * math.log(time) + beta
+
+    sys.stderr.write("alpha %f, beta %f, tot_height %f, base_y %f\n" % (alpha, beta, tot_height, base_y))
+                     
+    print "  \\draw (0,%f) -- (0, %f);" % (base_y + offset, offset + tot_height)
+    for k in ["0.001", "0.01", "0.1", "1", "10", "100", "300"]:
+        print "  \\node at (0, %f) [left] {%s};" % (time_to_y(float(k)) + offset, k)
+        print "  \\draw [color=black!10] (0,%f) -- (%f, %f);" % (time_to_y(float(k)) + offset, figwidth, time_to_y(float(k)) + offset)

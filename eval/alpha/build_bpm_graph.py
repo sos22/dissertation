@@ -22,34 +22,25 @@ series = common.read_input()
 common.preamble()
 common.alpha_axis(series)
 
-print "  %% Y axis"
-print "  \\draw[->] (0,0) -- (0,%f);" % common.figheight
-for t in ["0.001", "0.01", "0.1", "1", "10", "60"]:
-    print "  \\node at (0,%f) [left] {%s};" % (time_to_y(float(t)), t)
-    print "  \\draw [color=black!10] (0,%f) -- (%f,%f);" % (time_to_y(float(t)), common.figwidth, time_to_y(float(t)))
-print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {Time in seconds};" % (common.figheight / 2)
+common.kde_axis(0, True, False, True, True)
 
 # Now plot the series
 for (alpha, data) in series.iteritems():
-    samples = [x["bpm_time"] for x in data]
-    nr_timeouts = len([x for x in samples if x == None])
-    times = [x for x in samples if x != None]
-    mean = common.mean(times)
+    times = []
+    nr_timeouts = 0
+    nr_early_out = 0
+    for x in data:
+        if x["early-out"]:
+            nr_early_out += 1
+            continue
+        if x["bpm_time"] == None:
+            nr_timeouts += 1
+        else:
+            times.append(x["bpm_time"])
 
-    times += [max_time] * nr_timeouts
     print
     print "  %%%% alpha = %d" % alpha
 
-    common.draw_box_plot(common.alpha_to_x(alpha), time_to_y, times, mean)
-common.box_legend(0)
-
-# And now for the timeout rate
-timeout_data = []
-for (alpha, data) in series.iteritems():
-    samples = [x["bpm_time"] for x in data]
-    nr_timeouts = len([x for x in samples if x == None])
-    nr_non_timeout = len([x for x in samples if x != None])
-    timeout_data.append((alpha, float(nr_timeouts) / (nr_timeouts + nr_non_timeout)))
-common.timeout_chart(common.figheight + figsep, timeoutheight, 1.0, {"": timeout_data}, 20)
+    common.kde_chart(0, common.alpha_to_x(alpha), nr_early_out, None, times, nr_timeouts, 0)
 
 print "\\end{tikzpicture}"

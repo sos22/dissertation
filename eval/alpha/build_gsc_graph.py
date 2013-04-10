@@ -41,53 +41,32 @@ for t in xrange(0,21,2):
     print "  \\draw[color=black!10] (0,%f) -- (%f,%f);" % (count_to_y(float(t)), common.figwidth, count_to_y(float(t)))
 print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {Number of interfering \\glspl{cfg}};" % (common.figheight / 2)
 for (alpha, data) in series.iteritems():
-    samples = [x["nr_store_cfgs"] for x in data if x["gsc_timed_out"] == False]
+    samples = [x["nr_store_cfgs"] for x in data if x["early-out"] == False and x["skip_gsc"] == False and x["gsc_timed_out"] == False]
     mean = common.mean(samples)
     common.draw_box_plot(common.alpha_to_x(alpha), count_to_y, samples, mean)
+common.box_legend(0, True)
 
 offset = common.figheight + figsep
 
-print "  %% Time to build store CFGs"
-print "  \\draw[->] (0,%f) -- (0,%f);" % (offset, offset + common.figheight)
-for t in ["0.0001", "0.001", "0.01", "0.1", "1", "10", "60"]:
-    print "  \\node at (0,%f) [left] {%s};" % (offset + time_to_y(float(t)), t)
-    print "  \\draw[color=black!10] (0,%f) -- (%f,%f);" % (offset + time_to_y(float(t)), common.figwidth, offset + time_to_y(float(t)))
-print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {Time taken deriving \\glspl{cfg}, seconds};" % (offset + common.figheight / 2)
+common.kde_axis(offset, True, True, True, True)
 for (alpha, data) in series.iteritems():
-    samples = [x["gsc_time"] for x in data if x["gsc_timed_out"] == False]
-    nr_timeouts = len([x for x in data if x["gsc_timed_out"] == True])
-    mean = common.mean(samples)
-
-    samples += [max_time] * nr_timeouts
+    nr_dismiss = 0
+    nr_pre_failed = 0
+    nr_timeouts = 0
+    samples = []
+    for x in data:
+        if x["early-out"] == True or x["skip_gsc"] == True:
+            nr_dismiss += 1
+            continue
+        if x["bpm_time"] == None:
+            nr_pre_failed += 1
+            continue
+        if x["gsc_timed_out"]:
+            nr_timeouts += 1
+            continue
+        samples.append(x["gsc_time"])
     print
     print "  %%%% alpha = %d" % alpha
-    common.draw_box_plot(common.alpha_to_x(alpha), lambda t: offset + time_to_y(t), samples, mean)
-
-offset += common.figheight + figsep
-
-# Now do the timeout rate
-bpm_data = []
-gsc_data = []
-for (alpha, data) in series.iteritems():
-    bpm_timeouts = len([x for x in data if x["bpm_time"] == None])
-    gsc_timeouts = len([x for x in data if x["gsc_timed_out"] == True])
-    no_timeout = len([x for x in data if x["gsc_timed_out"] == False])
-    tot = float(no_timeout + gsc_timeouts + bpm_timeouts)
-    bpm_data.append((alpha, bpm_timeouts / tot))
-    gsc_data.append((alpha, (gsc_timeouts + bpm_timeouts) / tot))
-    sys.stderr.write("Alpha = %d, %d bpm timeouts, %d gsc timeouts, %d non timeout, rates %f, %f\n" % (alpha, bpm_timeouts,
-                                                                                                       gsc_timeouts, no_timeout,
-                                                                                                       bpm_timeouts / tot,
-                                                                                                       (bpm_timeouts + gsc_timeouts) / tot))
-common.timeout_chart(offset, timeoutheight, 1.0, {"": bpm_data, " ": gsc_data}, 20)
-if len(sys.argv) > 1 and sys.argv[1] == "opt":
-    delta1 = "below "
-    delta2 = "above "
-else:
-    delta1 = ""
-    delta2 = ""
-print "  \\node at (%f,%f) [%sright] {\\shortstack[l]{Building crashing\\\\thread only}};" % (common.figwidth, offset + timeoutheight * bpm_data[-1][1],delta1)
-print "  \\node at (%f,%f) [%sright] {Building both threads};" % (common.figwidth, offset + timeoutheight * gsc_data[-1][1],delta2)
-common.box_legend(0, False)
+    common.kde_chart(offset, common.alpha_to_x(alpha), nr_dismiss, nr_pre_failed, samples, nr_timeouts, 0)
 
 print "\\end{tikzpicture}"
