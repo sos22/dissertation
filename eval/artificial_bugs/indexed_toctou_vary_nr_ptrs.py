@@ -70,6 +70,7 @@ for (a,label) in [(10, "10"), (20, "20"),
                   (1000, "1000"), (2000, "2000"),
                   (4000, "4000")]:
     print "  \\node at (%f,0) [below] {%s};" % (abs_to_x(a), label)
+    print "  \\draw[color=black!10] (%f,0) -- (%f,%f);" % (abs_to_x(a), abs_to_x(a), fig_height)
 print "  \\node at (%f,-12pt) [below] {NR\_PTRS};" % (fig_width/2)
 
 # y ticks
@@ -82,6 +83,7 @@ else:
               (1000, "1000")]
 for (t, label) in yticks:
     print "  \\node at (0,%f) [left] {%s};" % (time_to_y(t), label)
+    print "  \\draw[color=black!10] (0,%f) -- (%f,%f);" % (time_to_y(t), fig_width, time_to_y(t))
 print "  \\node at (-12pt,%f) [rotate=90,left = 1, anchor = north] {Time to reproduce, seconds};" % (fig_height / 2)
 
 decorations = { "mean": "[color=red!50]",

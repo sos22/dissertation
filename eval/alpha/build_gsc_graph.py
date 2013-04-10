@@ -49,24 +49,26 @@ common.box_legend(0, True)
 offset = common.figheight + figsep
 
 common.kde_axis(offset, True, True, True, True)
-for (alpha, data) in series.iteritems():
-    nr_dismiss = 0
-    nr_pre_failed = 0
-    nr_timeouts = 0
-    samples = []
-    for x in data:
-        if x["early-out"] == True or x["skip_gsc"] == True:
-            nr_dismiss += 1
-            continue
-        if x["bpm_time"] == None:
-            nr_pre_failed += 1
-            continue
-        if x["gsc_timed_out"]:
-            nr_timeouts += 1
-            continue
-        samples.append(x["gsc_time"])
-    print
-    print "  %%%% alpha = %d" % alpha
-    common.kde_chart(offset, common.alpha_to_x(alpha), nr_dismiss, nr_pre_failed, samples, nr_timeouts, 0)
+
+for limm in [False, True]:
+    for (alpha, data) in series.iteritems():
+        nr_dismiss = 0
+        nr_pre_failed = 0
+        nr_timeouts = 0
+        samples = []
+        for x in data:
+            if x["early-out"] == True or x["skip_gsc"] == True:
+                nr_dismiss += 1
+                continue
+            if x["bpm_time"] == None:
+                nr_pre_failed += 1
+                continue
+            if x["gsc_timed_out"]:
+                nr_timeouts += 1
+                continue
+            samples.append(x["gsc_time"])
+        print
+        print "  %%%% alpha = %d" % alpha
+        common.kde_chart(offset, common.alpha_to_x(alpha), nr_dismiss, nr_pre_failed, samples, nr_timeouts, 0, limm)
 
 print "\\end{tikzpicture}"

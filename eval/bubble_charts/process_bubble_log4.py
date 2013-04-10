@@ -91,18 +91,18 @@ def scale_idx(idx):
     return idx / float(max_nr_samples) * figheight
 
 x_labels = []
-for i in xrange(0,35,5):
+for i in xrange(0,65,5):
     x_labels.append({"posn": scale_time(i * dilation * 0.01), "label": "0.%02d" % i})
 x_labels.append({"posn": scale_time(dilation), "label": "1.0"})
 
 util.print_preamble(x_labels, "Proportion of interfering \\glspl{cfg}", scale_time, 60, 10, figwidth, figheight)
 
 labels = {
-          "slice by hb": {"posn": ((0.14, .9), "left"), "label": "\\shortstack[r]{Slice by happens-\\\\before graph}"},
-          "determine input availability": { "posn": ((0.14, .6), "left"), "label": "\\shortstack[r]{Determine input\\\\availability}"},
-          "place side conditions": {"posn": ((0.21, .55), "right"), "label": "Place side-conditions"},
-          "build strategy": {"posn": ((0.21, .3), "right"), "label": "\\shortstack[l]{Determine patch\\\\points}"},
-          "gcc": {"posn": ((0.33, .2), "right"), "label": "\\shortstack[l]{Compile\\\\enforcer}"},
+          "slice by hb": {"posn": ((0.28, .88), "left"), "label": "Slice by happens-before graph"},
+          "determine input availability": { "posn": ((0.28, .6), "left"), "label": "\\shortstack[r]{Determine input\\\\availability}"},
+          "place side conditions": {"posn": ((0.28, .40), "left"), "label": "Place side-conditions"},
+          "build strategy": {"posn": ((0.28, .2), "left"), "label": "Build patch strategy"},
+          "gcc": {"posn": ((0.55, .2), "right"), "label": "\\shortstack[l]{Compile\\\\enforcer}"},
 
           "prepare summary": {"posn": ((0.02, .8), "right"), "label": "Canonicalise"},
           "canonicalise": {"posn": ((0.02, .9), "right"), "label": "Canonicalise"},

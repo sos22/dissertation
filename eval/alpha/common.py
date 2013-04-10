@@ -345,7 +345,12 @@ height_pre_failure_box = 0.5
 height_post_timeout_box = 0.5
 height_post_oom_box = 0.5
 maxtime = 300
-def kde_chart(offset, x_coord, nr_pre_dismiss, nr_pre_failure, data, nr_post_timeout, nr_post_oom):
+def kde_chart(offset, x_coord, nr_pre_dismiss, nr_pre_failure, data, nr_post_timeout, nr_post_oom,
+              limm):
+    if limm:
+        decoration = "color=black!50,dotted"
+    else:
+        decoration = "fill"
     tot_samples = float(len(data))
     if nr_pre_dismiss != None:
         tot_samples += nr_pre_dismiss
@@ -366,44 +371,34 @@ def kde_chart(offset, x_coord, nr_pre_dismiss, nr_pre_failure, data, nr_post_tim
     base_y = 0
 
     def limmed_rectangle(width, y0, y1):
-        print "  \\draw [color=black!50,dotted] (%f, %f) rectangle (%f, %f);" % (x_coord - density_pre_dismiss * box_width,
-                                                                                 offset + base_y,
-                                                                                 x_coord + density_pre_dismiss * box_width,
-                                                                                 height_pre_dismiss_box + offset)
+        print "  \\draw [%s] (%f, %f) rectangle (%f, %f);" % (decoration,
+                                                              x_coord - width * box_width,
+                                                              offset + y0,
+                                                              x_coord + width * box_width,
+                                                              offset + y1)
+
     # Draw the box parts
     if nr_pre_dismiss != None:
         density_pre_dismiss = nr_pre_dismiss / (tot_samples * height_pre_dismiss_box)
-        print "  \\draw [fill] (%f, %f) rectangle (%f, %f);" % (x_coord - density_pre_dismiss * box_width,
-                                                                offset + base_y,
-                                                                x_coord + density_pre_dismiss * box_width,
-                                                                height_pre_dismiss_box + offset)
+        limmed_rectangle(density_pre_dismiss, base_y, base_y + height_pre_dismiss_box)
         base_y += height_pre_dismiss_box
         area += density_pre_dismiss * 2 * box_width * height_pre_dismiss_box
         sys.stderr.write("nr_pre_dismiss %d/%d -> area %f = %f * 2 * %f * %f\n" % (nr_pre_dismiss, tot_samples, area, density_pre_dismiss, box_width, height_pre_dismiss_box))
     if nr_pre_failure != None:
         density_pre_failure = nr_pre_failure / (tot_samples * height_pre_failure_box)
-        print "  \\draw [dashed] (%f, %f) rectangle (%f, %f);" % (x_coord - density_pre_failure * box_width,
-                                                                  offset + base_y,
-                                                                  x_coord + density_pre_failure * box_width,
-                                                                  height_pre_failure_box + offset + base_y)
+        limmed_rectangle(density_pre_failure, base_y, base_y + height_pre_failure_box)
         base_y += height_pre_failure_box
         area += density_pre_failure * 2 * box_width * height_pre_failure_box
     tot_height = figheight - base_y
     if nr_post_oom != None:
         density_post_oom = nr_post_oom / (tot_samples * height_post_oom_box)
-        print "  \\draw [dotted] (%f, %f) rectangle (%f, %f);" % (x_coord - density_post_oom * box_width,
-                                                                  offset + tot_height,
-                                                                  x_coord + density_post_oom * box_width,
-                                                                  offset + tot_height - height_post_oom_box)
         tot_height -= height_post_oom_box
+        limmed_rectangle(density_post_oom, tot_height, tot_height + height_post_oom_box)
         area += density_post_oom * 2 * box_width * height_post_oom_box
     if nr_post_timeout != None:
         density_post_timeout = nr_post_timeout / (tot_samples * height_post_timeout_box)
-        print "  \\draw [dashed] (%f, %f) rectangle (%f, %f);" % (x_coord - density_post_timeout * box_width,
-                                                                  offset + tot_height,
-                                                                  x_coord + density_post_timeout * box_width,
-                                                                  offset + tot_height - height_post_timeout_box)
         tot_height -= height_post_timeout_box
+        limmed_rectangle(density_post_timeout, tot_height, tot_height + height_post_timeout_box)
         area += density_post_timeout * 2 * box_width * height_post_timeout_box
 
 
@@ -440,7 +435,7 @@ def kde_chart(offset, x_coord, nr_pre_dismiss, nr_pre_failure, data, nr_post_tim
     sys.stderr.write("alpha = %f, Area: %f + %f = %f, frac_in_data = %f\n" % (alpha, area, main_area, area + main_area, frac_in_data))
 
     # Now do the actual density plot
-    print "  \\draw [fill] ",
+    print "  \\draw [%s] " % decoration,
     isFirst = True
     y = base_y
     while y < tot_height:
@@ -464,20 +459,21 @@ def kde_chart(offset, x_coord, nr_pre_dismiss, nr_pre_failure, data, nr_post_tim
     # Done
     print "        ;"
 
-    def time_to_y(time):
-        return alpha * math.log(time) + beta
+    if limm:
+        def time_to_y(time):
+            return alpha * math.log(time) + beta
 
-    # Put in the mean and sd of mean
-    mean = sum(data) / len(data)
-    sd = (sum([ (x - mean)**2 for x in data]) / (len(data) * (len(data) - 1)))**.5
-    print "  \\draw [color=black!50] (%f,%f) -- (%f, %f);" % (x_coord - box_width,
-                                                              time_to_y(mean) + offset,
-                                                              x_coord + box_width,
-                                                              time_to_y(mean) + offset)
-    print "  \\draw [color=black!50] (%f, %f) rectangle (%f, %f);" % (x_coord - box_width,
-                                                                      time_to_y(mean - sd) + offset,
-                                                                      x_coord + box_width,
-                                                                      time_to_y(mean + sd) + offset)
+        # Put in the mean and sd of mean
+        mean = sum(data) / len(data)
+        sd = (sum([ (x - mean)**2 for x in data]) / (len(data) * (len(data) - 1)))**.5
+        print "  \\draw [color=black!50] (%f,%f) -- (%f, %f);" % (x_coord - box_width,
+                                                                  time_to_y(mean) + offset,
+                                                                  x_coord + box_width,
+                                                                  time_to_y(mean) + offset)
+        print "  \\draw [color=black!50] (%f, %f) rectangle (%f, %f);" % (x_coord - box_width,
+                                                                          time_to_y(mean - sd) + offset,
+                                                                          x_coord + box_width,
+                                                                          time_to_y(mean + sd) + offset)
     
 def kde_axis(offset, include_pre_dismiss, include_pre_failure,
              include_post_oom, include_post_timeout):
@@ -508,5 +504,6 @@ def kde_axis(offset, include_pre_dismiss, include_pre_failure,
                      
     print "  \\draw (0,%f) -- (0, %f);" % (base_y + offset, offset + tot_height)
     for k in ["0.001", "0.01", "0.1", "1", "10", "100", "300"]:
-        print "  \\node at (0, %f) [left] {%s};" % (time_to_y(float(k)) + offset, k)
-        print "  \\draw [color=black!10] (0,%f) -- (%f, %f);" % (time_to_y(float(k)) + offset, figwidth, time_to_y(float(k)) + offset)
+        if float(k) >= mintime:
+            print "  \\node at (0, %f) [left] {%s};" % (time_to_y(float(k)) + offset, k)
+            print "  \\draw [color=black!10] (0,%f) -- (%f, %f);" % (time_to_y(float(k)) + offset, figwidth, time_to_y(float(k)) + offset)

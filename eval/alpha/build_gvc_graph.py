@@ -77,28 +77,29 @@ print "        ;"
 offset = common.figheight + figsep
 
 common.kde_axis(offset, True, False, True, True)
-for (alpha, data) in series.iteritems():
-    nr_dismiss = 0
-    samples = []
-    nr_timeouts = 0
-    nr_oom = 0
-    for x in data:
-        if x["early-out"]:
-            nr_dismiss += 1
-            continue
-        if x["gvc_timeout"]:
-            nr_timeouts += 1
-            continue
-        if x["gvc_oom"]:
-            nr_oom += 1
-            continue
-        samples.append(x["gvc_time"])
+for limm in [False, True]:
+    for (alpha, data) in series.iteritems():
+        nr_dismiss = 0
+        samples = []
+        nr_timeouts = 0
+        nr_oom = 0
+        for x in data:
+            if x["early-out"]:
+                nr_dismiss += 1
+                continue
+            if x["gvc_timeout"]:
+                nr_timeouts += 1
+                continue
+            if x["gvc_oom"]:
+                nr_oom += 1
+                continue
+            samples.append(x["gvc_time"])
 
-    print
-    print "  %%%% alpha = %d" % alpha
-    print "  %%%% samples = %s" % str(samples)
-    print "  %%%% nr_timeout = %d" % nr_timeouts
-    common.kde_chart(offset, common.alpha_to_x(alpha), nr_dismiss,
-                     None, samples, nr_timeouts, nr_oom)
+        print
+        print "  %%%% alpha = %d" % alpha
+        print "  %%%% samples = %s" % str(samples)
+        print "  %%%% nr_timeout = %d" % nr_timeouts
+        common.kde_chart(offset, common.alpha_to_x(alpha), nr_dismiss,
+                         None, samples, nr_timeouts, nr_oom, limm)
 
 print "\\end{tikzpicture}"

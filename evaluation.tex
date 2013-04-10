@@ -495,16 +495,21 @@ caused by the lock operations themselves, rather than the {\technique}
 infrastructure.
 
 \begin{table}
-  \begin{tabular}{lll}
+  \centerline{
+  \begin{tabular}{|l|l|l|}
+    \hline
                      & Gain control with breakpoints & Gain control with branches \\
+    \hline
     Locking enabled  & $6.08 \pm_p 0.01$               & $95.9 \pm_p 0.2$\\
     Locking disabled & $6.38 \pm_p 0.01$               & $349.2 \pm_p 0.3$\\
+    \hline
   \end{tabular}
+  }
   \caption{Performance of some variants of the fix, in millions of
     loop iterations completed per second.  The original program
     completed $352.5 \pm_p 0.2$ million iterations per second, when it
     did not crash.  All measurements mean and population standard
-    deviation of ten runs.}
+    deviation of ten runs, each for ten seconds.}
   \label{table:eval:simple_toctou:other_fixes}
 \end{table}
 
@@ -1609,8 +1614,11 @@ threads.
 \input{eval/artificial_bugs/crash_time_cdfs}
 
 \begin{sidewaystable}
-  \begin{tabular}{lllll}
+  \centerline{
+  \begin{tabular}{|l|l|l|l|l|}
+    \hline
     Test name                      & Static analysis & Generating verification conditions & Building the enforcers & Building the fixes \\
+    \hline
     simple\_toctou                 & $0.571 \pm_p 0.060$ &  $0.195 \pm_p 0.018$ &  $0.126 \pm_p 0.006$ &  $0.142 \pm_p 0.005$\\
     indexed\_toctou                & $0.604 \pm_p 0.089$ &  $0.275 \pm_p 0.004$ &  $0.146 \pm_p 0.005$ &  $0.142 \pm_p 0.004$\\
     crash\_indexed\_toctou         & $0.566 \pm_p 0.068$ &  $0.289 \pm_p 0.009$ &  $0.149 \pm_p 0.007$ &  $0.138 \pm_p 0.004$\\
@@ -1624,15 +1632,17 @@ threads.
     complex\_hb\_5                 & $0.426 \pm_p 0.011$ &  $0.212 \pm_p 0.006$ &  $0.149 \pm_p 0.007$ &  $0.141 \pm_p 0.008$\\
     complex\_hb\_11                & $0.457 \pm_p 0.021$ &  $0.343 \pm_p 0.005$ &  $0.162 \pm_p 0.004$ &  $0.141 \pm_p 0.005$\\
     complex\_hb\_17                & $0.451 \pm_p 0.025$ &  $1.711 \pm_p 0.012$ &  $0.200 \pm_p 0.003$ &  $0.140 \pm_p 0.004$\\
-    existing\_sync\_visible        & $0.566 \pm_p 0.020$ &  $0.156 \pm_p 0.005$ & \multicolumn{2}{c}{\emph{Nothing generated}} \\
+    existing\_sync\_visible        & $0.566 \pm_p 0.020$ &  $0.156 \pm_p 0.005$ & \multicolumn{2}{c|}{\emph{Nothing generated}} \\
     existing\_sync\_invisible      & $0.572 \pm_p 0.023$ &  $0.206 \pm_p 0.006$ &  $0.136 \pm_p 0.003$ &  $0.140 \pm_p 0.004$\\
-    multi\_bugs                    & $0.625 \pm_p 0.024$ &  $0.288 \pm_p 0.005$ & \\
+    multi\_bugs                    & $0.625 \pm_p 0.024$ &  $0.288 \pm_p 0.005$ & &  \\
     \hspace{5mm}Bug 1 & & &  $0.161 \pm_p 0.006$ &  $0.136 \pm_p 0.003$\\
     \hspace{5mm}Bug 2 & & &  $0.143 \pm_p 0.006$ &  $0.140 \pm_p 0.005$\\
     multi\_threads                 & $0.562 \pm_p 0.025$ &  $0.232 \pm_p 0.002$ &  $0.160 \pm_p 0.022$ &  $0.142 \pm_p 0.009$\\
     w\_isolation                   & $0.509 \pm_p 0.031$ &  $0.143 \pm_p 0.004$ &  $0.117 \pm_p 0.003$ &  $0.137 \pm_p 0.005$\\
     glibc                          & $0.337 \pm_p 0.030$ &  $0.193 \pm_p 0.004$ &  $0.128 \pm_p 0.004$ &  $0.134 \pm_p 0.003$\\
+    \hline
   \end{tabular}
+  }
   \caption{Time taken in the various analysis phases for the
     artificial bugs.  Times are given as mean and standard deviation
     of ten runs.  The W isolation assumption was enabled for all tests
@@ -1641,37 +1651,42 @@ threads.
 \end{sidewaystable}
 
 \begin{sidewaystable}
-  \begin{tabular}{lllll}
-    \multicolumn{2}{l}{Test name} & Performance without fix & Performance with fix & Ratio\\
-    \multicolumn{2}{l}{simple\_toctou                }  & $[352,\!540,\!000; 352,\!630,\!000; 352,\!730,\!000]$  &  $[95,\!430,\!000; 95,\!600,\!000; 95,\!770,\!000]$  &  $[3.681; 3.689; 3.696]$ \\
-    \multicolumn{2}{l}{indexed\_toctou               } \\
-    & \multicolumn{1}{l}{Crashing thread} & $[9,\!280,\!000; 9,\!540,\!000; 9,\!800,\!000]$  &  $[9,\!100,\!000; 9,\!600,\!000; 10,\!100,\!000]$  &  $[0.92; 0.99; 1.08]$ \\
-    & \multicolumn{1}{l}{Interfering thread} & $[8,\!140,\!000; 8,\!340,\!000; 8,\!540,\!000]$  &  $[8,\!300,\!000; 8,\!760,\!000; 9,\!220,\!000]$  &  $[0.88; 0.95; 1.03]$ \\
-    \multicolumn{2}{l}{crash\_indexed\_toctou        }  & $[156,\!726,\!000; 156,\!735,\!000; 156,\!744,\!000]$  &  $[70,\!650,\!000; 70,\!710,\!000; 70,\!770,\!000]$  &  $[2.2147; 2.2166; 2.2185]$ \\
-    \multicolumn{2}{l}{interfering\_indexed\_toctou  }  & $[69,\!770,\!000; 70,\!000,\!000; 70,\!230,\!000]$  &  $[42,\!660,\!000; 43,\!040,\!000; 43,\!420,\!000]$  &  $[1.607; 1.626; 1.646]$ \\
-    \multicolumn{2}{l}{double\_free                  }  & $[17,\!800; 18,\!110; 18,\!420]$  &  $[18,\!770; 18,\!860; 18,\!940]$  &  $[0.940; 0.960; 0.981]$ \\
-    \multicolumn{2}{l}{write\_to\_read               }  & $[487,\!800,\!000; 489,\!700,\!000; 491,\!600,\!000]$  &  $[91,\!400,\!000; 94,\!600,\!000; 97,\!800,\!000]$  &  $[4.99; 5.18; 5.38]$ \\
-    \multicolumn{2}{l}{broken\_publish               } \\
-    & \multicolumn{1}{l}{Crashing thread} & $[1,\!840,\!000; 1,\!980,\!000; 2,\!120,\!000]$  &  $[1,\!910,\!000; 2,\!070,\!000; 2,\!230,\!000]$  &  $[0.82; 0.96; 1.11]$ \\
-    & \multicolumn{1}{l}{Interfering thread} & $[1,\!840,\!000; 1,\!980,\!000; 2,\!120,\!000]$  &  $[1,\!910,\!000; 2,\!070,\!000; 2,\!230,\!000]$  &  $[0.82; 0.96; 1.11]$ \\
-    \multicolumn{2}{l}{complex\_hb\_5                } \\
-    & \multicolumn{1}{l}{Crashing thread} & $[50,\!000,\!000; 56,\!000,\!000; 62,\!000,\!000]$  &  $[7,\!950,\!000; 8,\!420,\!000; 8,\!890,\!000]$  &  $[5.6; 6.6; 7.8]$ \\
-    & \multicolumn{1}{l}{Interfering thread} & $[50,\!900,\!000; 52,\!800,\!000; 54,\!700,\!000]$  &  $[13,\!470,\!000; 13,\!890,\!000; 14,\!300,\!000]$  &  $[3.56; 3.80; 4.06]$ \\
-    \multicolumn{2}{l}{complex\_hb\_11               } \\
-    & \multicolumn{1}{l}{Crashing thread} & $[41,\!000,\!000; 46,\!000,\!000; 51,\!000,\!000]$  &  $[7,\!700,\!000; 8,\!300,\!000; 9,\!000,\!000]$  &  $[4.5; 5.5; 6.6]$ \\
-    & \multicolumn{1}{l}{Interfering thread} & $[41,\!300,\!000; 43,\!200,\!000; 45,\!000,\!000]$  &  $[13,\!420,\!000; 13,\!840,\!000; 14,\!250,\!000]$  &  $[2.89; 3.12; 3.36]$ \\
-    \multicolumn{2}{l}{complex\_hb\_17               } \\
-    & \multicolumn{1}{l}{Crashing thread} & $[40,\!800,\!000; 45,\!100,\!000; 49,\!300,\!000]$  &  $[8,\!100,\!000; 8,\!800,\!000; 9,\!400,\!000]$  &  $[4.3; 5.1; 6.1]$ \\
-    & \multicolumn{1}{l}{Interfering thread} & $[41,\!600,\!000; 43,\!000,\!000; 44,\!400,\!000]$  &  $[13,\!500,\!000; 14,\!100,\!000; 14,\!800,\!000]$  &  $[2.82; 3.04; 3.28]$ \\
-    \multicolumn{2}{l}{existing\_sync\_invisible     }  & $[147,\!041,\!000; 147,\!064,\!000; 147,\!087,\!000]$  &  $[68,\!305,\!000; 68,\!339,\!000; 68,\!374,\!000]$  &  $[2.1505; 2.1520; 2.1534]$ \\
-    \multicolumn{2}{l}{multi\_threads                } \\
-    & \multicolumn{1}{l}{Crashing thread} & $[7,\!320,\!000; 7,\!390,\!000; 7,\!470,\!000]$  &  $[7,\!300,\!000; 7,\!370,\!000; 7,\!430,\!000]$  &  $[0.985; 1.004; 1.023]$ \\
-    & \multicolumn{1}{l}{Interfering thread} & $[6,\!970,\!000; 7,\!040,\!000; 7,\!110,\!000]$  &  $[7,\!130,\!000; 7,\!200,\!000; 7,\!260,\!000]$  &  $[0.959; 0.978; 0.997]$ \\
-    \multicolumn{2}{l}{multi\_bugs} & $[145,\!000,\!000; 148,\!400,\!000; 151,\!900,\!000]$ \\
+  \centerline{
+  \begin{tabular}{|ll|l|l|l|}
+    \hline
+    \multicolumn{2}{|l|}{Test name} & Performance without fix & Performance with fix & Ratio\\
+    \hline
+    \multicolumn{2}{|l|}{simple\_toctou                }  & $[352,\!540,\!000; 352,\!630,\!000; 352,\!730,\!000]$  &  $[95,\!430,\!000; 95,\!600,\!000; 95,\!770,\!000]$  &  $[3.681; 3.689; 3.696]$ \\
+    \multicolumn{2}{|l|}{indexed\_toctou               } & & & \\
+    & \multicolumn{1}{l|}{Crashing thread} & $[9,\!280,\!000; 9,\!540,\!000; 9,\!800,\!000]$  &  $[9,\!100,\!000; 9,\!600,\!000; 10,\!100,\!000]$  &  $[0.92; 0.99; 1.08]$ \\
+    & \multicolumn{1}{l|}{Interfering thread} & $[8,\!140,\!000; 8,\!340,\!000; 8,\!540,\!000]$  &  $[8,\!300,\!000; 8,\!760,\!000; 9,\!220,\!000]$  &  $[0.88; 0.95; 1.03]$ \\
+    \multicolumn{2}{|l|}{crash\_indexed\_toctou        }  & $[156,\!726,\!000; 156,\!735,\!000; 156,\!744,\!000]$  &  $[70,\!650,\!000; 70,\!710,\!000; 70,\!770,\!000]$  &  $[2.2147; 2.2166; 2.2185]$ \\
+    \multicolumn{2}{|l|}{interfering\_indexed\_toctou  }  & $[69,\!770,\!000; 70,\!000,\!000; 70,\!230,\!000]$  &  $[42,\!660,\!000; 43,\!040,\!000; 43,\!420,\!000]$  &  $[1.607; 1.626; 1.646]$ \\
+    \multicolumn{2}{|l|}{double\_free                  }  & $[17,\!800; 18,\!110; 18,\!420]$  &  $[18,\!770; 18,\!860; 18,\!940]$  &  $[0.940; 0.960; 0.981]$ \\
+    \multicolumn{2}{|l|}{write\_to\_read               }  & $[487,\!800,\!000; 489,\!700,\!000; 491,\!600,\!000]$  &  $[91,\!400,\!000; 94,\!600,\!000; 97,\!800,\!000]$  &  $[4.99; 5.18; 5.38]$ \\
+    \multicolumn{2}{|l|}{broken\_publish               } & & & \\
+    & \multicolumn{1}{l|}{Crashing thread} & $[1,\!840,\!000; 1,\!980,\!000; 2,\!120,\!000]$  &  $[1,\!910,\!000; 2,\!070,\!000; 2,\!230,\!000]$  &  $[0.82; 0.96; 1.11]$ \\
+    & \multicolumn{1}{l|}{Interfering thread} & $[1,\!840,\!000; 1,\!980,\!000; 2,\!120,\!000]$  &  $[1,\!910,\!000; 2,\!070,\!000; 2,\!230,\!000]$  &  $[0.82; 0.96; 1.11]$ \\
+    \multicolumn{2}{|l|}{complex\_hb\_5                } & & & \\
+    & \multicolumn{1}{l|}{Crashing thread} & $[50,\!000,\!000; 56,\!000,\!000; 62,\!000,\!000]$  &  $[7,\!950,\!000; 8,\!420,\!000; 8,\!890,\!000]$  &  $[5.6; 6.6; 7.8]$ \\
+    & \multicolumn{1}{l|}{Interfering thread} & $[50,\!900,\!000; 52,\!800,\!000; 54,\!700,\!000]$  &  $[13,\!470,\!000; 13,\!890,\!000; 14,\!300,\!000]$  &  $[3.56; 3.80; 4.06]$ \\
+    \multicolumn{2}{|l|}{complex\_hb\_11               } & & & \\
+    & \multicolumn{1}{l|}{Crashing thread} & $[41,\!000,\!000; 46,\!000,\!000; 51,\!000,\!000]$  &  $[7,\!700,\!000; 8,\!300,\!000; 9,\!000,\!000]$  &  $[4.5; 5.5; 6.6]$ \\
+    & \multicolumn{1}{l|}{Interfering thread} & $[41,\!300,\!000; 43,\!200,\!000; 45,\!000,\!000]$  &  $[13,\!420,\!000; 13,\!840,\!000; 14,\!250,\!000]$  &  $[2.89; 3.12; 3.36]$ \\
+    \multicolumn{2}{|l|}{complex\_hb\_17               } & & & \\
+    & \multicolumn{1}{l|}{Crashing thread} & $[40,\!800,\!000; 45,\!100,\!000; 49,\!300,\!000]$  &  $[8,\!100,\!000; 8,\!800,\!000; 9,\!400,\!000]$  &  $[4.3; 5.1; 6.1]$ \\
+    & \multicolumn{1}{l|}{Interfering thread} & $[41,\!600,\!000; 43,\!000,\!000; 44,\!400,\!000]$  &  $[13,\!500,\!000; 14,\!100,\!000; 14,\!800,\!000]$  &  $[2.82; 3.04; 3.28]$ \\
+    \multicolumn{2}{|l|}{existing\_sync\_invisible     }  & $[147,\!041,\!000; 147,\!064,\!000; 147,\!087,\!000]$  &  $[68,\!305,\!000; 68,\!339,\!000; 68,\!374,\!000]$  &  $[2.1505; 2.1520; 2.1534]$ \\
+    \multicolumn{2}{|l|}{multi\_threads                } & & & \\
+    & \multicolumn{1}{l|}{Crashing thread} & $[7,\!320,\!000; 7,\!390,\!000; 7,\!470,\!000]$  &  $[7,\!300,\!000; 7,\!370,\!000; 7,\!430,\!000]$  &  $[0.985; 1.004; 1.023]$ \\
+    & \multicolumn{1}{l|}{Interfering thread} & $[6,\!970,\!000; 7,\!040,\!000; 7,\!110,\!000]$  &  $[7,\!130,\!000; 7,\!200,\!000; 7,\!260,\!000]$  &  $[0.959; 0.978; 0.997]$ \\
+    \multicolumn{2}{|l|}{multi\_bugs} & $[145,\!000,\!000; 148,\!400,\!000; 151,\!900,\!000]$ & & \\
     & simple\_toctou fix only & & $[91,\!000,\!000; 93,\!200,\!000; 95,\!300,\!000]$  &  $[1.52; 1.59; 1.67]$ \\
     & write\_to\_read fix only & & $[52,\!600,\!000; 54,\!500,\!000; 56,\!500,\!000]$  &  $[2.57; 2.72; 2.89]$\\
     & Both fixes & &  $[59,\!900,\!000; 63,\!400,\!000; 66,\!800,\!000]$  &  $[2.17; 2.34; 2.54]$ \\
+    \hline
   \end{tabular}
+  }
   \caption{Performance overheads of automatically-generated fixes,
     measured in loop iterations per second.  Further details of the
     experiments are given in the text.}
@@ -2341,14 +2356,16 @@ enabled and failed with them disabled.
 \begin{figure}
   \input{eval/bubble_charts/bubble5.tex}
   \caption{Time taken by the per-\gls{crashingthread} phases with
-    {\StateMachine} simplification disabled.}
+    {\StateMachine} simplification disabled.  Note the change in
+    scale.}
   \label{fig:eval:time_breakdown:crashing_no_simple}
 \end{figure}
 
 \begin{figure}
   \input{eval/bubble_charts/bubble6.tex}
   \caption{Time taken by the per-interfering \gls{cfg} phases with
-    {\StateMachine} simplification disabled.}
+    {\StateMachine} simplification disabled.  Note the change in
+    scale.}
   \label{fig:eval:time_breakdown:interfering_no_simple}
 \end{figure}
 
@@ -2362,9 +2379,10 @@ enabled and failed with them disabled.
   large uncertainty.}
 
 \begin{figure}
-  \input{eval/alpha/unopt/bpm.tex}
+  \centerline{\input{eval/alpha/unopt/bpm.tex}}
   \caption{Effect of the $\alpha$ parameter on the time taken to build
-    the \gls{crashingthread} {\StateMachines}.  Note log scale.}
+    the \gls{crashingthread} {\StateMachines}.  See text for detailed
+    description of this chart.}
   \label{fig:perf:alpha:bpm:unopt}
 \end{figure}
 
@@ -2374,15 +2392,41 @@ now investigate these effects in slightly more detail.  For these
 experiments, I selected 1000 instructions at random in an unoptimised
 build of MySQL and ran the analysis on each of them in turn.  I then
 repeated the analysis for a number of different values of \gls{alpha}.
+All timeouts were set to five minutes, rather than the usual sixty
+seconds, so as to reduce truncation effects at high values of
+\gls{alpha}.
 
 The first thing I investigated was the effect of \gls{alpha} on the
 time taken to derive the \gls{crashingthread} {\StateMachines},
 including deriving the \gls{cfg}, compiling it to a {\StateMachine},
 performing the initial simplification, and deriving C-atomic.  The
 results are shown in the box plot in
-Figure~\ref{fig:perf:alpha:bpm:unopt}.  Note that the means were
-calculated discarding timeouts, whereas the quantiles were calculated
-treating timeouts as having taken precisely five minutes.
+Figure~\ref{fig:perf:alpha:bpm:unopt}.  This chart shows an estimate
+of the probability density function of the time taken to build the
+crashing {\StateMachines} for each value of \gls{alpha}, including
+building the initial \gls{cfg}, compiling to a {\StateMachine}, and
+performing the initial simplifications.  The density function was
+estimated in log space using a kernel density estimator and a
+bandwidth of $\sigma.n^{-0.2}$, where $\sigma$ is the log space
+population standard deviation and $n$ the number of samples, in
+accordance with Silverman's Rule of Thumb\needCite{}.  The chart also
+shows the mean, excluding timeouts, plus or minus one standard
+deviation of that mean as a hollow gray rectangle.
+
+Note that time is shown on a log scale, which is necessary as the data
+shows interesting behaviour across many orders of magnitude.  This
+means that it is difficult to simultaneously assign convenient
+meanings to the width and the area of the regions on the chart.  I
+have chosen a KDE which ensures that a fixed area represents a fixed
+amount of probability across the chart, but does not give any
+particularly convenient property to the width of a region, as I felt
+that gave a less deceptive impression of the data.
+
+The chart also shows the proportion of crashing instructions which
+could be dismissed without generating a {\StateMachine} (the
+pre-dismissed box), the number which suffered a timeout (the timeout
+box), and the number which ran out of memory.  These are shown on the
+same scale as the rest of the probabilities.
 
 The configuration used for this experiment was slightly different from
 that used for most of the other experiments:
@@ -2415,7 +2459,11 @@ proportion of timeouts rises rapidly once \gls{alpha} exceeds a
 certain value, which in this case is about 40.
 
 The next thing I investigated was the effect of \gls{alpha} on the
-size of the \glspl{crashingthread}.  This chart shows the sizes of the
+size of the \glspl{crashingthread}.  The results are shown in
+\autoref{fig:eval:time_breakdown:crashing_size}\footnote{This is a box
+  plot rather than a density estimate, as the density estimator
+  assumes continuous data and the quantities shown here are
+  discreet.}.  This chart shows the sizes of the
 \glspl{crashingthread}, in terms of the number of (dynamic) program
 instructions represented in the \gls{cfg}, the number of states in the
 {\StateMachine} before simplification, and the number of states in the
@@ -2454,13 +2502,14 @@ This will be particularly important for the high quantiles of the high
 \gls{alpha} distributions.
 
 \begin{figure}
-  \input{eval/alpha/unopt/crashing_size.tex}
+  \centerline{\input{eval/alpha/unopt/crashing_size.tex}}
   \caption{Effect of the $\alpha$ parameter on the size of the
     \gls{crashingthread}.}
+  \label{fig:eval:time_breakdown:crashing_size}
 \end{figure}
 
 \begin{figure}
-  \input{eval/alpha/unopt/gsc.tex}
+  \centerline{\input{eval/alpha/unopt/gsc.tex}}
   \caption{Effect of the $\alpha$ parameter on the derivation of the
     \gls{interferingthread} \glspl{cfg}.}
   \label{fig:perf:alpha:gsc:unopt}
@@ -2469,9 +2518,15 @@ This will be particularly important for the high quantiles of the high
 Once the \gls{crashingthread} {\StateMachine} has been generated, the
 next step is to derive \glspl{cfg} for the \glspl{interferingthread}.
 The response of this process to the $\alpha$ parameter is shown in
-Figure~\ref{fig:perf:alpha:gsc:unopt}.  As before, increasing $\alpha$
-leads to an increase in the both the time taken to perform the
-analysis and the number of timeouts.  This behaviour needs little
+Figure~\ref{fig:perf:alpha:gsc:unopt}.  In this chart, the
+pre-dismissed box includes anything which was dismissed by the
+previous stage or where the crashing {\StateMachine} was sufficient to
+show that no bug of the desired class could exist without reference to
+the interfering \glspl{cfg}.  The pre-failed box gives the number of
+times that no interfering \glspl{cfg} could be derived due to a
+failure in a previous phase of the analysis.  As before, increasing
+$\alpha$ leads to an increase in the both the time taken to perform
+the analysis and the number of timeouts.  This behaviour needs little
 explanation.
 
 The lower part of the chart, showing the number of interfering
@@ -2511,9 +2566,9 @@ The next step of the analysis is to take these pairs of crashing
 {\StateMachines} and interfering \glspl{cfg} and convert them into
 \glspl{verificationcondition}.  This is shown in
 Figure~\ref{fig:perf:alpha:gvc:unopt}.  Note that the denominator for
-the timeout rate has changed: previously, it was the total number of
-potentially-crashing instructions, whereas now it is the number of
-pairs generated by the previous analysis stages.
+the various proportions has changed: previously, it was the total
+number of potentially-crashing instructions, whereas now it is the
+number of pairs generated by the previous analysis stages.
 
 The effect of $\alpha$ on the number of \glspl{verificationcondition}
 generated is easiest to understand if it is expressed as the fraction
@@ -2533,15 +2588,16 @@ this stage of the analysis.  The time taken by the analysis follows
 broadly the same pattern, for essentially similar reasons.
 
 \begin{figure}
-  \input{eval/alpha/unopt/gvc.tex}
+  \centerline{\input{eval/alpha/unopt/gvc.tex}}
   \caption{Effect of the $\alpha$ parameter on the number of
     \glspl{verificationcondition} generated and the time taken to do
     so.  All timeouts in earlier stages of the analysis are excluded.
-    The mean excludes timeouts in this stage.  The time taken includes
-    building the interfering {\StateMachine}, rederiving crashing
-    {\StateMachine}, deriving \gls{ic-atomic} constraints, building
-    the \gls{verificationcondition}, and the final satisfiability
-    check.}
+    The time taken includes building the interfering {\StateMachine},
+    rederiving crashing {\StateMachine}, deriving \gls{ic-atomic}
+    constraints, building the \gls{verificationcondition}, and the
+    final satisfiability check.  In the $\alpha = 10$ case 2.5\% of
+    runs completed in less than 1ms; these are not included in the
+    chart.}
   \label{fig:perf:alpha:gvc:unopt}
 \end{figure}
 
@@ -2646,12 +2702,12 @@ reasonable for these patches.
     \hline
     Phase & Mean & $5^{th}$\% & $95^{th}$\% & Population standard deviation \\
     \hline
-    Find critical sections & $0.50 \pm 0.02$ & 0.1 & 1.6 & 1.1 \\
-    Identify patch points & $0.805 \pm 0.008$ & 0.3 & 1.4 & 0.6 \\
-    Partial evaluation & $0.75 \pm 0.06$ & 0.2 & 1.5 & 4.4 \\
-    System compiler & $105.1 \pm 0.2$ & 85 & 128 & 14 \\
+    Find critical sections & $0.50 \pm_\mu 0.02$ & 0.1 & 1.6 & 1.1 \\
+    Identify patch points & $0.805 \pm_\mu 0.008$ & 0.3 & 1.4 & 0.6 \\
+    Partial evaluation & $0.75 \pm_\mu 0.06$ & 0.2 & 1.5 & 4.4 \\
+    System compiler & $105.1 \pm_\mu 0.2$ & 85 & 128 & 14 \\
     \hline
-    Total & $107.2 \pm 0.2$ & 87 & 131 & 15 \\
+    Total & $107.2 \pm_\mu 0.2$ & 87 & 131 & 15 \\
     \hline
   \end{tabular}
   \caption{Time taken to convert 5000 \gls{verificationcondition}
@@ -2795,12 +2851,11 @@ the effects of the dynamic aliasing analysis on the generation of
 completely avoid using the information from the dynamic analysis while
 generating \glspl{verificationcondition}, as it is needed to generate
 the \gls{interferingthread} \glspl{cfg}, but it is possible to disable
-the parts of the {\StateMachine} simplifications which depend on it
-and the parts of the symbolic execution engine which use it, and that
-is what I did in this test.  The results are shown in
-Table~\ref{table:eval:effect_of_dyn}.  Note that the aliasing enabled
-column of this table was produced from the same experiment as produced
-the \gls{w-isolation} enabled column in
+the parts of the {\StateMachine} simplifications and the symbolic
+execution engine which use it, and that is what I did in this test.
+The results are shown in Table~\ref{table:eval:effect_of_dyn}.  Note
+that the aliasing enabled column of this table was produced from the
+same experiment as produced the \gls{w-isolation} enabled column in
 Table~\ref{table:eval:w-isolation}.
 
 There are two main observations to draw from this table: discarding
@@ -2817,29 +2872,33 @@ are all built very quickly, but also ensuring that the later analysis
 phases which make use of the {\StateMachines} perform very badly.
 
 \begin{table}
-  \begin{tabular}{lll}
-    & \multicolumn{2}{c}{Dynamic aliasing analysis} \\
+  \begin{tabular}{|l|l|l|}
+    \hline
+    & \multicolumn{2}{c|}{Dynamic aliasing analysis} \\
+    \hline
                                                            & Enabled & Disabled \\
+    \hline
     Timeouts building \gls{crashingthread} {\StateMachines}& 245                    & 9 \\
-    Time to build \gls{crashingthread} {\StateMachine} & $0.5 \pm 0.1$* & $0.7 \pm 0.1$* \\
+    Time to build \gls{crashingthread} {\StateMachine} & $0.5 \pm_\mu 0.1$* & $0.7 \pm_\mu 0.1$* \\
     \Glspl{crashingthread} generating no \glspl{interferingthread} & 456                    & 7 \\
     Timeouts building \gls{interferingthread} \glspl{cfg} & 0 & 2 \\
-    Time to build \gls{interferingthread} \glspl{cfg}, per \gls{crashingthread} & $1.5 \pm 0.3$* & $1.5 \pm 0.4$* \\
-    Number of \gls{interferingthread} \glspl{cfg} per \gls{crashingthread} & $5.1 \pm 0.5\dagger$ & $12 \pm 1\dagger$ \\
+    Time to build \gls{interferingthread} \glspl{cfg}, per \gls{crashingthread} & $1.5 \pm_\mu 0.3$* & $1.5 \pm_\mu 0.4$* \\
+    Number of \gls{interferingthread} \glspl{cfg} per \gls{crashingthread} & $5.1 \pm_\mu 0.5$ & $12 \pm_\mu 1$ \\
     \hspace{5mm}Total number \gls{interferingthread} \gls{cfg} & 3819 & 4778 \\
     Timeouts building \gls{interferingthread} {\StateMachines} & 17 & 130\\
     \hspace{5mm}As percentage of \gls{interferingthread} \glspl{cfg} & 0.4\% & 3\% \\
-    Time to build each \glspl{interferingthread} {\StateMachine} & $0.11 \pm 0.02$* & $1.31 \pm 0.04$* \\
+    Time to build each \glspl{interferingthread} {\StateMachine} & $0.11 \pm_\mu 0.02$* & $1.31 \pm_\mu 0.04$* \\
     Timeouts in symbolic execution & 35 & 1601 \\
     \hspace{5mm}As percentage of \glspl{interferingthread} & 0.9\% & 34\% \\
-    Symbolic execution time per \glspl{interferingthread} & $0.96 \pm 0.07$* & $3.9 \pm 0.3$* \\
+    Symbolic execution time per \glspl{interferingthread} & $0.96 \pm_\mu 0.07$* & $3.9 \pm_\mu 0.3$* \\
     Number of \glspl{verificationcondition} & 682 & 656 \\
     \hspace{5mm}As percentage of \glspl{interferingthread} & 18\% & 14\% \\
     \hspace{5mm}Per \gls{crashingthread} & 0.9 & 0.7 \\
+    \hline
   \end{tabular}
   \caption{Effects of the dynamic aliasing analysis.  *: mean and
     standard deviation of mean for all runs which did not time out,
-    seconds.  $\dagger$: mean and standard deviation of mean.}
+    seconds.}
   \label{table:eval:effect_of_dyn}
 \end{table}
 
@@ -2864,13 +2923,14 @@ an hour.  Asking users to run this dynamic analysis before using
 {\technique} is therefore not an unreasonable burden.
 
 For all tests, the dynamic analysis tool was configured to take one
-snapshot every 1,000,000 Valgrind basic blocks, which corresponds to a
-couple of hundred milliseconds of execution time. This is arguably a
-somewhat unfair test: taking a snapshot can itself take several
-hundred milliseconds, depending on the size of aliasing table is at
-the time, and so this experiment actually spent most of its time
-taking snapshots rather than running the test program.  A more
-realistic test would probably show faster convergence.
+snapshot every 1,000,000 Valgrind basic blocks, which usually
+corresponds to a couple of hundred milliseconds of execution
+time. This is arguably a somewhat unfair test: taking a snapshot can
+itself take several hundred milliseconds, depending on the size of
+aliasing table is at the time, and so this experiment actually spent
+most of its time taking snapshots rather than running the test
+program.  A more realistic test would probably show faster
+convergence.
 
 The precise behaviour of the dynamic analysis depends, in part, on the
 workload which is being used to exercise the program.  For these
@@ -2919,24 +2979,24 @@ experiments, I used the following workloads:
   \label{fig:eval:dyn_convergence:pbzip2}
 \end{figure}
 
-\subsection{Performance concerns}
+\subsection{Dynamic analysis performance}
 
 I also briefly investigated the performance cost of the analysis.  The
 time taken by pbzip2 to compress a 100MiB file without the dynamic
-analysis was $7.8 \pm 0.1$ seconds on this machine, mean and standard
+analysis was $7.8 \pm_\mu 0.1$ seconds on this machine, mean and standard
 deviation of mean for ten runs with independent randomly-generated
-files; with the dynamic analysis, this increased to $274 \pm 2$
+files; with the dynamic analysis, this increased to $274 \pm_\mu 2$
 seconds, a factor of nearly thirty-five.  This is a rather large
 overhead, and would be completely infeasible in a production
 environment, but is probably tolerable for something which needs to
 run for a few tens of minutes in a development one.
 
-For comparison, a null Valgrind skin completed this test in $226.6 \pm
-0.5$ seconds, an overhead of a factor of twenty-nine.  That suggests
-that most of the overhead of the dynamic analysis tool comes simply
-from the fact that it is implemented as a Valgrind skin, and that
-re-implementing it in a faster analysis framework such as
-PIN~\cite{Luk2005} might provide a useful speed-up.
+For comparison, a null Valgrind skin completed this test in $226.6
+\pm_\mu 0.5$ seconds, an overhead of a factor of twenty-nine.  That
+suggests that most of the overhead of the dynamic analysis tool comes
+simply from the fact that it is implemented as a Valgrind skin, and
+that re-implementing it in a faster analysis framework such as
+PIN\cite{Luk2005} might provide a useful speed-up.
 
 \todo{Do I need perf numbers for any other test programs?  It'd make
   it much more convincing, but they'd be a nuisance to produce.}
