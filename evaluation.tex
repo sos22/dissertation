@@ -1,13 +1,14 @@
 \chapter{Evaluation}
 \label{chapter:eval}
 
-\section{Experiments I still need to run}
+\section{Stuff I still need to do}
 
 \begin{itemize}
 \item Consider doing an ordering violation artificial bug, just to
   show the bug hiding problem?
 \item It'd be nice to have something showing the effectiveness of the
   simplification bits.
+\item Need to rewrite the section on pbzip2.
 \item Re-do unoptimised MySQL.  Time static and main analysis phases.
   Check number of candidates generated.  Run candidates.
   \todo{Running on hogun now.}
@@ -54,6 +55,20 @@ following parts:
   running.
 \end{itemize}
 
+\subsection{Statistical note}
+
+Many of the distributions involved in this section are statistically
+awkward due to having high kurtosis.  It would be quite deceptive to
+quote a standard deviation for these distributions, and so I avoid
+doing so, preferring instead to give either the full CDF or some
+quantiles of the distribution.  In other cases I will write either $x
+\pm_\mu y$ to give the mean and standard deviation of the mean,
+calculated using the central limit theorem, for some distribution, or
+$x \pm_p y$ to give the mean and population standard deviation of some
+distribution.  The decision of which measure to give will be a largely
+subjective one based on which I consider to be the most useful
+characterisation of the data.
+
 \section{Artificial bugs}
 \label{sect:eval:artificial}
 
@@ -61,10 +76,17 @@ I now present the results of running {\implementation} on a number of
 artificial bugs, showing that it assists in both reproducing the bugs
 and fixing them, and that the analysis phases complete very quickly.
 
-\subsection{Simple time-of-check, time-of-use (TOCTOU) bug (simple\_toctou)}\footnote{This bug was previously discussed in
-  Section~\ref{sect:derive:simple_toctou_example}.}
-\label{sect:eval:simple_toctou}
+All of these experiments in this section were run on a four-core Intel
+Q6600 2.40GHz with 8GiB of memory running Ubuntu Lucid Lynx.
+\gls{alpha} was set to 50 (although the use of \texttt{STOP\_ANALYSIS}
+markers reduced the size of effective \gls{analysiswindow} to far less
+than this; see detailed test descriptions below).  None of the
+experiments suffered any timeouts or out-of-memory errors.  The system
+compiler, used to build the \glspl{bugenforcer} and fixes, as well as
+{\implementation} itself, was gcc version 4.4.3.
 
+\subsection{Simple time-of-check, time-of-use (TOCTOU) bug (simple\_toctou)}
+\label{sect:eval:simple_toctou}
 
 \begin{figure}
   \subfigure[][Crashing thread]{
@@ -127,7 +149,9 @@ and fixing them, and that the analysis phases complete very quickly.
 \end{figure}
 
 This is the simplest possible kind of concurrency bug: a
-single-variable time-of-check, time-of-use race.  The two threads
+single-variable time-of-check, time-of-use race\footnote{This bug was
+  previously discussed in slightly less detail in
+  \autoref{sect:derive:simple_toctou_example}.}.  The two threads
 involved are shown in Figure~\ref{fig:eval:simple_toctou}.  The intent
 here is to model a very simple structure which is accessed frequently
 but updated rarely.  The bug is, of course, that the interfering
@@ -295,14 +319,14 @@ Figure~\ref{fig:eval:simple_toctou:inferred_assumption2}.
   \label{fig:eval:simple_toctou:inferred_assumption2}
 \end{figure}
 
-The time taken to perform this analysis is quite modest: $0.52 \pm
-0.04$ seconds for the static analysis phase and $0.18 \pm 0.01$
-seconds for the {\StateMachine} analysis (mean and standard deviation
-of mean for ten runs in both cases).  The dynamic analysis phase
-achieved complete coverage essentially as soon as the program started.
-This is a reasonable lower bound on the time which {\technique} will
-take to process a very simple bug; any realistic program will take far
-longer than this to process.
+The time taken to perform this analysis is quite modest: $0.52 \pm_p
+0.04$ seconds for the static analysis phase and $0.18 \pm_p 0.01$
+seconds for the {\StateMachine} analysis (mean and population standard
+deviation for ten runs).  The dynamic analysis phase achieved complete
+coverage essentially as soon as the program started.  This is a
+reasonable lower bound on the time which {\technique} will take to
+process a very simple bug; any realistic program will take far longer
+than this to process.
 
 \subsubsection{Reproducing the bug}
 This \gls{verificationcondition} can now be turned into a
@@ -332,20 +356,18 @@ at \texttt{4006a0}.  This will be sufficient to reproduce the bug.
   \label{fig:eval:simple_toctou:hb_graph}
 \end{wrapfigure}
 This enforcer is effective at reproducing the bug.  Without the
-enforcer, the mean time taken to reproduce the bug is $4.3 \pm 0.4$
-seconds, mean and standard deviation of mean for 100 runs; with it,
-the mean time was $1.158 \pm 0.003$.  Most of this reduction is caused
-by eliminating outliers from the distribution: the median time to
-reproduce the bug decreased from 3.0 seconds to 1.2, a 2.5-fold
-reduction, while the $95^{th}$ percentile was reduced from 12 seconds
-to 1.2, a ten-fold reduction.
+enforcer, the mean time taken to reproduce the bug was $4.3 \pm_\mu
+0.4$ seconds, for 100 runs; with it, the mean time was $1.158 \pm_\mu
+0.003$.  Most of this reduction is caused by eliminating outliers from
+the distribution: the median time to reproduce the bug decreased from
+3.0 seconds to 1.2, a 2.5-fold reduction, while the $95^{th}$
+percentile was reduced from 12 seconds to 1.2, a ten-fold reduction.
 Figure~\ref{fig:eval:crash_cdf:simple_toctou} shows the complete CDFs
 for both configurations.
 
 Even if the enforcer had failed to reduce the time to reproduction,
 this increase in predictability would itself be a useful property.
-Consider a programmer attempting to fix this bug.  Their basic
-approach is likely to be some variant of this procedure:
+One common strategy for fixing bugs is as follows:
 
 \begin{itemize}
 \item Form a hypothesis as to the cause of the bug.
@@ -375,24 +397,23 @@ to simply run the program and see if it reproduces, but if the time
 taken for the bug to reproduce is highly unpredictable then it is
 difficult to decide how long to run the program for before concluding
 that the bug has been fixed.  {\Technique} cannot hope to completely
-such unpredictability, but, qualitatively, a bug where the $95^{th}$
-percentile differs from the $5^{th}$ percentile by a tenth of a
-percent is likely to be far easier to work with than one where they
-differ by a factor of twelve\footnote{The obvious alternative strategy
-  of measuring what fraction of program runs reach some cut-off time
-  is also ineffective.  For this test program, the optimal cut-off
-  time for that strategy is 3.003 seconds, and it would have to be run
-  four times to achieve a p-value of 0.95, for a total time of
-  slightly over 12 seconds; almost precisely the same time as would be
-  necessary for the na\"{i}ve strategy of just running the program
-  once to reach the same p value.}.
+eliminate such unpredictability, but, qualitatively, a bug where the
+$95^{th}$ percentile differs from the $5^{th}$ percentile by a tenth
+of a percent is likely to be far easier to work with than one where
+they differ by a factor of twelve\footnote{The obvious alternative
+  strategy of measuring what fraction of program runs reach some
+  cut-off time is also ineffective.  For this test program, the
+  optimal cut-off time for that strategy is 3.003 seconds, and it
+  would have to be run four times to achieve a p-value of 0.95, for a
+  total time of slightly over 12 seconds; almost precisely the same
+  time as would be necessary for the na\"{i}ve strategy of just
+  running the program once to reach the same p value.}.
 
 The time taken by the analysis is quite reasonable here.  The
-\gls{verificationcondition} generation step takes $0.77 \pm 0.02$
-seconds (mean and standard deviation of ten runs), including the
-initial static analysis phase, and converting it to a
-\gls{bugenforcer} takes $0.13 \pm 0.01$ seconds.  Real programs would,
-of course, take far longer.
+\gls{verificationcondition} generation step takes $0.77 \pm_p 0.02$
+seconds, from ten runs, including the initial static analysis phase,
+and converting it to a \gls{bugenforcer} takes $0.13 \pm_p 0.01$
+seconds.  Real programs would, of course, take far longer.
 
 \subsubsection{Fixing the bug}
 {\Implementation} can also generate a fix for this bug.  In this case,
@@ -445,30 +466,29 @@ bug.
 \end{figure}
 
 It does, however, have a rather high performance overhead: without a
-fix, the crashing thread completes $352.5 \pm 0.2 {\times} 10^6$
-iterations of the loop per second; with one, it completes $95.9 \pm
+fix, the crashing thread completes $352.5 \pm_p 0.2 {\times} 10^6$
+iterations of the loop per second; with one, it completes $95.9 \pm_p
 0.2 {\times} 10^6$ (mean and standard deviation of ten runs each of
 ten seconds, discarding any runs in which the unfixed program
 crashed).  Neither distribution suffered from a noticeable long tail
 in either direction (checked using the Anderson-Darling and
 Jarque-Bera tests at the 90\% level and by manual inspection).  That
 gives an overhead of roughly a factor of 3.7.  This is obviously
-rather large, but is probably close to {\technique}'s worst case: the
-read-side critical section is very small and runs with very high
-frequency, and so the patch must acquire and release the lock with
-similarly high frequency and these lock operations dominate the time
-taken.  Any realistic test would usually have much lower overhead,
-assuming lock contention does not become a factor, simply because the
-critical sections would run less frequently and the overhead could be
-more effectively amortised.  Even in this case, a factor of four
-overhead is not completely unreasonable when the alternative is a
-program which crashes frequently.
-
-\todo{Worst case ignoring the loss of concurrency, of course.}
+rather large, but is probably close to {\technique}'s worst
+case\footnote{Ignoring the loss of concurrency inherent lock-based
+  fixes.}: the read-side critical section is very small and runs with
+very high frequency, and so the patch must acquire and release the
+lock with similarly high frequency and these lock operations dominate
+the time taken.  Any realistic test would usually have much lower
+overhead, assuming lock contention does not become a factor, simply
+because the critical sections would run less frequently and the
+overhead could be more effectively amortised.  Even in this case, a
+factor of four overhead is not completely unreasonable when the
+alternative is a program which crashes frequently.
 
 For comparison, I also produced a version of the patch which does
 everything except for acquiring and releasing the lock.  This version
-completed $349.2 \pm 0.3 {\times} 10^6$ loops per second, and so in
+completed $349.2 \pm_p 0.3 {\times} 10^6$ loops per second, and so in
 this case the slow down caused by the patch was a little less than
 1\%.  This strongly suggests that the overhead in this case is mostly
 caused by the lock operations themselves, rather than the {\technique}
@@ -477,12 +497,12 @@ infrastructure.
 \begin{table}
   \begin{tabular}{lll}
                      & Gain control with breakpoints & Gain control with branches \\
-    Locking enabled  & $6.08 \pm 0.01$               & $95.9 \pm 0.2$\\
-    Locking disabled & $6.38 \pm 0.01$               & $349.2 \pm 0.3$\\
+    Locking enabled  & $6.08 \pm_p 0.01$               & $95.9 \pm_p 0.2$\\
+    Locking disabled & $6.38 \pm_p 0.01$               & $349.2 \pm_p 0.3$\\
   \end{tabular}
   \caption{Performance of some variants of the fix, in millions of
     loop iterations completed per second.  The original program
-    completed $352.5 \pm 0.2$ million iterations per second, when it
+    completed $352.5 \pm_p 0.2$ million iterations per second, when it
     did not crash.  All measurements mean and population standard
     deviation of ten runs.}
   \label{table:eval:simple_toctou:other_fixes}
@@ -490,21 +510,20 @@ infrastructure.
 
 As a further point of comparison, I also produced a version of this
 fix which used debug breakpoints to gain control of the program rather
-than branches.  This completed $6379000 \pm 7000$ loop iterations per
+than branches.  This completed $6379000 \pm_p 7000$ loop iterations per
 second, even with the actual locking disabled, giving it an overhead
 of roughly a factor of 55.  This would be problematic in a production
 environment.
 
-\todo{Give details of the machine the test is running on.}\smh{Yes}
-
-\subsection{Indexed TOCTOU bug (indexed\_toctou)}\footnote{This bug was used as an example in Section~\ref{sect:reproducing_bugs}.}
+\subsection{Indexed TOCTOU bug (indexed\_toctou)}
 
 \label{sect:eval:indexed_toctou}
 
 In this variant of a TOCTOU bug, there are multiple instances of the
 structure which is being raced on and the bug will only manifest if
-the reading and writing threads happen to coincide.  This bug
-exercises the side condition-checking part of {\technique}'s crash
+the reading and writing threads happen to coincide\footnote{This bug
+  was used as an example in \autoref{sect:reproducing_bugs}.}.  This
+bug exercises the side condition-checking part of {\technique}'s crash
 enforcers.  The code involved in the race is shown in
 Figure~\ref{fig:eval:indexed_toctou}.  Except where otherwise noted,
 \verb|NR_PTRS| is set to 100.
@@ -550,26 +569,26 @@ interfering thread, which is checked on the first happens-before edge.
 
 The enforcer was effective at making this bug reproduce more easily.
 With no enforcer loaded, the mean time to reproduce the bug was $1.2
-\pm 0.2$ seconds, mean and standard deviation of mean for 100 runs;
-with an enforcer, the mean time to reproduce was $0.24 \pm 0.01$
-seconds.  As with the simple\_toctou test, most of this reduction was
-due to removing the long tail: the $95^{th}$ percentile reproduction
-time was reduced from 5.8 seconds to 0.48 seconds, whereas the median
-actually increased slightly, from 0.16 seconds to 0.21 seconds.
-\todo{Investigate how that changes when you change the delay
-  parameter.}
+\pm_\mu 0.2$ seconds, mean and standard deviation of mean for 100
+runs; with an enforcer, the mean time to reproduce was $0.24 \pm_\mu
+0.01$ seconds.  As with the simple\_toctou test, most of this
+reduction was due to removing the long tail: the $95^{th}$ percentile
+reproduction time was reduced from 5.8 seconds to 0.48 seconds,
+whereas the median actually increased slightly, from 0.16 seconds to
+0.21 seconds.  \todo{Investigate how that changes when you change the
+  delay parameter.}
 
 I also investigated the behaviour of this test with an enforcer loaded
 but no side condition checking performed.  In that case, the mean time
-taken to reproduce the bug was $18 \pm 2$ seconds, mean and standard
-deviation of mean for 100 runs.  This reduced enforcer not only fails
-to make the bug reproduce more quickly; it actually makes it
-\emph{less} likely to be triggered, per unit time!  This is because an
-enforcer without side-condition checking will often slow the program
-down in order to impose the happens-before graph even in situations
-where doing so is unlikely to trigger the bug, and this causes the
-buggy code to run far less frequently than it otherwise would.  The
-full CDFs are shown in Figure~\ref{fig:eval:indexed_toctou:no_scs}.
+taken to reproduce the bug was $18 \pm_\mu 2$ seconds.  This reduced
+enforcer not only fails to make the bug reproduce more quickly; it
+actually makes it \emph{less} likely to be triggered, per unit time!
+This is because an enforcer without side-condition checking will often
+slow the program down in order to impose the happens-before graph even
+in situations where doing so is unlikely to trigger the bug, and this
+causes the buggy code to run far less frequently than it otherwise
+would.  The full CDFs are shown in
+Figure~\ref{fig:eval:indexed_toctou:no_scs}.
 
 \begin{figure}
   \input{eval/artificial_bugs/special/indexed_toctou_no_scs.tex}
@@ -580,10 +599,11 @@ full CDFs are shown in Figure~\ref{fig:eval:indexed_toctou:no_scs}.
 
 \begin{figure}
   \subfigure[][Without enforcer]{ \input{eval/artificial_bugs/special/indexed_toctou_vary_nr_ptrs_no_enforcer.tex} }
-  \subfigure[][Without enforcer]{ \input{eval/artificial_bugs/special/indexed_toctou_vary_nr_ptrs_enforcer.tex} }
+  \subfigure[][With enforcer]{ \input{eval/artificial_bugs/special/indexed_toctou_vary_nr_ptrs_enforcer.tex} }
   \caption{Reproduction times with and without an enforcer loaded, for
     varying values of \texttt{NR\_PTRS}.  Note that the two graphs use
-    different scales, and that both use a log scale.}
+    different scales, and that both use a log scale.  Error bars on
+    mean line are plus or minus one standard deviation of mean.}
   \label{fig:eval:indexed_toctou:nr_ptrs}
 \end{figure}
 
@@ -592,7 +612,8 @@ As a final test, I investigated the effect changing the
 Figure~\ref{fig:eval:indexed_toctou:nr_ptrs}.  I ran each
 configuration 100 times at each of the sampled abscissae and timed how
 long it took to reproduce the bug; these charts show the $25^{th}$,
-$50^{th}$, and $75^{th}$ percentiles and the mean.
+$50^{th}$, and $75^{th}$ percentiles and the mean and standard
+deviation of the mean.
 
 The most obvious property of these charts is that the behaviour of the
 case without the enforcer is quite ``noisy''.  Some of this noise is
@@ -625,11 +646,11 @@ the performance overheads of the fix I again counted the number of
 times the read and write loops execute per second with and without the
 fix applied, running the test for ten seconds and discarding any runs
 in which the test program crashed.  Without a fix applied, the test
-completed the crashing thread loop $9.6 \pm 0.5 {\times} 10^5$ times
-per second and the interfering thread loop $9.0 \pm 0.2 {\times} 10^5$
-times per second; with a fix, it completed $8.3 \pm 0.3 \times 10^5$
-crashing loops and $7.8 \pm 0.2 \times 10^5$ interfering loops (mean
-and standard deviation of ten runs).  The overhead was therefore
+completed the crashing thread loop $9.6 \pm_p 0.5 {\times} 10^5$ times
+per second and the interfering thread loop $9.0 \pm_p 0.2 {\times}
+10^5$ times per second; with a fix, it completed $8.3 \pm_p 0.3 \times
+10^5$ crashing loops and $7.8 \pm_p 0.2 \times 10^5$ interfering loops
+(mean and standard deviation of ten runs).  The overhead was therefore
 roughly 15\% on both the read and write sides of the test.  This is
 far smaller than the factor of four reported in the simple\_toctou
 case, largely because the test loop in this case includes a call to
@@ -713,7 +734,7 @@ a bad pointer dereference.  {\Technique} reports a single candidate
 bug in this program, corresponding to interleaving the crashing thread
 with the two stores which set \texttt{global1} and \texttt{global2} to
 7 in the interfering thread.  This enforcer causes the bug to
-reproduce quickly (in an average of $322 \pm 4$ms, mean and standard
+reproduce quickly (in an average of $322 \pm_\mu 4$ms, mean and standard
 deviation of mean for 100 runs), and in all cases within the three
 minute timeout, whereas without an enforcer the bug failed to
 reproduce before the timeout in 73\% of cases.
@@ -857,12 +878,11 @@ is.
 
 \subsection{Multiple bugs (multi\_bugs)}
 
-
 This test combines simple\_toctou and write\_to\_read into a single
 test, demonstrating {\technique}'s ability to exercise several bugs
 using a single enforcer.  The test program is shown in
 Figure~\ref{fig:eval:multi_bugs}.  The behaviour of
-\texttt|select\_test| is configurable at run time, and will either
+\texttt{select\_test} is configurable at run time, and will either
 always select simple\_toctou, always select write\_to\_read, or select
 randomly.  The dynamic analysis phases were run with it configured to
 select randomly.
@@ -1009,7 +1029,7 @@ issue.
 
 \begin{figure}
   \subfigure[][]{
-    \begin{tabular}{ll}
+    \begin{tabular}{c}
       \begin{tikzpicture}
         \node (dummy) {};
         \node (ld1) [CfgInstr, below = of dummy] {\texttt{x1 = global;}};
@@ -1033,7 +1053,7 @@ issue.
   }
   \hfill
   \subfigure[][]{
-    \begin{tabular}{ll}
+    \begin{tabular}{c}
       \begin{tikzpicture}
         \node (ld1) [CfgInstr] {\texttt{x1 = global;}};
         \node (dummy) [right = of ld1] {};
@@ -1271,6 +1291,7 @@ program's execution.
 \subsection{The broken publish pattern (broken\_publish)}
 
 \begin{figure}
+  {\hfill}
   \subfigure[][Crashing thread]{
     \texttt{
       \begin{tabular}{lll}
@@ -1285,6 +1306,7 @@ program's execution.
       \end{tabular}
     }
   }
+  {\hfill}
   \subfigure[][Interfering thread]{
     \texttt{
       \begin{tabular}{lll}
@@ -1299,6 +1321,7 @@ program's execution.
       \end{tabular}
     }
   }
+  {\hfill}
   \caption{The two sides of the broken\_publish test bug.  Garbage
     collection-related code is not shown.}
   \label{fig:eval:broken_publish}
@@ -1457,14 +1480,14 @@ effective in more realistic programs where the buggy code runs less
 often.  It is therefore quite unlikely that DataCollider would perform
 as well on more realistic tests as it does on these artificial bugs.
 
-\todo{More fundamentally, using DataCollider to explore alternative
-  schedules is itself somewhat unfair, as DataCollider was originally
-  intended to discover races rather than to permute schedules, and,
-  while it is trivial to extend it to perform schedule exploration, it
-  is not entirely surprising that the results are somewhat poor.
-  Nevertheless, it represents the approach which is conceptually close
-  to {\technique}'s in the existing literature, and so I consider it
-  to be an interesting reference point.}
+In another respect, of course, this is unfair to DataCollider, as the
+original DataCollider was only intended to discover races, and not as
+a tool for exploring alternative program schedules.  It is therefore
+not entirely surprising that the results of applying it in this
+context are often somewhat poor.  Nevertheless, it represents the
+approach which is conceptually close to {\technique}'s in the existing
+literature, and so I consider it to be an interesting reference
+point.
 
 \todo{I'd really like to do a comparison with CHESS, as well, but
   that's only implemented for 32-bit Windows programs, and
@@ -1516,7 +1539,7 @@ expected.  There are a few exceptions, however:
   tests.
 \item Finally, the multi\_threads test reproduces more quickly under
   the DataCollider-like tool than under the {\technique} enforcer.
-  the problem here is simply that the instruction interpreter used in
+  The problem here is simply that the instruction interpreter used in
   {\technique} enforcers is rather slow, taking more than 1.5 seconds
   to step every thread far enough through their critical section to
   actually try to perform message operations, and then several hundred
@@ -1537,7 +1560,7 @@ programs.
 
 \subsection{Summary tables}
 
-I now give some a quantitative characterisation of {\technique}'s
+I now give a quantitative characterisation of {\technique}'s
 performance on these test programs.  This includes CDFs of the time
 taken to reproduce the various bugs, in
 \autoref{fig:eval:summary_cdfs}, the time taken to perform the various
@@ -1588,27 +1611,27 @@ threads.
 \begin{sidewaystable}
   \begin{tabular}{lllll}
     Test name                      & Static analysis & Generating verification conditions & Building the enforcers & Building the fixes \\
-    simple\_toctou                 & $0.571 \pm 0.060$ &  $0.195 \pm 0.018$ &  $0.126 \pm 0.006$ &  $0.142 \pm 0.005$\\
-    indexed\_toctou                & $0.604 \pm 0.089$ &  $0.275 \pm 0.004$ &  $0.146 \pm 0.005$ &  $0.142 \pm 0.004$\\
-    crash\_indexed\_toctou         & $0.566 \pm 0.068$ &  $0.289 \pm 0.009$ &  $0.149 \pm 0.007$ &  $0.138 \pm 0.004$\\
-    interfering\_indexed\_toctou   & $0.624 \pm 0.055$ &  $0.288 \pm 0.008$ &  $0.149 \pm 0.007$ &  $0.142 \pm 0.010$\\
-    context                        & $0.682 \pm 0.058$ &  $0.233 \pm 0.005$ &  $0.132 \pm 0.007$ &  $0.139 \pm 0.005$\\
-    cross\_function                & $0.669 \pm 0.036$ &  $0.186 \pm 0.004$ &  $0.132 \pm 0.005$ &  $0.138 \pm 0.006$\\
-    double\_free                   & $0.447 \pm 0.029$ &  $0.186 \pm 0.005$ &  $0.130 \pm 0.002$ &  $0.135 \pm 0.003$\\
-    multi\_variable                & $0.792 \pm 0.115$ &  $0.228 \pm 0.006$ &  $0.157 \pm 0.004$ &  $0.135 \pm 0.004$\\
-    write\_to\_read                & $0.439 \pm 0.035$ &  $0.182 \pm 0.003$ &  $0.125 \pm 0.004$ &  $0.135 \pm 0.003$\\
-    broken\_publish                & $0.521 \pm 0.037$ &  $0.181 \pm 0.004$ &  $0.123 \pm 0.005$ &  $0.139 \pm 0.004$\\
-    complex\_hb\_5                 & $0.426 \pm 0.011$ &  $0.212 \pm 0.006$ &  $0.149 \pm 0.007$ &  $0.141 \pm 0.008$\\
-    complex\_hb\_11                & $0.457 \pm 0.021$ &  $0.343 \pm 0.005$ &  $0.162 \pm 0.004$ &  $0.141 \pm 0.005$\\
-    complex\_hb\_17                & $0.451 \pm 0.025$ &  $1.711 \pm 0.012$ &  $0.200 \pm 0.003$ &  $0.140 \pm 0.004$\\
-    existing\_sync\_visible        & $0.566 \pm 0.020$ &  $0.156 \pm 0.005$ & \multicolumn{2}{c}{\emph{Nothing generated}} \\
-    existing\_sync\_invisible      & $0.572 \pm 0.023$ &  $0.206 \pm 0.006$ &  $0.136 \pm 0.003$ &  $0.140 \pm 0.004$\\
-    multi\_bugs                    & $0.625 \pm 0.024$ &  $0.288 \pm 0.005$ & \\
-    \hspace{5mm}Bug 1 & & &  $0.161 \pm 0.006$ &  $0.136 \pm 0.003$\\
-    \hspace{5mm}Bug 2 & & &  $0.143 \pm 0.006$ &  $0.140 \pm 0.005$\\
-    multi\_threads                 & $0.562 \pm 0.025$ &  $0.232 \pm 0.002$ &  $0.160 \pm 0.022$ &  $0.142 \pm 0.009$\\
-    w\_isolation                   & $0.509 \pm 0.031$ &  $0.143 \pm 0.004$ &  $0.117 \pm 0.003$ &  $0.137 \pm 0.005$\\
-    glibc                          & $0.337 \pm 0.030$ &  $0.193 \pm 0.004$ &  $0.128 \pm 0.004$ &  $0.134 \pm 0.003$\\
+    simple\_toctou                 & $0.571 \pm_p 0.060$ &  $0.195 \pm_p 0.018$ &  $0.126 \pm_p 0.006$ &  $0.142 \pm_p 0.005$\\
+    indexed\_toctou                & $0.604 \pm_p 0.089$ &  $0.275 \pm_p 0.004$ &  $0.146 \pm_p 0.005$ &  $0.142 \pm_p 0.004$\\
+    crash\_indexed\_toctou         & $0.566 \pm_p 0.068$ &  $0.289 \pm_p 0.009$ &  $0.149 \pm_p 0.007$ &  $0.138 \pm_p 0.004$\\
+    interfering\_indexed\_toctou   & $0.624 \pm_p 0.055$ &  $0.288 \pm_p 0.008$ &  $0.149 \pm_p 0.007$ &  $0.142 \pm_p 0.010$\\
+    context                        & $0.682 \pm_p 0.058$ &  $0.233 \pm_p 0.005$ &  $0.132 \pm_p 0.007$ &  $0.139 \pm_p 0.005$\\
+    cross\_function                & $0.669 \pm_p 0.036$ &  $0.186 \pm_p 0.004$ &  $0.132 \pm_p 0.005$ &  $0.138 \pm_p 0.006$\\
+    double\_free                   & $0.447 \pm_p 0.029$ &  $0.186 \pm_p 0.005$ &  $0.130 \pm_p 0.002$ &  $0.135 \pm_p 0.003$\\
+    multi\_variable                & $0.792 \pm_p 0.115$ &  $0.228 \pm_p 0.006$ &  $0.157 \pm_p 0.004$ &  $0.135 \pm_p 0.004$\\
+    write\_to\_read                & $0.439 \pm_p 0.035$ &  $0.182 \pm_p 0.003$ &  $0.125 \pm_p 0.004$ &  $0.135 \pm_p 0.003$\\
+    broken\_publish                & $0.521 \pm_p 0.037$ &  $0.181 \pm_p 0.004$ &  $0.123 \pm_p 0.005$ &  $0.139 \pm_p 0.004$\\
+    complex\_hb\_5                 & $0.426 \pm_p 0.011$ &  $0.212 \pm_p 0.006$ &  $0.149 \pm_p 0.007$ &  $0.141 \pm_p 0.008$\\
+    complex\_hb\_11                & $0.457 \pm_p 0.021$ &  $0.343 \pm_p 0.005$ &  $0.162 \pm_p 0.004$ &  $0.141 \pm_p 0.005$\\
+    complex\_hb\_17                & $0.451 \pm_p 0.025$ &  $1.711 \pm_p 0.012$ &  $0.200 \pm_p 0.003$ &  $0.140 \pm_p 0.004$\\
+    existing\_sync\_visible        & $0.566 \pm_p 0.020$ &  $0.156 \pm_p 0.005$ & \multicolumn{2}{c}{\emph{Nothing generated}} \\
+    existing\_sync\_invisible      & $0.572 \pm_p 0.023$ &  $0.206 \pm_p 0.006$ &  $0.136 \pm_p 0.003$ &  $0.140 \pm_p 0.004$\\
+    multi\_bugs                    & $0.625 \pm_p 0.024$ &  $0.288 \pm_p 0.005$ & \\
+    \hspace{5mm}Bug 1 & & &  $0.161 \pm_p 0.006$ &  $0.136 \pm_p 0.003$\\
+    \hspace{5mm}Bug 2 & & &  $0.143 \pm_p 0.006$ &  $0.140 \pm_p 0.005$\\
+    multi\_threads                 & $0.562 \pm_p 0.025$ &  $0.232 \pm_p 0.002$ &  $0.160 \pm_p 0.022$ &  $0.142 \pm_p 0.009$\\
+    w\_isolation                   & $0.509 \pm_p 0.031$ &  $0.143 \pm_p 0.004$ &  $0.117 \pm_p 0.003$ &  $0.137 \pm_p 0.005$\\
+    glibc                          & $0.337 \pm_p 0.030$ &  $0.193 \pm_p 0.004$ &  $0.128 \pm_p 0.004$ &  $0.134 \pm_p 0.003$\\
   \end{tabular}
   \caption{Time taken in the various analysis phases for the
     artificial bugs.  Times are given as mean and standard deviation
@@ -1651,7 +1674,7 @@ threads.
   \end{tabular}
   \caption{Performance overheads of automatically-generated fixes,
     measured in loop iterations per second.  Further details of the
-    experiments are given in the test.}
+    experiments are given in the text.}
   \label{table:eval:fix_overheads}
 \end{sidewaystable}
 
@@ -1788,14 +1811,14 @@ concurrency behaviour.
 Manual inspection of the machine code suggested in order to correctly
 analyse this bug, \gls{alpha} would need to be set to at least 570
 instructions, of which 265 correspond to \texttt{PdoExpansion} and 195
-to \texttt{PdoTraceback}.  As discussed in \autoref{sect:eval:alpha},
-it is difficult to push \gls{alpha} above a few dozen with the current
-implementation, and so analysing the entire path is unlikely to be
-feasible.  On the other hand, if {\technique} could use procedure
-summaries\needCite{} to represent \texttt{PdoExpansion} and
-\texttt{PdoTraceback}, it would only have to analyse 76 instructions,
-which is far more plausible.  I have not investigated this possibility
-in any detail.
+to \texttt{PdoTraceback}.  As will be discussed in
+\autoref{sect:eval:alpha}, it is difficult to push \gls{alpha} above a
+few dozen with the current implementation, and so analysing the entire
+path is unlikely to be feasible.  On the other hand, if {\technique}
+could use procedure summaries\needCite{} to represent
+\texttt{PdoExpansion} and \texttt{PdoTraceback}, it would only have to
+analyse 76 instructions, which is far more plausible.  I have not
+investigated this possibility in any detail.
 
 \subsection{bayes}
 
@@ -1856,7 +1879,7 @@ times without any modifications so as to establish a baseline:
 The Bayes program was invoked with the parameters \texttt{-v32 -r1024
   -n2 -p20 -i2 -e2 -s1 -t 2}.
 
-Both of these bugs are in the current form to be investigated by
+Both of these bugs are in the correct form to be investigated by
 {\technique}, and so I produced \glspl{bugenforcer} for both of them.
 I investigated the assertion failure first.  The race here is
 essentially a time-of-check, time-of-use one, where the list element
@@ -1885,10 +1908,10 @@ and all of these runs suffered the double free bug, precisely as
 desired.
 
 {\Technique} can generate fixes for both of these bugs.  I ran the
-program 100 times with each of the fixes applied.  With the
-double-free only fix applied, the program completed successfully 90
-times, suffered the assertion failure five times, and suffered five
-other crashes elsewhere in the program.  With the assertion-only fix
+program 100 times with each of the fixes applied.  With only the
+double-free fix applied, the program completed successfully 90 times,
+suffered the assertion failure five times, and suffered five other
+crashes elsewhere in the program.  With the assertion-only fix
 applied, the program completed 95 runs successfully but failed an
 assertion elsewhere in the program in the remaining 5 cases.  As
 expected, both partial fixes eliminate the bug which they are designed
@@ -2029,12 +2052,12 @@ The analysis time was quite reasonable here:
 
 \begin{itemize}
 \item The static analysis phase of building the \gls{programmodel}
-  took $1240 \pm 10$ seconds, or about twenty minutes.
-\item Building the \glspl{verificationcondition} took $390 \pm 10$
+  took $1240 \pm_p 10$ seconds, or about twenty minutes.
+\item Building the \glspl{verificationcondition} took $390 \pm_p 10$
   milliseconds.
-\item It took $640 \pm 10$ milliseconds to build each of the two
+\item It took $640 \pm_p 10$ milliseconds to build each of the two
   single-\gls{verificationcondition} \glspl{bugenforcer}.
-\item Building the combined \gls{bugenforcer} took $710 \pm 20$
+\item Building the combined \gls{bugenforcer} took $710 \pm_p 20$
   milliseconds.
 \end{itemize}
 
@@ -2046,9 +2069,9 @@ relevant to the bug.  Twenty minutes is still a perfectly reasonable
 analysis time for a program as complicated as Thunderbird.
 
 This bug does illustrate one weakness of the {\technique} approach to
-finding bugs: it is difficult to apply to programs which do not have a
-good automated test suite.  {\Technique} generates a very large number
-of false positives in its main analysis phase and relies on the
+finding bugs: it is difficult to apply to programs which do not have
+good automated test suites.  {\Technique} generates a very large
+number of false positives in its main analysis phase and relies on the
 enforcers to distinguish them from real bugs, but this is only
 effective if the enforcers can be run automatically, which is in turn
 only possible when it is possible to exercise some reasonable
@@ -2148,8 +2171,8 @@ several important properties of the analysis:
 
 \begin{figure}
   \input{eval/bubble_charts/bubble1.tex}
-  \caption{Time taken by the different phases.  See text for detailed
-    description.}
+  \caption{Time taken by the per-\gls{crashingthread} phases.  See
+    text for detailed description.}
   \label{fig:eval:time_breakdown:crashing}
 \end{figure}
 
@@ -2175,17 +2198,17 @@ several important properties of the analysis:
   \end{itemize}
 
   The lines within a blob are ordered so that they increase
-  monotonically and then decrease monotonically but is otherwise
-  arbitrary.  In particular, the height of a blob's centre is not
-  meaningful.
+  monotonically and then decrease monotonically but the ordering is
+  otherwise arbitrary.  In particular, the height of a blob's centre
+  is not meaningful.
 
-\item The horizontal position of a blob is given by the average time
-  at which that phase finished, for instructions which required
+\item The horizontal position of a blob gives the average time at
+  which that phase finished, for instructions which required
   non-trivial work in that phase, using the scale given on the x axis.
-  Note that this is a different scale to the one used for the length
-  of horizontal lines within a blob; this is necessary because the
-  mean and maximum for some of the distributions displayed differ by
-  two orders of magnitude.
+  Note that this is different to the scale used for the length of
+  horizontal lines within a blob; this is necessary because the mean
+  and maximum for some of the distributions displayed differ by two
+  orders of magnitude.
 
 \item Not every instruction requires analysis, and the solid line
   shows how many instructions can be dismissed early.  For instance,
@@ -2195,14 +2218,19 @@ several important properties of the analysis:
   Similarly, for 48\% of instructions the {\StateMachine} simplifiers
   were able to reduce the {\StateMachine} to the point where it
   produced an empty $\beta$ set, and so there were no interfering
-  \glspl{cfg} for these potentially-crashing instructions.
+  \glspl{cfg} for these potentially-crashing instructions.  It is
+  arguably something of an abuse to plot a regression line here, as
+  there the number of dismissals is not really a continuous function
+  of time, but I feel that this is the clearest way of presenting the
+  data.
 
 \item Similarly, some instructions do not start later phases because
-  of timeouts earlier in the analysis phase.  The number of timeouts
-  before a particular phase is given by the difference between the
-  solid and dashed lines.  In this case, the only timeout occurred
-  while simplifying the crashing {\StateMachine}.  The timeout was set
-  to one minute.
+  of timeouts in an earlier phase.  The number of timeouts before a
+  particular phase is given by the difference between the solid and
+  dashed lines.  In this case, the only timeout occurred while
+  simplifying the crashing {\StateMachine}.  The timeout was set to
+  one minute, and runs from the start of the analysis to the start of
+  the ``Process interfering CFGs'' phase.
 
 \item The chart only shows time spent in the most important phases.
   Any remaining time is shown in an ``Other'' blob on the right of the
@@ -2214,16 +2242,15 @@ The chart shows three features which are worth noting:
 \begin{itemize}
 \item Most of the time is spent in the ``Process interfering
   \glspl{cfg}'' phase.  This is discussed in more detail later.
-\item The ``Derive C-atomic'' phase is tiny.  This indicates that the
-  {\StateMachine} simplifiers are doing a good job for these
-  {\StateMachines}, and so the symbolic execution engine has very
-  little to do.
-\item All of the distributions have very large positive outliers,
-  indicating that most potential bugs can be dismissed very easily but
-  the remaining ones require a significant amount of analysis.  This
-  is unsurprising: many of the algorithms involved have very bad but
-  very rare worst-case complexity; steps which avoid those worst cases
-  are processed quickly, but those which hit them perform very badly.
+\item The ``Derive C-atomic'' phase is tiny.  The crashing
+  {\StateMachines} are individually quite small, and so symbolically
+  executing them usually completes quickly.
+\item All of the distributions have large outliers, indicating that
+  most potential bugs can be dismissed very easily but the remaining
+  ones require a significant amount of analysis.  This is
+  unsurprising: many of the algorithms involved have very bad but very
+  rare worst-case complexity; steps which avoid those worst cases are
+  processed quickly, but those which hit them perform very badly.
 \end{itemize}
 
 I now investigate the time taken processing each interfering
@@ -2231,7 +2258,7 @@ I now investigate the time taken processing each interfering
 time taken by the various sub-phases of this, in the same style as the
 previous figure.  The data for this chart was collected in the same
 run of {\implementation} as that for the previous chart.  There were
-2174 interfering \glspl{cfg} in total.
+2251 interfering \glspl{cfg} in total.
 
 The third phase of this chart, ``rederive crashing {\StateMachine}'',
 perhaps requires further explanation.  Fixing the interfering
@@ -2244,8 +2271,8 @@ interfering \glspl{cfg}.
 
 \begin{figure}
   \input{eval/bubble_charts/bubble2.tex}
-  \caption{Time taken by the different phases.  See text for detailed
-    description.}
+  \caption{Time taken by the per-interfering \gls{cfg} phases.  See
+    text for detailed description.}
   \label{fig:eval:time_breakdown:interfering}
 \end{figure}
 
@@ -2266,12 +2293,70 @@ environments in which the threads might execute, and the cross-product
 symbolic execution can take advantage of that to eliminate some
 potential paths from consideration.
 
-\todo{I'd like to say more about what's causing those timeouts, but
-  that's tricky because I don't really know; my guess is that they're
-  mostly cause by bad BDD orderings.}
+The phase suffered several failures:
+
+\begin{itemize}
+\item There was one timeout symbolically executing the cross-product
+  {\StateMachine}.
+\item There were three timeouts symbolically executing the \gls{ic-atomic}
+  {\StateMachine}, and two out-of-memory failures.
+\item There was one timeout simplifying the \gls{ic-atomic}
+  {\StateMachine}.
+\end{itemize}
+
+The timeout was set to sixty seconds, covering the entire analysis
+from the start of the ``compile interfering {\StateMachine}'' phase to
+the end of the ``final satisfiability check'' one, and the machine the
+analysis was running on had 8GiB of memory.
+
+This represents a total failure rate of 0.3\%, or 0.4\% including the
+failure in the previous phase.  \todo{Say more about the causes of the
+  failures.}
+
+\subsubsection{Effects of {\StateMachine} simplification}
+
+For comparison, I also performed this experiment with the
+{\StateMachine} simplifiers disabled.  The results are shown in
+figures~\ref{fig:eval:time_breakdown:crashing_no_simple}
+and~\ref{fig:eval:time_breakdown:interfering_no_simple}.  These are
+roughly as expected: the entire process is much slower, with the
+average time per potentially-crashing instruction rising from 3.4 to
+22.5 seconds and the time per interfering \gls{cfg} rising from 0.82
+to 4.2 seconds, and the failure rate increases from 0.4\% to 3.2\%.
+
+Also, although not shown on the charts, the number of interfering
+\glspl{cfg} increased from 2251 to 4154.  These correspond to cases
+where the simplifiers were able to show that a particular memory load
+in the crashing {\StateMachine} could not possible influence whether
+the {\StateMachine} ultimately predicts a crash, so that the
+configuration with the simplifiers enabled did not need to consider
+races with that location.  The number of \glspl{verificationcondition}
+needing run-time validation, by contrast, fell when simplification was
+disabled.  Disabling simplification never causes additional
+\glspl{verificationcondition} to be found, as the simplifiers are all
+sound.  The \glspl{verificationcondition} which were lost all
+correspond to cases where the analysis succeeded with the simplifiers
+enabled and failed with them disabled.
+
+\begin{figure}
+  \input{eval/bubble_charts/bubble5.tex}
+  \caption{Time taken by the per-\gls{crashingthread} phases with
+    {\StateMachine} simplification disabled.}
+  \label{fig:eval:time_breakdown:crashing_no_simple}
+\end{figure}
+
+\begin{figure}
+  \input{eval/bubble_charts/bubble6.tex}
+  \caption{Time taken by the per-interfering \gls{cfg} phases with
+    {\StateMachine} simplification disabled.}
+  \label{fig:eval:time_breakdown:interfering_no_simple}
+\end{figure}
 
 \subsubsection{Effects of the $\alpha$ parameter}
 \label{sect:eval:alpha}
+
+\todo{Need to regenerate the graphs with the 300 second timeout rather
+  than the 60 second one, once that's finished running.}
 
 \todo{Some of these have no error bars, and they also have a quite
   large uncertainty.}
@@ -2295,17 +2380,39 @@ time taken to derive the \gls{crashingthread} {\StateMachines},
 including deriving the \gls{cfg}, compiling it to a {\StateMachine},
 performing the initial simplification, and deriving C-atomic.  The
 results are shown in the box plot in
-Figure~\ref{fig:perf:alpha:bpm:unopt}.  For this experiment, I used a
-sixty second timeout and treated any instructions which took longer
-than that to generate the crashing {\StateMachine} as having failed.
-Note that the means were calculated discarding timeouts, whereas the
-quantiles were calculated treating timeouts as having taken precisely
-sixty seconds.  The overall shape of this chart is roughly what one
-would expect: the time taken to analyse a particular
-potentially-crashing instruction rises roughly exponentially with the
-value of \gls{alpha}, and the proportion of timeouts rises rapidly
-once \gls{alpha} exceeds a certain value, which in this case is about
-40.
+Figure~\ref{fig:perf:alpha:bpm:unopt}.  Note that the means were
+calculated discarding timeouts, whereas the quantiles were calculated
+treating timeouts as having taken precisely five minutes.
+
+The configuration used for this experiment was slightly different from
+that used for most of the other experiments:
+
+\begin{itemize}
+\item The timeout was increased from sixty seconds to five minutes, as
+  that made the data easier to interpret for high values of
+  \gls{alpha}.
+\item The machine used to run this experiment was a 1.9GHz Opteron
+  6168 with 16GiB of memory.
+\item {\Implementation} was initially configured to analyse ten
+  potentially-crashing instructions in parallel, whereas the previous
+  experiments analysed operated purely serially.  Any instructions
+  which suffered an out-of-memory error when run in parallel were
+  re-run in series after the experiment completed; an operation was
+  only treated as running out of memory if it failed on this final
+  run.  Timed-out phases of the analysis were not re-run.
+\end{itemize}
+
+The results of this experiment are therefore not directly comparable
+with the results of the other experiments.
+
+\todo{This is going to need re-writing once I get the results of the
+  current batch of experiments.}
+
+The overall shape of this chart is roughly what one would expect: the
+time taken to analyse a particular potentially-crashing instruction
+rises roughly exponentially with the value of \gls{alpha}, and the
+proportion of timeouts rises rapidly once \gls{alpha} exceeds a
+certain value, which in this case is about 40.
 
 The next thing I investigated was the effect of \gls{alpha} on the
 size of the \glspl{crashingthread}.  This chart shows the sizes of the
@@ -2473,6 +2580,7 @@ and so takes longer to process.  \todo{Not sure there's much to say
   about that.}
 
 \subsection{Building bug enforcers}
+
 The next thing to look at is how long it takes to convert
 \glspl{verificationcondition} to \glspl{bugenforcer}.  For this
 experiment, I chose 5000 \glspl{verificationcondition} at random from
@@ -2486,25 +2594,28 @@ in Figure~\ref{fig:eval:time_breakdown:convert_to_enforcer}\footnote{I
   results.}.
 
 Several of the \glspl{verificationcondition} could not be converted to
-\glspl{bugenforcer} due to running out of memory.  36 (0.7\%) failed
-while slicing the \gls{verificationcondition} according to the
-happens-before graph and 13 (0.3\%) failed while placing the side
-conditions.  The system used to run the test had 8GiB of memory.  To
-some extent, this reflects a problem with my implementation
-{\implementation} rather than the technique {\technique}:
-{\implementation} manages most of the data structures involved using a
-garbage collector which only runs in between the phases, which
-simplified the implementation but will have significantly increased
-the system's memory consumption.  It would therefore be reasonable to
-suppose that a more refined implementation could usefully reduce the
-number of \glspl{verificationcondition} which fail.  It is unlikely,
-however, that it would be possible to eliminate all failures
-completely, as both phases make heavy use of BDD reordering, which has
-an exponential worst-case memory consumption.  The algorithm is design
-such that most of the time the BDDs are in nearly the correct order to
-begin with, and so this worst case can usually be avoided, but the
-minority of cases which do hit it will always require a very large
-amount of memory.
+\glspl{bugenforcer} due to running out of memory; 34 (0.7\%) while
+slicing the \gls{verificationcondition} by the happens-before graph
+and 4 (0.1\%) while placing the side conditions.  In addition, one
+\gls{verificationcondition} reached the 60 second timeout during
+slicing.  Re-running that one condition without a timeout showed that
+it would eventually have run out of memory.  The system used to run
+the test had 8GiB of memory.  To some extent, these out-of-memory
+errors reflect a problem with my implementation {\implementation}
+rather than the technique {\technique}: {\implementation} manages most
+of the data structures involved using a garbage collector which only
+runs in between the phases, which simplified the implementation but
+will have significantly increased the system's memory consumption.  It
+would therefore be reasonable to suppose that a more refined
+implementation could usefully reduce the number of
+\glspl{verificationcondition} which fail.  It is unlikely, however,
+that it would be possible to eliminate all failures completely, as
+both phases make heavy use of BDD reordering, which has an exponential
+worst-case memory consumption.  The algorithm is designed such that
+most of the time the BDDs are in nearly the correct order to begin
+with, and so this worst case can usually be avoided, but the minority
+of cases which do hit it will always require a very large amount of
+memory.
 
 The only other phase which requires a non-trivial amount of time is
 the final one, compiling the enforcer.  This involves converting the
@@ -2521,6 +2632,7 @@ the external compiler.
 \end{figure}
 
 \subsection{Generating fixes}
+\label{sect:eval:genfix}
 
 The final component of {\technique} which I investigate here is fix
 generation.  The performance behaviour here is far simpler than for
@@ -2543,9 +2655,7 @@ reasonable for these patches.
     \hline
   \end{tabular}
   \caption{Time taken to convert 5000 \gls{verificationcondition}
-    generated from MySQL to fixes.  All times in milliseconds.
-    Standard deviation of mean calculated using central limit
-    theorem.}
+    generated from MySQL to fixes.  All times in milliseconds.}
   \label{tab:eval:gen_fix_perf}
 \end{table}
 
@@ -2588,17 +2698,17 @@ column should be treated with caution.
     \hline
     Property of fix        & Mean & $5^{th}$\% & $95^{th}$\% & $\sigma$ & $\beta$, ms & $\gamma$ & R\\
     \hline
-    Protected instructions & $17.9 \pm 0.4$  & 3   & 40  & 30  & 0.2  & 0.04 & 0.28 \\
-    Lock operations        & $2.58 \pm 0.04$ & 1   & 4   & 2.7 & 1.6  & 0.009& 0.13 \\
-    Unlock operations      & $2.88 \pm 0.02$ & 1   & 5   & 1.4 & 0.12 & 0.00001& 0.005 \\
-    Patch instructions     & $70 \pm 1$      & 27  & 127 & 72  & 0.06 & 0.009& 0.13\\
-    \hspace{5mm}Acquiring lock&$15.5 \pm 0.2$& 6   & 24  & 16  &$\ast$&$\ast$& $\ast$\\
-    \hspace{5mm}Releasing lock&$17.3 \pm 0.1$& 6   & 30  & 8   &$\ast$&$\ast$& $\ast$\\
-    \hspace{5mm}Overhead   & $19.1 \pm 0.5$  & 0   & 50  & 32  &$\ast$&$\ast$& $\ast$\\
-    Patch bytes            & $326 \pm 5$     & 126 & 594 & 346 & 0.01 & 0.009& 0.13\\
-    Patch points           & $2.26 \pm 0.01$ & 2   & 3   & 0.88& 0.8  & 0.0008& 0.04\\
-    $\mathit{Cont}$        &$0.034 \pm 0.003$& 0   & 0   & 0.2 &$\ast$&$\ast$& $\ast$\\
-    Relocations            & $11.0 \pm 0.1$  & 6   & 18  & 8.0 & 0.5  & 0.03 & 0.24\\
+    Protected instructions & $17.9 \pm_\mu 0.4$  & 3   & 40  & 30  & 0.2  & 0.04 & 0.28 \\
+    Lock operations        & $2.58 \pm_\mu 0.04$ & 1   & 4   & 2.7 & 1.6  & 0.009& 0.13 \\
+    Unlock operations      & $2.88 \pm_\mu 0.02$ & 1   & 5   & 1.4 & 0.12 & 0.00001& 0.005 \\
+    Patch instructions     & $70 \pm_\mu 1$      & 27  & 127 & 72  & 0.06 & 0.009& 0.13\\
+    \hspace{5mm}Acquiring lock&$15.5 \pm_\mu 0.2$& 6   & 24  & 16  &$\ast$&$\ast$& $\ast$\\
+    \hspace{5mm}Releasing lock&$17.3 \pm_\mu 0.1$& 6   & 30  & 8   &$\ast$&$\ast$& $\ast$\\
+    \hspace{5mm}Overhead   & $19.1 \pm_\mu 0.5$  & 0   & 50  & 32  &$\ast$&$\ast$& $\ast$\\
+    Patch bytes            & $326 \pm_\mu 5$     & 126 & 594 & 346 & 0.01 & 0.009& 0.13\\
+    Patch points           & $2.26 \pm_\mu 0.01$ & 2   & 3   & 0.88& 0.8  & 0.0008& 0.04\\
+    $\mathit{Cont}$        &$0.034 \pm_\mu 0.003$& 0   & 0   & 0.2 &$\ast$&$\ast$& $\ast$\\
+    Relocations            & $11.0 \pm_\mu 0.1$  & 6   & 18  & 8.0 & 0.5  & 0.03 & 0.24\\
     \hline
   \end{tabular}
   \caption{Summaries of some gross properties of the generated fixes,
@@ -2642,28 +2752,32 @@ Table~\ref{table:eval:w-isolation}.  As expected, the
 \glspl{bugenforcer} and the time taken to generate them.
 
 \begin{table}
-  \begin{tabular}{lll}
-    & \multicolumn{2}{c}{\gls{w-isolation}} \\
+  \begin{tabular}{|l|l|l|}
+    \hline
+    & \multicolumn{2}{c|}{\gls{w-isolation}} \\
+    \hline
                                                            & Enabled & Disabled \\
+    \hline
     Timeouts building \gls{crashingthread} {\StateMachines}& 245                    & 245 \\
-    Time to build \gls{crashingthread} {\StateMachine} & $0.5 \pm 0.1$* & $0.6 \pm 0.1$* \\
+    Time to build \gls{crashingthread} {\StateMachine} & $0.5 \pm_\mu 0.1$* & $0.6 \pm_\mu 0.1$* \\
     \Glspl{crashingthread} generating no \glspl{interferingthread} & 456                    & 406 \\
-    Time to build \gls{interferingthread} \glspl{cfg}, per \gls{crashingthread} & $1.5 \pm 0.3$* & $1.5 \pm 0.3$* \\
-    Number of \gls{interferingthread} \glspl{cfg} per \gls{crashingthread} & $5.1 \pm 0.5\dagger$ & $6.3 \pm 0.6\dagger$ \\
+    Time to build \gls{interferingthread} \glspl{cfg}, per \gls{crashingthread} & $1.5 \pm_\mu 0.3$* & $1.5 \pm_\mu 0.3$* \\
+    Number of \gls{interferingthread} \glspl{cfg} per \gls{crashingthread} & $5.1 \pm_\mu 0.5$ & $6.3 \pm_\mu 0.6$ \\
     \hspace{5mm}Total number \gls{interferingthread} \gls{cfg} & 3819 & 4778 \\
     Timeouts building \gls{interferingthread} {\StateMachines} & 17 & 71 \\
     \hspace{5mm}As percentage of \gls{interferingthread} \glspl{cfg} & 0.4\% & 1.5\% \\
-    Time to build \glspl{interferingthread} {\StateMachines} & $0.11 \pm 0.02$* & $0.12 \pm 0.01$* \\
+    Time to build \glspl{interferingthread} {\StateMachines} & $0.11 \pm_\mu 0.02$* & $0.12 \pm_\mu 0.01$* \\
     Timeouts in symbolic execution & 35 & 281 \\
     \hspace{5mm}As percentage of \glspl{interferingthread} & 0.9\% & 7.6\% \\
-    Symbolic execution time per \glspl{interferingthread} & $0.96 \pm 0.07$* & $1.31 \pm 0.08$* \\
+    Symbolic execution time per \glspl{interferingthread} & $0.96 \pm_\mu 0.07$* & $1.31 \pm_\mu 0.08$* \\
     Number of \glspl{verificationcondition} & 682 & 863 \\
     \hspace{5mm}As percentage of \glspl{interferingthread} & 18\% & 18\% \\
     \hspace{5mm}Per \gls{crashingthread} & 0.9 & 1.1 \\
+    \hline
   \end{tabular}
   \caption{Effects of the \gls{w-isolation} assumption.  *: mean and
     standard deviation of mean for all runs which did not time out,
-    seconds.  $\dagger$: mean and standard deviation of mean}
+    seconds.}
   \label{table:eval:w-isolation}
 \end{table}
 

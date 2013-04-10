@@ -24,102 +24,170 @@ instructions\footnote{It is also possible, albeit somewhat less
   arbitrary location in the address space as a single instruction, and
   if the patch must use a multi-instruction sequence to implement the
   branch then it is possible for the later instructions in the
-  sequence to corrupt other instructions.}.
+  sequence to corrupt other instructions.}.  It does by arranging to
+execute the corrupted instructions in the interpreter, as well as the
+instructions actually needed by the enforcement plan, so that the
+interpreter can fix things up as necessary.
 
-{\Implementation} solves this problem using a simple A*-like search
-algorithm\cite{Russell1995}.  The algorithm starts in a state in which
-the original program is not modified at all, but with a list of
-instructions at which it must gain control; it must then find a path
-to a state in which it is guaranteed to gain control at all necessary
-points and the program is guaranteed never to branch to a corrupted
-instruction.  More explicitly, these states consist of three sets:
+\begin{figure}[tp]
+  \begin{displaymath}
+    \textsc{PatchStrategy} = \left\{\begin{array}{rl}
+    \mathit{Patch}: & \{\textsc{Instruction}\} \\
+    \mathit{Cont}: & \{\textsc{Instruction}\} \\
+    \mathit{MustInterpret}: & \{\textsc{Instruction}\}
+    \end{array}\right\}
+  \end{displaymath}
+  \caption{The \textsc{PatchStrategy} type}
+  \label{fig:patch_strategy_type}
+\end{figure}
 
-\begin{itemize}
-\item $\mathit{Patch}$ --- instructions at which we have decided to place a
-  branch instruction.
-\item $\mathit{Cont}$ --- instructions which might not themselves be
-  patched, but which must be processed in the interpreter.  The
-  program will not branch to the interpreter when it encounters one of
-  these instructions, but if the interpreter has already started when
-  one needs to be run then the interpreter will continue, even if the
-  enforcement plan itself does not require that.
-\item $\mathit{MustInterpret}$ --- instructions where the enforcement
-  plan requires us to gain control, but where the patches described in
-  this state would be insufficient to do so.
-\end{itemize}
-
-The search process then generates additional states according to two
-rules:
+{\Implementation} represents solutions and partial solutions to the
+patch problem using the \textsc{PatchStrategy} type, illustrated in
+\autoref{fig:patch_strategy_type}:
 
 \begin{itemize}
-\item
-  \textbf{PatchDirect} An instruction is removed from
-  $\mathit{MustInterpret}$ and added to $\mathit{Patch}$.  The
-  analysis then examines the instructions which would be corrupted by
-  that new entry point to determine whether there are any potential
-  branches to them and, if so, adds those branches to
-  $\mathit{MustInterpret}$.  The corrupted instructions are themselves
-  added to $\mathit{Cont}$.
-
-  This rule is only valid when the existing $\mathit{Patch}$ set does
-  not itself contain any patch operations which would overlap with the
-  new patch point, as these branch instructions would otherwise
-  corrupt each other and lead to an unrealisable solution.
-\item
-  \textbf{Prefix} As with \textbf{PatchDirect}, an instruction is
-  removed from $\mathit{MustInterpret}$, but in this case it is added
-  to $\mathit{Cont}$ and any instruction which might branch to it
-  added to $\mathit{MustInterpret}$.  The idea here is that if we can
-  ensure that all instructions which execute immediately prior to an
-  instruction $i$ are executed in the interpreter and if the
-  interpreter continues interpreting when it sees a branch to $i$ then
-  that is sufficient to ensure that $i$ is also run in the
+\item $\mathit{Patch}$ is the set of instructions in the original
+  program which will be replaced with branch instructions.
+\item $\mathit{Cont}$ is the set of instructions which will not
+  themselves be patched, but which must be processed in the
   interpreter.
+\item $\mathit{MustInterpret}$ is a set of instructions where the
+  enforcement plan requires us to gain control, but where the patches
+  described in this strategy would be insufficient to do so.
 \end{itemize}
 
-Any state with an empty $\mathit{MustInterpret}$ set then represents a
-valid solution to the patching problem.  The number of instructions in
-$\mathit{Cont}$ is a rough proxy for the number of additional
-instructions which will have to be interpreted due to the corrupted
-instructions problem, and hence for the overheads of the patching
-process, and so the search process aims to minimise the
-$\mathit{Cont}$ set.  Usefully, both rules increase the size of
-$\mathit{Cont}$ and so a simple exploration strategy which always
-selects the state in the queue with the smallest $\mathit{Cont}$ set,
-applies both rules to that state, and places the two new states in the
-queue is guaranteed to always find the minimal result, and this is the
-strategy adopted by {\implementation}.
+There are two rules for generating a new \textsc{PatchStrategy} from
+an existing one:
 
-This algorithm relies on being able to calculate the predecessors of
-an instruction, much like the \gls{cfg} building algorithm in
-Section~\ref{sect:derive:build_static_cfg}, and it also uses the
-program model to do so, as described in
-Section~\ref{sect:program_model:instr_predecessors}.  There is one
-important difference, though: if the \gls{cfg} building algorithm
-misses a predecessor, the analysis might be incomplete, which is
-irritating but tolerable; if the patch strategy misses a predecessor,
-the program will crash, which is much worse.  There is one important
-case where the program model returns incorrect information, and that
-is when a function in the main program is called by a library.  The
-program model does not include any information about libraries, and so
-will be unable to locate all of the callers.  On the other hand, it
-can locate all of the \emph{called} instructions.  {\Technique} can
-then avoid the issue by disabling any rule which requires the
-predecessor set for an instruction which a library branches to (so
-\textbf{Prefix} cannot be used for instructions which are branched to
-from libraries and \textbf{PatchDirect} cannot be used if it would
-corrupt any instructions which are branched to from libraries).
+\begin{itemize}
+\item
+  \textbf{PatchDirect} This rule transforms a \textsc{PatchStrategy}
+  by removing an instruction $i$ from the $\mathit{MustInterpret}$ set
+  and adding it to the $\mathit{Patch}$ one.  The enforcer will
+  therefore gain control at $i$ by replacing $i$ with a branch to the
+  interpreter.  This could potentially corrupt the instructions
+  following $i$; if so, \textsc{BuildPatchStrategy} adds those
+  instructions to $\mathit{MustInterpret}$, ensuring that the
+  interpreter has control when they run.  This rule is only valid if
+  the branch at instruction $i$ would not itself corrupt or be
+  corrupted by one of the other instructions in the $\mathit{Patch}$
+  set.
+\item
+  \textbf{Prefix} This rule also removes an instruction $i$ from
+  $\mathit{MustInterpret}$, but does not add it to $\mathit{Patch}$
+  and hence will not replace the instruction with a branch.  The rule
+  instead adds $i$ to $\mathit{Cont}$ and all of $i$'s predecessors to
+  $\mathit{MustInterpret}$, so that the enforcer gains control before
+  $i$ starts and then maintains control when the program branches to
+  $i$.  This rule is only valid if {\technique} can find all of the
+  predecessors of $i$.
+\end{itemize}
+
+The aim is then to find a \textsc{PatchStrategy} with an empty
+$\mathit{MustInterpret}$ set such that $\mathit{Cont} \cup
+\mathit{Patch}$ includes all of the instructions at which the
+enforcement plan requires the enforcer to take control of the program.
+The algorithm for doing so is shown in
+\autoref{fig:patch_search_algorithm}.  This algorithm starts with an
+empty \textsc{PatchStrategy} (line 2) and adds a single instruction
+from $\mathit{gainControl}$ to its $\mathit{MustInterpret}$ set (line
+4).  It then loops applying the two strategy generating rules to the
+starting strategy (lines 5 to 13) until it finds a strategy with an
+empty $\mathit{MustInterpret}$ state (lines 7 to 9).  The algorithm
+then loops again adding another instruction from
+$\mathit{gainControl}$ to $\mathit{MustInterpret}$, and repeats until
+every instruction has been added.  The resulting strategy is then
+guaranteed to gain control of the program at every instruction in
+$\mathit{gainControl}$ and to ensure that the program never executes
+one of the corrupted instructions.
+
+\begin{figure}
+  \begin{algorithmic}[1]
+    \Procedure{BuildPatchStrategy}{$\mathit{gainControl}$}
+    \State {$\mathit{currentSoln} \gets \textsc{PatchStrategy}(\mathit{Patch} = \{\}, \mathit{Cont} = \{\}, \mathit{MustInterpret} = \{\})$}
+    \For {$i \in \mathit{gainControl}$}
+      \State {$q \gets \queue{\mathit{currentSoln} \cup (\mathit{MustInterpret} = \{i\})}$}
+      \While {\true}
+        \State {$\mathit{s} \gets \mathit{pop}(q)$}
+        \If {$s.\mathit{MustInterpret} = \{\}$}
+          \State {$\mathit{currentSoln} \gets s$}
+          \State \textbf{break}
+        \Else
+          \State {$q \gets q + \mathbf{PatchDirect}(s) + \mathbf{Prefix}(s)$}
+        \EndIf
+      \EndWhile
+    \EndFor
+    \State \Return $\mathit{currentSoln}$
+    \EndProcedure
+  \end{algorithmic}
+  \caption{Patch search algorithm.  $\mathit{gainControl}$ is the set
+    of instructions at which the enforcer must gain control of the
+    program.  Not shown: {\implementation}'s implementation records
+    all of the stratgies which it has visited so far so as to avoid
+    re-visiting them.}
+  \label{fig:patch_search_algorithm}
+\end{figure}
+
+This algorithm, as stated, leaves the order in which
+\textsc{PatchStrategy}s are removed from the queue ambiguous.  This
+can sometimes have a quite large effect on the number of instructions
+which must be executed in the interpreter, and hence on the
+performance overheads of the patch.  It is hard to predict precisely
+how large an impact a given strategy will have on performance without
+a detailed model of the program's behaviour, but it can reasonably be
+approximated to be proportional to the number of static instructions
+affected, $|\mathit{Cont} \cup \mathit{Patch}|$.  {\Implementation}
+will therefore always choose to expand the strategy where that
+quantity is smallest, which usually causes it to find the strategy
+which minimises the cost of patch\footnote{The result is only usually
+  minimal, rather than guaranteed to be minimal, because the
+  $\mathit{gainControl}$ set is processed incrementally, with no
+  backtracking from one instruction to an earlier one, and so it might
+  be that the first instruction processed produces a strategy which is
+  incompatible with the optimal strategy for the second instruction.
+  There is an alternative non-incremental version of the algorithm
+  which starts by setting $\mathit{MustInterpret}$ to
+  $\mathit{gainControl}$, rather than adding one instruction at a
+  time, and that alternative version would be guaranteed to find the
+  optimal solution.  On the other hand, the search process itself
+  would be far more expensive, as it would attempt to explore from
+  every $\mathit{gainControl}$ instruction simultaneously.  This would
+  raise the cost from $O(nk)$ to $O(n^k)$, where $k =
+  |\mathit{gainControl}$ and $n/k$ is the cost of the current
+  algorithm.  In practice, the algorithm given here rarely needs to
+  add more than one or two instructions to the $\mathit{Cont}$ set
+  anyway (see \autoref{sect:eval:genfix}), and so this would not be a
+  good trade-off.}.
+
+Calculating the set of predecessor instructions, necessary to apply
+the \textbf{Prefix} rule, is itself marginally complicated.  The
+crashing \gls{cfg} building algorithm, described in
+\autoref{sect:derive:build_crashing_cfg}, needs to solve the same
+problem, and {\technique} uses a similar solution here.  There is one
+important difference, however: if the \gls{cfg}-building algorithm
+misses a predecessor then the analysis will be incomplete, which is
+irritating but tolerable, whereas if the \textsc{PatchStrategy}
+builder misses one then the program will potentially crash, which is
+more of a problem.  This problem could occur if the strategy corrupts
+an instruction $i$ and there are control-flow edges to $i$ which are
+possible in the program but not in the \gls{programmodel}.  The most
+common reason for an edge to be missing from the \gls{programmodel} is
+if it is an indirect call which did not occur during the dynamic
+analysis phase.  {\Implementation} avoids that particular problem by
+simply disabling the \textbf{Prefix} strategy for the first
+instruction in any function, which ensures that such instructions will
+never be corrupted in the final strategy.
 
 This can sometimes lead to the patch problem being unsolvable if the
 entire function is smaller than a single branch instruction, as in
-that case it is possible that neither rule might be enabled at the
-first instruction in the function.  In that case, {\implementation}
-simply gives up and reports an error.  This is rarely a problem in
-practice, as very few functions are that small without very aggressive
-compiler optimisations, and most compilers, including
-gcc\cite[Section~3.10]{Stallman2010} and LLVM\needCite{}, will at high
-optimisation levels pad functions to a multiple of 16 bytes for
-performance reasons.
+that case it will not be possible to patch the function without
+corrupting the first instruction of the next function in the binary.
+In that case, {\implementation} simply gives up and reports an error.
+This is rarely a problem in practice, as very few functions are that
+small without very aggressive compiler optimisations, and most
+compilers, including gcc\cite[Section~3.10]{Stallman2010} and
+LLVM\needCite{}, will at high optimisation levels pad functions to a
+multiple of 16 bytes for performance reasons.
 
 An alternative approach would be to take control of the program using
 debug breakpoints rather than jump instructions.  These are either a
@@ -144,13 +212,6 @@ This would work, but would have a couple of important disadvantages:
   Breakpoint registers are of strictly limited number on most
   architectures (four, on x86).  This means that they can never
   provide a complete solution by themselves.
-\item
-  On most UNIX-type operating systems, including Linux and FreeBSD,
-  catching debug breakpoints requires modifying the program's signal
-  handling configuration, which requires some level of coordination
-  with the program to be modified.  It would be possible to use an
-  alternative API, but this would require kernel modifications,
-  complicating the use of the generated patches.
 \end{itemize}
 
 {\Implementation} therefore generates exclusively branch-style patches.

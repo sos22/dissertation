@@ -37,7 +37,7 @@ print "  %% Y axis"
 print "  \\draw[->] (0,0) -- (0,%f); " % common.figheight
 for t in ["1", "10", "100", "1000", "10000", "20000"]:
     print "  \\node at (0, %f) [left] {%s};" % (count_to_y(float(t)), t)
-    print "  \\draw [color=black!10] (0, %f) -- (%f, %f);" % (count_to_y(float(t)), common.figwidth, count_to_y(float(t)))
+    print "  \\draw [color=black!10] (0, %f) -- (%f, %f);" % (count_to_y(float(t)), common.figwidth * 3, count_to_y(float(t)))
 print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {Count};" % (common.figheight / 2)
 
 def do_one(offset, alpha, key, data):

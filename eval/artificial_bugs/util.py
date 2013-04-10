@@ -69,11 +69,14 @@ def print_preamble(x_label = True):
     print "  \\draw[->] (0,0) -- (%f,0);" % fig_width
     # x ticks
     for i in abscissae:
-        print "  \\node at (%f,0) [below] {%s};" % (time_to_x(i), i)
+        x = time_to_x(i)
+        print "  \\node at (%f,0) [below] {%s};" % (x, i)
+        print "  \\draw [color=black!10] (%f,0) -- (%f,%f);" % (x, x, perc_to_y(1))
     if x_label:
         print "  \\node at (%f,-12pt) [below] {Time to reproduce, seconds};" % (fig_width/2)
     # y ticks
     for i in xrange(0,11,2):
-        print "  \\node at (0,%f) [left] {%s\\%%};" % (perc_to_y(i/10.0), render_nr(i* 10.0))
-
+        y = perc_to_y(i/10.0)
+        print "  \\node at (0,%f) [left] {%s\\%%};" % (y, render_nr(i* 10.0))
+        print "  \\draw [color=black!10] (0,%f) -- (%f,%f);" % (y, fig_width, y)
 

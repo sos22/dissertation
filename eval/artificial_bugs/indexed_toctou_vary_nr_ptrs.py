@@ -26,10 +26,11 @@ for a in abscissae:
     p75 = series[(len(series)*3)/4]
     if p75 > max_time:
         max_time = p75
-
+    sd = (sum([(x - mean)**2 for x in series]) / (len(series) * (len(series) - 1))) ** .5
     data[a] = { "min": min(series),
                 "max": max(series),
                 "mean": mean,
+                "sd": sd,
                 "50": series[len(series)/2],
                 "25": series[len(series)/4],
                 "75": p75 }
@@ -95,6 +96,19 @@ for line in ["mean", "25", "50", "75"]:
             print "        -- (%f,%f)" % (abs_to_x(a), time_to_y(data[a][line]))
     print "        ;"
 
+# Add some error bars to the mean
+decoration = decorations["mean"]
+for a in abscissae:
+    if not data.has_key(a):
+        continue
+    x = abs_to_x(a)
+    d = data[a]
+    upper_y = time_to_y(d["mean"] + d["sd"])
+    lower_y = time_to_y(d["mean"] - d["sd"])
+    print "  \\draw%s (%f, %f) -- (%f, %f);" % (decoration, x - 0.1, upper_y, x + 0.1, upper_y)
+    print "  \\draw%s (%f, %f) -- (%f, %f);" % (decoration, x - 0.1, lower_y, x + 0.1, lower_y)
+    print "  \\draw%s (%f, %f) -- (%f, %f);" % (decoration, x, upper_y, x, lower_y)
+    
 print "  \\node at (%f,%f) [below right] {\\shortstack[l]{" % (0, fig_height)
 labels = {"mean": "Mean",
           "25": "$25^{th}$ percentile",
