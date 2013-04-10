@@ -1,6 +1,9 @@
 import sys
 import os
 import math
+import cPickle
+
+cache = "data_cache.pkl"
 
 figheight = 10.0
 figwidth = 11.0
@@ -13,6 +16,13 @@ def fail(msg):
     sys.stderr.write("%s\n" % msg)
 
 def read_input():
+    try:
+        f = file(cache, "r")
+        s = cPickle.load(f)
+        f.close()
+        return s
+    except:
+        pass
     series = {}
     for alpha in [10,20,30,40,50,75,100]:
         nr_timeouts = 0
@@ -169,6 +179,11 @@ def read_input():
 
             l.close()
         series[alpha] = data
+
+    f = file(cache, "w")
+    cPickle.dump(series, f)
+    f.close()
+
     return series
 
 def get_quantile(data, quant):
