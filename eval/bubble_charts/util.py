@@ -39,17 +39,20 @@ def transpose_bubbles(series, dilation, bubble_keys):
     defect_bubble.sort(reverse=True)
 
     dismiss = 0
-    failed = 0
+    timeout = 0
+    oom = 0
     offset = 0
     max_nr_samples = 0
     bubbles = {}
     for k in bubble_keys:
         rel = [s[1] for s in series if s[1].has_key(k)]
         b = {"dismiss": dismiss,
-             "failed":  failed,
+             "timeout":  timeout,
+             "oom": oom,
              "samples": [s[k]["time"] for s in rel] }
         dismiss += len([x for x in rel if x[k]["dismiss"]])
-        failed += len([x for x in rel if x[k]["failed"]])
+        timeout += len([x for x in rel if x[k]["failed"] == "timeout"])
+        oom += len([x for x in rel if x[k]["failed"] == "memory"])
         if len(b["samples"]) > max_nr_samples:
             max_nr_samples = len(b["samples"])
         w = sum(b["samples"]) / len(b["samples"])
@@ -68,12 +71,13 @@ def transpose_bubbles(series, dilation, bubble_keys):
     gc.sort(reverse = True)
     w = sum(gc) / len(gc)
     bubbles["GC"] = {"dismiss": 0,
-                     "failed": 0,
+                     "timeout": 0,
+                     "oom": 0,
                      "samples": gc,
                      "offset": (offset + w) * dilation}
     w = sum(defect_bubble) / len(defect_bubble)
     bubbles["defect"] = {"dismiss": 0,
-                         "failed": 0,
+                         "oom": 0,
                          "samples": defect_bubble,
                          "offset": (offset + w) * dilation}
     offset += w + 1
@@ -209,25 +213,49 @@ def draw_bubbles(bubble_keys, bubbles, labels, y_centrums, scale_time, scale_idx
     label_bubbles(labels, scale_time, scale_idx, bubbles, y_centrums, dilation, figheight, figwidth)
     draw_blob("\\fill")
 
-def draw_line_series(scale_idx, scale_time, max_nr_samples, bubble_keys, bubbles, figwidth, figheight):
+def draw_line_series(scale_idx, scale_time, max_nr_samples, bubble_keys, bubbles, figwidth, figheight,
+                     include_oom = True):
     # Plot the dismissed line
     print "  \\draw (0,%f)" % scale_idx(max_nr_samples)
     for k in bubble_keys:
         bubble = bubbles[k]
-        print "        -- (%f, %f)" % (scale_time(bubble["offset"]), scale_idx(max_nr_samples - bubble["dismiss"]))
+        print "        |- (%f, %f)" % (scale_time(bubble["offset"]), scale_idx(max_nr_samples - bubble["dismiss"]))
     print "        ;"
 
     # And the timeout line
     print "  \\draw [dashed] (0,%f)" % scale_idx(max_nr_samples)
+    last_x = 0
+    d = 0
     for k in bubble_keys:
         bubble = bubbles[k]
-        print "        -- (%f, %f)" % (scale_time(bubble["offset"]), scale_idx(max_nr_samples - bubble["dismiss"] - bubble["failed"]))
+        new_x = scale_time(bubble["offset"])
+        print "        -- (%f, %f) -- (%f, %f)" % (last_x, scale_idx(max_nr_samples - bubble["dismiss"] - d), new_x, scale_idx(max_nr_samples - bubble["dismiss"] - bubble["timeout"]))
+        d = bubble["timeout"]
+        last_x = new_x
     print "        ;"
+
+    if include_oom:
+        # And the memoryout line
+        print "  \\draw [dotted] (0,%f)" % scale_idx(max_nr_samples)
+        last_x = 0
+        d = 0
+        for k in bubble_keys:
+            bubble = bubbles[k]
+            new_x = scale_time(bubble["offset"])
+            print "        -- (%f, %f) -- (%f, %f)" % (last_x, scale_idx(max_nr_samples - bubble["dismiss"] - d), new_x, scale_idx(max_nr_samples - bubble["dismiss"] - bubble["timeout"] - bubble["oom"]))
+            d = bubble["timeout"] + bubble["oom"]
+            last_x = new_x
+        print "        ;"
 
     # Legend for them
     print "  \\node at (%f,%f) [below left] {\\shortstack[l]{" % (figwidth, figheight)
     print "      \\raisebox{1mm}{\\tikz{\\draw (0,0) -- (1,0);}} Dismissed early \\\\"
-    print "      \\raisebox{1mm}{\\tikz{\\draw[dashed] (0,0) -- (1,0);}} Timeouts"
+    print "      \\raisebox{1mm}{\\tikz{\\draw[dashed] (0,0) -- (1,0);}} Timeouts",
+    if include_oom:
+        print "\\\\"
+        print "      \\raisebox{1mm}{\\tikz{\\draw[dotted] (0,0) -- (1,0);}} Out of memory"
+    else:
+        print
     print "  }};"
 
 

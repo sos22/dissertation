@@ -49,19 +49,22 @@ while True:
             k = keymergemap[k]
         assert k in bubble_keys
         if not s.has_key(k):
-            s[k] = { "failed": False, "dismiss": False, "time": 0 }
+            s[k] = { "failed": None, "dismiss": False, "time": 0 }
 
         l = util.get_line()
         s[k]["time"] += l[0] - start_time
         cnt += l[0] - start_time
-        if l[1] in [["out", "of",  "memory"], ["timeout"]]:
-            s[k]["failed"] = True
+        if l[1] == ["out", "of",  "memory"]:
+            s[k]["failed"] = "memory"
+            end_time = l[0]
+            break
+        elif l[1] == ["timeout"]:
+            s[k]["failed"] = "timeout"
             end_time = l[0]
             break
         else:
             assert l[1][0] == "stop"
             assert l[1][1:] == t
-    sys.stderr.write("%f %s %s\n" % (end_time - sstart_time - cnt, words[-1], str(s)))
     series.append((end_time - sstart_time, s))
 
 series.sort()
@@ -116,11 +119,18 @@ util.draw_bubbles(bubble_keys, bubbles, labels, y_centrums, scale_time, scale_id
 print "  \\draw [dashed] (0,%f)" % scale_idx(max_nr_samples)
 for k in bubble_keys:
     bubble = bubbles[k]
-    print "        -- (%f, %f)" % (scale_time(bubble["offset"]), scale_idx(max_nr_samples - bubble["dismiss"] - bubble["failed"]))
+    print "        -- (%f, %f)" % (scale_time(bubble["offset"]), scale_idx(max_nr_samples - bubble["dismiss"] - bubble["timeout"]))
+print "        ;"
+# And the OOM line
+print "  \\draw [dotted] (0,%f)" % scale_idx(max_nr_samples)
+for k in bubble_keys:
+    bubble = bubbles[k]
+    print "        -- (%f, %f)" % (scale_time(bubble["offset"]), scale_idx(max_nr_samples - bubble["dismiss"] - bubble["timeout"] - bubble["oom"]))
 print "        ;"
 # Legend
-print "  \\node at (%f,%f) [right] {" % (scale_time(0.01 * dilation), figheight * 0.05)
+print "  \\node at (%f,%f) [right] {\\shortstack[l]{" % (scale_time(0.01 * dilation), figheight * 0.05)
+print "      \\raisebox{1mm}{\\tikz{\\draw[dashed] (0,0) -- (1,0);}} Timeout\\\\"
 print "      \\raisebox{1mm}{\\tikz{\\draw[dashed] (0,0) -- (1,0);}} Out of memory"
-print "  };"
+print "  }};"
 
 util.print_trailer(figwidth, figheight)
