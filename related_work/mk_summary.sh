@@ -1,7 +1,7 @@
 #! /bin/sh
 
 t=$(mktemp)
-sed "s/$/\\\\\\\\ \\\\hline/;s/'//g" < sli.csv > "$t"
+sed "s/$/\\\\\\\\ \\\\hline/;s/'//g;s/&/& \\\\raggedright /g" < sli.csv > "$t"
 body=$(mktemp)
 header=$(mktemp)
 tail -n +2 "$t" > "$body"

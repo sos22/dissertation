@@ -30,17 +30,21 @@ for limm in [False, True]:
         times = []
         nr_timeouts = 0
         nr_early_out = 0
+        nr_oom = 0
         for x in data:
             if x["early-out"]:
                 nr_early_out += 1
                 continue
-            if x["bpm_time"] == None:
-                nr_timeouts += 1
-            else:
-                times.append(x["bpm_time"])
+            if x["bpm_oom"]:
+                nr_oom += 1
+                continue
+            if x["bpm_timeout"]:
+                nr_timeouts+=2
+                continue
+            times.append(x["bpm_time"])
 
         print
         print "  %%%% alpha = %d" % alpha
-        common.kde_chart(0, common.alpha_to_x(alpha), nr_early_out, None, times, nr_timeouts, 0, limm)
+        common.kde_chart(0, common.alpha_to_x(alpha), nr_early_out, None, times, nr_timeouts, nr_oom, limm)
 
 print "\\end{tikzpicture}"

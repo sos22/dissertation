@@ -87,7 +87,6 @@ def parse_crashing(path, l, start_cntr = 0):
     sample["nr_crashing_instrs"] = None
     sample["initial_crashing_states"] = None
     sample["simplified_crashing_states"] = None
-    sample["bpm_time"] = None
     sample["gvc_time"] = None
     sample["gvc_timeout"] = None
     sample["generated_vc"] = None
@@ -111,12 +110,24 @@ def parse_crashing(path, l, start_cntr = 0):
     assert int(w[3]) >= 10
 
     line = l.readline().strip()
+    if line == "Child timed out in run_in_child":
+        sample["bpm_timeout"] = True
+        sample["bpm_oom"] = False
+        return sample
     w = line.split()
     if len(w) != 6 or w[0:4] != ["Initial", "crashing", "machine", "has"] or w[-1] != "states":
         fail("%s missing ICMS line (%s)" % (path, line))
     sample["initial_crashing_states"] = int(w[4])
 
     line = l.readline().strip()
+    if line == "Child failed in run_in_child, signal 11":
+        sample["bpm_oom"] = True
+        sample["bpm_timeout"] = False
+        return sample
+    if line == "Child timed out in run_in_child":
+        sample["bpm_timeout"] = True
+        sample["bpm_oom"] = False
+        return sample
     w = line.split()
     if len(w) != 6 or w[0:4] != ["Simplified", "crashing", "machine", "has"] or w[-1] != "states":
         fail("%s missing SCMS line (%s)" % (path, line))
@@ -126,25 +137,38 @@ def parse_crashing(path, l, start_cntr = 0):
     w = line.split()
     if len(w) != 3 or w[0] != "buildProbeMachine" or w[1] != "took":
         fail("%s doesn't start with bpm line (%s)" % (path, line))
+    sample["bpm_oom"] = False
+    sample["bpm_timeout"] = False
     sample["bpm_time"] = float(w[2])
 
-    line = l.readline()
-    line = line.strip()
+    line = l.readline().strip()
     if line in ["no conflicting stores", "No conflicting stores (1847)", "No conflicting stores (1825)"]:
         sample["skip_gsc"] = True
         return sample
     sample["skip_gsc"] = False
+    if line == "OOM kill in checkWhetherInstructionCanCrash()":
+        sample["gsc_oom"] = True
+        sample["gsc_timed_out"] = False
+        return sample
+    if line == "Child timed out in run_in_child":
+        sample["gsc_timed_out"] = True
+        return sample
     w = line.split()
     if len(w) != 3 or w[0] != "atomicSurvivalConstraint" or w[1] != "took":
         fail("%s lacks an ASC line (%s)" % (path, line))
     sample["asc_time"] = float(w[2])
 
     line = l.readline().strip()
+    if line == "Child timed out in run_in_child":
+        sample["gsc_timed_out"] = True
+        return sample
+
     w = line.split()
     if len(w) != 6 or w[0] != "getStoreCFGs" or w[1] != "took" or w[3] != "seconds," or w[4] != "produced":
         fail("%s lacks a GSC line (%s)" % (path, line))
     sample["gsc_timed_out"] = False
     sample["nr_store_cfgs"] = int(w[5])
+    sample["gsc_oom"] = False
     sample["gsc_time"] = float(w[2])
 
     intf = {}
@@ -167,7 +191,7 @@ def read_input():
     except:
         pass
     series = {}
-    for alpha in [10, 20]:
+    for alpha in [30, 20, 10]:
         nr_timeouts = 0
         base = {}
         deltas = {}
@@ -177,14 +201,14 @@ def read_input():
             l = file(path)
             if w[-1] == "slog":
                 sample = parse_crashing(path, l, int(w[1]))
-                assert not deltas.has_key(w[0])
-                deltas[w[0]] = sample
+                assert not deltas.has_key((w[0],w[1]))
+                deltas[(w[0],w[1])] = sample
             else:
                 sample = parse_crashing(path, l)
                 assert not base.has_key(w[0])
                 base[w[0]] = sample
             l.close()
-        for (dynrip, sample) in deltas.iteritems():
+        for ((dynrip, _ign), sample) in deltas.iteritems():
             assert base.has_key(dynrip)
             b = base[dynrip]
             assert b.has_key("interferers")
@@ -270,7 +294,7 @@ def alpha_axis(series):
     for alpha in series:
         print "  \\node at (%f,0) [below] {%d};" % (alpha_to_x(alpha), alpha)
     def area_for_prob(p):
-        return p * box_width * 2
+        return p * box_width
     def len_for_prob(p):
         return area_for_prob(p) ** .5
 
@@ -302,7 +326,7 @@ def box_legend(offset, include_geom = True):
     print "  \\node at (%f, %f) [left] {Median};" % (fl - box_width / 2, figheight * d(3) + offset)
     print "  \\node at (%f, %f) [left] {75\\%%};" % (fl - box_width / 2, figheight * d(4) + offset)
     print "  \\node at (%f, %f) [left] {90\\%%};" % (fl - box_width / 2, figheight * d(5) + offset)
-    print "  \\node at (%f, %f) [left] {\\shortstack[r]{Mean $\\pm$ sd\\\\of mean}};" % (fl - box_width / 2, figheight * 0.07 + offset)
+    print "  \\node at (%f, %f) [left] {\\shortstack[r]{Mean $\\pm_\\mu$ sd\\\\of mean}};" % (fl - box_width / 2, figheight * 0.07 + offset)
     if include_geom:
         print "  \\node at (%f, %f) [left] {\\shortstack[r]{Geometric\\\\mean}};" % (fl - box_width / 2, figheight * 0.21 + offset)
 
@@ -371,6 +395,8 @@ def kde_chart(offset, x_coord, nr_pre_dismiss, nr_pre_failure, data, nr_post_tim
     base_y = 0
 
     def limmed_rectangle(width, y0, y1):
+        if width == 0:
+            return
         print "  \\draw [%s] (%f, %f) rectangle (%f, %f);" % (decoration,
                                                               x_coord - width * box_width,
                                                               offset + y0,

@@ -35,7 +35,7 @@ s = {}
 for (alpha, data) in series.iteritems():
     d = []
     for sample in data:
-        if sample["early-out"] or sample["skip_gsc"]:
+        if not "interferers" in sample:
             continue
         i = sample["interferers"]
         if i != None:
@@ -84,12 +84,13 @@ for limm in [False, True]:
         nr_timeouts = 0
         nr_oom = 0
         for x in data:
-            if x["early-out"]:
-                nr_dismiss += 1
-                continue
             if x["gvc_timeout"]:
                 nr_timeouts += 1
                 continue
+            if x["early-out"]:
+                nr_dismiss += 1
+                continue
+            
             if x["gvc_oom"]:
                 nr_oom += 1
                 continue

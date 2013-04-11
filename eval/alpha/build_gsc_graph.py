@@ -41,7 +41,7 @@ for t in xrange(0,21,2):
     print "  \\draw[color=black!10] (0,%f) -- (%f,%f);" % (count_to_y(float(t)), common.figwidth, count_to_y(float(t)))
 print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {Number of interfering \\glspl{cfg}};" % (common.figheight / 2)
 for (alpha, data) in series.iteritems():
-    samples = [x["nr_store_cfgs"] for x in data if x["early-out"] == False and x["skip_gsc"] == False and x["gsc_timed_out"] == False]
+    samples = [x["nr_store_cfgs"] for x in data if x["early-out"] == False and x["bpm_timeout"] == False and x["bpm_oom"] == False and x["skip_gsc"] == False and x["gsc_timed_out"] == False and x["gsc_oom"] == False]
     mean = common.mean(samples)
     common.draw_box_plot(common.alpha_to_x(alpha), count_to_y, samples, mean)
 common.box_legend(0, True)
@@ -55,20 +55,30 @@ for limm in [False, True]:
         nr_dismiss = 0
         nr_pre_failed = 0
         nr_timeouts = 0
+        nr_oom = 0
         samples = []
         for x in data:
-            if x["early-out"] == True or x["skip_gsc"] == True:
+            if x["early-out"] == True:
                 nr_dismiss += 1
+                continue
+            if x["bpm_timeout"] or x["bpm_oom"]:
+                nr_pre_failed += 1
                 continue
             if x["bpm_time"] == None:
                 nr_pre_failed += 1
                 continue
+            if x["skip_gsc"] == True:
+                nr_dismiss += 1
+                continue
             if x["gsc_timed_out"]:
                 nr_timeouts += 1
+                continue
+            if x["gsc_oom"]:
+                nr_oom += 1
                 continue
             samples.append(x["gsc_time"])
         print
         print "  %%%% alpha = %d" % alpha
-        common.kde_chart(offset, common.alpha_to_x(alpha), nr_dismiss, nr_pre_failed, samples, nr_timeouts, 0, limm)
+        common.kde_chart(offset, common.alpha_to_x(alpha), nr_dismiss, nr_pre_failed, samples, nr_timeouts, nr_oom, limm)
 
 print "\\end{tikzpicture}"

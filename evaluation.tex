@@ -6,8 +6,6 @@
 \begin{itemize}
 \item Consider doing an ordering violation artificial bug, just to
   show the bug hiding problem?
-\item It'd be nice to have something showing the effectiveness of the
-  simplification bits.
 \item Need to rewrite the section on pbzip2.
 \item Re-do unoptimised MySQL.  Time static and main analysis phases.
   Check number of candidates generated.  Run candidates.
@@ -1948,47 +1946,41 @@ the combined fix restores the program to its correct functionality.
 
 \subsection{pbzip2}
 
-\todo{Writing in this section is horrible.}  I ran {\implementation}
-in its bug-finding mode on pbzip2.  This included building a program
-model, generating all {\StateMachines}, converting them to enforcers,
-and then running pbzip2 under each enforcer in turn.  This did not
-find any bugs in pbzip2.
+\begin{table}
+  \begin{tabular}{|l|l|}
+    \hline
+    Build \gls{programmodel} & \\
+    \hspace{5mm}Time taken & $4.29 \pm_\mu 0.02$s \\
+    Generating \glspl{verificationcondition} & \\
+    \hspace{5mm}Time taken & $333.1 \pm_\mu 0.1$s \\
+    \hspace{5mm}Potentially-crashing instructions examined & 356 \\
+    \hspace{5mm}Instructions dismissed without generating a {\StateMachine} & 203 \\
+    \hspace{5mm}Timeouts without generating interfering \glspl{cfg} & 5 \\
+    \hspace{5mm}Interfering \glspl{cfg} generated & 184 \\
+    \hspace{5mm}Timeouts processing interfering \glspl{cfg} & 0 \\
+    \hspace{5mm}\Glspl{verificationcondition} generated & 14 \\
+    Build \glspl{bugenforcer} & \\
+    \hspace{5mm}Time taken & $1.476 \pm_\mu 0.008$s \\
+    \hspace{5mm}Timeouts & 0 \\
+    \hspace{5mm}\Glspl{bugenforcer} built & 14 \\
+    \hline
+  \end{tabular}
+  \caption{Statistics related to finding bad pointer dereference bugs
+    in pbzip2.  All results following twenty repeats.  Values given
+    without an error indication were precisely the same on every run.
+    There were no out of memory errors on any run.  All timeouts were
+    set to one minute.}
+  \label{tab:eval:pbzip2:phase_times}
+\end{table}
 
-Building the \glspl{bugenforcer} took a total of $2090 \pm 50$
-seconds, mean and standard deviation of mean for ten runs.  The
-largest single component of this was building the
-\glspl{verificationcondition}, which took $1140 \pm 30$ seconds,
-followed by converting the \glspl{verificationcondition} to
-\glspl{bugenforcer}, which took $950 \pm 20$ seconds.  The static
-analysis phase was much faster, taking $4.29 \pm 0.05$ seconds.
-
-{\Implementation} produced a total of 24 \glspl{bugenforcer} for this
-test:
-
-\begin{itemize}
-\item There were 154 potentially-crashing instructions in the
-  program binary.
-\item Of those, 7 failed to generate a crashing {\StateMachine} due to
-  a timeout.
-\item The remaining 147 \glspl{crashingthread} generated 244
-  interfering \glspl{cfg}.  There were no timeouts or other failures
-  generating interfering \glspl{cfg}.
-\item Of those 244 interfering \glspl{cfg}, 8 timed out. Ignoring
-  those timeouts, all of the remaining 236 interfering \glspl{cfg}
-  were successfully symbolically executed to produce
-  \glspl{verificationcondition}.
-\item 210 of those \glspl{verificationcondition} were shown to be
-  unsatisfiable by the satisfiability checker, leaving 26 in need of
-  dynamic checking.
-\item There were two further timeouts converting
-  \glspl{verificationcondition} to \glspl{bugenforcer}.
-\end{itemize}
-
-All timeouts were set to one minute in this experiment.  The same
-operations suffered timeouts in every repeat of the experiment.
-
-\todo{How long do the enforcers take to run?} \todo{Version of
-  pbzip2?} \todo{Compile settings?} \todo{Value of $\alpha$?}
+The first real program I investigated was pbzip2 version 1.1.6, a
+widely-used compression tool.  I used {\implementation} to find all
+potential bad pointer dereference bugs in the program, using an
+\gls{analysiswindow} of 20 instructions.  This generated 14
+\glspl{verificationcondition} which required run time checking, and so
+I converted all of these into \glspl{bugenforcer}.  I then used pbzip2
+to compress ten randomly-generated 100MiB files using each enforcer in
+turn.  This did not find any bugs in pbzip2.
 
 \subsection{Thunderbird}
 
@@ -2400,18 +2392,18 @@ The first thing I investigated was the effect of \gls{alpha} on the
 time taken to derive the \gls{crashingthread} {\StateMachines},
 including deriving the \gls{cfg}, compiling it to a {\StateMachine},
 performing the initial simplification, and deriving C-atomic.  The
-results are shown in the box plot in
+results are shown in the violin plot in
 Figure~\ref{fig:perf:alpha:bpm:unopt}.  This chart shows an estimate
 of the probability density function of the time taken to build the
 crashing {\StateMachines} for each value of \gls{alpha}, including
 building the initial \gls{cfg}, compiling to a {\StateMachine}, and
 performing the initial simplifications.  The density function was
-estimated in log space using a kernel density estimator and a
+estimated in log space using a gaussian kernel density estimator and a
 bandwidth of $\sigma.n^{-0.2}$, where $\sigma$ is the log space
 population standard deviation and $n$ the number of samples, in
 accordance with Silverman's Rule of Thumb\needCite{}.  The chart also
-shows the mean, excluding timeouts, plus or minus one standard
-deviation of that mean as a hollow gray rectangle.
+shows the mean excluding timeouts, plus or minus one standard
+deviation of that mean, as a hollow gray rectangle.
 
 Note that time is shown on a log scale, which is necessary as the data
 shows interesting behaviour across many orders of magnitude.  This
@@ -2504,12 +2496,14 @@ This will be particularly important for the high quantiles of the high
 \begin{figure}
   \centerline{\input{eval/alpha/unopt/crashing_size.tex}}
   \caption{Effect of the $\alpha$ parameter on the size of the
-    \gls{crashingthread}.}
+    \gls{crashingthread}.  Note that this chart completely ignores any
+    potentially-crashing instruction which suffered a failure, whether
+    due to running out of memory or time.}
   \label{fig:eval:time_breakdown:crashing_size}
 \end{figure}
 
 \begin{figure}
-  \centerline{\input{eval/alpha/unopt/gsc.tex}}
+  \input{eval/alpha/unopt/gsc.tex}
   \caption{Effect of the $\alpha$ parameter on the derivation of the
     \gls{interferingthread} \glspl{cfg}.}
   \label{fig:perf:alpha:gsc:unopt}
@@ -2851,7 +2845,7 @@ the effects of the dynamic aliasing analysis on the generation of
 completely avoid using the information from the dynamic analysis while
 generating \glspl{verificationcondition}, as it is needed to generate
 the \gls{interferingthread} \glspl{cfg}, but it is possible to disable
-the parts of the {\StateMachine} simplifications and the symbolic
+the parts of the {\StateMachine} simplifiers and the symbolic
 execution engine which use it, and that is what I did in this test.
 The results are shown in Table~\ref{table:eval:effect_of_dyn}.  Note
 that the aliasing enabled column of this table was produced from the
