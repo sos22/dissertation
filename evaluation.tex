@@ -6,7 +6,6 @@
 \begin{itemize}
 \item Consider doing an ordering violation artificial bug, just to
   show the bug hiding problem?
-\item Need to rewrite the section on pbzip2.
 \item Re-do unoptimised MySQL.  Time static and main analysis phases.
   Check number of candidates generated.  Run candidates.
   \todo{Running on hogun now.}
@@ -22,30 +21,26 @@ implementation {\implementation}.  This evaluation will consist of the
 following parts:
 
 \begin{itemize}
-\item Section~\ref{sect:eval:artificial} explores the behaviour of the
+\item \autoref{sect:eval:artificial} explores the behaviour of the
   tool and the technique on a number of artificial bugs in simple test
   programs.  This includes a comparison to a
   DataCollider\needCite{}-like tool which I implemented for the
   purpose of the evaluation.
-\item Section~\ref{sect:eval:semiartificial} investigates some
+\item \autoref{sect:eval:semiartificial} investigates some
   slightly more realistic bugs.  These include a simplified version of
   a real bug in glibc\needCite{} and some bugs which I deliberately
   introduced into the STAMP benchmark suite\needCite{}.
-\item Section~\ref{sect:eval:real} applies the tool to some larger
+\item \autoref{sect:eval:real} applies the tool to some larger
   programs: pbzip2\needCite{}, MySQL\needCite{}, and
   Thunderbird\needCite{}.  I show that the analysis completes in a
   tolerable amount of time even for some very large programs, and
   demonstrate that it can both reproduce and fix a (small) number of
   real bugs.
-\item Section~\ref{sect:eval:time_details} then investigates the
+\item \autoref{sect:eval:time_details} then investigates the
   tool's performance on large programs in slightly more detail,
   showing how the time taken breaks down across the various phases of
   the analysis, and the effects of some of the input parameters.
-\item Section~\ref{sect:eval:w_isolation} explores the effects of the
-  W isolation assumption, showing how making the assumption allows the
-  analysis to complete more quickly and how it affects the number of
-  \glspl{verificationcondition} discovered.
-\item Section~\ref{sect:eval:dynamic_analysis} investigates the
+\item \autoref{sect:eval:dynamic_analysis} investigates the
   performance and effectiveness of the dynamic aliasing analysis.
   This includes how much it benefits the main analysis, how long it
   needs to run for to achieve reasonable coverage, and the performance
@@ -142,7 +137,8 @@ compiler, used to build the \glspl{bugenforcer} and fixes, as well as
       \end{tabular}
       }
     }
-  \caption{Disassembly of the program fragments in Figure~\ref{fig:eval:simple_toctou}.}
+  \caption{Disassembly of the program fragments in
+    \autoref{fig:eval:simple_toctou}.}
   \label{fig:eval:simple_toctou:compiled}
 \end{figure}
 
@@ -150,7 +146,7 @@ This is the simplest possible kind of concurrency bug: a
 single-variable time-of-check, time-of-use race\footnote{This bug was
   previously discussed in slightly less detail in
   \autoref{sect:derive:simple_toctou_example}.}.  The two threads
-involved are shown in Figure~\ref{fig:eval:simple_toctou}.  The intent
+involved are shown in \autoref{fig:eval:simple_toctou}.  The intent
 here is to model a very simple structure which is accessed frequently
 but updated rarely.  The bug is, of course, that the interfering
 thread might set \texttt{global\_ptr} to \texttt{NULL} in between the
@@ -166,11 +162,11 @@ those markers.
 \subsubsection{Generating candidate bugs}
 
 The first step in the analysis is to build the CFG for the
-\gls{crashingthread} (see Section~\ref{sect:derive:build_static_cfg}),
+\gls{crashingthread} (see \autoref{sect:derive:build_static_cfg}),
 which in this case is straightforward; the result is shown in
-Figure~\ref{fig:eval:simple_toctou:cfg}.  This can then be compiled to
+\autoref{fig:eval:simple_toctou:cfg}.  This can then be compiled to
 produce the {\StateMachine} shown in
-Figure~\ref{fig:eval:simple_toctou:sm}.
+\autoref{fig:eval:simple_toctou:sm}.
 
 \begin{figure}
   \centerline{
@@ -211,23 +207,23 @@ Figure~\ref{fig:eval:simple_toctou:sm}.
   }
   }
   \caption{\Gls{cfg} and {\STateMachine} for the crashing thread in
-    Figure~\ref{fig:eval:simple_toctou:compiled}.  $\varnothing$
+    \autoref{fig:eval:simple_toctou:compiled}.  $\varnothing$
     indicates that the thread has left the \gls{cfg}. Dotted lines
     indicate the false successor of a conditional.}
 \end{figure}
 
 The next step is to build the $\beta$ set (see
-Section~\ref{sect:derive:write_side}).  The crashing {\StateMachine}
+\autoref{sect:derive:write_side}).  The crashing {\StateMachine}
 contains two loads, at \texttt{400694} and \texttt{4006a0}, and so the
 analysis will query the \gls{programmodel} to find what stores might
 interact with them, and the \gls{programmodel} will use the results of
 the dynamic alias analysis (see
-Section~\ref{sect:program_model:dynamic_alias}) to return the set
+\autoref{sect:program_model:dynamic_alias}) to return the set
 \{\texttt{400884}, \texttt{4008fb}\}.  The \texttt{STOP\_ANALYSIS()}
 markers prevent these from being clustered together, and these are the
 only members of $\beta$, and so there will be two
 \glspl{interferingthread} \glspl{cfg}, shown in
-Figures~\ref{fig:eval:simple_toctou:interfering_cfg1}
+figures~\ref{fig:eval:simple_toctou:interfering_cfg1}
 and~\ref{fig:eval:simple_toctou:interfering_cfg2}.
 
 \begin{figure}
@@ -274,19 +270,19 @@ and~\ref{fig:eval:simple_toctou:interfering_cfg2}.
 
 Consider the interfering store at \texttt{400884} first.  Without the
 \gls{programmodel}, this would produce the {\StateMachine} shown in
-Figure~\ref{fig:eval:simple_toctou:interfering_sm1}.  There is no way
+\autoref{fig:eval:simple_toctou:interfering_sm1}.  There is no way
 for the program to crash due to interleaving this {\StateMachine} with
 the crashing thread, as $\smReg{rbp}{2}$ is never a bad pointer, but
 the {\StateMachines} do not contain enough information to show that.
 The analysis will produce the verification condition shown in
-Figure~\ref{fig:eval:simple_toctou:inferred_assumption1}. The
+\autoref{fig:eval:simple_toctou:inferred_assumption1}. The
 \gls{programmodel}'s static analyses, on the other hand, are
 sufficient to show that $\smReg{rbp}{2}$ is a valid pointer,
 eliminating the spurious \gls{verificationcondition}.  The $i2c$
 instruction at \texttt{4008fb}, on the other hand, does represent a
 valid bug, as interleaving it with the \gls{crashingthread} could lead
 to a crash, and it produces the \gls{verificationcondition} shown in
-Figure~\ref{fig:eval:simple_toctou:inferred_assumption2}.
+\autoref{fig:eval:simple_toctou:inferred_assumption2}.
 
 \begin{figure}
   \begin{tabular}{lll}
@@ -297,9 +293,9 @@ Figure~\ref{fig:eval:simple_toctou:inferred_assumption2}.
   \end{tabular}
   \caption{\Gls{inferredassumption} and \gls{verificationcondition}
     produced using the crashing {\StateMachine} in
-    Figure~\ref{fig:eval:simple_toctou:sm} and the interfering
+    \autoref{fig:eval:simple_toctou:sm} and the interfering
     {\StateMachine} in
-    Figure~\ref{fig:eval:simple_toctou:interfering_sm1}.}
+    \autoref{fig:eval:simple_toctou:interfering_sm1}.}
   \label{fig:eval:simple_toctou:inferred_assumption1}
 \end{figure}
 
@@ -311,9 +307,9 @@ Figure~\ref{fig:eval:simple_toctou:inferred_assumption2}.
   \end{tabular}
   \caption{\Gls{inferredassumption} and \gls{verificationcondition}
     produced using the crashing {\StateMachine} in
-    Figure~\ref{fig:eval:simple_toctou:sm} and the interfering
+    \autoref{fig:eval:simple_toctou:sm} and the interfering
     {\StateMachine} in
-    Figure~\ref{fig:eval:simple_toctou:interfering_sm2}.}
+    \autoref{fig:eval:simple_toctou:interfering_sm2}.}
   \label{fig:eval:simple_toctou:inferred_assumption2}
 \end{figure}
 
@@ -329,11 +325,11 @@ than this to process.
 \subsubsection{Reproducing the bug}
 This \gls{verificationcondition} can now be turned into a
 \gls{bugenforcer}.  The only happens-before graph will be the one
-shown in Figure~\ref{fig:eval:simple_toctou:hb_graph}, and it will
+shown in \autoref{fig:eval:simple_toctou:hb_graph}, and it will
 have the side condition that $\smLoad{\mathrm{global\_ptr}} \not= 0$.
 This side condition can be evaluated completely at either
 $\mai{cfg1}{1}$ or $\mai{cfg6}{2}$, and so the crash enforcement plan
-will be as shown in Figure~\ref{fig:eval:simple_toctou:enforce_plan}.
+will be as shown in \autoref{fig:eval:simple_toctou:enforce_plan}.
 In other words, whenever a program thread reaches \texttt{400694} and
 global\_ptr is non-zero, the enforcer will wait for an interfering
 thread to reach \texttt{4008fb}, after loading global\_ptr.  If one
@@ -360,7 +356,7 @@ enforcer, the mean time taken to reproduce the bug was $4.3 \pm_\mu
 the distribution: the median time to reproduce the bug decreased from
 3.0 seconds to 1.2, a 2.5-fold reduction, while the $95^{th}$
 percentile was reduced from 12 seconds to 1.2, a ten-fold reduction.
-Figure~\ref{fig:eval:crash_cdf:simple_toctou} shows the complete CDFs
+\autoref{fig:eval:crash_cdf:simple_toctou} shows the complete CDFs
 for both configurations.
 
 Even if the enforcer had failed to reduce the time to reproduction,
@@ -416,11 +412,11 @@ seconds.  Real programs would, of course, take far longer.
 \subsubsection{Fixing the bug}
 {\Implementation} can also generate a fix for this bug.  In this case,
 the CFG fragments to be protected will be the complete CFGs shown in
-Figures~\ref{fig:eval:simple_toctou:cfg}
+figures~\ref{fig:eval:simple_toctou:cfg}
 and~\ref{fig:eval:simple_toctou:interfering_cfg2}, as the first and
 last CFG nodes in both threads are involved in happens-before edges.
 This corresponds to modifying the program as shown in
-Figure~\ref{fig:eval:simple_toctou:fix}.  This correctly fixes the
+\autoref{fig:eval:simple_toctou:fix}.  This correctly fixes the
 bug.
 
 \begin{figure}
@@ -528,7 +524,7 @@ the reading and writing threads happen to coincide\footnote{This bug
   was used as an example in \autoref{sect:reproducing_bugs}.}.  This
 bug exercises the side condition-checking part of {\technique}'s crash
 enforcers.  The code involved in the race is shown in
-Figure~\ref{fig:eval:indexed_toctou}.  Except where otherwise noted,
+\autoref{fig:eval:indexed_toctou}.  Except where otherwise noted,
 \verb|NR_PTRS| is set to 100.
 
 \begin{figure}
@@ -591,7 +587,7 @@ slow the program down in order to impose the happens-before graph even
 in situations where doing so is unlikely to trigger the bug, and this
 causes the buggy code to run far less frequently than it otherwise
 would.  The full CDFs are shown in
-Figure~\ref{fig:eval:indexed_toctou:no_scs}.
+\autoref{fig:eval:indexed_toctou:no_scs}.
 
 \begin{figure}
   \input{eval/artificial_bugs/special/indexed_toctou_no_scs.tex}
@@ -612,7 +608,7 @@ Figure~\ref{fig:eval:indexed_toctou:no_scs}.
 
 As a final test, I investigated the effect changing the
 \texttt{NR\_PTRS} parameter.  The results are shown in
-Figure~\ref{fig:eval:indexed_toctou:nr_ptrs}.  I ran each
+\autoref{fig:eval:indexed_toctou:nr_ptrs}.  I ran each
 configuration 100 times at each of the sampled abscissae and timed how
 long it took to reproduce the bug; these charts show the $25^{th}$,
 $50^{th}$, and $75^{th}$ percentiles and the mean and standard
@@ -671,7 +667,7 @@ thread (for crash\_indexed\_toctou) runs far more often than the
 other.  These tests are intended to illustrate the importance of
 placing delays at appropriate operations in the crash enforcement
 message-passing system.  The results are shown in
-Table~\ref{fig:biassed_indexed_toctou:times}.  These results show
+\autoref{fig:biassed_indexed_toctou:times}.  These results show
 that, while the delay placement mechanism is not always guaranteed to
 find the best possible placement, it does avoid some very poor ones.
 
@@ -731,7 +727,7 @@ find the best possible placement, it does avoid some very poor ones.
 
 This bug is intended to explore {\technique}'s effects on
 multi-variable atomicity violations.  The two sides of the bug are
-shown in Figure~\ref{fig:eval:multi_variable}.  Note that in this case
+shown in \autoref{fig:eval:multi_variable}.  Note that in this case
 the race leads to an assertion failure, whereas previous bugs lead to
 a bad pointer dereference.  {\Technique} reports a single candidate
 bug in this program, corresponding to interleaving the crashing thread
@@ -749,10 +745,10 @@ missed the fact that it can also crash when interleaved with the ones
 which set them to 5.  This is because of an interaction between the
 second \texttt{STOP\_ANALYSIS()} in the interfering thread and the
 \gls{inferredassumption}, discussed in
-Section~\ref{sect:derive:inferred_assumption}.  The
+\autoref{sect:derive:inferred_assumption}.  The
 \texttt{STOP\_ANALYSIS()} causes the two stores to be converted into
 independent {\StateMachines}.  Consider the first store; the other is
-symmetrical.  Figure~\ref{fig:eval:multi_variable:other_bug} shows how
+symmetrical.  \autoref{fig:eval:multi_variable:other_bug} shows how
 the \gls{inferredassumption} is derived for this bug\footnote{The
   actual analysis performs this derivation using {\StateMachines},
   rather than by concatenating the program's code, but that makes no
@@ -800,7 +796,7 @@ operation becomes a no-op and no candidate bug is reported.
   \vspace{12pt}
   \centerline{Inferred assumption: $\smLoad{\texttt{global2}} = 5 \wedge \smLoad{\texttt{global1}} = 5$}
   \caption{Deriving the \gls{inferredassumption} for the other bug in
-    the multi\_variable test.}
+    the multi\_variable test program.}
   \label{fig:eval:multi_variable:other_bug}
 \end{figure}
 
@@ -819,7 +815,7 @@ correctly prevents the program from crashing.
 
 This test investigates a form of write-write-read race, whereas all of
 the previous ones have considered only write-read ones.  It is shown
-in Figure~\ref{fig:eval:write_to_read}.  The crashing thread loops
+in \autoref{fig:eval:write_to_read}.  The crashing thread loops
 setting a global variable to point at some location and then proceeds
 to use that global variable, while at the same time the interfering
 thread loops setting that global variable to \texttt{NULL}.  In other
@@ -884,7 +880,7 @@ is.
 This test combines simple\_toctou and write\_to\_read into a single
 test, demonstrating {\technique}'s ability to exercise several bugs
 using a single enforcer.  The test program is shown in
-Figure~\ref{fig:eval:multi_bugs}.  The behaviour of
+\autoref{fig:eval:multi_bugs}.  The behaviour of
 \texttt{select\_test} is configurable at run time, and will either
 always select simple\_toctou, always select write\_to\_read, or select
 randomly.  The dynamic analysis phases were run with it configured to
@@ -955,7 +951,7 @@ can be generated, and this successfully fixes both bugs.
 
 This test investigates {\implementation}'s behaviour in programs with
 a very large number of threads.  The racing code is the same as in
-indexed\_toctou (Figure~\ref{fig:eval:indexed_toctou}) with
+indexed\_toctou (\autoref{fig:eval:indexed_toctou}) with
 $\texttt{NR\_PTRS} = 100$, except that rather than having a single
 thread running the crashing and interfering critical sections, this
 test has 32 threads running each.  {\Technique} behaves roughly as
@@ -1081,7 +1077,7 @@ issue.
   \label{fig:eval:complex_hb:hb}
 \end{figure}
 
-This test, shown in Figure~\ref{fig:eval:complex_hb} is intended to
+This test, shown in \autoref{fig:eval:complex_hb} is intended to
 evaluate {\technique}'s ability to handle more complicated
 happens-before graphs which require more than two context switches.
 As expected, {\implementation} is able to generate both an enforcer
@@ -1089,7 +1085,7 @@ and a fix for this bug, which can either make the bug reproduce easily
 or not at all.
 
 The happens-before graphs and side conditions generated for this test
-are shown in Figure~\ref{fig:eval:complex_hb:hb}.  The one on the left
+are shown in \autoref{fig:eval:complex_hb:hb}.  The one on the left
 is the expected graph, and will trigger the bug.  The one on the right
 is not.  It describes the case in which the first store in the
 interfering thread happens after the first load in the crashing
@@ -1146,7 +1142,7 @@ incompleteness of the main analysis.
 
 This test demonstrates {\technique}'s ability to handle some simple
 double-free bugs.  The test program is shown in
-Figure~\ref{fig:eval:double_free}.  Note that in this test, the
+\autoref{fig:eval:double_free}.  Note that in this test, the
 crashing and interfering threads (collectively, the active threads)
 both run the same code, shown on the left of the figure, while a third
 thread, known as the environmental thread, modifies the environment in
@@ -1250,9 +1246,9 @@ has no global model of the program's synchronisation, and so can only
 analyse synchronisation within the \gls{analysiswindow}.  The analysis
 will therefore be aware of the synchronisation in the
 existing\_sync\_visible crashing thread,
-Figure~\ref{fig:eval:existing_sync:visible}, but not that in the
+\autoref{fig:eval:existing_sync:visible}, but not that in the
 existing\_sync\_invisible crashing thread,
-Figure~\ref{fig:eval:existing_sync:invisible}.  As such, it generates
+\autoref{fig:eval:existing_sync:invisible}.  As such, it generates
 a candidate bug for the existing\_sync\_invisible test but not for the
 existing\_sync\_visible one.
 
@@ -1281,7 +1277,7 @@ existing\_sync\_visible one.
 This candidate bug can be instantiated into a bug enforcer, but, as
 might be expected, this enforcer cannot cause any bugs to reproduce.
 The happens-before graph for the bug is shown in
-Figure~\ref{fig:eval:existing_sync:hb}; this clearly contradicts the
+\autoref{fig:eval:existing_sync:hb}; this clearly contradicts the
 program's existing synchronisation strategy, and so trying to enforce
 it will lead to a deadlock.  The unbound message operations in the
 crash enforcement plan will therefore all time out, preventing
@@ -1389,7 +1385,7 @@ they both work in the expected way.
 \end{figure}
 
 This test illustrates a bug which lacks the W isolation property (see
-Section~\ref{sect:derive:w_isolation}).  In this test, the crashing
+\autoref{sect:derive:w_isolation}).  In this test, the crashing
 thread allocates a fresh data structure, initialises the field
 \texttt{v}, publishes it via a global pointer, and then asserts that
 \texttt{v} is unchanged.  Meanwhile, the interfering thread loops
@@ -1500,7 +1496,7 @@ point.
   right now.}
 
 The results of these experiments are shown in
-Figure~\ref{fig:eval:summary_cdfs}.  For the majority of experiments,
+\autoref{fig:eval:summary_cdfs}.  For the majority of experiments,
 the DataCollider-like tool gives a modest reduction in the time taken
 to reproduce the bug, but is less effective than {\technique}, as
 expected.  There are a few exceptions, however:
@@ -1708,7 +1704,7 @@ programs from the STAMP benchmark suite\needCite{}.
 glibc is a kernel of glibc bug 2644 \cite{Cambell2006}, which
 affected versions of glibc up to 2.5 and could lead to a crash if
 multiple threads were shut down at the same time.  A simplified
-version of the code involved is shown in Figure~\ref{fig:eval:glibc},
+version of the code involved is shown in \autoref{fig:eval:glibc},
 where \texttt{forcedunwind} and \texttt{done\_init} are global
 variables.  The program will crash if the load of
 \texttt{forcedunwind} on line 1 loads a \texttt{NULL} pointer and the
@@ -1775,7 +1771,7 @@ present any additional complexity.
 This test consists of the labyrinth component of the STAMP benchmark
 suite\needCite{}, converted to use locks rather than transactional
 memory and with one of its critical sections removed.  It is shown in
-Figure~\ref{fig:eval:labyrinth}.  This program is structured as a
+\autoref{fig:eval:labyrinth}.  This program is structured as a
 read-modify-writeback operation: the \texttt{memcpy} on line 8 takes a
 local copy of a shared structure, which is then worked on by
 \texttt{PdoExpansion} and \texttt{PdoTraceback}, generating results
@@ -1838,7 +1834,7 @@ investigated this possibility in any detail.
 This test is, like labyrinth, formed by taking one of the STAMP
 benchmark programs and removing one of the critical sections.  A
 simplified version of the original program is shown in
-Figure~\ref{fig:eval:bayes}.  It implements a task queue as a
+\autoref{fig:eval:bayes}.  It implements a task queue as a
 singly-linked list with a C++-like iterator protocol\needCite{}.  When
 a worker thread is ready to start a new task, it gets the first
 element from the list (line 12), checks whether the list was empty
@@ -1947,10 +1943,12 @@ the combined fix restores the program to its correct functionality.
 \subsection{pbzip2}
 
 \begin{table}
+  \centerline{
   \begin{tabular}{|l|l|}
     \hline
     Build \gls{programmodel} & \\
     \hspace{5mm}Time taken & $4.29 \pm_\mu 0.02$s \\
+    \hline
     Generating \glspl{verificationcondition} & \\
     \hspace{5mm}Time taken & $333.1 \pm_\mu 0.1$s \\
     \hspace{5mm}Potentially-crashing instructions examined & 356 \\
@@ -1959,12 +1957,14 @@ the combined fix restores the program to its correct functionality.
     \hspace{5mm}Interfering \glspl{cfg} generated & 184 \\
     \hspace{5mm}Timeouts processing interfering \glspl{cfg} & 0 \\
     \hspace{5mm}\Glspl{verificationcondition} generated & 14 \\
+    \hline
     Build \glspl{bugenforcer} & \\
     \hspace{5mm}Time taken & $1.476 \pm_\mu 0.008$s \\
     \hspace{5mm}Timeouts & 0 \\
     \hspace{5mm}\Glspl{bugenforcer} built & 14 \\
     \hline
   \end{tabular}
+  }
   \caption{Statistics related to finding bad pointer dereference bugs
     in pbzip2.  All results following twenty repeats.  Values given
     without an error indication were precisely the same on every run.
@@ -1984,37 +1984,25 @@ turn.  This did not find any bugs in pbzip2.
 
 \subsection{Thunderbird}
 
-\begin{figure}
-  \subfigure[][Crashing thread]{
-    \texttt{
-      \begin{tabular}{llll}
-        & \multicolumn{3}{l}{ProcessCurrentURL() \{}\\
-        & & \multicolumn{2}{l}{if (m\_transport) \{}\\
-        & & & m\_transport->SetTimeout();\\
-        & & \}\\
-        & \}\\
-      \end{tabular}
-    }
-  }
-  \subfigure[][Interfering thread]{
-    \texttt{
-      \begin{tabular}{lll}
-        & \multicolumn{2}{l}{CloseStreams() \{}\\
-        & & m\_transport = NULL;\\
-        & \multicolumn{2}{l}{\}}\\
-        \\
-        \\
-      \end{tabular}
-    }
-  }
-  \caption{The thunderbird bug.}
-  \label{fig:eval:thunderbird}
-\end{figure}
-
+\begin{wraptable}{O}{8.5cm}
+  \begin{centering}
+    \begin{tabular}{|l|l|}
+      \hline
+      Build \gls{programmodel} & $1240 \pm_p 10$s \\
+      Build \glspl{verificationcondition} & $390 \pm_p 10$ms \\
+      Build individual \glspl{bugenforcer} & $640 \pm_p 10$ms \\
+      Build combined \glspl{bugenforcer} & $710 \pm_p 20$ms\\
+      \hline
+    \end{tabular}
+  \end{centering}
+  \caption{Time taken to process the Thunderbird bug, mean and
+    population standard deviation of ten runs.}
+  \label{tab:eval:thunderbird:times}
+\end{wraptable}
 \verb|thunderbird| is Mozilla bug number 391259\cite{Mery2007}, a
 simple time-of-check, time-of-use race in the IMAP client component of
 Thunderbird, a popular open-source e-mail client.  The relevant parts
-of the program are shown in Figure~\ref{fig:eval:thunderbird}.  If
+of the program are shown in \autoref{fig:eval:thunderbird}.  If
 \verb|m_transport| is set to \verb|NULL| by \verb|CloseStreams()| in
 between the two accesses in \verb|ProcessCurrentURL| then the program
 will crash.  The simplest way to trigger this behaviour is for the
@@ -2055,20 +2043,35 @@ pointer, and so no \glspl{verificationcondition} are generated.
 has no apparent effect, whereas the true positive and combined ones
 both successfully reproduce the bug.
 
-The analysis time was quite reasonable here:
+\begin{figure}
+  \subfigure[][Crashing thread]{
+    \texttt{
+      \begin{tabular}{llll}
+        & \multicolumn{3}{l}{ProcessCurrentURL() \{}\\
+        & & \multicolumn{2}{l}{if (m\_transport) \{}\\
+        & & & m\_transport->SetTimeout();\\
+        & & \}\\
+        & \}\\
+      \end{tabular}
+    }
+  }
+  \subfigure[][Interfering thread]{
+    \texttt{
+      \begin{tabular}{lll}
+        & \multicolumn{2}{l}{CloseStreams() \{}\\
+        & & m\_transport = NULL;\\
+        & \multicolumn{2}{l}{\}}\\
+        \\
+        \\
+      \end{tabular}
+    }
+  }
+  \caption{The thunderbird bug.}
+  \label{fig:eval:thunderbird}
+\end{figure}
 
-\begin{itemize}
-\item The static analysis phase of building the \gls{programmodel}
-  took $1240 \pm_p 10$ seconds, or about twenty minutes.
-\item Building the \glspl{verificationcondition} took $390 \pm_p 10$
-  milliseconds.
-\item It took $640 \pm_p 10$ milliseconds to build each of the two
-  single-\gls{verificationcondition} \glspl{bugenforcer}.
-\item Building the combined \gls{bugenforcer} took $710 \pm_p 20$
-  milliseconds.
-\end{itemize}
-
-All times mean and standard deviation of ten runs.  The time taken
+The times taken to perform the various phases of the analysis are
+shown in \autoref{tab:eval:thunderbird:times}.  The time taken
 building the \gls{programmodel} clearly completely dominates the other
 phases.  This is unsurprising; it must analyse the entire program,
 whereas the other phases analyse only the small window which is
@@ -2093,7 +2096,7 @@ interaction.
 \label{sect:eval:mysql}
 
 This is MySQL bug 56324\needCite{}.  A simplified version of the buggy
-code is shown in Figure~\ref{fig:eval:mysqld}.  This is, again, a
+code is shown in \autoref{fig:eval:mysqld}.  This is, again, a
 variant of the simple\_toctou bug, embedded in a much larger program.
 As expected, {\implementation} is able to find the bug, generate an
 enforcer, and generate a fix, and they all behave as expected.  For
@@ -2173,7 +2176,7 @@ instruction.  For this experiment, I selected 1000 memory-accessing
 instructions at random from the optimised build of MySQL, analysed
 them with {\implementation}, and timed how long the various components
 of the analysis took.  The results are shown in
-Figure~\ref{fig:eval:time_breakdown:crashing}.  This chart shows
+\autoref{fig:eval:time_breakdown:crashing}.  This chart shows
 several important properties of the analysis:
 
 \begin{figure}
@@ -2261,7 +2264,7 @@ The chart shows three features which are worth noting:
 \end{itemize}
 
 I now investigate the time taken processing each interfering
-\gls{cfg}.  Figure~\ref{fig:eval:time_breakdown:interfering} shows the
+\gls{cfg}.  \autoref{fig:eval:time_breakdown:interfering} shows the
 time taken by the various sub-phases of this, in the same style as the
 previous figure.  The data for this chart was collected in the same
 run of {\implementation} as that for the previous chart.  There were
@@ -2361,14 +2364,75 @@ enabled and failed with them disabled.
   \label{fig:eval:time_breakdown:interfering_no_simple}
 \end{figure}
 
+\subsubsection{Effect of the W isolation assumption}
+\label{sect:eval:w_isolation}
+
+I now investigate the effect of the \gls{w-isolation} on the analysis,
+in terms of the time taken and the set of
+\glspl{verificationcondition} generated.  I took the same 1000
+instructions from the optimised build of MySQL and analysed them with
+and without the \gls{w-isolation} assumption, with \gls{alpha} set to
+20 in both cases.  The results are shown in
+\autoref{table:eval:w-isolation}.  As expected, the \gls{w-isolation}
+assumption modestly decreases both the number of
+\glspl{verificationcondition} which must be checked by run-time
+\glspl{bugenforcer} and the time taken to generate them.
+
+\begin{table}
+  \begin{tabular}{|l|l|l|}
+    \hline
+    & \multicolumn{2}{c|}{\gls{w-isolation}} \\
+    \hline
+                                                                & Enabled & Disabled \\
+    \hline
+    Potentially-crashing instructions examined                  & 1000    & 1000 \\
+    Instructions dismissed without generating a {\StateMachine} & $20 \pm_b 1$\% & $20 \pm_b 1$\% \\
+    Timeouts building crashing {\StateMachines}                 & $0.1 \pm_b 0.1$\% & $0.4 \pm_b 0.2$\% \\
+    Time to build crashing {\StateMachine} *                    & $0.14 \pm_\mu 0.02$s & $0.16 \pm_\mu 0.03$s \\
+    \Glspl{crashingthread} generating no interfering \glspl{cfg}& $48 \pm_b 1$\% & $43 \pm 1$\%\\
+
+    Time to process each interfering \gls{cfg}                  & $0.24 \pm_\mu 0.04$s & $0.37 \pm_\mu 0.04$s \\
+    Interfering \glspl{cfg} running out of memory               & $0.09 \pm_b 0.06$\% & $0.11 \pm_b 0.06$\% \\
+    Interfering \glspl{cfg} running out of time                 & $0.2 \pm_b 0.1$\% & $0.6 \pm_b 0.1$\% \\
+
+    Interfering \glspl{cfg} generating \glspl{verificationcondition}   & $12.7 \pm_b 0.7$\% & $12.6 \pm_b 0.6$\% \\
+    \Glspl{verificationcondition} per potentially-crashing instruction & $0.29 \pm_{10000} 0.04$ & $0.34 \pm_{10000} 0.05$\\
+    \hline
+  \end{tabular}
+  \caption{Effects of the \gls{w-isolation} assumption. *: excluding
+    timeouts and instructions dismissed without building a
+    {\StateMachine}.}
+  \label{table:eval:w-isolation}
+\end{table}
+
+The table includes three different types of error indicator:
+
+\begin{itemize}
+\item $x \pm_\mu y$ shows the mean and standard deviation of mean of
+  some quantity, as usual.
+\item $x \pm_b y$\% is used to show the frequency of some event.  $x$
+  is an estimate of the frequency itself, calculated in the obvious
+  way.  $y$ is an estimate of $x$'s standard deviation, calculated as
+  $\sqrt{n.x.(1-x)}/n$, where $n$ is the number of samples.  This is
+  the standard deviation which would be observed in $x$ if the
+  frequency really were $x$ and if the observations were all
+  identically independently distributed.
+\item $x \pm_{10000} y$ is used to show the number of
+  \glspl{verificationcondition} generated for each
+  potentially-crashing instruction.  $x$ is a simple average over all
+  of the potentially-crashing instructions.  For this error
+  indication, I took the set of 1000 results generated by the
+  experiment and resampled them with replacement to produce a further
+  10,000 sample sets each of size 1000.  I then used these 10,000
+  sample sets to compute 10,000 estimates of the ratio.  I report the
+  population standard deviation of those estimates as $y$.
+\end{itemize}
+
 \subsubsection{Effects of the $\alpha$ parameter}
 \label{sect:eval:alpha}
 
 \todo{Need to regenerate the graphs with the 300 second timeout rather
   than the 60 second one, once that's finished running.}
-
-\todo{Some of these have no error bars, and they also have a quite
-  large uncertainty.}
 
 \begin{figure}
   \centerline{\input{eval/alpha/unopt/bpm.tex}}
@@ -2393,7 +2457,7 @@ time taken to derive the \gls{crashingthread} {\StateMachines},
 including deriving the \gls{cfg}, compiling it to a {\StateMachine},
 performing the initial simplification, and deriving C-atomic.  The
 results are shown in the violin plot in
-Figure~\ref{fig:perf:alpha:bpm:unopt}.  This chart shows an estimate
+\autoref{fig:perf:alpha:bpm:unopt}.  This chart shows an estimate
 of the probability density function of the time taken to build the
 crashing {\StateMachines} for each value of \gls{alpha}, including
 building the initial \gls{cfg}, compiling to a {\StateMachine}, and
@@ -2512,7 +2576,7 @@ This will be particularly important for the high quantiles of the high
 Once the \gls{crashingthread} {\StateMachine} has been generated, the
 next step is to derive \glspl{cfg} for the \glspl{interferingthread}.
 The response of this process to the $\alpha$ parameter is shown in
-Figure~\ref{fig:perf:alpha:gsc:unopt}.  In this chart, the
+\autoref{fig:perf:alpha:gsc:unopt}.  In this chart, the
 pre-dismissed box includes anything which was dismissed by the
 previous stage or where the crashing {\StateMachine} was sufficient to
 show that no bug of the desired class could exist without reference to
@@ -2559,7 +2623,7 @@ interfering \glspl{cfg}, and these tend to generate fewer interfering
 The next step of the analysis is to take these pairs of crashing
 {\StateMachines} and interfering \glspl{cfg} and convert them into
 \glspl{verificationcondition}.  This is shown in
-Figure~\ref{fig:perf:alpha:gvc:unopt}.  Note that the denominator for
+\autoref{fig:perf:alpha:gvc:unopt}.  Note that the denominator for
 the various proportions has changed: previously, it was the total
 number of potentially-crashing instructions, whereas now it is the
 number of pairs generated by the previous analysis stages.
@@ -2620,7 +2684,7 @@ broadly the same pattern, for essentially similar reasons.
 \end{figure}
 
 The results with an optimised version of MySQL are broadly similar,
-and are shown in Figures~\ref{fig:perf:alpha:bpm:opt},
+and are shown in figures~\ref{fig:perf:alpha:bpm:opt},
 \ref{fig:perf:alpha:gsc:opt}, and \ref{fig:perf:alpha:gvc:opt}.  The
 most obvious difference between the optimised and unoptimised graphs
 is that the optimised program takes longer to analyse, and suffers a
@@ -2636,7 +2700,7 @@ The next thing to look at is how long it takes to convert
 experiment, I chose 5000 \glspl{verificationcondition} at random from
 those generated by analysing the whole of MySQL, converted each one to
 an enforcer, and timed how long each phase took; the results are shown
-in Figure~\ref{fig:eval:time_breakdown:convert_to_enforcer}\footnote{I
+in \autoref{fig:eval:time_breakdown:convert_to_enforcer}\footnote{I
   also performed a similar experiment using the 297
   \glspl{verificationcondition} generated by the previous phase.  The
   results were broadly similar, but the smaller sample set meant that
@@ -2709,9 +2773,8 @@ reasonable for these patches.
   \label{tab:eval:gen_fix_perf}
 \end{table}
 
-Table~\ref{tab:eval:gen_fix_perf:props} gives some statistics related
-to the complexity of the patches generated.  The properties examined
-are:
+\autoref{tab:eval:gen_fix_perf:props} gives some statistics related to
+the complexity of the patches generated.  The properties examined are:
 
 \begin{itemize}
 \item The number of program instructions in the protected region.
@@ -2784,53 +2847,6 @@ error distributions are non-Gaussian, the sample size is only modest,
 and there are strong correlations between the different properties of
 the fix in addition to between the properties and the time taken.
 
-\section{W isolation}
-\label{sect:eval:w_isolation}
-
-\todo{No error bars on some of those measurements!  This section is
-  very noddy.}
-
-I now investigate the effect of the \gls{w-isolation} on the analysis,
-in terms of the time taken and the set of
-\glspl{verificationcondition} generated.  I took the same 1000
-instructions from the optimised build of MySQL and analysed them with
-and without the \gls{w-isolation} assumption, with \gls{alpha} set to
-20 in both cases.  The results are shown in
-Table~\ref{table:eval:w-isolation}.  As expected, the
-\gls{w-isolation} assumption modestly decreases both the number of
-\glspl{verificationcondition} which must be checked by run-time
-\glspl{bugenforcer} and the time taken to generate them.
-
-\begin{table}
-  \begin{tabular}{|l|l|l|}
-    \hline
-    & \multicolumn{2}{c|}{\gls{w-isolation}} \\
-    \hline
-                                                           & Enabled & Disabled \\
-    \hline
-    Timeouts building \gls{crashingthread} {\StateMachines}& 245                    & 245 \\
-    Time to build \gls{crashingthread} {\StateMachine} & $0.5 \pm_\mu 0.1$* & $0.6 \pm_\mu 0.1$* \\
-    \Glspl{crashingthread} generating no \glspl{interferingthread} & 456                    & 406 \\
-    Time to build \gls{interferingthread} \glspl{cfg}, per \gls{crashingthread} & $1.5 \pm_\mu 0.3$* & $1.5 \pm_\mu 0.3$* \\
-    Number of \gls{interferingthread} \glspl{cfg} per \gls{crashingthread} & $5.1 \pm_\mu 0.5$ & $6.3 \pm_\mu 0.6$ \\
-    \hspace{5mm}Total number \gls{interferingthread} \gls{cfg} & 3819 & 4778 \\
-    Timeouts building \gls{interferingthread} {\StateMachines} & 17 & 71 \\
-    \hspace{5mm}As percentage of \gls{interferingthread} \glspl{cfg} & 0.4\% & 1.5\% \\
-    Time to build \glspl{interferingthread} {\StateMachines} & $0.11 \pm_\mu 0.02$* & $0.12 \pm_\mu 0.01$* \\
-    Timeouts in symbolic execution & 35 & 281 \\
-    \hspace{5mm}As percentage of \glspl{interferingthread} & 0.9\% & 7.6\% \\
-    Symbolic execution time per \glspl{interferingthread} & $0.96 \pm_\mu 0.07$* & $1.31 \pm_\mu 0.08$* \\
-    Number of \glspl{verificationcondition} & 682 & 863 \\
-    \hspace{5mm}As percentage of \glspl{interferingthread} & 18\% & 18\% \\
-    \hspace{5mm}Per \gls{crashingthread} & 0.9 & 1.1 \\
-    \hline
-  \end{tabular}
-  \caption{Effects of the \gls{w-isolation} assumption.  *: mean and
-    standard deviation of mean for all runs which did not time out,
-    seconds.}
-  \label{table:eval:w-isolation}
-\end{table}
-
 \section{Dynamic analysis}
 \label{sect:eval:dynamic_analysis}
 
@@ -2839,18 +2855,18 @@ Table~\ref{table:eval:w-isolation}.  As expected, the
 \todo{This is another one which is lacking error bars.}
 
 Similarly to the investigation of the effects of the \gls{w-isolation}
-assumption in Section~\ref{sect:eval:w_isolation}, I now investigate
-the effects of the dynamic aliasing analysis on the generation of
+assumption in \autoref{sect:eval:w_isolation}, I now investigate the
+effects of the dynamic aliasing analysis on the generation of
 \glspl{verificationcondition}\editorial{gurk}.  It is difficult to
 completely avoid using the information from the dynamic analysis while
 generating \glspl{verificationcondition}, as it is needed to generate
 the \gls{interferingthread} \glspl{cfg}, but it is possible to disable
 the parts of the {\StateMachine} simplifiers and the symbolic
 execution engine which use it, and that is what I did in this test.
-The results are shown in Table~\ref{table:eval:effect_of_dyn}.  Note
+The results are shown in \autoref{table:eval:effect_of_dyn}.  Note
 that the aliasing enabled column of this table was produced from the
 same experiment as produced the \gls{w-isolation} enabled column in
-Table~\ref{table:eval:w-isolation}.
+\autoref{table:eval:w-isolation}.
 
 There are two main observations to draw from this table: discarding
 the information from the dynamic analysis dramatically reduces the
@@ -2904,7 +2920,7 @@ that.  For this experiment, I modified the dynamic analysis tool so
 that it periodically recorded a snapshot of the aliasing table, and I
 then examined these snapshots to quantify the rate at which aliasing
 pairs were added to the table.  The results for mysql, Thunderbird,
-and pbzip2 are shown in Figures~\ref{fig:eval:dyn_convergence:mysqld},
+and pbzip2 are shown in figures~\ref{fig:eval:dyn_convergence:mysqld},
 \ref{fig:eval:dyn_convergence:thunderbird}, and
 \ref{fig:eval:dyn_convergence:pbzip2}, respectively.  These graphs
 show the number of aliasing pairs in the table at time $t$, as a
