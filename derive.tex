@@ -107,6 +107,7 @@ this process in more detail.
   \State $\mathit{depth} \gets \mathit{depth} + 1$
 \EndWhile
 \end{algorithmic}
+\vspace{-6pt}
 \caption{Building a \gls{crashingthread} static \gls{cfg}.}
 \label{fig:derive:static_read_cfg_single_function}
 \end{figure}
@@ -223,17 +224,19 @@ that the loop can only execute at most once during the
 
 As an example, consider the \gls{cfg} shown at the left of
 Figure~\ref{fig:cyclic_cfg}, which contains a loop between
-instructions $B_0$ and $C_0$.  This loop must be removed from the \gls{cfg}
-while maintaining all paths which terminate at $D_0$ and which contain
-\gls{alpha} or fewer instructions.  The algorithm starts by
-performing a depth-first traversal backwards through the graph from
-$D_0$ until it finds an edge which closes a cycle.
-In this case, that is the edge from $C_0$ to $B_0$.
-{\Technique} will therefore break this edge by duplicating the
-instruction at the start of the edge, $C_0$, along with all of its
-incoming edges (in this case, just the $B_0$ to $C_0$ edge).  The
-$C_0$ to $B_0$ edge can then be redirected to be from $C_1$ to $B_0$,
-producing the
+instructions $B_0$ and $C_0$.  This loop must be removed from the
+\gls{cfg} while maintaining all paths which terminate at $D_0$ and
+which contain \gls{alpha} or fewer instructions.  The algorithm starts
+by performing a depth-first traversal backwards through the graph from
+$D_0$ until it finds an edge which closes a cycle.  In this case, that
+is the edge from $C_0$ to $B_0$.  {\Technique} will therefore break
+this edge by duplicating the instruction at the start of the edge,
+$C_0$, along with all of its incoming edges (in this case, just the
+$B_0$ to $C_0$ edge).  The $C_0$ to $B_0$ edge can then be redirected
+to be from $C_1$ to $B_0$, producing the next diagram in the sequence.
+All paths which were possible in the old graph will also be possible
+in the new one, if duplicated nodes are treated as semantically
+equivalent,
 \begin{wrapfigure}{r}{3.3cm}
 \begin{tikzpicture}
   [node distance=1 and 0.3]
@@ -261,17 +264,14 @@ producing the
   fewer instructions.  Note that an additional root has been
   introduced at $C_2$.}
 \label{fig:unrolled_cyclic_cfg}
-\vspace{-20mm}
+\vspace{-20pt}
 \end{wrapfigure}
-next diagram in the sequence.  All paths which were
-possible in the old graph will also be possible in the new one, if
-duplicated nodes are treated as semantically equivalent, and the loop
-is now one instruction further away from the target instruction $D_0$.
-The process then repeats, moving the cycle steadily further and
-further away from $D_0$ until all paths ending of length \gls{alpha}
-ending at $D_0$ are acyclic, at which point the cycle can be safely
-removed from the graph.  The complete algorithm is shown in
-Figure~\ref{fig:derive:read:unroll_cycle_break}.
+and the loop is now one instruction further away from the
+target instruction $D_0$.  The process then repeats, moving the cycle
+steadily further and further away from $D_0$ until all paths ending of
+length \gls{alpha} ending at $D_0$ are acyclic, at which point the
+cycle can be safely removed from the graph.  The complete algorithm is
+shown in Figure~\ref{fig:derive:read:unroll_cycle_break}.
 
 Note that the edge which is modified is the back edge, from $C_0$ to
 $B_0$, which points ``away from $D_0$'', and not the forwards edge
@@ -297,10 +297,13 @@ correctly preserves all paths of length \gls{alpha}, as desired, and
 does not introduce any more.
 
 This might appear, on the face of it, to be a rather expensive
-algorithm: it must explore every path of length \gls{alpha}
-ending at the target instruction, and the number of such paths is
-potentially exponential in \gls{alpha}.  This is true, but
-there are some important mitigating factors:
+algorithm: it must explore every path of length \gls{alpha} ending at
+the target instruction, and the number of such paths is potentially
+exponential in \gls{alpha}.  This is true, but several other
+algorithms used by {\implementation} also have exponential worst-case
+running time and larger constant factors, and so in practice deriving
+the crashing \gls{cfg} accounts only a small percentage of the total
+analysis time.
 
 \begin{figure}
 \begin{algorithmic}[1]
@@ -323,24 +326,6 @@ there are some important mitigating factors:
   which completes a cycle.}
 \label{fig:derive:read:unroll_cycle_break}
 \end{figure}
-
-\begin{itemize}
-\item In practice, most code is not particularly branch-heavy, so that
-  relatively few instructions have more than one predecessor and the
-  base of the exponential is small.
-\item With careful implementation, the constant factor can be made
-  small.
-\item This is not the only analysis performed by {\technique} which
-  has exponential cost in \gls{alpha}.  For instance, later
-  phases must determine which memory accesses might alias with which
-  other accesses; in the worst case, this might involve considering
-  all $2^n$ aliasing pairs individually.
-\end{itemize}
-
-The overall result is that, despite having cost $O(n^{\alpha})$, this
-phase of the analysis rarely accounts for more than a small percentage
-of {\implementation}'s total running time (see
-Section~\ref{sect:eval:time_details} for more details).
 
 \section{\STateMachines}
 \label{sect:derive:state_machines}
@@ -368,43 +353,9 @@ some temporary variables.  These are simple slots into which the
 values of expressions and the results of \state{Load} operations can
 be stored.  Temporaries can only store simple values, with no internal
 structure, and there is no concept analogous to a pointer to a
-temporary\footnote{For {\implementation}, {\StateMachine} temporaries
-  are 128-bit values, so as to be able to store the contents of an XMM
-  register in one temporary, but other choices would be possible.}.
-Note that {\StateMachine} temporaries do not necessarily correspond to
-any particular bit of program state, and that most program state will
-not be represented by any temporary.
-
-\subsection{{\STateMachine} expression language}
-\label{sect:sm_expr_language}
-
-\todo{Could maybe explain this more easily by making a more explicit
-  comparison to SMT-style things?}
-
-Any non-trivial {\StateMachine} will include some expressions over the
-original program's state.  These are expressed using an expression
-language which is described in Table~\ref{table:state_machine_exprs}.
-This language is, for most part, quite conventional, and includes
-simple mechanisms for querying the program's behaviour and state and
-for obtaining the values of {\StateMachine} temporaries, or for
-evaluating simple arithmetic operators.
-
-Note that $\smLoad{}$ expressions always evaluate to the initial value
-of the selected memory location, and not to the current value, which
-may be different if the {\StateMachine} has executed a \state{Store}
-operation.  The only way to access the current contents of memory is
-via a \state{Load} side-effect.  This means that $\smLoad{}$ is a pure
-function and can be re-ordered freely across side-effecting
-operations, simplifying analysis.
-
-This language is missing one important feature: logical connectives
-such as $\wedge$ or $\vee$.  These operators are not represented using
-the expression language, but are instead encoded into binary decision
-diagrams, or BDDs\cite{Brace1990}, which are themselves expressed in
-terms of the expression language.  These BDDs allow much more
-efficient implementations of many common operations than would be
-possible with a scheme based entirely on unconstrained expressions.
-
+temporary.  Note that {\StateMachine} temporaries do not necessarily
+correspond to any particular bit of program state, and that most
+program state will not be represented by any temporary.
 \begin{landscape}
 \begin{table}
 \begin{tabular}{lllp{5cm}p{12.8cm}}
@@ -440,6 +391,52 @@ possible with a scheme based entirely on unconstrained expressions.
 \end{table}
 \end{landscape}
 
+\subsection{{\STateMachine} expression language}
+\label{sect:sm_expr_language}
+
+\todo{Could maybe explain this more easily by making a more explicit
+  comparison to SMT-style things?}
+
+Any non-trivial {\StateMachine} will include some expressions over the
+original program's state.  These are expressed using an expression
+language which is described in Table~\ref{table:state_machine_exprs}.
+This language is, for most part, quite conventional, and includes
+simple mechanisms for querying the program's behaviour and state and
+for obtaining the values of {\StateMachine} temporaries, or for
+evaluating simple arithmetic operators.  It does not, however, include
+any logical connectives such as $\wedge$ or $\vee$.  The operators are
+instead encoded into binary decision diagrams, or
+BDDs\cite{Brace1990}, which are themselves expressed in terms of the
+expression language.  This is analogous to the way in which SMT
+solvers represent the expression whose satisfiability
+\begin{wrapfigure}{r}{4.5cm}
+  \vspace{-17pt}
+  \centerline{
+  \begin{tikzpicture}
+    \node (x) [BddNode] {$\smTmp{A} = 72$};
+    \node (y) [BddNode, below = of x] {$\smLoad{\smTmp{B}} = 9$};
+    \node (z) [BddNode, below = of y] {$\smTmp{B} > 912$};
+    \node (true) at (-1, -5) [BddLeaf] {$715$};
+    \node (false) at (1, -5) [BddLeaf] {$\smTmp{C}$};
+    \draw [BddTrue] (x) -- (y);
+    \draw [BddFalse] (x.east) to [bend left=30] (false);
+    \draw [BddTrue] (y) to [bend right=45] (true);
+    \draw [BddFalse] (y) -- (z);
+    \draw [BddTrue] (z) -- (true);
+    \draw [BddFalse] (z) -- (false);
+  \end{tikzpicture}
+  }
+  \vspace{-13pt}
+  \caption{An example expression BDD.  This can evaluate to either
+    $715$ or $\smTmp{C}$, depending on the values of $\smTmp{A}$,
+    $\smTmp{B}$ and the initial contents of program memory.}
+  \label{fig:derive:example_expr_bdd}
+  \vspace{-30pt}
+\end{wrapfigure}
+is to be checked
+as an expression in a boolean algebra whose input variables are
+themselves expressions in some other theory.
+
 \begin{table}
 \begin{tabular}{lp{11.3cm}}
 Expression & Meaning \\
@@ -458,26 +455,6 @@ $\smLoad{expr}$ & The initial value of the memory at location $expr$. \\
 \label{table:state_machine_exprs}
 \end{table}
 
-\begin{wrapfigure}{r}{6.5cm}
-  \begin{tikzpicture}
-    \node (x) [BddNode] {$\smTmp{A} = 72$};
-    \node (y) [BddNode, below = of x] {$\smLoad{\smTmp{B}} = 9$};
-    \node (z) [BddNode, below = of y] {$\smTmp{B} > 912$};
-    \node (true) [BddLeaf, below left = of z] {$715$};
-    \node (false) [BddLeaf, below right = of z] {$\smTmp{C}$};
-    \draw [BddTrue] (x) -- (y);
-    \draw [BddFalse] (x.east) to [bend left=30] (false);
-    \draw [BddTrue] (y) -- (true);
-    \draw [BddFalse] (y) -- (z);
-    \draw [BddTrue] (z) -- (true);
-    \draw [BddFalse] (z) -- (false);
-  \end{tikzpicture}
-  \caption{An example expression BDD.  This can evaluate to either
-    $715$ or $\smTmp{C}$, depending on the values of $\smTmp{A}$,
-    $\smTmp{B}$ and the initial contents of program memory.}
-  \label{fig:derive:example_expr_bdd}
-  \vspace{-5mm}
-\end{wrapfigure}
 Two types of BDD used in {\StateMachine} states: expression BDDs and
 boolean BDDs.  The difference is that boolean BDDs, or BBDDs, are
 constrained to evaluate to a simple boolean, whereas expression BDDs
@@ -487,109 +464,95 @@ This BDD evaluates to $715$ if either $\smTmp{A} \not= 72$ or both
 $\smLoad{\smTmp{B}} = 9$ and $\smTmp{B} > 912$, or to $\smTmp{C}$
 otherwise.  
 
-The important thing to note here is that both the internal nodes and
-the leaves of the BDD are expressions in the expression language,
-rather than simple boolean variables or boolean constants.  This means
-that expression BDDs can represent complex functions of program state
-(they are used, for instance, for the address field of a \state{Load}
-state), and do not overly complicate any of the usual BDD manipulation
-algorithms.  They do, however, mean that expression and boolean BDDs
-are only canonical to the extent that expressions in the expression
-language can be canonicalised.  Unfortunately, completely
-canonicalising general expressions is impossible\footnote{If nothing
-  else, doing so would provide a solution to Hilbert's tenth problem,
-  which is known to be impossible\cite{Davis1973}.}, and so while
-ordinary BDDs are canonical representations of boolean functions those
-used by {\technique} are not.  This lack of canonicalisation can
-sometimes lead to poor performance if a single function is represented
-in many different forms.  Fortunately, a few very simple
-canonicalisation rules, such as sorting the arguments to commutative
-operators and respecting transitivity of equality, usually suffice to
-reduce redundancy to an acceptable level and avoid the worst
-performance problems.
+Note that $\smLoad{}$ expressions always evaluate to the initial value
+of the selected memory location, and not to the current value, which
+may be different if the {\StateMachine} has executed a \state{Store}
+operation.  The only way to access the current contents of memory is
+via a \state{Load} side-effect.  This means that $\smLoad{}$ is a pure
+function and can be re-ordered freely across side-effecting
+operations, simplifying analysis.
 
 \subsection{Example {\StateMachines}}
 \label{sect:derive:simple_toctou_example}
 
 \begin{figure}
-  \subfigure[][Crashing thread]{
-    \texttt{
-    \begin{tabular}{rlll}
-              & \multicolumn{3}{l}{crashing\_thread:} \\
-      400694: & mov & global\_ptr, &\%rax\\
-      40069b: & test & \%rax, &\%rax \\
-      40069e: & je   & \multicolumn{2}{l}{4006ad}\\
-      4006a0: & mov  & global\_ptr, & \%rax\\
-      4006a7: & movl & \$0x5, & (\%rax)\\
-    \end{tabular}
-    }
-    \label{fig:derive:single_threaded_machine_inp:crashing}
-  }
-  \subfigure[][Interfering thread]{
-    \texttt{
-      \begin{tabular}{rlll}
-        \\
-        \\
-        & \multicolumn{3}{l}{interfering\_thread:} \\
-        4008fb: & movq & \$0x0, &global\_ptr\\
-        \\
-        \\
-      \end{tabular}
+  \begin{tabular}{ll}
+    \subfigure[][Crashing thread machine code.  The program crashed at \texttt{4006a7}]{
+      \raisebox{2.1cm}{
+      \texttt{
+        \begin{tabular}{rlll}
+          & \multicolumn{3}{l}{crashing\_thread:} \\
+          400694: & mov & global\_ptr, &\!\!\!\%rax\\
+          40069b: & test & \%rax, &\!\!\!\%rax \\
+          40069e: & je   & \multicolumn{2}{l}{4006ad}\\
+          4006a0: & mov  & global\_ptr, &\!\!\!\%rax\\
+          4006a7: & movl & \$0x5, &\!\!\!(\%rax)\\
+        \end{tabular}
       }
-    \label{fig:derive:single_threaded_machine_inp:interfering}
+      \label{fig:derive:single_threaded_machine_inp:crashing}
     }
-  \caption{Two fragments of machine code which, when run in parallel,
-    have a bug.  The {\StateMachines} for these fragment are shown in
-    \autoref{fig:derive:single_threaded_machine_both}.}
-  \label{fig:derive:single_threaded_machine_inp}
-\end{figure}
-
-\begin{figure}
-  \subfigure[][Crashing {\StateMachine} generated from the machine
-    code in
-    Figure~\ref{fig:derive:single_threaded_machine_inp:crashing},
-    assuming that the bug to be investigated is a crash at 4006a7.]{
-  \begin{tikzpicture}
-    \node (l1) at (0,2) [stateSideEffect] {l1: \stLoad{1}{\mathrm{global\_ptr}} };
-    \node (l2) [stateIf, below=of l1] {l2: \stIf{\smTmp{1} = 0}};
-    \node (l4) [stateSideEffect, below=of l2] {l4: \stLoad{2}{\mathrm{global\_ptr}} };
-    \node (l3) [stateTerminal, right= of l4] {l3: \stSurvive };
-    \node (l5) [stateIf, below=of l4] {l5: \stIf{\smBadPtr{\smTmp{2}}}};
-    \node (l6) [stateTerminal, below=of l5] {l6: \stCrash};
-    \draw[->] (l1) -- (l2);
-    \draw[->,ifTrue] (l2) -- (l3);
-    \draw[->,ifFalse] (l2) -- (l4);
-    \draw[->] (l4) -- (l5);
-    \draw[->,ifFalse] (l5) -- (l3);
-    \draw[->,ifTrue] (l5) -- (l6);
-  \end{tikzpicture}\hspace{-10mm}
-  \label{fig:derive:single_threaded_machine}
-  }
-  \subfigure[][Interfering {\StateMachine}, generated from the machine code in Figure~\ref{fig:derive:single_threaded_machine_inp:interfering}.]{
-    \begin{tikzpicture}
-      \node (l7) [stateSideEffect] {l7: \stStore{0}{\mathrm{global\_ptr}}};
-    \end{tikzpicture}
-    \label{fig:derive:single_threaded_machine_write}
-  }
-  \caption{}
+    }
+    &
+    \subfigure[][Crashing {\StateMachine}]{
+      \begin{tikzpicture}
+        \node (l1) at (0,2) [stateSideEffect] {l1: \stLoad{1}{\mathrm{global\_ptr}} };
+        \node (l2) [stateIf, below=of l1] {l2: \stIf{\smTmp{1} = 0}};
+        \node (l4) [stateSideEffect, below=of l2] {l4: \stLoad{2}{\mathrm{global\_ptr}} };
+        \node (l5) [stateIf, below=of l4] {l5: \stIf{\smBadPtr{\smTmp{2}}}};
+        \node (l6) at (-2, -5) [stateTerminal] {l6: \stCrash};
+        \node (l3) at (2, -5) [stateTerminal] {l3: \stSurvive };
+        \node [below = 0.1 of l3] {};
+        \draw[->] (l1) -- (l2);
+        \draw[->,ifTrue] (l2.east) to [bend left=45] (l3);
+        \draw[->,ifFalse] (l2) -- (l4);
+        \draw[->] (l4) -- (l5);
+        \draw[->,ifFalse] (l5) -- (l3);
+        \draw[->,ifTrue] (l5) -- (l6);
+      \end{tikzpicture}
+      \label{fig:derive:single_threaded_machine}
+    }
+    \\
+    \subfigure[][Interfering machine code]{
+      \raisebox{.8cm}{
+      \texttt{
+        \begin{tabular}{rlll}
+          & \multicolumn{3}{l}{interfering\_thread:} \\
+          4008fb: & movq & \$0x0, &global\_ptr\\
+        \end{tabular}
+      }
+      }
+      \label{fig:derive:single_threaded_machine_inp:interfering}
+    } &
+    \subfigure[][Interfering {\StateMachine}]{
+      \begin{tikzpicture}
+        \node (l7) [stateSideEffect] {l7: \stStore{0}{\mathrm{global\_ptr}}};
+        \node [left = .5 of l7] {};
+        \node [below = .1 of l7] {};
+      \end{tikzpicture}
+      \label{fig:derive:single_threaded_machine_write}
+    }
+    \\
+  \end{tabular}
+  \vspace{-12pt}
+  \caption{Two threads with a bug of the right form to be investigated
+    by {\technique}, showing their disassembly and {\StateMachines}.
+    This example is discussed further in
+    \autoref{sect:eval:simple_toctou}.}
   \label{fig:derive:single_threaded_machine_both}
 \end{figure}
 
-Figure~\ref{fig:derive:single_threaded_machine} shows an example of a
-simple single-threaded {\StateMachine}\footnote{This is the crashing
-  thread component of the simple\_toctou test discussed in more detail
-  in Section~\ref{sect:eval:simple_toctou}.}.  It illustrates a simple
-time-of-check, time-of-use race: the program loads from
-\verb|global_ptr| twice in quick succession, validating the result of
-the first and using the result of the second.  It is straightforward
-to read off from this diagram that the program might crash if some
-other thread modifies \verb|global_ptr| in between the two loads, and
-that it will otherwise survive.  Notice that \verb|4006a7|, the
-instruction which crashes, is not itself represented in the
-{\StateMachine}: by the time that instruction executes, the program is
-either doomed to crash or has definitely avoided the bug, and so that
-instruction is irrelevant to determining when and whether the bug can
-actually happen.
+\autoref{fig:derive:single_threaded_machine_both} shows a pair of
+threads which, when run concurrently, might exhibit a simple
+time-of-check, time-of-use bug: the crashing thread loads from
+\texttt{global\_ptr} twice, validating the first load and using the
+second one, while the interfering thread might in parallel set it to
+0.  The {\StateMachines} for these fragments of program are shown on
+the right; the translation should hopefully be clear.  Notice that
+\verb|4006a7|, the instruction which crashes, is not itself
+represented in the {\StateMachine}: by the time that instruction
+executes, the program is either doomed to crash or has definitely
+avoided the bug, and so that instruction is irrelevant to determining
+when and whether the bug can actually happen.
 
 \begin{sidewaysfigure}
   \begin{tikzpicture}
@@ -639,20 +602,19 @@ actually happen.
     \draw [->,ifFalse] (lB) -- (lD);
   \end{tikzpicture}
   \end{center}
+  \vspace{-6pt}
   \caption{{\STateMachine} from figure~\ref{fig:derive:cross_thread}
     after {\StateMachine} simplification.}
   \label{fig:derive:cross_thread_opt}
 \end{figure}
 
-{\STateMachines} become more interesting when they capture the results
-of multiple threads.  Figure~\ref{fig:derive:cross_thread} shows an
-example of such a {\StateMachine}.  It is the \gls{crossproduct} of
-the {\StateMachines} shown in
-Figure~\ref{fig:derive:single_threaded_machine_both}.  Note that even
-though the {\StateMachine} completely captures the concurrent
-behaviour of the two {\StateMachines}, it is itself completely
-deterministic, and hence is relatively easy to simplify.  The result
-of these simplifications is shown in
+{\STateMachines} become more interesting when they capture the
+behaviour of multiple threads.  Figure~\ref{fig:derive:cross_thread}
+shows the \gls{crossproduct} of the {\StateMachines} in the previous
+figure.  Note that even though the {\StateMachine} completely captures
+the concurrent behaviour of the two {\StateMachines}, it is itself
+completely deterministic, and hence is relatively easy to simplify.
+The result of these simplifications is shown in
 Figure~\ref{fig:derive:cross_thread_opt}.  Simplification is generally
 cheaper than symbolic execution, and so this can provide a very
 worthwhile performance improvement.
@@ -666,13 +628,8 @@ into a {\StateMachine}.  The {\StateMachine} analysis language is
 powerful enough to make translating individual instructions in
 isolation completely straightforward\footnote{{\Implementation} uses
   LibVEX \todo{cite} to decode AMD64 machine code before performing
-  this compilation.}.  Connecting them together is, however, slightly
-more difficult, as the edges in the dynamic \gls{cfg} do not match up
-precisely with those in the original program, so that, for instance,
-an instruction which would normally have a single successor might have
-multiple successors in the dynamic \gls{cfg}, or one which would
-normally have multiple successors might only have one, or even none at
-all.  There are three cases which require special care:
+  this translation.}.  Connecting them together is, however, slightly
+more difficult.  There are three cases which require special care:
 
 \begin{itemize}
 \item
@@ -687,66 +644,63 @@ all.  There are three cases which require special care:
 \item
   Some additional edges will have been introduced which do not
   correspond to anything in the original program.  In the example,
-  instruction $A_0$ had a single successor, $B_0$, in the original
-  program, but has multiple successors in the dynamic \gls{cfg}.  Each
-  of the $B_i$ \gls{cfg} nodes will be represented by a separate
+  instruction $A_0$ had a single successor, $B_0$, in the static
+  \gls{cfg} but has multiple successors in the dynamic one.  Each of
+  the $B_i$ \gls{cfg} nodes will be represented by a separate
   {\StateMachine} state, but there is no condition on the original
-  program's state which can be evaluated at $A_0$ which could
-  determine which of $B_i$ states the {\StateMachine} must execute
-  next.  {\Technique} handles these by converting them into
-  \StateMachine-level control flow using
-  $\controlEdge{}{}{}$\editorial{Looks a bit ugly like that.}
-  expressions which test the program's path through the \gls{cfg}.
-  See, for instance, state $A_0'$ in
-  Figure~\ref{fig:state_machine_for_cyclic_cfg}\footnote{There is a
-    close analogy here with the loop count variables used in
-    loop-extended symbolic execution\cite{Saxena2009}, and in fact an
-    early version of {\implementation} used an encoding much more
-    similar to LESE's.  Switching to $\controlEdge{}{}{}$ expressions
-    lead to a modest performance improvement due to avoiding some poor
-    interactions with {\technique}'s rather simplistic SMT solver.}.
-
-  Note that $\controlEdge{}{}{}$ expressions test control flow within
-  the dynamic \gls{cfg} rather than control flow within the original
-  program \gls{cfg}.  This can sometimes complicate the design of
-  crash enforcers; see Section~\ref{sect:enforce:succ} for more
-  details.
+  program's state which can be evaluated at $A_0$ which determines
+  which of $B_i$ states the {\StateMachine} must execute next.
+  {\Technique} handles converts these
+into {\StateMachine}-level
+  control flow using $\controlEdge{}{\!}{\!}$ expressions which test
+  the program's path through the dynamic \gls{cfg}.  See, for
+  instance, state $A_0'$ in
+  Figure~\ref{fig:state_machine_for_cyclic_cfg}.
 
 \item
   The \gls{cfg} can sometimes have multiple roots, each represented by
   a separate {\StateMachine} state, but the {\StateMachine} itself
   must have a single entry state.  {\Technique} handles these using
-  $\entryExpr{}$ expressions, which are boolean expressions which are
-  true if the thread entered the \gls{cfg} via a particular entry
-  point.  The start state of
-  Figure~\ref{fig:state_machine_for_cyclic_cfg} is an example.
+  $\entryExpr{}$ expressions, which simply test where a thread entered
+  The start state of Figure~\ref{fig:state_machine_for_cyclic_cfg} is
+  an example.
 
 \end{itemize}
 
+\begin{wrapfigure}{O}{6cm}
+  \vspace{-20pt}
+  \begin{centering}
+    \texttt{
+      \begin{tabular}{lllll}
+        \!\!\!\!\!\!A: & MOV  & rdx    &\!\!\!-> & \!\!\!rcx\\
+        \!\!\!\!\!\!B: & LOAD & *(rcx) &\!\!\!-> & \!\!\!rcx\\
+        \!\!\!\!\!\!C: & \multicolumn{4}{l}{JMP\_NE *(rcx + 8), 0, B} \\
+        \!\!\!\!\!\!D: & STORE & \$0 &\!\!\!-> & \!\!\!*(rcx)\\
+      \end{tabular}
+    }
+  \end{centering}
+  \vspace{-12pt}
+  \caption{}
+  \label{fig:derive:example_dissassembly1}
+  \vspace{-24pt}
+\end{wrapfigure}
 As a somewhat unrealistic example, suppose that the \gls{cfg} in
-Figure~\ref{fig:cyclic_cfg} had been generated from a program
-something like this:
-
-\begin{verbatim}
-A: MOV rdx -> rcx
-B: LOAD *(rcx) -> rcx
-C: JMP_IF_NOT_EQ *(rcx + 8), 0, B
-D: STORE $0 -> *(rcx)
-\end{verbatim}
-
-The \verb|JMP_IF_NOT_EQ| instruction is supposed to indicate that
-\verb|C| loads from the memory at \verb|rcx+8|, jumping to \verb|B| if
-it is non-zero and proceeding to \verb|D| otherwise.  This will
-produce an unrolled \gls{cfg} as in
-Figure~\ref{fig:unrolled_cyclic_cfg}, as already discussed, and a
-{\StateMachine} as shown in
-Figure~\ref{fig:state_machine_for_cyclic_cfg}.  The generated
-{\StateMachine} can then be converted to static single
-assignment\needCite{} form and passed to the rest of the analysis.
+\autoref{fig:cyclic_cfg} were generated from the program fragment shown
+in \autoref{fig:derive:example_dissassembly1}.  The \verb|JMP_NE|
+instruction is supposed to
+indicate that \verb|C| loads from the
+memory at \verb|rcx+8|, jumping to \verb|B| if it is non-zero and
+proceeding to \verb|D| otherwise.  This will produce a dynamic
+\gls{cfg} as in \autoref{fig:unrolled_cyclic_cfg}, as already
+discussed, and a {\StateMachine} as shown in
+\autoref{fig:state_machine_for_cyclic_cfg}.  The generated
+        {\StateMachine} can then be converted to static single
+        assignment\needCite{} form and passed to the rest of the
+        analysis.
 
 \begin{figure}
 \begin{tikzpicture}
-  \node[stateIf,initial above] (l1) {\stIf{\entryExpr{\mai{threadId}{A_0}}}};
+  \node[stateIf,initial left] (l1) {\stIf{\entryExpr{\mai{threadId}{A_0}}}};
   \node[stateSideEffect,below = of l1] (l2) {$A_0$: \state{Copy} $\smReg{rdx}{} \rightarrow \smReg{rcx}{}$};
   \node[stateIf,below = of l2] (l3) {$A_0'$: \stIf{\controlEdge{threadId}{A_0}{B_0}}};
   \node[stateSideEffect,below = of l3] (l4) {$B_0$: \state{Load} $\ast(\smReg{rcx}{}) \rightarrow \smReg{rcx}{}$};
@@ -801,21 +755,19 @@ is generally straightforwards and I do not give full details here.
 
 Library function handling is particularly important when investigating
 double-free bugs, as the actual crash will occur in the library
-function rather than in the program under investigation.
-{\Technique}'s implementation of the \texttt{free} function is shown
-in Figure~\ref{fig:library_free}.  The call to \texttt{free} which we
-suspect might release something which has already been released, and
-hence suffer a double-free crash, uses the crashing \texttt{free}
-implementation, while all of the other calls to \texttt{free} use the
-non-crashing one\footnote{Note that this includes other calls to
-  \texttt{free} in the \gls{crashingthread}.}.  The effects of these
-implementations are hopefully reasonably clear: non-crashing
-\texttt{free}s set the $\mathit{last\_free}$ address to the pointer
-which was released, and the crashing \texttt{free} then asserts that
-the pointer which it releases is not the one which was most recently
-released.  This scheme is clearly not capable of detecting all
-possible double-free bugs, but it is sufficient for the most common
-kind.
+function rather than in the program under investigation.  {\Technique}
+uses two implementations of \texttt{free}; one, the crashing
+\texttt{free}, for the call which is being investigated as potential
+crash site, and one, the non-crashing \texttt{free}, for every other
+call\footnote{Note that this includes other calls to \texttt{free} in
+  the \gls{crashingthread}.}.  Both are shown in
+\autoref{fig:library_free}.  The effects of these implementations are
+hopefully reasonably clear: non-crashing \texttt{free}s set the
+$\mathit{last\_free}$ address to the pointer which was released, and
+the crashing \texttt{free} then asserts that the pointer which it
+releases is not the one which was most recently released.  This scheme
+is clearly not capable of detecting all possible double-free bugs, but
+it is sufficient for the most common kind.
 
 \begin{figure}
   \subfigure[][Crashing \texttt{free}]{
@@ -838,7 +790,7 @@ kind.
     }
     \label{fig:library_free:non_crashing}
   }
-
+  \vspace{-12pt}
   \caption{{\StateMachine} implementations of the \texttt{free}
     function. $arg0$ is an expression for the platform ABI's first
     argument register; for Linux on AMD64, this is RDI.
@@ -879,6 +831,7 @@ kind.
   }
     {\hfill}
   }
+  \vspace{-12pt}
   \caption{{\StateMachine} models for the pthread\_mutex\_lock and
     pthread\_mutex\_unlock functions.  $\mathit{arg0}$ is an
     expression for the first argument register.  $\smTmp{1}$ is a
@@ -891,10 +844,11 @@ kind.
   \label{fig:library_mux}
 \end{figure}
 
-Figure~\ref{fig:library_mux} shows how the pthread\_mutex\_lock and
-pthread\_mutex\_unlock functions are implemented.  Note that the lock
-operation does not include any logic to wait for the lock to be
-released, but instead simply asserts that it is not currently held.
+The implementation of library-provided synchronisation functions is
+also for many bugs.  \autoref{fig:library_mux} shows how {\technique}
+implements pthread\_mutex\_lock and pthread\_mutex\_unlock.  Note that
+the lock operation does not include any logic to wait for the lock to
+be released, but instead simply asserts that it is not currently held.
 That is sufficient: the analysis will not consider any paths on which
 an assertion fails, and so these library models will ensure that it
 does not consider any paths which are prohibited by the mutex
@@ -919,39 +873,34 @@ The most important simplifications used by {\technique} are:
 \item Dead code elimination, to eliminate redundant updates to
   registers and {\StateMachine} temporaries.
 \item Register copy propagation, using the algorithm from the
-  dcc\needCite{} decompiler.  One minor extension present in
+  dcc\cite{Cifuentes1994} decompiler.  One minor extension present in
   {\implementation} but not dcc is that {\implementation} can make use
   of \state{Assert} side-effects during this transformation, so that,
   for instance, if $x$ is asserted to be less than $7$ then the
-  expression $x > 22$ can be rewritten to \false.  This does not
-  require any significant changes to the bulk of the algorithm, beyond
-  a few simple rules describing when such rewrites are valid.
+  expression $x > 22$ can be replaced by \false.  This does not
+  require any important changes to the algorithm, beyond a few simple
+  rules describing when such rewrites are valid.
 \item \state{$\Phi$} elimination.  {\STateMachines} are maintained in
   SSA form throughout most of the analysis process, so as to undo the
-  effects of compiler register coallescing and aid analysis, but the
-  resulting \state{$\Phi$} side-effects are themselves quite difficult
-  to analyse.  The problem is that the effect of a \state{$\Phi$}
+  effects of compiler register coalescing, but the resulting
+  \state{$\Phi$} side-effects are themselves quite difficult to
+  analyse.  The problem is that the effect of a \state{$\Phi$}
   side-effect depends on the control-flow context in which it is
-  executed, but it does not make that dependency explicit.  The
+  executed without making that dependency explicit.  The
   \state{$\Phi$} elimination simplification replaces the
   \state{$\Phi$} side-effects with expression BDDs (see
   \autoref{sect:sm_expr_language}) whose internal nodes are the
   program's control flow expressions and whose leaves are the value
   which would be selected by the \state{$\Phi$} in the appropriate
-  control flow context.  By making the control flow dependency
-  explicit, these make the \state{$\Phi$} much easier to analyse.
+  control flow context.  This makes the control flow dependency
+  explicit, and hence makes the {\StateMachine} easier to analyse.
 \item Aliasing analysis, which determines how \state{Store} and
-  \state{Load} operations might interact.  This allows most
-  \state{Load}s to be replaced with simpler \state{Copy} operations if
-  it can be shown that they always load the results of the same
-  \state{Store}, or with \state{Copy}s from $\smLoad{}$ expressions if
-  it can be shown that they always load the initial contents of
-  memory, and it allows \state{Store}s to be eliminated completely if
-  nothing every loads from that memory location.  This simplification
-  makes extensive use of the aliasing information in the
-  \gls{programmodel}; see \autoref{sect:program_model:dynamic_alias}.
+  \state{Load} operations might interact.  This values to be forwarded
+  from \state{Store}s to \state{Load}s, or from $\smLoad{}$s if a
+  \state{Load} always loads the initial contents of memory.  This is
+  often much cheaper than solving these aliasing problems during
+  symbolic execution.
 \end{itemize}
-
 There are also various minor peephole simplifications, such as
 removing empty \state{Atomic} regions or combining long chains of
 related \state{If} operations.
@@ -961,13 +910,7 @@ which represents all of the program's behaviour in the
 \gls{analysiswindow} and transform it to one which represents only the
 behaviour which is most relevant to the bug under investigation.  This
 reduces the complexity of symbolically executing them, giving a useful
-reduction in the total time to analyse a program\footnote{There is a
-  close analogy here with program slicing\cite{Weiser1981}.  The
-  important difference is one of intent: program slices are intended
-  to make a bug easier for a human to understand, whereas
-  {\technique}'s simplifiers are intended to make it easier for a
-  symbolic execution engine to process.  This is discussed in more
-  detail in \autoref{sect:rw:auto_characterise}.}.
+reduction in the total time to analyse a program.
 
 \section{Building the interfering thread's \StateMachines}
 \label{sect:derive:write_side}
@@ -981,18 +924,18 @@ of any other thread in the program, but this would clearly be
 completely impractical for all but the most trivial programs.
 Fortunately, most such traces can be dismissed without ever needing to
 explicitly enumerate them, and this usually makes it possible to
-complete the analysis in a sensible amount of time.
+complete the analysis in a reasonable amount of time.
 
 This reduction step depends on information in the \gls{programmodel},
 which has not been described yet (see \autoref{sect:program_model}).
-For now, assume that the \gls{programmodel} exposes a function
-$\mathit{aliasesWith}(i)$ from memory-accessing instructions to a set
-of instructions which might access the same memory location.  This
-makes it possible to derive three further sets of instructions: $i2c$,
-the set of stores which might alias with a load operation in the
-\gls{crashingthread}, $c2i$, the set of loads which might alias with a
-store in the \gls{crashingthread}, and $\beta = c2i \cup i2c$.  In
-other words, $i2c$ is the set instructions which, if added to the
+For now, assume that the \gls{programmodel} exposes a function from
+memory-accessing instructions to a set of instructions which might
+access the same memory location.  This makes it possible to derive
+three further sets of instructions: $i2c$, the set of stores which
+might alias with a load operation in the \gls{crashingthread}, $c2i$,
+the set of loads which might alias with a store in the
+\gls{crashingthread}, and $\beta = c2i \cup i2c$.  In other words,
+$i2c$ is the set instructions which, if added to the
 \gls{interferingthread}, might be involved in communicating from the
 \gls{interferingthread} to the crashing one, and $c2i$ is the set of
 \gls{interferingthread} instructions which might be involved in
@@ -1014,9 +957,9 @@ absence of such restrictions, {\technique} will consider every
 possible starting configuration, and so discarding those instructions
 is sound.
 
-On the other hand, it is not always desirable to discard all of these
-instructions, if the restrictions would have provided useful hints to
-later phases of the analysis.  For instance, if the bug to be
+While it is always safe, it is not always desirable to discard all of
+these instructions, if the restrictions would have provided useful
+hints to later phases of the analysis.  For instance, if the bug to be
 investigated is a bad pointer dereference, knowing that the value
 stored into a shared structure had previously been dereferenced by the
 interfering thread, and hence is definitely a valid pointer, is often
@@ -1027,75 +970,57 @@ small amount of additional context, provided that doing so does not
 increase the number of paths through the \gls{cfg} or cause the length
 of any path to exceed \gls{alpha}.  In other words, a \gls{cfg} rooted
 at instruction A will be extended to include its predecessor
-instruction B provided that B is A's only predecessor and provided
-that the longest path starting at A is at most $\alpha - 1$
-instructions long.
+instruction B provided that B is A's only predecessor and that the
+longest path starting at A is at most $\alpha - 1$ instructions long.
 
-The procedure for building interfering {\StateMachines} is then a
-variant of that used for building crashing ones: find all of the
-potentially interfering store instructions, build an acyclic \gls{cfg}
-which includes all traces of appropriate length which start with a
-member of $\beta$ and end with a member of $i2c$, potentially extend
-it with a small amount of extra context, and then compile the
-\gls{cfg} down to a {\StateMachine}.  The details are, however,
-slightly different, and I describe them in the next couple of
-sections.
+\subsection[Building the \glsentrytext{interferingthread} \glsentrytext{cfg}s]{Building the \gls{interferingthread} \glspl{cfg}}
 
-\subsection[Building the \glsentrytext{interferingthread} \glsentrytext{cfg}s]{Build the \gls{interferingthread} \glspl{cfg}}
+The procedure for building interfering {\StateMachines} is similar to
+that for building crashing ones: find $i2c$ and $\beta$ using the
+\gls{programmodel}, derive a cyclic static \gls{cfg}, unroll it to
+form an acyclic dynamic one, potentially extend it with a small amount
+of extra context, and then decompile the resulting \glspl{cfg} to a
+{\StateMachine}.  
 
-The input to this phase of the analysis is the sets $i2c$ and $\beta$,
-and the analysis must build a collection of dynamic \glspl{cfg} which
-cover all possible paths through the program which start with a member
-of $\beta$, end with a member of $i2c$, and contain at most
-\gls{alpha} instructions.  This is easier than building the crashing
-thread's \glspl{cfg} in the sense that both ends of the \gls{cfg} are
-``bounded'' by some well-defined instruction, whereas the crashing
-thread's \glspl{cfg} potentially extend arbitrarily far backwards; it
-is harder in the sense that the interfering thread \gls{cfg} builder
-must also cluster the instructions, deciding which should be included
-in a single \gls{cfg} and which analysed independently, whereas the
-crashing thread's \glspl{cfg} concern only a single instruction.  The
-overall result is that the interfering thread's \glspl{cfg} tend to be
-significantly smaller and easier to analyse than crashing thread ones
-but the unrolling algorithm itself is itself more involved.
+Building the static \gls{cfg} is simple: starting from each member of
+$\beta$, explore forwards for \gls{alpha} instructions (crossing
+function boundaries when necessary), merge the resulting \gls{cfg}
+fragments, and then discard any instructions which cannot reach a
+member of $i2c$ within \gls{alpha} instructions.  Note that this can
+sometimes generate multiple disjoint \gls{cfg} fragments.  These are
+treated independently, generating multiple \glspl{interferingthread}
+which will then be considered in turn by the rest of the analysis.
 
-As when building the crashing \gls{cfg}, the first step is to build
-the static \gls{cfg}.  This is simple: starting from each member of
-$\beta$, {\technique} explores forwards for \gls{alpha} instructions
-(crossing function boundaries when necessary), merges the resulting
-\gls{cfg} fragments, and then discards any instructions which cannot
-reach a member of $i2c$ within \gls{alpha} instructions.
-
-The resulting static \gls{cfg} is then converted to a dynamic one.  As
-with the crashing \glspl{cfg}, this is accomplished by duplicating
-nodes so as to unroll loops until any path which uses the loop more
-than once must be longer than \gls{alpha} instructions, at which point
-the loop-closing edges can be safely discarded.  There is, however,
-one important difference: in the crashing thread \gls{cfg}, we are
-interested in any path which terminates at a specific point, whereas
-in the interfering thread \gls{cfg} we need to preserve any path which
-goes from any member of $\beta$ to any member of $i2c$.  This makes it
-more difficult to determine when a loop has been unrolled
-sufficiently, as it is no longer sufficient to just check the distance
-to a nominated target instruction.  {\Technique} solves this problem
-by labelling each node in the graph with information about where it
-might occur in an interesting path.  The label on an instruction $l$
-then consists of two maps, $\mathit{min\_from}$ and
-$\mathit{min\_to}$, defined as:
-
+The static \glspl{cfg} must then converted to dynamic ones.  As with
+the crashing \glspl{cfg}, this is accomplished by duplicating nodes so
+as to unroll loops until any path which uses the loop more than once
+must be longer than \gls{alpha} instructions, at which point the
+loop-closing edges can be safely discarded.  Checking whether a loop
+has been sufficiently unrolled is, however, slightly more complicated
+in the interfering thread: in the crashing thread, the only paths to
+preserve are those which reach the potentially-crashing instruction
+within \gls{alpha} instructions, and so anything further than
+\gls{alpha} from that instruction can be discarded, whereas in the
+interfering \gls{cfg} we must preserve the \gls{alpha}-long paths from
+any member of $\beta$ to any member of $i2c$.  {\Technique} solves
+this problem by labelling each node in the graph with information
+about where it might occur in an interesting path.  The label on an
+instruction $l$ then consists of two maps, $\mathit{min\_from}$ and
+$\mathit{min\_to}$:
+\vspace{-1pt}
 \begin{enumerate}
 \item
   $\mathit{min\_from}_l(c)$ is the number of instructions on the
   shortest path from $c$ to $l$, where $c \in \beta$.
+\vspace{-12pt}
 \item
   $\mathit{min\_to}_l(i)$ is the number of instructions on the
   shortest path from $l$ to $i$, where $i \in i2c^\sharp$.
   $i2c^\sharp$ consists of all members of $i2c$, plus all of the
   \gls{cfg} nodes created by duplicating one of those instructions.
 \end{enumerate}
-
-The length of the shortest path from an instruction $c \in \beta$ to
-$i \in i2c^\sharp$ which goes via the instruction $l$ is then
+The length of the shortest path from an instruction $c
+\in \beta$ to $i \in i2c^\sharp$ via the $l$ is then
 $\mathit{min\_from}_l(c) + \mathit{min\_to}_l(i)$, and so it is safe
 to discard any instruction $l$ where
 \begin{displaymath}
@@ -1103,18 +1028,18 @@ to discard any instruction $l$ where
 \end{displaymath}
 
 The asymmetry, taking the distance from only ``true'' members of
-$\beta$ instructions but to any duplicate of a member of $i2c$, is
-perhaps surprising.  The key observation is that every path which
-starts at a duplicated member of $\beta$ will have a matching path
-which starts at the original member, and so the ones which start at
-the duplicate instruction are redundant\footnote{The symmetrical
-  statement is also true: every path which ends in a member of
-  $i2c^\sharp$ has a matching path which ends at a member of $i2c$.
-  It would therefore also be correct to discard paths which end at a
-  duplicate member of $i2c$.  It would not, however, be correct to
-  combine the two observations and discard all paths which either
-  start with a duplicate of $\beta$ or end with a duplicate of $i2c$,
-  as there would then be little point in having those duplicates.}.
+$\beta$ but to any duplicate of a member of $i2c$, is perhaps
+surprising.  The key observation is that every path which starts at a
+duplicated member of $\beta$ will have a matching path which starts at
+the original member, and so the ones which start at the duplicate
+instruction are redundant\footnote{The symmetrical statement is also
+  true: every path which ends in a member of $i2c^\sharp$ has a
+  matching path which ends at a member of $i2c$.  It would therefore
+  also be correct to discard paths which end at a duplicate member of
+  $i2c$.  It would not, however, be correct to combine the two
+  observations and discard all paths which either start with a
+  duplicate of $\beta$ or end with a duplicate of $i2c$, as there
+  would then be little point in having those duplicates.}.
 
 \begin{figure}
 \begin{algorithmic}
@@ -1137,6 +1062,7 @@ the duplicate instruction are redundant\footnote{The symmetrical
     \EndWhile
   \EndFor
 \end{algorithmic}
+\vspace{-6pt}
 \caption{Loop unrolling algorithm for interfering thread CFGs.
   \textsc{findEdgeToBeBroken} and \textsc{combineLabels} are described
   in the text.}
@@ -1152,8 +1078,8 @@ edges are duplicated.  This reflects the fact that interfering thread
 crashing thread \glspl{cfg} are built up backwards from the target
 instruction.
 
+\newpage
 The algorithm relies on two utility functions:
-
 \begin{itemize}
 \item \textsc{findEdgeToBeBroken} just finds the closing edge of some
   cycle in the graph.  The precise choice of edge is not
@@ -1176,12 +1102,8 @@ The algorithm relies on two utility functions:
   label which is just $\mathit{edge}.\mathit{start}$'s
   $\mathit{min\_from}$ with one added to every value.
 \end{itemize}
-
 The resulting \gls{cfg} can then be compiled to a {\StateMachine} in
-the same way as a \gls{crashingthread}'s \gls{cfg} is.  The only major
-difference is that the \gls{interferingthread}'s \glspl{cfg} can
-sometimes contain disjoint components, in which case each such
-component is compiled to a separate {\StateMachine}.
+the same way as a \gls{crashingthread}'s \gls{cfg} is.
 
 As an example, consider this cyclic \gls{cfg}:
 
@@ -1458,40 +1380,24 @@ Previous sections have described how to generate pairs of
 {\StateMachines} representing fragments of the program which might
 interact in interesting ways when run concurrently.  The next step is
 to determine, for each pair, whether running the two {\StateMachines}
-in parallel might lead to a crash, and if so under what circumstances
-it might do so.
+in parallel might lead to a crash, and if so under what circumstances.
 
-The core of the approach is to take a pair of {\StateMachines}, one
-representing the crashing thread and the other representing the
-interfering one, and convert them into a \gls{verificationcondition}
-using symbolic execution\cite{King1976}.  This
-\gls{verificationcondition} is satisfiable precisely when running the
-fragments of program represented by the two {\StateMachines} in
-parallel might cause to the bug being investigated to reproduce.  This
-technique is complete in the sense that if it reports that the program
-has no bugs then it definitely does not have any of the form being
-investigated, provided that the dynamic analysis is complete.  It is
-not, however, sound, in the sense that some of the bugs reported might
-not actually be reproducible, because it ignores most of the program's
-existing synchronisation, and this can lead to a significant number of
-false positives.  \autoref{sect:reproducing_bugs} describes one
-possible way of making it sound, at the expense of a significant loss
-of completeness.
-
-In addition to the verification condition itself, this phase also
-generates an \gls{inferredassumption}\editorial{I should probably be
-  citing something for that}: a condition which expresses when the
-{\StateMachines} would not predict a crash if run atomically, in
-either order.  A potential crash is only reported if both the
-\gls{inferredassumption} and the \gls{verificationcondition} might be
-true simultaneously.  For instance, it might be that the crashing
-thread will dereference a pointer stored in a particular stack
-location, regardless of the actions of the interfering thread.  The
-inferred assumption will then show that that stack location must
-contain a valid pointer, and so {\technique} will not report any
-potential crashes which depend on it containing an invalid pointer.
-This is consistent with the goal of only reporting concurrency bugs,
-and not simply any kind of bug in the program.
+The core of the approach is to take the pair of {\StateMachines} and
+use symbolic execution\cite{King1976} to convert them into two
+predicates over the {\StateMachine} state: the
+\gls{verificationcondition}, which is true when interleaving the two
+    {\StateMachines} might lead to a crash, and the
+    \gls{inferredassumption}, which is true when executing them
+    atomically in series will not.  {\Technique} reports a candidate
+    bug if it cannot show that the conjunction of these two predicates
+    is unsatisfiable.  Note that it will not report a candidate bug
+    just because it finds some way for the interleaving of the two
+    {\StateMachines} to crash if running them atomically from that
+    state would also have crashed; as discussed in
+    \autoref{sect:types_of_bugs}, {\technique} is only concerned with
+    atomicity violation bugs, and this provides a very useful
+    reduction in the number of false positives which must be checked
+    by run-time \glspl{bugenforcer}.
 
 \subsection{Symbolically executing {\StateMachines}}
 \label{sect:derive:symbolic_execute}
@@ -1549,18 +1455,6 @@ brief overview of the most important features here:
   skipped\editorial{Might want an example of that?  It's not very
     important, and a pain to explain properly.}.
 
-\item Memory operations, in addition to their main function of
-  accessing memory, are also used to infer that certain pointers are
-  definitely valid.  For instance, if the engine executes a
-  \state{Load} operation which loads from memory with a location given
-  by $\mathit{expr}$ it will add the constraint
-  $\neg\smBadPtr{\mathit{expr}}$ to the current path constraint, so
-  that $\mathit{expr}$ will not be treated as a bad pointer on that
-  path.  This means that if {\technique} is investigating a bad
-  pointer dereference and some fragment of program dereferences the
-  same pointer multiple times, it will only ever report a bug for the
-  first such dereference operation.
-
 \item Unlike most symbolic execution engines, the one used by
   {\implementation} does not attempt to detect when it revisits a
   previously-visited configuration.  This is safe because
@@ -1584,19 +1478,17 @@ The \gls{inferredassumption} is a condition on the program's state
 which ensures that the \glslink{crashingthread}{crashing} and
 \glslink{interferingthread}{interfering} threads do not crash when run
 atomically, in either order.  It has two parts: the \gls{ci-atomic}
-constraint, which gives the conditions under which running the
+constraint, the condition under which running the
 \glslink{crashingthread}{crashing} {\StateMachine} and then the
 \glslink{interferingthread}{interfering} {\StateMachine} survives, and
-the \gls{ic-atomic} one, which gives the conditions under which
-running the \glslink{interferingthread}{interfering} {\StateMachine}
-and then the \glslink{crashingthread}{crashing} one survives.  Each
-sub-condition is formed by concatenating the two input
-{\StateMachines} in the appropriate order, symbolically executing
-them, and then taking the disjunction of all paths which end in the
-{\stSurvive} state\footnote{Note, in particular, that paths which end
-  at {\stUnreached} are not included in the
-  \gls{inferredassumption}.}.  The \gls{inferredassumption} itself is
-then formed from the conjunction of these two sub-constraints.
+the \gls{ic-atomic} one, the condition under which running the
+\glslink{interferingthread}{interfering} {\StateMachine} and then the
+\glslink{crashingthread}{crashing} one survives.  Each sub-condition
+is formed by concatenating the two input {\StateMachines} in the
+appropriate order, symbolically executing them, and then taking the
+disjunction of all paths which end in the {\stSurvive} state.  The
+\gls{inferredassumption} itself is then formed from the conjunction of
+these two sub-constraints.
 
 One might reasonably ask why building the composite {\StateMachine} is
 superior to simply symbolically executing one {\StateMachine} until it
@@ -1611,22 +1503,11 @@ amount, even when the input {\StateMachines} were themselves
 simplified as far as possible.  This is because the composite
 {\StateMachine} is ``closed'': it contains all potentially relevant
 operations, and so the simplification passes can assume that there are
-no potentially interfering operations in another thread.  This gives
-the simplification passes far more scope to eliminate memory accesses.
-The result is that symbolically executing the simplified composite
-{\StateMachine} is almost always much faster than executing the input
-{\StateMachines} in turn.  \todo{Not much evidence of that.}
-
-This is a similar argument to that made previously by Khoo et
-al\cite{Khoo2010}.  In that work, the authors improved the efficiency
-of a symbolic execution engine by combining it with a much simpler and
-faster type checking system, producing something with the precision of
-a symbolic execution engine and performance similar to the type
-checker.  In much the same way, building the composite {\StateMachine}
-and simplifying it before symbolic execution starts is far cheaper
-than trying to symbolically execute the {\StateMachines} in isolation
-and then stitch them together via the end and start symbolic states.
-\todo{I really don't have a great deal of evidence for that.}
+no potentially interfering operations in another thread, giving them
+far more scope to eliminate memory accesses.  The result is that
+symbolically executing the simplified composite {\StateMachine} is
+almost always much faster than executing the input {\StateMachines} in
+turn.  \todo{Not much evidence of that.}
 
 \subsection{Building cross-product {\StateMachines}}
 \label{sect:using:build_cross_product}

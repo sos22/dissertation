@@ -1,8 +1,10 @@
 \chapter{Related work}
 \label{chapter:related_work}
 
-\todo{LOOM?}
-\todo{Comparison to STM block inference?}
+\todo{LOOM?}  \todo{Comparison to STM block inference?}  \todo{Could
+  do with a cite to \cite{Saxena2009} in here somewhere i.e. LESE.}
+\todo{Could also do with a cite of \cite{Khoo2010} i.e. the hybrid
+  type checking/symbolic execution thing.}
 
 \section{Automatically finding bugs}
 
@@ -115,61 +117,59 @@ both scalability and soundness.
 
 \subsection{Happens-before}
 
-Happens-before is another approach to the dynamic race detection
-problem.  The idea here is that certain types of happens-before edges
-are usually safe (e.g. the ones imposed by operating system-provided
-locking functions) while others are usually unsafe (e.g. the ones
-introduced by data races).  The tool can then detect likely errors by
-modelling the happens-before graph as the program runs and generating
-a warning whenever it detects one of those unsafe edges.  For
-efficiency reasons, most tools do not attempt to maintain the entire
-graph at run time, but instead maintain an approximation of the
+Lockset analysis is effective for programs which follow a compatible
+concurrency protocol, but not for general concurrent software.  There
+is a class of more powerful tools, such as RaceTrack\cite{Yu2005} or
+FastTrack\cite{Flanagan2009}, which can detect concurrency bugs whilst
+imposing far weaker requirements on the structure of the program to be
+analysed.  At their core, these tools consist of a mechanism to build
+a partial order of the program's accesses to memory, to determine
+which parts of that partial order might affect the program's
+operation, and to flag a potential error if the program is dependent
+on some unexpected ordering.  A tool might, for instance, declare that
+a program is allowed to depend on the order in which threads are
+granted a lock when they contend for it, but that it should not depend
+on the order of concurrent accesses to the same memory location.  For
+performance reasons, most tools based on this idea do not attempt to
+maintain the complete partial order but instead model only the
 relevant part of it using Lamport's vector clock
 algorithm\cite{Lamport1978}.
 
-Recent tools of this form include RaceTrack\cite{Yu2005} and
-FastTrack\cite{Flanagan2009}; Netzer\cite{Netzer1991} is one of the
-few which manipulate the graph without using vector clocks.  These
-tools are generally quite effective at finding places in the program's
-execution where behaviour depends on the details of the interleaving
-chosen by the hardware, and this does include most concurrency bugs.
+Schemes based on this idea can, in principle, be made sound, in the
+sense that they can report every place in a particular program's
+execution which depends on the order in which concurrent operations
+are executed.  Practical implementations, however, compromise
+soundness in order to reduce the false positive rate.  Consider, for
+instance, two programs $P$ and $P'$ where $P'$ is the same as $P$
+except for the introduction of the sequence ``release($x$);
+acquire($x$);'' in some part of the program which definitely holds
+lock $x$.  It is clearly possible for this transformation to introduce
+additional bugs, but the only edges introduced to the partial order
+will be between lock operations.  A tool which reported all of the
+lock edges would have a very high false positive rate for lock-based
+concurrent software, but one which does not cannot distinguish $P$ and
+$P'$ and so must have false negatives.
 
-Their main weakness, apart from their high performance overhead, is
-the need to classify edges according to whether they are safe or
-unsafe.  It is difficult to come up with any such classification which
-does not suffer from false negatives and which does not also suffer
-from an excessive number of false positives.  For instance, suppose
-that a program is correctly synchronised and is then modified to
-include the sequence ``release($x$); acquire($x$)'' at some point
-which holds the lock $x$.  It is clearly possible for this
-transformation to introduce a new bug into the program.  At the same
-time, the only edges which can possibly be introduced into the
-happens-before graph are from the release operation to an acquire in
-another thread or from a release in another thread to the acquire in
-this one.  The tool can either report these edges, in which case it
-will also be forced to report all other acquire and release edges and
-hence have a very high false positive rate, or it can not report the
-edges, and suffer a false negative.
+\todo{Why is this related?}
 
-\subsection{Concurrent aliasing}
-
-Chord\cite{Naik2006} can be thought of as the static equivalent of a
-happens-before race detector.  The idea here is to perform an initial
-static analysis which models the safe edges of the happens-before
-graph by discovering the program's existing synchronisation structure
-(what they refer to as the lock analysis phase), and to then perform a
-second static analysis to find all of the possibly unsafe ones (the
-escaping pairs computation).  These two partial models of the
-program's happens before graph can then be combined and compared so as
-to find any unsafe edges which are not prevented by the safe ones;
-these are reported as potential program bugs.  Their implementation is
-for Java, and depends to some extent on Java's type safety properties,
-but it would probably not be excessively difficult to generalise to
-non-typesafe languages such as C, at the cost of some precision.
-There would be some scope for combining their model of the program's
-safe edges with {\technique}'s analysis, although translating their
-source-level analysis to machine code-level behaviour might be
-challenging.
+Ordering-based schemes can also be applied statically.  An example of
+such a system is the Chord static race detector for
+Java\cite{Naik2006}.  At a high level, Chord works by first building a
+model of the program's existing synchronisation structure, in what
+they refer to as the lock analysis phase, and to then perform a second
+analysis to determine when two memory accesses in different threads
+might alias, which they call the escaping pairs computation.  The
+structure constructed the lock analysis phase describes the safe edges
+of a happens-before partial ordering and the escaping pairs
+computation describes the unsafe ones.  Any unsafe edges which are not
+prevented by safe ones are reported as potential program bugs.  Their
+would be some scope for combining their model of the program's safe
+edges into {\technique}'s \gls{programmodel}, reducing the number of
+concurrent interleavings which would have to be considered in the
+initial analysis phase and hence the number of
+\glspl{verificationcondition} requiring runtime verification, although
+converting between their source-level analysis and {\technique}'s
+machine code-level one might be challenging.
 
 \subsection{Schedule perturbation}
 
