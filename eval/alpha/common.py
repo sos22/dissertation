@@ -120,7 +120,7 @@ def parse_crashing(path, l, start_cntr = 0):
     sample["initial_crashing_states"] = int(w[4])
 
     line = l.readline().strip()
-    if line == "Child failed in run_in_child, signal 11":
+    if line in ["Child failed in run_in_child, signal 11", "OOM kill in checkWhetherInstructionCanCrash()"]:
         sample["bpm_oom"] = True
         sample["bpm_timeout"] = False
         return sample
@@ -191,7 +191,7 @@ def read_input():
     except:
         pass
     series = {}
-    for alpha in [30, 20, 10]:
+    for alpha in [40, 30, 20, 10]:
         nr_timeouts = 0
         base = {}
         deltas = {}

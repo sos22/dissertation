@@ -13,7 +13,7 @@ timeoutheight = 3
 figsep = 1
 
 min_count = 0.0
-max_count = 1000.0
+max_count = 2000.0
 min_time = 0.0001
 max_time = 60
 
@@ -53,7 +53,7 @@ s.sort()
 
 print "  %% Number of VCs generated"
 print "  \\draw[->] (0,%f) -- (0,%f);" % (offset, offset + common.figheight)
-for t in xrange(0,max_count+1,200):
+for t in xrange(0,max_count+1,400):
     print "  \\node at (0, %f) [left] {%s};" % (offset + count_to_y(float(t)), t)
     print "  \\draw [color=black!10] (0,%f) -- (%f, %f);" % (offset + count_to_y(float(t)), common.figwidth, offset + count_to_y(float(t)))
 print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {\\shortstack{Total number of\\\\\\glspl{verificationcondition}\\\\(solid)}};" % (offset + common.figheight / 2)

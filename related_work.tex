@@ -179,40 +179,19 @@ concurrently.  This suggests an alternative scheme for finding such
 bugs: simply alter the program's timing and see what happens.  This is
 the approach taken by DataCollider\cite{Erickson2010}.  Rather than
 trying to find races directly, it instead inserts delays into the
-program's execution so as to make races more likely, detects them when
-they occur, and then uses heuristics to determine how dangerous that
-race is.  This approach has a number of important advantages: it has
-no false positives (any race reported will definitely have happened);
-and it has reasonably low overhead (so the program's behaviour during
-analysis is likely to be at least broadly similar to that during
-normal execution); and it requires relatively little in the way of
-supporting machinery, so can be used in constrained environments such
-as kernel-mode drivers or embedded systems.  I have already described
-the algorithm in section~\ref{sect:eval:datacollider}.
-AtomRace\cite{Letko2008} uses a very similar technique to DataCollider
-to find bugs, and combines it with a set of simple rules for
-automatically fixing the bugs which it finds.
-
-The parallels with {\technique} are obvious.  The important
-differences are that {\technique} makes use of an initial analysis
-phase to discover the best places to insert delays, allowing it to
-reproduce bugs far faster than DataCollider, and that {\technique}
-is able to derive a far broader class of fixes than AtomRace.
-
-CTrigger\cite{Zhou} is another take on this idea.  The approach taken
-in that work is to perform an initial static analysis on a program so
-as to discover some potential atomicity violations and to then
-construct alternative schedules which attempt to trigger those
-violations, in the hope that some of them correspond to a bug.  This
-is, again, rather similar to {\technique}'s \gls{bugenforcer}
-mechanism.  There are several important differences between the two
-techniques: CTrigger operates on the program's source, whereas
-{\technique} operates on machine code; CTrigger considers only simple
-two-variable atomicity violations, whereas {\technique} considers a
-much broader class of atomicity violations; CTrigger aims to reproduce
-atomicity violations, whereas {\technique} attempts to reproduce
-actual bugs; and CTrigger reproduces simple instruction interleavings,
-whereas {\technique} can reproduce data-dependent ones.
+program's execution so as to make races more likely and detects them
+when they occur.  This approach has a number of important advantages:
+it has no false positives (any race reported will definitely have
+happened); it has reasonably low overhead (so the program's behaviour
+during analysis is likely to be at least broadly similar to that
+during normal execution); and it requires relatively little in the way
+of supporting machinery (so it can be used in constrained environments
+such as kernel-mode drivers or embedded systems).  I have already
+described the algorithm in \autoref{sect:eval:datacollider}.  The
+parallels with {\technique} are obvious.  The important difference is
+that {\technique} makes use of an initial analysis phase to discover
+the best places to insert delays, allowing it to reproduce bugs far
+faster than DataCollider.
 
 Chess\cite{Musuvathi2008} can be thought of as a more systematic
 approach to the same idea: rather than inserting delays at randomly
@@ -232,6 +211,21 @@ can sometimes miss interesting instruction interleavings if
 instructions race in some schedules and not others.  Despite this,
 Chess has been demonstrated to be an effective way of detecting many
 interesting bugs in real-world programs.
+
+CTrigger\cite{Zhou} is another take on this idea.  The approach taken
+in that work is to perform an initial static analysis on a program so
+as to discover some potential atomicity violations and to then
+construct alternative schedules which attempt to trigger those
+violations, in the hope that some of them correspond to a bug.  This
+is, again, rather similar to {\technique}'s \gls{bugenforcer}
+mechanism.  There are several important differences between the two
+techniques: CTrigger operates on the program's source, whereas
+{\technique} operates on machine code; CTrigger considers only simple
+two-variable atomicity violations, whereas {\technique} considers a
+much broader class of atomicity violations; CTrigger aims to reproduce
+atomicity violations, whereas {\technique} attempts to reproduce
+actual bugs; and CTrigger reproduces simple instruction interleavings,
+whereas {\technique} can reproduce data-dependent ones.
 
 \subsection{Stereotyping}
 

@@ -9,7 +9,7 @@ common.figheight = 7.0
 timeoutheight = 3
 figsep = 1
 
-max_cnt = 20.0
+max_cnt = 40.0
 min_cnt = 0.0
 min_time = 0.0001
 max_time = 60
@@ -36,7 +36,7 @@ common.alpha_axis(series)
 
 print "  %% Number of store CFGs"
 print "  \\draw[->] (0,0) -- (0,%f); " % common.figheight
-for t in xrange(0,21,2):
+for t in xrange(0,41,5):
     print "  \\node at (0, %f) [left] {%s};" % (count_to_y(float(t)), t)
     print "  \\draw[color=black!10] (0,%f) -- (%f,%f);" % (count_to_y(float(t)), common.figwidth, count_to_y(float(t)))
 print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {Number of interfering \\glspl{cfg}};" % (common.figheight / 2)
