@@ -35,7 +35,7 @@ def get_record(inp):
     record = {}
     for k in expected_keys:
         record[k] = { "dismiss": False,
-                      "failed": False,
+                      "failed": None,
                       "time": 0 }
     record["nr_store_cfgs"] = None
     startT = when
@@ -57,8 +57,10 @@ def get_record(inp):
         record[k]["time"] += end - when
         if endMsg == "timeout":
             if not k in ["simplify crashing machine", "derive interfering CFGs"]:
-                sys.stderr.write("Failure at %s\n" % k)
-            record[k]["failed"] = True
+                sys.stderr.write("Failure at %s (%s)\n" % (k, endMsg))
+            record[k]["failed"] = "timeout"
+        elif endMsg == "out of memory":
+            record[k]["failed"] = "oom"
         else:
             assert endMsg[:5] == "stop "
             assert endMsg[5:] == k
@@ -92,51 +94,53 @@ def time_stat(name, samples):
     print "%s: $%f \pm_\mu %f$" % (name, mu, sd)
 
 nr_early_out = 0
+nr_timeouts_build_crashing = 0
+nr_ooms_build_crashing = 0
+nr_early_timeout = 0
+nr_early_oom = 0
+time_samples_bcm = []
+time_samples_c_atomic = []
+nr_no_interfering = 0
+no_interfering_denum = 0
+time_samples_dic = []
+samples_iperc = []
 for s in series:
     if s["early-out check"]["dismiss"]:
         nr_early_out += 1
-count_stat("Nr early out", nr_early_out, len(series))
-
-nr_early_timeout = 0
-for s in series:
-    if s["simplify crashing machine"]["failed"] or s["derive interfering CFGs"]["failed"]:
-        nr_early_timeout += 1
-count_stat("Nr early timeout", nr_early_timeout, len(series) - nr_early_out)
-
-time_samples = []
-for s in series:
-    if s["early-out check"]["dismiss"] or s["simplify crashing machine"]["failed"] or s["derive interfering CFGs"]["failed"]:
         continue
-    time_samples.append(s["build crashing CFG"]["time"] +
-                        s["compile crashing machine"]["time"] +
-                        s["GC"]["time"] +
-                        s["simplify crashing machine"]["time"])
-time_stat("build crashing machine", time_samples)
-
-nr_no_interfering = 0
-nr_avail = 0
-for s in series:
-    if s["early-out check"]["dismiss"] or s["simplify crashing machine"]["failed"] or s["derive interfering CFGs"]["failed"]:
+    if s["simplify crashing machine"]["failed"] == "timeout":
+        nr_timeouts_build_crashing += 1
         continue
-    nr_avail += 1
+    if s["simplify crashing machine"]["failed"] == "oom":
+        nr_ooms_build_crashing += 1
+    if s["derive interfering CFGs"]["failed"] == "timeout" or s["derive c-atomic"]["failed"] == "timeout":
+        nr_early_timeout+=1
+        continue
+    if s["derive interfering CFGs"]["failed"] == "oom" or s["derive c-atomic"]["failed"] == "oom":
+        nr_early_oom+=1
+        continue
+    time_samples_c_atomic.append(s["derive c-atomic"]["time"])
+    time_samples_bcm.append(s["build crashing CFG"]["time"] +
+                            s["compile crashing machine"]["time"] +
+                            s["GC"]["time"] +
+                            s["simplify crashing machine"]["time"])
+    no_interfering_denum += 1
     if s["derive interfering CFGs"]["dismiss"] or s["simplify crashing machine"]["dismiss"]:
         nr_no_interfering += 1
-count_stat("no interfering", nr_no_interfering, nr_avail)
-
-time_samples = []
-for s in series:
-    if s["early-out check"]["dismiss"] or s["simplify crashing machine"]["failed"] or s["derive interfering CFGs"]["failed"] or s["simplify crashing machine"]["dismiss"]:
         continue
-    time_samples.append(s["derive interfering CFGs"]["time"])
-time_stat("build interfering CFGs", time_samples)
-
-time_samples = []
-for s in series:
-    if s["early-out check"]["dismiss"] or s["simplify crashing machine"]["failed"] or s["derive interfering CFGs"]["dismiss"] or s["derive interfering CFGs"]["failed"] or s["simplify crashing machine"]["dismiss"]:
-        continue
+    time_samples_dic.append(s["derive interfering CFGs"]["time"])
     assert s["nr_store_cfgs"] != None
-    time_samples.append(s["nr_store_cfgs"])
-time_stat("interfering CFGs per crashing CFG", time_samples)
+    samples_iperc.append(s["nr_store_cfgs"])
+count_stat("Nr early out", nr_early_out, len(series))
+count_stat("Nr bcm timeout", nr_timeouts_build_crashing, len(series) - nr_early_out)
+count_stat("Nr bcm oom", nr_ooms_build_crashing, len(series) - nr_early_out)
+count_stat("Nr early timeout", nr_early_timeout, len(series) - nr_early_out - nr_timeouts_build_crashing - nr_ooms_build_crashing)
+count_stat("Nr early oom", nr_early_oom, len(series) - nr_early_out - nr_timeouts_build_crashing - nr_ooms_build_crashing)
+time_stat("derive c atomic", time_samples_c_atomic)
+time_stat("build crashing machine", time_samples_bcm)
+count_stat("no interfering", nr_no_interfering, no_interfering_denum)
+time_stat("build interfering CFGs", time_samples_dic)
+time_stat("interfering CFGs per crashing CFG", samples_iperc)
 
 # Okay, and now do a bootstrap to get error bars on the total number
 # of interfering CFGs.

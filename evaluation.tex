@@ -1995,8 +1995,10 @@ turn.  This did not find any bugs in pbzip2.
       \hline
     \end{tabular}
   \end{centering}
+  \vspace{-6pt}
   \caption{Time taken to process the Thunderbird bug, mean and
-    population standard deviation of ten runs.}
+    standard deviation of ten runs.}
+  \vspace{-12pt}
   \label{tab:eval:thunderbird:times}
 \end{wraptable}
 \verb|thunderbird| is Mozilla bug number 391259\cite{Mery2007}, a
@@ -2066,6 +2068,7 @@ both successfully reproduce the bug.
       \end{tabular}
     }
   }
+  \vspace{-6pt}
   \caption{The thunderbird bug.}
   \label{fig:eval:thunderbird}
 \end{figure}
@@ -2149,6 +2152,7 @@ still effective.
       \end{tabular}
     }
   }
+  \vspace{-6pt}
   \caption{The MySQL bug.}
   \label{fig:eval:mysqld}
 \end{figure}
@@ -2872,47 +2876,51 @@ that the aliasing enabled column of this table was produced from the
 same experiment as produced the \gls{w-isolation} enabled column in
 \autoref{table:eval:w-isolation}.
 
-There are two main observations to draw from this table: discarding
-the information from the dynamic analysis dramatically reduces the
-number of timeouts building the \gls{crashingthread} {\StateMachines},
-but even more dramatically increases the number of timeouts and time
-taken in the other phases of the analysis.  These two observations
-have the same explanation.  The various {\StateMachine} simplification
-steps depend almost completely on the information from the dynamic
-aliasing analysis in order to determine which memory accesses alias.
-Without that information, they can achieve very little, ensuring that
-they exit very quickly and the \gls{crashingthread} {\StateMachines}
-are all built very quickly, but also ensuring that the later analysis
-phases which make use of the {\StateMachines} perform very badly.
+The results are shown in \autoref{table:eval:effect_of_dyn}, using the
+same error indicators as \autoref{table:eval:w-isolation}.  The main
+conclusion to draw from this table is that discarding the information
+from the dynamic analysis makes {\technique} perform worse at every
+step: the time to derive C-atomic and the interfering \glspl{cfg}
+increases, the number of \glspl{cfg} increases, the time to process
+each \gls{cfg} increases, and the number of
+\glspl{verificationcondition} requiring run-timing checking increases.
+These results strongly suggest that the dynamic analysis is absolutely
+necessary for {\technique} to be useful at all.
 
 \begin{table}
   \begin{tabular}{|l|l|l|}
     \hline
-    & \multicolumn{2}{c|}{Dynamic aliasing analysis} \\
+    & \multicolumn{2}{c|}{Dynamic aliasing information} \\
     \hline
-                                                           & Enabled & Disabled \\
+                                                                & Enabled & Disabled \\
     \hline
-    Timeouts building \gls{crashingthread} {\StateMachines}& 245                    & 9 \\
-    Time to build \gls{crashingthread} {\StateMachine} & $0.5 \pm_\mu 0.1$* & $0.7 \pm_\mu 0.1$* \\
-    \Glspl{crashingthread} generating no \glspl{interferingthread} & 456                    & 7 \\
-    Timeouts building \gls{interferingthread} \glspl{cfg} & 0 & 2 \\
-    Time to build \gls{interferingthread} \glspl{cfg}, per \gls{crashingthread} & $1.5 \pm_\mu 0.3$* & $1.5 \pm_\mu 0.4$* \\
-    Number of \gls{interferingthread} \glspl{cfg} per \gls{crashingthread} & $5.1 \pm_\mu 0.5$ & $12 \pm_\mu 1$ \\
-    \hspace{5mm}Total number \gls{interferingthread} \gls{cfg} & 3819 & 4778 \\
-    Timeouts building \gls{interferingthread} {\StateMachines} & 17 & 130\\
-    \hspace{5mm}As percentage of \gls{interferingthread} \glspl{cfg} & 0.4\% & 3\% \\
-    Time to build each \glspl{interferingthread} {\StateMachine} & $0.11 \pm_\mu 0.02$* & $1.31 \pm_\mu 0.04$* \\
-    Timeouts in symbolic execution & 35 & 1601 \\
-    \hspace{5mm}As percentage of \glspl{interferingthread} & 0.9\% & 34\% \\
-    Symbolic execution time per \glspl{interferingthread} & $0.96 \pm_\mu 0.07$* & $3.9 \pm_\mu 0.3$* \\
-    Number of \glspl{verificationcondition} & 682 & 656 \\
-    \hspace{5mm}As percentage of \glspl{interferingthread} & 18\% & 14\% \\
-    \hspace{5mm}Per \gls{crashingthread} & 0.9 & 0.7 \\
+    Potentially-crashing instructions examined                  & 1000    & 1000 \\
+    Instructions dismissed without generating a {\StateMachine} & $20 \pm_b 1$\% & $20 \pm_b 1$\% \\
+
+    Time to build crashing {\StateMachine} *                    & $0.14 \pm_\mu 0.02$s & $0.31 \pm_\mu 0.03$s \\
+    Timeouts building crashing {\StateMachines}                 & $0.1 \pm_b 0.1$\% & $0.1 \pm_b 0.1$\% \\
+    Out of memory building crashing {\StateMachines}            & 0                & 0 \\
+
+    Time to build C-atomic                                      & $0.004 \pm_\mu 0.001s$ & $0.3 \pm_\mu 0.1s$ \\
+    Timeouts building C-atomic                                  & 0                   & $0.4 \pm_b 0.2$\% \\
+    Out of memory building C-atomic                             & 0                   & $0.1 \pm_b 0.1$\% \\
+
+    \Glspl{crashingthread} generating no interfering \glspl{cfg}& $48 \pm_b 1$\% & $41 \pm_b 1$\%\\
+
+    Time to build interfering \glspl{cfg}                       & $0.4 \pm_\mu 0.1$s & $1.6 \pm_\mu 0.3$s \\
+    Interfering \glspl{cfg} per crashing \gls{cfg}              & $6.9 \pm_\mu 0.4$ & $7.5 \pm_\mu 0.4$ \\
+
+    Time to process each interfering \gls{cfg}                  & $0.24 \pm_\mu 0.04$s & $3.5 \pm_\mu 0.2$ \\
+    Interfering \glspl{cfg} running out of memory               & $0.09 \pm_b 0.06$\% & $4.8 \pm_b 0.4$\% \\
+    Interfering \glspl{cfg} running out of time                 & $0.2 \pm_b 0.1$\% & $32.4 \pm_b 0.9$\% \\
+
+    Interfering \glspl{cfg} generating \glspl{verificationcondition}   & $12.7 \pm_b 0.7$\% & $73 \pm_b 1$\% \\
+    \Glspl{verificationcondition} per checked instruction & $0.29 \pm_{10000} 0.04$ & $1.3 \pm_{10000} 0.1$\\
     \hline
   \end{tabular}
-  \caption{Effects of the dynamic aliasing analysis.  *: mean and
-    standard deviation of mean for all runs which did not time out,
-    seconds.}
+  \caption{Effects of dynamic aliasing information on the bug-finding
+    analysis. *: excluding timeouts and instructions dismissed without
+    building a {\StateMachine}.}
   \label{table:eval:effect_of_dyn}
 \end{table}
 

@@ -72,7 +72,7 @@ def get_crashing(inp):
             (end, endMsg) = get_line(inp)
             intf_record[k]["time"] += end - when
 
-            if endMsg == "out of memory":
+            if endMsg == "out of memory" or endMsg[:15] == "start crashing " or endMsg == "run_in_child crashed, signal 6":
                 intf_record[k]["failed"] = "oom"
                 break
             elif endMsg == "timeout":
