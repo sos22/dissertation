@@ -1525,45 +1525,9 @@ cross-product of the two {\StateMachines}.  This is a new
 input {\StateMachine} and whose transitions correspond to advancing
 one or other of the two input {\StateMachines}.
 
-There is a close analogy here with the finite state machine
-cross-product operation, which is a new FSM whose states correspond to
-pairs of states in the input FSMs and whose transitions correspond to
-advancing one or other of the input FSMs.  The important difference is
-that, in an FSM cross-product, the two FSMs are independent and cannot
-influence each other's behaviour, whereas in a {\StateMachine} cross
-product they can do, and those influences are precisely what the cross
-product is intended to capture.
-
-There are some important subtleties involved in building the
-cross-product {\StateMachine}:
-
-\begin{itemize}
-\item The input {\StateMachines} might contain {\stStartAtomic} and
-  {\stEndAtomic} blocks, which are intended to indicate that some
-  fragment of the {\StateMachine} executes atomically.  It is
-  important that the output {\StateMachine} is constructed in a way
-  which respects those blocks.
-\item There will be many pairs of states in the two input
-  {\StateMachines} which cannot interact with each other in any way,
-  and so can be re-ordered without changing any interesting behaviour.
-  The output {\StateMachine} would ideally be constructed in a way
-  which avoids forcing later analyses to consider both orderings.  In
-  general, there may be many partial-order redundancies\cite{Alur1997}
-  between the two {\StateMachines}, and, for efficiency reasons, we
-  would like to remove as many of these as possible as early as
-  possible.
-\item The \gls{crossproduct} {\StateMachine} is only used to
-  investigate cases in which the two input {\StateMachines} are
-  interleaved, as the cases where they execute atomically will have
-  already been considered in the \gls{inferredassumption}.  The
-  \gls{crossproduct} {\StateMachine} should therefore be built in a
-  way which excludes paths where the input {\StateMachines} run
-  atomically.
-\end{itemize}
-
 \begin{figure}
   \begin{displaymath}
-    \textsc{configuration} = \left(\begin{array}{rrll}
+    \textsc{Configuration} = \left(\begin{array}{rrll}
       \multirow{2}{*}{\bigg\{} & \mathit{crashingState}: & \textsc{{\STateMachine} state}, & \multirow{2}{*}{\bigg\},}\\
                                & \mathit{crashingHasIssued}: & \textsc{Bool}\\
       \multirow{2}{*}{\bigg\{} & \mathit{interferingState}: & \textsc{{\STateMachine} state}, & \multirow{2}{*}{\bigg\},} \\
@@ -1571,291 +1535,24 @@ cross-product {\StateMachine}:
       \multicolumn{2}{r}{\mathit{atomic}:} & \multicolumn{2}{l}{\{ \varnothing, \mathit{crashing}, \mathit{interfering} \}}
     \end{array}\right)
   \end{displaymath}
-  \caption{\textsc{configuration} type for the cross-product algorithm.}
+  \caption{\textsc{Configuration} type for the cross-product algorithm.}
   \label{fig:cross_product:configuration}
 \end{figure}
 
-The algorithm used is actually rather simple.  The core idea is to
-identify each state of the output {\StateMachine} with a particular
-configuration of the two input {\StateMachines}, illustrated in
-\autoref{fig:cross_product:configuration}.  The output {\StateMachine}
-starts in a configuration with neither input {\StateMachine} in an
-atomic block, both {\StateMachines} at their initial state, and, and
-with neither having issued any memory accesses.  This initial
-configuration is then expanded into a full {\StateMachine} by applying
-the rewrite system shown in \autoref{fig:cross_product:algorithm}.
-This, in effect, exhaustively explores all of the configurations
-reachable from the initial one, building the output {\StateMachine} as
-it goes.
+The algorithm used is quite simple.  The core idea is to identify each
+state of the output {\StateMachine} with a particular
+\textsc{Configuration} of the two input {\StateMachines}, illustrated
+in \autoref{fig:cross_product:configuration}.  The output
+{\StateMachine} starts in a \textsc{Configuration} with neither input
+{\StateMachine} in an atomic block, both {\StateMachines} at their
+initial state, and with neither having issued any memory accesses.
+This initial \textsc{Configuration} is then expanded into a full
+{\StateMachine} by applying the rewrite system shown in
+\autoref{fig:cross_product:algorithm}, hence exploring all of the
+\textsc{Configuration}s reachable from the initial one and building
+the output {\StateMachine} in the process.
 
-\begin{figure}
-  \begin{subfloat}
-    \begin{tikzpicture}
-      \node[stateSideEffect,initial above] (lA) {$A$: \stLoad{1}{x} };
-      \node[stateIf,below = of lA] (lB) {$B$: \stIf{\smTmp{1} = 0} };
-      \node[stateSideEffect,below = of lB] (lC) {$C$: \stLoad{2}{x} };
-      \node[stateIf,below = of lC] (lD) {$D$: \stIf{\smBadPtr{\smTmp{2}}} };
-      \node[stateTerminal,below = of lD] (lH) {$H$: \stCrash };
-      \node[stateTerminal,right = 0.5 of lC] (lG) {$G$: \stSurvive };
-      \draw[->] (lA) -- (lB);
-      \draw[->,ifTrue] (lB) -- (lG);
-      \draw[->,ifFalse] (lB) -- (lC);
-      \draw[->] (lC) -- (lD);
-      \draw[->,ifTrue] (lD) -- (lH);
-      \draw[->,ifFalse] (lD) -- (lG);
-    \end{tikzpicture}
-    \caption{Crashing thread {\StateMachine} }
-  \end{subfloat}
-  \hspace{-5mm}
-  \begin{subfloat}
-    \begin{tikzpicture}
-      \node[stateIf,initial above] (lE) {$E$: \stIf{y \not= 0}};
-      \path (node cs:name=lE) ++(2.2,-1.5) node [stateSideEffect] (lF) {$F$: \stStore{0}{x}};
-      \node[stateTerminal,below = 2 of lE] (lI) {$I$: \stSurvive };
-      \draw[->,ifTrue] (lE) -- (lI);
-      \draw[->,ifFalse] (lE) -- (lF);
-      \draw[->] (lF) -- (lI);
-    \end{tikzpicture}
-    \caption{Interfering thread {\StateMachine} }
-  \end{subfloat}
-  \caption{A pair of {\StateMachines}.  $x$ is a global memory
-    location.  Figure~\ref{fig:cross_product_output} shows their
-    cross-product.}
-  \label{fig:cross_product_input}
-\end{figure}
-
-\begin{figure}
-  \begin{tikzpicture}[align=center]
-    \node[stateIf, initial above] (A) {(\{$A$, {\false}\}, \{$E$, {\false}\})\\\stIf{y \not= 0} };
-    \node[stateTerminal, right = of A] (B) {(\{$A$, {\false}\}, \{$I$, {\false}\})\\{\stUnreached} };
-    \node[stateIf, below = of A] (C) {(\{$A$, {\false}\}, \{$F$, {\false}\})\\\stIf{\happensBefore{A}{F}} };
-    \node[stateSideEffect, below = of C] (D) {$A$\\\stLoad{1}{x} };
-    \node[stateSideEffect, right = of C] (E) {$F$\\\stStore{0}{x} };
-    \node[stateIf, below = of D] (F) {(\{$B$, {\true}\}, \{$E$, {\false}\})\\\stIf{\smTmp{1} = 0} };
-    \node[stateTerminal, below = of E] (G) {(\{$A$, {\false}\}, \{$I$, {\true}\})\\\stUnreached };
-    \node[stateTerminal, right = of F] (H) {(\{$G$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
-    \node[stateIf, below = of F] (I) {(\{$C$, {\true}\}, \{$E$, {\false}\})\\\stIf{\happensBefore{C}{F}} };
-    \node[stateSideEffect, below = of I] (J) {$C$\\\stLoad{2}{x}};
-    \node[stateSideEffect, right = of I] (K) {$F$\\\stStore{0}{x}};
-    \node[stateIf, below = of J] (L) {(\{D, {\true}\}, \{$E$, {\false}\})\\\stIf{\smBadPtr{\smTmp{2}}}};
-    \node[stateSideEffect, right = of K] (M) {(\{$C$, {\true}\}, \{$I$, {\true}\})\\\stLoad{2}{x}};
-    \node[stateTerminal, below = of L] (N) {(\{$H$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
-    \node[stateTerminal, right = of N] (O) {(\{$G$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
-    \node[stateIf, below = of M] (P) {(\{D, {\true}\}, \{$I$, {\true}\})\\\stIf{\smBadPtr{\smTmp{2}}} };
-    \node[stateTerminal] at (5.5,-14.8) (Q) {(\{$G$, {\true}\}, \{$I$, {\true}\})\\\stSurvive };
-    \node[stateTerminal, below = of P] (R) {(\{$G$, {\true}\}, \{$I$, {\true}\})\\\stCrash };
-    \draw[->,ifTrue] (A) -- (B);
-    \draw[->,ifFalse] (A) -- (C);
-    \draw[->,ifTrue] (C) -- (D);
-    \draw[->,ifFalse] (C) -- (E);
-    \draw[->] (D) -- (F);
-    \draw[->] (E) -- (G);
-    \draw[->,ifTrue] (F) -- (H);
-    \draw[->,ifFalse] (F) -- (I);
-    \draw[->,ifTrue] (I) -- (J);
-    \draw[->,ifFalse] (I) -- (K);
-    \draw[->] (J) -- (L);
-    \draw[->] (K) -- (M);
-    \draw[->,ifTrue] (L) -- (N);
-    \draw[->,ifFalse] (L) -- (O);
-    \draw[->] (M) -- (P);
-    \draw[->,ifTrue] (P) -- (Q);
-    \draw[->,ifFalse] (P) -- (R);
-  \end{tikzpicture}
-  \caption{Cross product of the {\StateMachines} shown in
-    Figure~\ref{fig:cross_product_input}.}
-  \label{fig:cross_product_output}
-\end{figure}
-
-Figures~\ref{fig:cross_product_input}
-and~\ref{fig:cross_product_output} show an example of the
-cross-product algorithm.  The algorithm starts with the configuration
-(\{$A$, {\false}\}, \{$E$, {\false}\}), indicating that the crashing
-thread {\StateMachine} is in state $A$ and has not issued any memory
-accesses, and that the interfering thread {\StateMachine} is in state
-$E$ and has also not issued any memory accesses.  This matches rule
-\circled{4} in \autoref{fig:cross_product:algorithm}, which generates
-the state at the top-level of \autoref{fig:cross_product_output} and
-produces two configurations: (\{$A$, {\false}\}, \{$I$, {\false}\}),
-for when the condition is true, and (\{$A$, {\false}\}, \{$F$,
-{\false}\}), for when it is false.
-
-$I$ is a terminal state, and so the true successor configuration
-matches rule \circled{6} and expands to just \stUnreached.  This
-configuration corresponds to a path in which the interfering
-{\StateMachine} finishes before the crashing one has started, and so
-the whole path should be ignored by the later analysis; setting the
-result to \stUnreached achieves this.
-
-The false successor configuration, on the other hand, shows state $A$,
-a load in the \gls{crashingthread}, racing against state $F$, a store
-in the interfering one, matching rule \circled{9}.  The algorithm
-therefore produces a new $\stIf{}$ state which tests a happens-before
-expression $\happensBefore{A}{F}$ to decide which {\StateMachine} goes
-first.  The successors of this state will immediately issue the
-appropriate access and then move on to an appropriate configuration.
-In this case, that means either issuing $F$ and moving to
-configuration (\{$A$, {\false}\}, \{$I$, {\true}\}) or issuing $A$ and moving
-to configuration (\{$B$, {\true}\}, {$E$, {\false}\}).  These successor
-configurations are themselves further expanded until they eventually
-reach one which matches rule \circled{7} or \circled{8}, at which
-point the expansion finishes.
-
-Importantly, the cross-product {\StateMachine} can itself be
-simplified using the usual {\StateMachine} simplification passes, and
-this can often lead to useful simplifications even when the input
-{\StateMachines} have already been simplified as far as possible.
-Simplifying the example cross-product {\StateMachine} will produce the
-{\StateMachine} shown in Figure~\ref{fig:cross_product_output_opt}.
-In this case, the actual symbolic execution step will be trivial, and
-will report that the program will reach a {\stCrash} state precisely
-when $y = 0 \wedge \happensBefore{A}{F} \wedge LD(x) \not= 0 \wedge
-\happensBefore{F}{C}$; in other words, if $y$ is nonzero, the initial
-value of $x$ is non-zero, and statement F intercedes between
-statements A and C, precisely as desired.
-
-The simplifications needed in this example are quite simple, and it
-would have been possible to include equivalent optimisations in the
-symbolic execution engine itself.  This would be more difficult for
-more complex simplifications, for two reasons:
-
-\begin{itemize}
-\item Simplification passes can easily look ahead in the
-  {\StateMachine}, whereas symbolic execution primarily considers a
-  single state at a time.  Dead code elimination, for example, is much
-  easier to implement as a simplification to the {\StateMachine} than
-  as a change to the symbolic execution engine.
-\item The results of a simplification pass are inherently shared
-  across all paths which reach a particular state, whereas the
-  symbolic execution engine needs to perform additional work in order
-  to share results.
-\end{itemize}
-
-There is also an engineering consideration which argues in favour of
-building and simplifying the cross-product {\StateMachine}, rather
-than integrating equivalent optimisations into the symbolic execution
-engine: {\implementation} already needs all of the simplifiers in
-order to build the input {\StateMachines} to begin with, and so
-re-using them here halves the implementation effort.
-
-\begin{figure}
-  \centerline{
-  \begin{tikzpicture}
-    \node[stateSideEffect, initial] (A) {\stAssert{y = 0 \wedge \happensBefore{A}{F} \wedge \smLoad{x} \not= 0 \wedge \happensBefore{F}{C}} };
-    \node[stateTerminal, below = of A] (B) {\stCrash };
-    \draw[->] (A) -- (B);
-  \end{tikzpicture}
-  }
-  \caption{Result of simplifying {\StateMachine} shown in
-    Figure~\ref{fig:cross_product_output}.}
-  \label{fig:cross_product_output_opt}
-\end{figure}
-
-The algorithm used by {\technique} has some other properties not
-illustrated here:
-
-\begin{itemize}
-\item If the algorithm visits the same configuration multiple times
-  then it will re-use the previously-generated state rather than
-  applying the rules again.  In other words, the output
-  {\StateMachine} forms a DAG of states rather than necessarily being
-  tree-structured.  This means that the number of states in the output
-  {\StateMachine} grows as roughly $O(nm)$, where $n$ is the number of
-  states in the crashing thread {\StateMachine} and $m$ the number in
-  the interfering thread one, rather than in proportion to the number
-  of potential interleavings, which is $O(2^{\mathrm{min}(n,m)})$.
-  This makes it much easier to scale {\technique} to larger
-  {\StateMachines}.
-
-\item
-  Atomic blocks are correctly maintained.  Rules \circled{1},
-  \circled{2}, and \circled{3} ensure that if one of the other
-          {\StateMachines} enters an atomic block then the other will
-          not make any further progress until it exits again,
-          precisely as desired.
-
-\item The rules give in \autoref{fig:cross_product:algorithm} depend
-  on whether the two current states in the configuration are local or
-  non-local.  In the example, states $A$ and $F$ are considered to be
-  non-local, and hence trigger rule \circled{9} and generate a
-  $\happensBeforeEdge$ test.  If they had been local then they would
-  instead have triggered rule \circled{5} and only one possible
-  ordering would have been considered.  It is therefore important to
-  correctly determine which effects are which non-local.  The
-  definition used by {\technique} is that an access in the
-  \gls{crashingthread} is non-local if it could potentially alias with
-  any accesses in the \gls{interferingthread} which occur at or after
-  the \gls{interferingthread}'s current state, and conversely for
-  accesses in the \gls{interferingthread}.  This ensures that every
-  possible race between the two threads is correctly considered.
-
-  Note that whether an access is local or non-local depends on the
-  configuration.  For instance, $C$ is considered non-local in the
-  configuration ({$C$, \true}, {$E$, \false}), as it might alias with
-  $E$, but local in the configuration ({$C$, \true}, {$I$, \true}), as
-  in that configuration the interfering {\StateMachine} has finished
-  and there is nothing more to race with.  This is necessary to ensure
-  that the algorithm eventually terminates.
-
-\item 
-  Some configurations could satisfy more than one of the rules if, for
-  instance, both {\StateMachines} have simultaneously reached local
-  side-effects.  In that case, {\technique} prefers to advance the
-  {\StateMachine} whose current state has the smallest number of
-  successor states, as this tends to result in the smallest possible
-  output {\StateMachine}.  When both input {\StateMachines} have the
-  same number of successor states it advances the \gls{crashingthread}
-  {\StateMachine}.
-
-\item These rules will sometimes duplicate states in the input
-  {\StateMachines} into multiple places in the output one.  This could
-  potentially violate SSA form.  {\Technique} uses a further
-  post-processing step to restore the SSA invariant, introducing
-  additional variables and \state{$\Phi$} side-effects as necessary.
-\end{itemize}
-
-\subsection{Path explosion}
-
-One common problem in symbolic execution systems is path explosion:
-the number of paths through a program rises exponentially in the size
-of the program, and this can prevent na\"ive symbolic execution
-systems from being applied to realistically large programs.  In the
-case of \technique, there are two main causes of path explosion:
-
-\begin{itemize}
-\item
-  Aliasing.  If the various simplification passes and the dynamic
-  analysis cannot determine how memory accessing instructions alias
-  then the symbolic execution engine must consider every possible
-  aliasing pattern, of which there are $O(n^m)$, where $n$ is number
-  of \state{Load} operations and $m$ the number of \state{Store} ones.
-  This grows rather quickly in the number of unsolvable aliasing
-  problems, especially when the number of \state{Store}s in the
-  {\StateMachine} rises.  The use of lazy alias resolution helps
-  mitigate this to some extent, but does not eliminate it completely.
-  This represents one of the major limitations to \technique's
-  scalability.
-\item
-  Thread interleaving.  The cross-product {\StateMachine} will have
-  $O(nm)$ states, where $n$ is number of states in the read-side
-  {\StateMachine} and $m$ the number in the write-side one.  The
-  number of paths through the combined {\StateMachine} then grows as
-  $O(2^{nm})$, which again grows rather quickly.
-\end{itemize}
-
-The result is that, in the common case where the read-side
-{\StateMachine} consists mostly of \state{Load} operations and
-write-side one mostly of \state{Store} ones, the symbolic execution
-engine might have to consider up to $O((2n)^m)$ distinct paths when
-evaluating the cross-product {\StateMachine}.  This is obviously
-completely infeasible for even moderate values of $n$ and $m$.  For
-good performance, {\technique} relies on the various simplification
-and analysis techniques to reduce $n$ and $m$ to manageably small
-values.  Fortunately, as discussed in the evaluation, they are able to
-do so in a useful set of cases.
-
-\begin{landscape}
-\begin{figure}
+\begin{sidewaysfigure}
 \vspace{-1cm}
   \begin{displaymath}
     \begin{array}{cccp{5cm}c}
@@ -1949,8 +1646,277 @@ do so in a useful set of cases.
     grammar.  Only the most important features of the algorithm are
     shown here; refer to the text for a more complete description.}
   \label{fig:cross_product:algorithm}
+\end{sidewaysfigure}
+
+\begin{figure}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node[stateSideEffect,initial above] (lA) {$A$: \stLoad{1}{x} };
+      \node[stateIf,below = of lA] (lB) {$B$: \stIf{\smTmp{1} = 0} };
+      \node[stateSideEffect,below = of lB] (lC) {$C$: \stLoad{2}{x} };
+      \node[stateIf,below = of lC] (lD) {$D$: \stIf{\smBadPtr{\smTmp{2}}} };
+      \node[stateTerminal,below = of lD] (lH) {$H$: \stCrash };
+      \node[stateTerminal,right = 0.5 of lC] (lG) {$G$: \stSurvive };
+      \draw[->] (lA) -- (lB);
+      \draw[->,ifTrue] (lB) -- (lG);
+      \draw[->,ifFalse] (lB) -- (lC);
+      \draw[->] (lC) -- (lD);
+      \draw[->,ifTrue] (lD) -- (lH);
+      \draw[->,ifFalse] (lD) -- (lG);
+    \end{tikzpicture}
+    \caption{Crashing thread {\StateMachine} }
+  \end{subfloat}
+  \hspace{-5mm}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node[stateIf,initial above] (lE) {$E$: \stIf{y \not= 0}};
+      \path (node cs:name=lE) ++(2.2,-1.5) node [stateSideEffect] (lF) {$F$: \stStore{0}{x}};
+      \node[stateTerminal,below = 2 of lE] (lI) {$I$: \stSurvive };
+      \draw[->,ifTrue] (lE) -- (lI);
+      \draw[->,ifFalse] (lE) -- (lF);
+      \draw[->] (lF) -- (lI);
+    \end{tikzpicture}
+    \caption{Interfering thread {\StateMachine} }
+  \end{subfloat}
+  \caption{A pair of {\StateMachines}.  $x$ is a global memory
+    location.  Figure~\ref{fig:cross_product_output} shows their
+    cross-product.}
+  \label{fig:cross_product_input}
 \end{figure}
-\end{landscape}
+
+\begin{figure}
+  \begin{tikzpicture}[align=center]
+    \node[stateIf, initial above] (A) {(\{$A$, {\false}\}, \{$E$, {\false}\})\\\stIf{y \not= 0} };
+    \node[stateTerminal, right = of A] (B) {(\{$A$, {\false}\}, \{$I$, {\false}\})\\{\stUnreached} };
+    \node[stateIf, below = of A] (C) {(\{$A$, {\false}\}, \{$F$, {\false}\})\\\stIf{\happensBefore{A}{F}} };
+    \node[stateSideEffect, below = of C] (D) {$A$\\\stLoad{1}{x} };
+    \node[stateSideEffect, right = of C] (E) {$F$\\\stStore{0}{x} };
+    \node[stateIf, below = of D] (F) {(\{$B$, {\true}\}, \{$E$, {\false}\})\\\stIf{\smTmp{1} = 0} };
+    \node[stateTerminal, below = of E] (G) {(\{$A$, {\false}\}, \{$I$, {\true}\})\\\stUnreached };
+    \node[stateTerminal, right = of F] (H) {(\{$G$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
+    \node[stateIf, below = of F] (I) {(\{$C$, {\true}\}, \{$E$, {\false}\})\\\stIf{\happensBefore{C}{F}} };
+    \node[stateSideEffect, below = of I] (J) {$C$\\\stLoad{2}{x}};
+    \node[stateSideEffect, right = of I] (K) {$F$\\\stStore{0}{x}};
+    \node[stateIf, below = of J] (L) {(\{D, {\true}\}, \{$E$, {\false}\})\\\stIf{\smBadPtr{\smTmp{2}}}};
+    \node[stateSideEffect, right = of K] (M) {(\{$C$, {\true}\}, \{$I$, {\true}\})\\\stLoad{2}{x}};
+    \node[stateTerminal, below = of L] (N) {(\{$H$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
+    \node[stateTerminal, right = of N] (O) {(\{$G$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
+    \node[stateIf, below = of M] (P) {(\{D, {\true}\}, \{$I$, {\true}\})\\\stIf{\smBadPtr{\smTmp{2}}} };
+    \node[stateTerminal] at (5.5,-14.8) (Q) {(\{$G$, {\true}\}, \{$I$, {\true}\})\\\stSurvive };
+    \node[stateTerminal, below = of P] (R) {(\{$G$, {\true}\}, \{$I$, {\true}\})\\\stCrash };
+    \draw[->,ifTrue] (A) -- (B);
+    \draw[->,ifFalse] (A) -- (C);
+    \draw[->,ifTrue] (C) -- (D);
+    \draw[->,ifFalse] (C) -- (E);
+    \draw[->] (D) -- (F);
+    \draw[->] (E) -- (G);
+    \draw[->,ifTrue] (F) -- (H);
+    \draw[->,ifFalse] (F) -- (I);
+    \draw[->,ifTrue] (I) -- (J);
+    \draw[->,ifFalse] (I) -- (K);
+    \draw[->] (J) -- (L);
+    \draw[->] (K) -- (M);
+    \draw[->,ifTrue] (L) -- (N);
+    \draw[->,ifFalse] (L) -- (O);
+    \draw[->] (M) -- (P);
+    \draw[->,ifTrue] (P) -- (Q);
+    \draw[->,ifFalse] (P) -- (R);
+  \end{tikzpicture}
+  \caption{Cross product of the {\StateMachines} shown in
+    Figure~\ref{fig:cross_product_input}.  The $\mathit{atomic}$ field
+    of the configuration is always $\varnothing$ for these input
+    {\StateMachines} and is not shown.}
+  \label{fig:cross_product_output}
+\end{figure}
+
+Figures~\ref{fig:cross_product_input}
+and~\ref{fig:cross_product_output} show an example of the
+cross-product algorithm.  In this case there are no atomic blocks and
+so the $\mathit{atomic}$ field of the \textsc{Configuration} is not
+shown.  The algorithm starts with the configuration (\{$A$,
+{\false}\}, \{$E$, {\false}\}), indicating that the crashing thread
+{\StateMachine} is in state $A$ and has not issued any memory accesses
+and that the interfering thread {\StateMachine} is in state $E$ and
+has also not issued any memory accesses.  This matches rule
+\circled{4} in \autoref{fig:cross_product:algorithm}, which generates
+the state at the top-left of \autoref{fig:cross_product_output} and
+produces two new configurations: (\{$A$, {\false}\}, \{$I$,
+{\false}\}), for when the condition is true, and (\{$A$, {\false}\},
+\{$F$, {\false}\}), for when it is false.
+
+$I$ is a terminal state, and so the true successor
+\textsc{Configuration} matches rule \circled{6} and expands to just
+\stUnreached.  This \textsc{Configuration} corresponds to a path in
+which the interfering {\StateMachine} finishes before the crashing one
+has started.  Such paths will already have been considered when
+computing \gls{ic-atomic}, and hence should not contribute to the
+\gls{verificationcondition}.  Setting the end state to {\stUnreached}
+achieves that.
+
+The false successor \textsc{Configuration}, by contrast, shows state
+$A$, a load in the \gls{crashingthread}, racing against state $F$, a
+store in the interfering one, matching rule \circled{9}.  The
+algorithm therefore produces a new $\stIf{}$ state which tests a
+happens-before expression $\happensBefore{A}{F}$ to decide which
+{\StateMachine} goes first.  The successors of this state will
+immediately issue the appropriate access and then move on to an
+appropriate \textsc{Configuration}.  In this case, that means either
+issuing $F$ and moving to \textsc{Configuration} (\{$A$, {\false}\},
+\{$I$, {\true}\}) or issuing $A$ and moving to \textsc{Configuration}
+(\{$B$, {\true}\}, {$E$, {\false}\}).  These successor
+  \textsc{Configuration}s are themselves further expanded until they
+  eventually reach one which matches rule \circled{7} or \circled{8},
+  at which point the expansion finishes.
+
+Importantly, the cross-product {\StateMachine} can itself be
+simplified using the usual {\StateMachine} simplification passes, and
+this can often lead to useful simplifications even when the input
+{\StateMachines} have already been simplified as far as possible.
+Simplifying the example cross-product {\StateMachine} will produce the
+{\StateMachine} shown in Figure~\ref{fig:cross_product_output_opt}.
+In this case, the actual symbolic execution step will be trivial, and
+will report that the program will reach a {\stCrash} state precisely
+when $y = 0 \wedge \happensBefore{A}{F} \wedge LD(x) \not= 0 \wedge
+\happensBefore{F}{C}$; in other words, if $y$ is nonzero, the initial
+value of $x$ is non-zero, and statement F intercedes between
+statements A and C, precisely as desired.
+
+The simplifications needed in this example are quite simple, and it
+would have been possible to include equivalent optimisations in the
+symbolic execution engine itself.  This would be more difficult for
+more complex simplifications, for two reasons:
+
+\begin{itemize}
+\item Simplification passes can easily look ahead in the
+  {\StateMachine}, whereas symbolic execution primarily considers a
+  single state at a time.  Dead code elimination, for example, is much
+  easier to implement as a simplification to the {\StateMachine} than
+  as a change to the symbolic execution engine.
+\item The results of a simplification pass are inherently shared
+  across all paths which reach a particular state, whereas the
+  symbolic execution engine needs to perform additional work in order
+  to share results.
+\end{itemize}
+
+There is also an engineering consideration which argues in favour of
+building and simplifying the cross-product {\StateMachine}, rather
+than integrating equivalent optimisations into the symbolic execution
+engine: {\implementation} already needs all of the simplifiers in
+order to build the input {\StateMachines}, and so re-using them here
+halves the implementation effort.
+
+\begin{figure}
+  \centerline{
+  \begin{tikzpicture}
+    \node[stateSideEffect, initial] (A) {\stAssert{y = 0 \wedge \happensBefore{A}{F} \wedge \smLoad{x} \not= 0 \wedge \happensBefore{F}{C}} };
+    \node[stateTerminal, below = of A] (B) {\stCrash };
+    \draw[->] (A) -- (B);
+  \end{tikzpicture}
+  }
+  \caption{Result of simplifying {\StateMachine} shown in
+    Figure~\ref{fig:cross_product_output}.}
+  \label{fig:cross_product_output_opt}
+\end{figure}
+
+The algorithm used by {\technique} has some other properties not
+illustrated in this example:
+
+\begin{itemize}
+\item If the algorithm visits the same \textsc{Configuration} multiple times
+  then it will re-use the previously-generated state rather than
+  applying the rules again.  In other words, the output
+  {\StateMachine} forms a DAG of states rather than necessarily being
+  tree-structured.  This means that the number of states in the output
+  {\StateMachine} grows as roughly $O(nm)$, where $n$ is the number of
+  states in the crashing thread {\StateMachine} and $m$ the number in
+  the interfering thread one, rather than in proportion to the number
+  of potential interleavings, which is $O(2^{\mathrm{min}(n,m)})$.
+  This makes it much easier to scale {\technique} to larger
+  {\StateMachines}.
+
+\item
+  Atomic blocks are correctly maintained.  Rules \circled{1},
+  \circled{2}, and \circled{3} ensure that if one of the other
+          {\StateMachines} enters an atomic block then the other will
+          not make any further progress until it exits again,
+          precisely as desired.
+
+\item \todo{This is an obvious point badly explained.} The rules give
+  in \autoref{fig:cross_product:algorithm} depend on whether the two
+  current states in the \textsc{Configuration} are local or non-local.
+  In the example, states $A$ and $F$ are considered to be non-local,
+  and hence trigger rule \circled{9} and generate a
+  $\happensBeforeEdge$ test.  If they had been local then they would
+  instead have triggered rule \circled{5} and only one possible
+  ordering would have been considered.  It is therefore important to
+  correctly determine which effects are non-local.  It is not
+  sufficient to simply consider whether the current
+  \gls{crashingthread} memory access might alias with the current
+  \gls{interferingthread} one, as even when those two do not interfere
+  it is possible for the \gls{crashingthread} access to race with
+  something later in the \gls{interferingthread}, or vice versa.  To
+  determine whether the current crashing access is thread-local,
+  {\technique} looks ahead through the interfering {\StateMachine},
+  and considers the crashing access to be non-local if it could alias
+  with any possible future interfering memory access, and likewise for
+  the current interfering access.  This ensures that every possible
+  ordering of racing accesses between the two threads is correctly
+  considered.
+
+\item 
+  Some \textsc{Configuration}s could satisfy more than one of the rules if, for
+  instance, both {\StateMachines} have simultaneously reached local
+  side-effects.  In that case, {\technique} prefers to advance the
+  {\StateMachine} whose current state has the smallest number of
+  successor states, as this tends to result in the smallest possible
+  output {\StateMachine}.  When both input {\StateMachines} have the
+  same number of successor states it advances the \gls{crashingthread}
+  {\StateMachine}.
+
+\item These rules will sometimes duplicate states in the input
+  {\StateMachines} into multiple places in the output one.  This could
+  potentially violate SSA form.  {\Technique} uses a further
+  post-processing step to restore the SSA invariant, introducing
+  additional variables and \state{$\Phi$} side-effects as necessary.
+\end{itemize}
+
+\subsection{Path explosion}
+
+One common problem in symbolic execution systems is path explosion:
+the number of paths through a program rises exponentially in the size
+of the program, and this can prevent na\"ive symbolic execution
+systems from being applied to realistically large programs.  In the
+case of \technique, there are two main causes of path explosion:
+
+\begin{itemize}
+\item
+  Aliasing.  If the various simplification passes and the dynamic
+  analysis cannot determine how memory accessing instructions alias
+  then the symbolic execution engine must consider every possible
+  aliasing pattern, of which there are $O(n^m)$, where $n$ is number
+  of \state{Load} operations and $m$ the number of \state{Store} ones.
+  This grows rather quickly in the number of unsolvable aliasing
+  problems.  The use of lazy alias resolution helps mitigate this to
+  some extent, but does not eliminate it completely.  This represents
+  one of the major limitations to \technique's scalability.
+\item
+  Thread interleaving.  The cross-product {\StateMachine} will have
+  $O(nm)$ states, where $n$ is number of states in the read-side
+  {\StateMachine} and $m$ the number in the write-side one.  The
+  number of paths through the combined {\StateMachine} then grows as
+  $O(2^{nm})$, which again grows rather quickly.
+\end{itemize}
+
+The result is that, in the common case where the read-side
+{\StateMachine} consists mostly of \state{Load} operations and
+write-side one mostly of \state{Store} ones, the symbolic execution
+engine might have to consider up to $O(2^{nm}.n^m)$ distinct paths when
+evaluating the cross-product {\StateMachine}.  This is obviously
+completely infeasible for even moderate values of $n$ and $m$.  For
+good performance, {\technique} relies on the various simplification
+and analysis techniques to reduce $n$ and $m$ to manageably small
+values.  Fortunately, as discussed in the evaluation, they are able to
+do so in a useful set of cases.
 
 \section{The W isolation assumption}
 \label{sect:derive:w_isolation}
@@ -1962,11 +1928,9 @@ concerned with bugs in which two threads are simultaneously operating
 on the same data structure.  This could sensibly be further restricted
 to bugs in which the \gls{interferingthread} is modifying a structure
 which the \gls{crashingthread} is reading, rather than having to
-consider cases in which both threads modify the structure.  In other
-words, it can be restricted to bugs in which the data flow is only
-from the \gls{interferingthread} to the crashing one.
-{\Implementation} can configured to look only for that kind of bug, by
-making the \gls{w-isolation} assumption: that the
+consider cases in which both threads modify the structure.
+{\Implementation} can be configured to look only for that kind of bug,
+by making the \gls{w-isolation} assumption: that the
 \gls{interferingthread} never loads any locations which have been
 stored to by the \gls{crashingthread}.
 
@@ -1983,19 +1947,20 @@ The \gls{w-isolation} assumption enables three main optimisations:
   load any location stored to by the \gls{crashingthread} then $c2i$
   is empty and $\beta = i2c$ (see \autoref{sect:derive:write_side}).
 \item
-  It simplifies the calculation of the \gls{ci-atomic} constraint.  If
-  the \gls{w-isolation} holds then the \gls{crashingthread} cannot
-  influence the behaviour of the interfering one, and so
-  \gls{ci-atomic} becomes simply C-atomic~$\wedge$~I-atomic, where
-  C-atomic is the condition for the \gls{crashingthread} to survive
-  when run in isolation and I-atomic the equivalent condition on the
-  \gls{interferingthread}.  I-atomic is then always implied by
-  \gls{ic-atomic}, because of the way the latter is constructed, and
-  so \gls{ci-atomic} can be replaced with just C-atomic.  C-atomic
-  depends on the \gls{crashingthread} only, and so does not need to be
-  recalculated for every \gls{interferingthread}, which can provide a
-  useful performance when there are a large number of
-  \glspl{interferingthread} for a single crashing one.  \todo{Yurk.}
+  It simplifies the calculation of the
+  \gls{inferredassumption}~=~\gls{ci-atomic}~$\wedge$~\gls{ic-atomic}.
+  When the \gls{w-isolation} assumption holds
+  \gls{ci-atomic}~=~C-atomic~$\wedge$~I-atomic, where C-atomic is the
+  condition for the \gls{crashingthread} to survive when run in
+  isolation and I-atomic the equivalent for the interfering one, as
+  the \gls{crashingthread} cannot influence the behaviour of the
+  interfering one.  \gls{ic-atomic}~$\Rightarrow$~I-atomic, and so the
+  \gls{inferredassumption} becomes simply
+  C-atomic~$\wedge$~\gls{ic-atomic}.  C-atomic does not depend on the
+  \gls{interferingthread} at all, and so can be cached between
+  multiple \glspl{interferingthread} for the same
+  \gls{crashingthread}, which can sometimes provide a useful
+  performance improvement.
 \end{itemize}
 
 The analysis is almost always faster with the \gls{w-isolation}
@@ -2047,28 +2012,23 @@ which is to be investigated, but is generally straightforwards.
 
 Many of the algorithms used by {\technique} require far more time in
 their worst case than in their expected case, in many cases by many
-orders of magnitude.  This is quite irritating when the analysis is
-being used to investigate a specific bug, as it will occasionally take
-so long that it effectively fails to complete ever.  In effect, the
-analysis has some failure rate, which is tolerable when the failure
-rate is quite small.  It is more of a problem when the analysis is
-applied speculatively to a very large number of potential bugs, as
-even a very small number of instructions which take a very long time
-would cause the entire analysis to take an implausible amount of time.
-Suppose, for instance, that the analysis completes in 500ms in 99.99\%
-of cases but takes three years in the remaining 0.01\% of cases.  An
-analysis which fails 0.01\% of the time would still be quite useful,
-and so this is reasonable for analysing specific bugs.  On the other
-hand, if the analysis is run 10,000 times then the probability of one
-of the steps taking three years is 63\%, and an analysis which fails
-two times in three is much less useful.
+orders of magnitude.  This is irritating but tolerable when the
+analysis is being used to investigate a specific bug, but far more of
+a problem when the analysis is applied speculatively to a very large
+number of potential bugs.  Suppose, for instance, that the analysis
+completes in 500ms in 99.9\% of cases but takes three years in the
+remaining 0.1\% of cases.  An analysis which fails 0.1\% of the time
+would still be quite useful, and so this is reasonable for analysing
+specific bugs.  On the other hand, if the analysis is run 10,000 times
+then the probability of one of the steps taking three years is very
+close to one, and the analysis is effectively useless.
 
 {\Technique} works around this problem by applying timeouts to the
-various analysis steps.  This ensures that {\technique} can still
-produce some useful results in a reasonable time even when it
-occasionally encounters one of its bad cases.  {\Implementation} uses
-two independent timeouts: one for the per-\gls{crashingthread} work,
-such as deriving the crashing {\StateMachine} or the interfering
+various analysis steps, ensuring that it can produce at least some
+useful results in a reasonable time even when it occasionally
+encounters one of its bad cases.  {\Implementation} uses two
+independent timeouts: one for the per-\gls{crashingthread} work, such
+as deriving the crashing {\StateMachine} or the interfering
 \glspl{cfg}, and one for the per-\gls{interferingthread} work, such as
 deriving \gls{ic-atomic} or the final satisfiability check.  These
 timeouts are both set by default to 60 seconds.  I discuss the effects
@@ -2117,85 +2077,53 @@ local variables.
 
 The non-stack memory model is more complex.  It is much more difficult
 to characterise the structure of non-stack memory, such as the heap,
-using static analysis, for two main reasons:
-
-\begin{itemize}
-\item First, the structure of non-stack memory is almost always more
-  complex than the structure of a stack frame, in terms of what
-  objects point at which other objects.  Heap objects are often part
-  of complicated pointer graphs, and will both contain and be referred
-  to by pointers, whereas most stack locations are simple variables.
-\item Non-stack locations can be accessed from anywhere in the
-  program, with little indication of which instructions access which
-  objects.  Stack locations, by contrast, are almost always accessed
-  only by the function which allocated them, with the vast majority of
-  other accesses made by functions called by that one.
-\end{itemize}
-
-These problems make it difficult to accurately model the heap even
-when the analysis tool has full access to the program's source
-code\needCite{}, and attempting to do so given only a binary is
-completely infeasible.
-
-\todo{Definitely need a better way of describing this.}
+using static analysis: not only is the heap structure itself more
+complicated, in terms of the number of objects which point at other
+objects, but the information is harder to locate, as it is no longer
+localised to any particular function or program module.  These
+problems make it difficult to accurately model the heap even when the
+analysis tool has full access to the program's source code\needCite{},
+and attempting to do so given only a binary is completely infeasible.
 
 {\Technique} instead relies on a dynamic analysis to model accesses to
-non-stack locations.  The result of this analysis is a table showing
-which pairs of instructions might access the same memory locations.
-In the pessimal case, where every instruction might alias with every
-other, this table will contain $n^2$ entries, where $n$ is the number
-of memory accessing instructions in the program.  That would be
-unfeasibly large for non-trivial programs.  Fortunately, the table is
-in practice very sparse, and so is usually perfectly manageable.
+non-stack locations.  The aim of this analysis is to discover the
+aliasing relation $\mathit{alias}(i, i')$ which is true precisely when
+instructions $i$ and $i'$ might access the same memory location.  The
+intuition is that most fields in most data structures are accessed by
+a relatively small number of instructions in the program, and so if it
+were possible to map from an instruction $i$ to the set of fields
+accessed by that instruction $\mathit{ifs}(i)$ then
+$\mathit{alias}'(i,i') = (\mathit{ifs}(i) \cap \mathit{ifs}(i) \not=
+\varnothing)$ would be a reasonable approximation to $\mathit{alias}$.
+Unfortunately, $\mathit{ifs}$ is a difficult function to build as it
+is defined in terms of structure fields, and there are no structure
+fields at the machine code level where {\technique} operates.
 
-The intuition behind this analysis is that most fields in most data
-structures are accessed by a relatively small number of instructions
-in the program, and so if it were possible to identify the field being
-accessed by a given instruction then that would make it easy to
-determine whether two instructions might interfere.  More concretely,
-if we had an instruction $\mathit{instr\_to\_fields}(i)$ mapping from
-an instruction to the set of fields which it can access then
-\begin{displaymath}
-\mathit{alias}(i, i') = (\mathit{instr\_to\_fields}(i) \cap \mathit{instr\_to\_fields}(i') \not= \varnothing)
-\end{displaymath}
-where $\mathit{alias}(i, i')$ is an alias function which is true when
-there is some possibility of instructions $i$ and $i'$ accessing the
-same memory location.  Unfortunately, the $\mathit{instr\_to\_field}$
-function is difficult to express for binary programs, even with
-perfect information, because fields are a high-level language
-construct and {\technique} must operate at the level of machine code.
-
-A little bit of algebra allows us to re-express $\mathit{alias}$ like
+A little bit of algebra allows us to re-express $\mathit{alias}'$ like
 so:
 \begin{displaymath}
-\mathit{alias}(i, i') = \left(i' \in \bigcup_{f \in \mathit{instr\_to\_fields}(i)} \mathit{field\_to\_instrs}(f)\right)
+\mathit{alias}'(i, i') = \left(i' \in \bigcup_{f \in \mathit{ifs}(i)} \mathit{ifs^{\dagger}}(f)\right)
 \end{displaymath}
-We now have two functions which are defined in terms of fields,
-$\mathit{instr\_to\_fields}$ and $\mathit{field\_to\_instrs}$, rather
-than one, which might appear to have made the problem worse.  The
-composition of the two functions, $\mathit{instr\_label}(i) =
-\{\mathit{field\_to\_instrs}(f) | f \in
-\mathit{instr\_to\_fields}(i)\}$, however, does not require the caller
-to make any reference to fields.  This suggests that it should be
-implementable, and it is this function which the dynamic analysis
-computes\footnote{In fact, the actual output of the {\implementation}
-  dynamic analysis phase is the function $i \rightarrow \cup
-  \mathit{instr\_label}(i)$, which flattens one level of
-  $\mathit{instr\_label}$'s set structure, as that is the most
-  convenient form for the later phases of the analysis.  Internally,
-  it computes the full $\mathit{instr\_label}$ function.}.
-
-The types of these functions are perhaps informative:
-
+where $\mathit{ifs}^{\dagger}$ is an inverse of $\mathit{ifs}$ which
+maps from a field to the set of instructions which access that field.
+This inverse is also expressed in terms of fields, and so it might
+appear to have made the problem worse.  The composition of the two
+functions, $\mathit{il}(i) = \{\mathit{ifs}^{\dagger}(f) | f \in
+\mathit{ifs}(i)\}$, however, does not require the caller to make any
+reference to fields.  The types of these functions are perhaps
+informative:
 \begin{itemize}
-\item $\mathit{instr\_to\_fields}: \mathit{instruction} \rightarrow \mathit{set}(\mathit{field})$
-\item $\mathit{field\_to\_instrs}: \mathit{field} \rightarrow \mathit{set}(\mathit{instruction})$
-\item $\mathit{instr\_label}: \mathit{instruction} \rightarrow \mathit{set}(\mathit{set}(\mathit{instruction}))$
+\item $\mathit{ifs}: \textsc{Instruction} \rightarrow \mathit{set}(\textsc{Field})$
+\item $\mathit{ifs}^{\dagger}: \textsc{Field} \rightarrow \mathit{set}(\textsc{Instruction})$
+\item $\mathit{il}: \textsc{Instruction} \rightarrow \mathit{set}(\mathit{set}(\textsc{Instruction}))$
 \end{itemize}
-
-In other words, $\mathit{instr\_label}$ is formed from
-$\mathit{instr\_to\_fields}$ by identifying fields with sets of
-instructions.
+In other words, $\mathit{il}$ is formed from $\mathit{ifs}$ by
+identifying fields with the sets of instructions which access them.
+This, finally, allows us to define the structure produced by the alias
+analysis: it is simply the set of all fields, expressed as sets of
+instructions, which might be returned by $\mathit{il}$.  Two
+instructions are considered to potentially alias if they ever appear
+in the same field.
 
 Given this conceptual work, implementing the dynamic analysis itself
 is quite simple.  {\Implementation} does so using a Valgrind skin.
@@ -2206,20 +2134,15 @@ instructions\footnote{{\Implementation} also tracks which accesses are
   reads, which writes, and which both, as this simplifies the
   implementation of the later analysis phases, but this does not
   meaningfully change the algorithm.}.  Any instruction which accesses
-that memory chunk adds itself to the set.  The set of all labels
-generated by the program, suitable indexed, is then an approximation
-to the $\mathit{instr\_label}$ function; if the dynamic analysis is
-able to observe all relevant program behaviour then it is precisely
-equal to $\mathit{instr\_label}$.
+that memory chunk adds itself to the set.  The result of the analysis
+is then the set of all labels generated by the program, suitable
+indexed.  Given that, implementing $\mathit{alias}'$ is trivial.
 
 This scheme, as presented, has one important weakness, which is that
-it assigns labels to addresses in memory.  Mapping back to high-level
-language constructs, this means that it is assuming that each address
-in the program, once allocated, corresponds to the same type of data
-structure throughout the program's life.  In other words, it assumes
-that memory is type stable\cite{Greenwald1996}.  This is generally
-reasonable for statically-allocated structures, such as those in the
-BSS segment\cite[Section~7.6]{Stevens}, but not for
+it identifies memory locations with fields.  In other words, it
+assumes that memory is type stable\cite{Greenwald1996}.  This is
+generally reasonable for statically-allocated structures, such as
+those in the BSS segment\cite[Section~7.6]{Stevens}, but not for
 dynamically-allocated structures such as those allocated via
 \texttt{malloc} or \texttt{operator new}.  {\Implementation} relies on
 being able to identify such dynamic memory allocators so that it can
@@ -2241,10 +2164,10 @@ initialise this structure using a series of stores.  These stores will
 never race, so it would be helpful to avoid spending excessive time
 considering what would happen if they did.  {\Technique} avoids doing
 so by marking blocks of memory returned from \texttt{malloc} as
-thread-local, and they remain so a pointer to them is stored in
+thread-local, and they remain so until a pointer to them is stored in
 non-stack memory.  Entries in the aliasing table include a flag
 indicating whether the access is thread-private or potentially racing,
-and this is used by later phases of the analysis to constraint the
+and this is used by later phases of the analysis to constrain the
 aliasing problem.
 
 This policy might seem to be overly conservative: a block of memory is
