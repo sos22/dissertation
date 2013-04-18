@@ -25,6 +25,9 @@ def parse_interfering(path, l, cntr):
     sample["early-out"] = False
     sample["generated_vc"] = None
     sample["gvc_time"] = None
+    if line == "Child timed out in run_in_child":
+        sample["gvc_timeout"] = True
+        return sample
     w = line.split()[1:]
     if len(w) != 5 or w[:3] != ["Interfering", "CFG", "has"]:
         fail("%s got bad ich line %s" % (path, line))
@@ -100,7 +103,11 @@ def parse_crashing(path, l, start_cntr = 0):
         l.close()
         return sample
     sample["early-out"] = False
-                
+
+    if line == "Child timed out in run_in_child":
+        sample["bpm_timeout"] = True
+        sample["bpm_oom"] = False
+        return sample
     w = line.split()
     if len(w) != 5 or w[0:3] != ["Crashing", "CFG", "has"] or w[-1] != "instructions":
         fail("%s doesn't start with CChi line (%s)" % (path, line))
@@ -146,7 +153,7 @@ def parse_crashing(path, l, start_cntr = 0):
         sample["skip_gsc"] = True
         return sample
     sample["skip_gsc"] = False
-    if line == "OOM kill in checkWhetherInstructionCanCrash()":
+    if line == "OOM kill in checkWhetherInstructionCanCrash()" or line == "Child failed in run_in_child, signal 6":
         sample["gsc_oom"] = True
         sample["gsc_timed_out"] = False
         return sample
@@ -191,7 +198,7 @@ def read_input():
     except:
         pass
     series = {}
-    for alpha in [40, 30, 20, 10]:
+    for alpha in [100, 75, 50, 40, 30, 20, 10]:
         nr_timeouts = 0
         base = {}
         deltas = {}

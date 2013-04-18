@@ -170,16 +170,11 @@ the interfering one), so that no single thread can evaluate the
 condition by itself.
 
 \Technique{} solves all of these problems by modelling the program as
-a message-passing system.  The core idea is to model a happens-before
-ordering X before Y as a message which is sent by X, after it
-completes, and received by Y, before it starts.  In the first example,
-there will be two messages, one from \texttt{l2} to \texttt{l9} and
-one from \texttt{l9} to \texttt{l5}.  The desired happens-before graph
-will be achieved precisely when all of these message operations
-succeed.  These messages are synchronous, in the sense that a message
-operation cannot complete unless both the sender and the receiver are
-simultaneously at the relevant instructions, which provides a
-convenient place in which to evaluate side-conditions.
+a message-passing system.  A happens-before ordering X before Y is
+modelled by a message sent by X, after it completes, and received by
+Y, before it starts.  In the first example, there will be two
+messages, one from \texttt{l2} to \texttt{l9} and one from \texttt{l9}
+to \texttt{l5}.
 
 \begin{wrapfigure}{r}{6cm}
   \vspace{-17pt}
@@ -198,17 +193,19 @@ convenient place in which to evaluate side-conditions.
   \label{fig:message_petri_net}
   \vspace{-20pt}
 \end{wrapfigure}
-\autoref{fig:message_petri_net} gives a Petri net semantics for the
-message operation.  One way of reading this diagram is that the
-process starts with two threads, in the two before locations, which
-are then merged into a single thread in the message operation
-transition, and which then split apart into separate threads in the
-two after places.  This suggests a possible strategy for evaluating
-the side-condition: if the message operation transition represents the
-merging of the two threads, it should be able to access both threads'
-local state, and so be able to evaluate the $\mathit{idx1} =
-\mathit{idx2}$ side-condition.  This is the strategy adopted by
-       {\technique}.
+These messages are synchronous, in the sense that a message operation
+cannot complete unless both the sender and the receiver are
+simultaneously at the relevant instructions, as illustrated by the
+Petri net in \autoref{fig:message_petri_net}.  One way of reading this
+diagram is that the process starts with two threads, in the two before
+locations, which are then merged into a single thread in the message
+operation transition, and which then split apart into separate threads
+in the two after places.  This suggests a possible strategy for
+evaluating the side-condition: if the message operation transition
+represents the merging of the two threads, it should be able to access
+both threads' local state, and so be able to evaluate the
+$\mathit{idx1} = \mathit{idx2}$ side-condition.  This is the strategy
+adopted by {\technique}.
 
 \section{Outline of algorithm}
 
@@ -225,18 +222,24 @@ At a high level, the algorithm used has the following phases:
   \autoref{sect:enforce:place_vcs}.
 \item
   Decide on a strategy for gaining control of the program at
-  appropriate points.  \autoref{sect:enforce:gain_control}
-  discusses how this is done.
+  appropriate points.  Discussion of how to do so is deferred to
+  \autoref{sect:enforce:gain_control}; for now, assume that there is
+  some mechanism to gain control of the program at arbitrary
+  instructions.
 \item
-  The results of the previous phases are then combined with the plan
-  interpreter, discussed in \autoref{sect:enforce:interpreting},
-  to produce an ELF shared object which can be loaded into the target
-  program to enforce the plan.  The interpreter can load several plans
-  at once, and so can attempt to enforce several bugs at the same
-  time; this is useful when the initial analysis phase generates a
-  large number of \glspl{verificationcondition} for bugs in different
-  parts of the program.
+  Combine the results of the previous phases with the plan
+  interpreter, discussed in \autoref{sect:enforce:interpreting}, and
+  compile the result into the final \gls{bugenforcer}.
 \end{itemize}
+
+In the case of {\implementation}, the \gls{bugenforcer} takes the form
+of an ELF shared object which can be loaded into the target program to
+enforce the plan.  It is also possible to combine multiple
+\glspl{bugenforcer} into a single shared object which will try to
+enforce all of the plans at the same time; this is useful when the
+initial analysis phase generates a large number of
+\glspl{verificationcondition} for bugs in different parts of the
+program.
 
 \section{Extracting the happens-before graph}
 \label{sect:enforce:slice_hb_graph}
@@ -265,12 +268,13 @@ At a high level, the algorithm used has the following phases:
 \end{wrapfigure}
 The first step in building a \gls{bugenforcer} is to extract the
 happens-before graph from the \gls{verificationcondition}, so that the
-\gls{bugenforcer} knows what instruction ordering it needs to enforce.
-This is most easily understood as a transformation on the BDD which
+\gls{bugenforcer} knows what instruction ordering it needs to enforce,
+and the side-condition which must be checked for each ordering.  This
+is most easily understood as a transformation on the BDD which
 represents the \gls{verificationcondition}.  Consider, for instance,
-the graph shown in \autoref{fig:reproducing:placement_eg_bug}.
-This is intended to indicate that the \gls{crashingthread} has a
-single instruction, $D_0$, that the \gls{interferingthread} has three
+the graph shown in \autoref{fig:reproducing:placement_eg_bug}.  This
+is intended to indicate that the \gls{crashingthread} has a single
+instruction, $D_0$, that the \gls{interferingthread} has three
 instructions, $A_1$, $B_1$, and $C_1$, and that the bug reproduces if
 either $x = 7$ and $D_0$ happens between $A_1$ and $B_1$ or if $y = 9$
 and $D_0$ happens between $B_1$ and $C_1$.
@@ -339,8 +343,7 @@ the one in \autoref{fig:reproducing:slice_eg:before}.  The
 \gls{verificationcondition} correctly represents the intended
 behaviour, but mixes the happens-before tests $\happensBeforeEdge$
 with tests of the program's ordinary state, like the tests of $x = 7$
-and $y = 9$, making it more difficult to determine what instruction
-ordering needs to be enforced.
+and $y = 9$, making it more difficult to enforce.
 \autoref{fig:reproducing:slice_eg:after} shows a
 semantically-equivalent BDD which is slightly easier to work with.
 Now all of the happens-before tests occur before any of the tests of
@@ -357,8 +360,7 @@ $\happensBefore{D_0}{B_1}$, $\happensBefore{A_1}{D_0}$, \circled{1}
 and ${\neg}\happensBefore{D_0}{B_1}$, $\happensBefore{D_0}{C_1}$,
 \circled{2}.  {\Technique} will therefore try to enforce two
 happens-before graphs, corresponding to the two ways in which the bug
-can reproduce.  The two side conditions will be evaluated
-independently.
+can reproduce.  The two side conditions will be checked independently.
 
 This example also illustrates the importance of side-condition
 checking.  One of the ways of reproducing this bug requires that $D_0$
@@ -374,27 +376,19 @@ two graphs are incompatible does not cause any actual problems.
 
 The computation complexity of BDD re-ordering operations is, in the
 worst case, $O(2^n)$ if the BDD moves from a particularly good
-ordering to a particularly bad one.  In practice, however, the
-complexity is usually tolerable, for several reasons:
-
-\begin{itemize}
-\item
-  Most bugs do not involve a particularly large number of
-  happens-before edges, and so $n$ is usually small (Musuvathi et
-  al\cite{Musuvathi2007}, for instance, obtained good results while
-  limiting the number of happens-before edges to at most 2).
-\item
-  The BDD ordering used by {\technique} usually places the
-  $\happensBeforeEdge$ expressions near the root of the BDD anyway,
-  and so the re-ordering does not usually need to touch very much of
-  the tree.
-\item
-  Most bugs do not have very complicated data-dependent happens-before
-  pattern, and so the initial $\happensBeforeEdge$ network part of the
-  re-ordered BDD usually only has to select between a small number of
-  conditions over the program's state.  This restricts the scope for
-  the BDD to grow exponentially.
-\end{itemize}
+ordering to a particularly bad one.  {\Technique} very rarely
+encounters this worst case, for several reasons.  Most simply, the BDD
+variable ordering used when deriving \glspl{verificationcondition}
+usually puts most of the happens-before tests near the root of the
+BDD, and so there is usually little need for extensive re-ordering
+during this phase.  Beyond that, most bugs do not have very complex
+data-dependent happens-before patterns, and so the initial
+$\happensBeforeEdge$ network part of the re-ordered BDD usually only
+has to select between a small number of conditions over the program's
+state, which further restricts the scope for excessive BDD growth.
+Finally, most bugs do not need to enforce a large number of
+happens-before edges; Musuvathi et al\cite{Musuvathi2007}, achieved
+good results enforce just two edges at a time.
 
 This does not, therefore, lead to an excessive increase in the cost of
 generating the enforcer.  Treating each graph's side condition
@@ -522,8 +516,8 @@ possible, so that the enforcer can avoid imposing unnecessary delays.
 \end{figure}
 
 Consider the example in \autoref{fig:place_conditions_example}.  The
-The side-condition to this bug depends on various values which have to
-be collected from the running program, referred to as the condition's
+side-condition to this bug depends on various values which have to be
+collected from the running program, referred to as the condition's
 inputs: $\textsc{rax}_1$, $\textsc{rbx}_1$, $\textsc{rcx}_1$, which
 are registers in the \gls{crashingthread}, $\textsc{rcx}_2$, a
 register in the interfering one, and $\controlEdge{1}{C}{D_0}$, an
@@ -637,15 +631,16 @@ for calculating when input expressions become available, are given in
 
 Once the input expression availability map has been calculated, the
 next step is to decide how to evaluate the side condition, and in
-particular at which \gls{cfg} nodes it should be evaluated.
-{\Technique} represents its side-conditions internally as BDDs, such
-as that shown in \autoref{fig:place_conditions_example:bdd1}.  The
-variable ordering within the BDD is largely arbitrary, and will not
-necessarily match closely with the order in which input expressions
-become available in the program \gls{cfg}.  In the example, the first
-variable in the BDD is the control-flow expression, but this is one of
-the last input expressions to become available, making it difficult to
-evaluate any part of the BDD early.
+particular at which \gls{cfg} nodes it should be evaluated.  As
+already discussed, {\technique} represents its side-conditions using
+BDDs, and the ordering of variables within the BDDs is largely
+arbitrary.  There is therefore no guarantee that the BDD will test the
+components of the side-condition in an order which is convenient for
+run-time checking.  For instance, the side-condition in the example
+might be represented by \autoref{fig:place_conditions_example:bdd1}.
+The first variable in the BDD is the control-flow expression, but this
+is one of the last input expressions to become available, making it
+difficult to evaluate any part of the BDD early.
 
 \begin{figure}
   \centerline{
