@@ -38,10 +38,8 @@ def parse_series(data):
             "nr_pre_dismiss": nr_early_out, "nr_post_oom": nr_oom,
             "nr_pre_failure": None}
 for (alpha, data) in series.iteritems():
-    with_repeats = parse_series(data[0])
-    without_repeats = parse_series(data[1])
     print
     print "  %%%% alpha = %d" % alpha
-    common.kde_chart(0, common.alpha_to_x(alpha), with_repeats, without_repeats)
+    common.kde_chart(0, common.alpha_to_x(alpha), parse_series, data)
 
 print "\\end{tikzpicture}"

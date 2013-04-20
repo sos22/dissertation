@@ -463,7 +463,9 @@ def pct_label(pct):
         label = "$<\!\!\!1$\\%"
     return label
 
-def kde_chart(offset, x_coord, with_repeats, without_repeats):
+def kde_chart(offset, x_coord, parse_series, data):
+    with_repeats = parse_series(data[0])
+    without_repeats = parse_series(data[1])
     _augment(with_repeats)
     _augment(without_repeats)
 
@@ -588,8 +590,8 @@ def kde_chart(offset, x_coord, with_repeats, without_repeats):
     # Plot itself
     draw_plot(with_repeats, "\\draw[fill]")
     # Bandwidth indicator
-    print "  \\draw (%f, %f) -- (%f, %f);" % (x_coord + box_width, time_to_y(mintime),
-                                              x_coord + box_width, time_to_y(mintime * math.e ** with_repeats["bandwidth"]))
+    print "  \\draw (%f, %f) -- (%f, %f);" % (x_coord + .3, time_to_y(mintime),
+                                              x_coord + .3, time_to_y(mintime * math.e ** with_repeats["bandwidth"]))
 
     # Plot without repeats
     if without_repeats != None:
