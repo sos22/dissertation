@@ -16,7 +16,7 @@
 \section{Eval}
 
 Previous chapters have described the basic {\technique} technique.  I
-will now evaluate its effectiveness, and the performance of my
+will now evaluate its effectiveness and the performance of my
 implementation {\implementation}.  This evaluation will consist of the
 following parts:
 
@@ -25,7 +25,7 @@ following parts:
   tool and the technique on a number of artificial bugs in simple test
   programs.  This includes a comparison to a
   DataCollider\needCite{}-like tool which I implemented for the
-  purpose of the evaluation.
+  purpose of this evaluation.
 \item \autoref{sect:eval:semiartificial} investigates some
   slightly more realistic bugs.  These include a simplified version of
   a real bug in glibc\needCite{} and some bugs which I deliberately
@@ -39,7 +39,7 @@ following parts:
 \item \autoref{sect:eval:time_details} then investigates the
   tool's performance on large programs in slightly more detail,
   showing how the time taken breaks down across the various phases of
-  the analysis, and the effects of some of the input parameters.
+  the analysis and the effects of some of the input parameters.
 \item \autoref{sect:eval:dynamic_analysis} investigates the
   performance and effectiveness of the dynamic aliasing analysis.
   This includes how much it benefits the main analysis, how long it
@@ -146,26 +146,25 @@ This is the simplest possible kind of concurrency bug: a
 single-variable time-of-check, time-of-use race\footnote{This bug was
   previously discussed in slightly less detail in
   \autoref{sect:derive:simple_toctou_example}.}.  The two threads
-involved are shown in \autoref{fig:eval:simple_toctou}.  The intent
-here is to model a very simple structure which is accessed frequently
-but updated rarely.  The bug is, of course, that the interfering
-thread might set \texttt{global\_ptr} to \texttt{NULL} in between the
-two reads of it in the crashing thread, causing the crashing thread to
-crash when it dereferences the pointer it loaded.
-\texttt{STOP\_ANALYSIS()} is a marker which prevents {\technique}'s
-analysis from exploring past that point when building the CFGs from
-which {\StateMachines} are constructed.  It is used here to help keep
-the crash summaries generated simple and easily explained;
+involved are shown in \autoref{fig:eval:simple_toctou}.  The intent is
+to model a very simple structure which is accessed frequently but
+updated rarely.  The bug is, of course, that the interfering thread
+might set \texttt{global\_ptr} to \texttt{NULL} in between the two
+reads of it in the \gls{crashingthread}, causing the
+\gls{crashingthread} to crash when it dereferences the pointer it
+loaded.  \texttt{STOP\_ANALYSIS()} is a marker which prevents
+{\technique}'s analysis from exploring past that point when building
+the CFGs from which {\StateMachines} are constructed.  It is used here
+to avoid complicating the presentation with extraneous details;
 {\implementation} is able to reproduce and fix the bug even without
 those markers.
 
-\subsubsection{Generating candidate bugs}
+\subsubsection{Generating \glsentryplural{verificationcondition}}
 
 The first step in the analysis is to build the CFG for the
-\gls{crashingthread} (see \autoref{sect:derive:build_static_cfg}),
-which in this case is straightforward; the result is shown in
-\autoref{fig:eval:simple_toctou:cfg}.  This can then be compiled to
-produce the {\StateMachine} shown in
+\gls{crashingthread} (see \autoref{sect:derive:build_static_cfg}), and
+this is shown in \autoref{fig:eval:simple_toctou:cfg}.  This is then
+compiled and simplified to produce the {\StateMachine} shown in
 \autoref{fig:eval:simple_toctou:sm}.
 
 \begin{figure}
@@ -190,9 +189,9 @@ produce the {\StateMachine} shown in
   {\hfill}
   \subfigure[][{\STateMachine}]{
     \begin{tikzpicture}
-      \node (l1) at (0,2) [stateSideEffect] {\stLoad{1}{\mathrm{global\_ptr}} @ cfg1 };
+      \node (l1) at (0,2) [stateSideEffect] {\stLoad{1}{\texttt{global\_ptr}} @ cfg1 };
       \node (l2) [stateIf, below=of l1] {\stIf{\smTmp{1} = 0}};
-      \node (l4) [stateSideEffect, below=of l2] {\stLoad{2}{\mathrm{global\_ptr}} @ cfg4 };
+      \node (l4) [stateSideEffect, below=of l2] {\stLoad{2}{\texttt{global\_ptr}} @ cfg4 };
       \node (l3) [stateTerminal, right=of l4] {\stSurvive };
       \node (l5) [stateIf, below=of l4] {\stIf{\smBadPtr{\smTmp{2}}}};
       \node (l6) [stateTerminal, below=of l5] {\stCrash};
@@ -241,7 +240,7 @@ and~\ref{fig:eval:simple_toctou:interfering_cfg2}.
     \subfigure[][{\STateMachine} for interfering store \texttt{400884}, without \gls{programmodel}]{
       \centerline{
       \begin{tikzpicture}
-        \node [stateSideEffect] {\stStore{\smReg{rbp}{2}}{\mathrm{global\_ptr}} @ cfg5};
+        \node [stateSideEffect] {\stStore{\smReg{rbp}{2}}{\texttt{global\_ptr}} @ cfg5};
       \end{tikzpicture}
       }
       \label{fig:eval:simple_toctou:interfering_sm1}
@@ -259,7 +258,7 @@ and~\ref{fig:eval:simple_toctou:interfering_cfg2}.
     \subfigure[][{\STateMachine} for interfering store \texttt{4008fb}]{
       \centerline{
       \begin{tikzpicture}
-        \node [stateSideEffect] {\stStore{0}{\mathrm{global\_ptr}} @ cfg6};
+        \node [stateSideEffect] {\stStore{0}{\texttt{global\_ptr}} @ cfg6};
       \end{tikzpicture}
       }
       \label{fig:eval:simple_toctou:interfering_sm2}
@@ -270,26 +269,27 @@ and~\ref{fig:eval:simple_toctou:interfering_cfg2}.
 
 Consider the interfering store at \texttt{400884} first.  Without the
 \gls{programmodel}, this would produce the {\StateMachine} shown in
-\autoref{fig:eval:simple_toctou:interfering_sm1}.  There is no way
-for the program to crash due to interleaving this {\StateMachine} with
-the crashing thread, as $\smReg{rbp}{2}$ is never a bad pointer, but
-the {\StateMachines} do not contain enough information to show that.
-The analysis will produce the verification condition shown in
-\autoref{fig:eval:simple_toctou:inferred_assumption1}. The
-\gls{programmodel}'s static analyses, on the other hand, are
-sufficient to show that $\smReg{rbp}{2}$ is a valid pointer,
-eliminating the spurious \gls{verificationcondition}.  The $i2c$
-instruction at \texttt{4008fb}, on the other hand, does represent a
-valid bug, as interleaving it with the \gls{crashingthread} could lead
-to a crash, and it produces the \gls{verificationcondition} shown in
+\autoref{fig:eval:simple_toctou:interfering_sm1}.  This is a false
+positive: there is no way for the program to crash due to interleaving
+this {\StateMachine} with the crashing one, as $\smReg{rbp}{2}$ is
+guaranteed to be a valid pointer, but the information needed to show
+that lies outside of the \gls{analysiswindow}, and so will not be
+included in the {\StateMachine}.  The \gls{programmodel}'s static
+analyses, by contrast, analyse entire functions, rather than
+restricting themselves to a fixed \gls{analysiswindow}, and are
+capable of showing that $\smReg{rbp}{2}$ is a valid pointer, allowing
+{\implementation} to eliminate this potential bug without using a
+run-time \gls{bugenforcer}.  The other interfering store, at
+\texttt{4008fb}, cannot be eliminated in this way, and produces the
+\gls{verificationcondition} shown in
 \autoref{fig:eval:simple_toctou:inferred_assumption2}.
 
 \begin{figure}
   \begin{tabular}{lll}
-    \gls{ci-atomic}: & $\smLoad{\mathrm{global\_ptr}} = 0$ &\!\!\!$\vee\,\, \neg\smBadPtr{\smLoad{\mathrm{global\_ptr}}}$ \\
+    \gls{ci-atomic}: & $\smLoad{\texttt{global\_ptr}} = 0$ &\!\!\!$\vee\,\, \neg\smBadPtr{\smLoad{\texttt{global\_ptr}}}$ \\
     \gls{ic-atomic}: & $\smReg{rbp}{2} = 0$                &\!\!\!$\vee\,\, \neg\smBadPtr{\smReg{rbp}{2}}$\\
     \Gls{verificationcondition}: & \multicolumn{2}{l}{$\happensBefore{\mai{cfg1}{1}}{\mai{cfg5}{2}} \wedge \happensBefore{\mai{cfg5}{2}}{\mai{cfg4}{2}} \wedge \smBadPtr{\smReg{rbp}{2}}  \wedge$}\\
-                                      & $\smLoad{\mathrm{global\_ptr}} \not= 0$\\
+                                      & $\smLoad{\texttt{global\_ptr}} \not= 0$\\
   \end{tabular}
   \caption{\Gls{inferredassumption} and \gls{verificationcondition}
     produced using the crashing {\StateMachine} in
@@ -301,9 +301,9 @@ to a crash, and it produces the \gls{verificationcondition} shown in
 
 \begin{figure}
   \begin{tabular}{lll}
-    \gls{ci-atomic}: & $\smLoad{\mathrm{global\_ptr}} = 0$ &\!\!\!$\vee\,\, \neg\smBadPtr{\smLoad{\mathrm{global\_ptr}}}$ \\
+    \gls{ci-atomic}: & $\smLoad{\texttt{global\_ptr}} = 0$ &\!\!\!$\vee\,\, \neg\smBadPtr{\smLoad{\texttt{global\_ptr}}}$ \\
     \gls{ic-atomic}: & \true\\
-    \Gls{verificationcondition}: & \multicolumn{2}{l}{$\happensBefore{\mai{cfg1}{1}}{\mai{cfg6}{2}} \wedge \happensBefore{\mai{cfg6}{2}}{\mai{cfg4}{2}} \wedge \smLoad{\mathrm{global\_ptr}} \not= 0$}\\
+    \Gls{verificationcondition}: & \multicolumn{2}{l}{$\happensBefore{\mai{cfg1}{1}}{\mai{cfg6}{2}} \wedge \happensBefore{\mai{cfg6}{2}}{\mai{cfg4}{2}} \wedge \smLoad{\texttt{global\_ptr}} \not= 0$}\\
   \end{tabular}
   \caption{\Gls{inferredassumption} and \gls{verificationcondition}
     produced using the crashing {\StateMachine} in
@@ -317,25 +317,26 @@ The time taken to perform this analysis is quite modest: $0.52 \pm_p
 0.04$ seconds for the static analysis phase and $0.18 \pm_p 0.01$
 seconds for the {\StateMachine} analysis (mean and population standard
 deviation for ten runs).  The dynamic analysis phase achieved complete
-coverage essentially as soon as the program started.  This is a
-reasonable lower bound on the time which {\technique} will take to
-process a very simple bug; any realistic program will take far longer
-than this to process.
+coverage essentially as soon as the program started.  These results
+are best thought of as lower bounds on the time needed to process a
+bug; any realistic program will take far longer.
 
 \subsubsection{Reproducing the bug}
 This \gls{verificationcondition} can now be turned into a
 \gls{bugenforcer}.  The only happens-before graph will be the one
-shown in \autoref{fig:eval:simple_toctou:hb_graph}, and it will
-have the side condition that $\smLoad{\mathrm{global\_ptr}} \not= 0$.
-This side condition can be evaluated completely at either
-$\mai{cfg1}{1}$ or $\mai{cfg6}{2}$, and so the crash enforcement plan
-will be as shown in \autoref{fig:eval:simple_toctou:enforce_plan}.
-In other words, whenever a program thread reaches \texttt{400694} and
-global\_ptr is non-zero, the enforcer will wait for an interfering
-thread to reach \texttt{4008fb}, after loading global\_ptr.  If one
-does arrive, the enforcer will make the crashing thread wait for the
-interfering thread to complete its store before proceeding to the load
-at \texttt{4006a0}.  This will be sufficient to reproduce the bug.
+shown in \autoref{fig:eval:simple_toctou:hb_graph}, and it will have
+the side condition $\smLoad{\texttt{global\_ptr}} \not= 0$.  That can
+be evaluated completely at either $\mai{cfg1}{1}$ or $\mai{cfg6}{2}$,
+so {\technique} will produce the crash enforcement plan shown in
+\autoref{fig:eval:simple_toctou:enforce_plan}.  In other words,
+whenever a program thread reaches \texttt{400694} and
+\texttt{global\_ptr} is non-zero, the enforcer will wait for an
+interfering thread to reach \texttt{4008fb}, after loading
+\texttt{global\_ptr}.  If one does arrive, the enforcer will make the
+crashing thread wait for the interfering thread to complete its store
+before proceeding to the load at \texttt{4006a0}.  Similarly, any
+thread reaching \texttt{4008fb} will check \texttt{global\_ptr} and, if
+it is non-zero, wait for some other thread to reach \texttt{400694}.
 
 \begin{wrapfigure}{r}{7cm}
   \begin{tikzpicture}
@@ -359,17 +360,6 @@ percentile was reduced from 12 seconds to 1.2, a ten-fold reduction.
 \autoref{fig:eval:crash_cdf:simple_toctou} shows the complete CDFs
 for both configurations.
 
-Even if the enforcer had failed to reduce the time to reproduction,
-this increase in predictability would itself be a useful property.
-One common strategy for fixing bugs is as follows:
-
-\begin{itemize}
-\item Form a hypothesis as to the cause of the bug.
-\item Produce a fix based on that hypothesis.
-\item Test whether the bug has been fixed.
-\item If so, stop.  Otherwise, start again from the beginning.
-\end{itemize}
-
 \begin{figure}
   \begin{tikzpicture}
     \node[draw] (l1) {\texttt{400694}: $\mai{cfg1}{1}$};
@@ -385,29 +375,10 @@ One common strategy for fixing bugs is as follows:
   \label{fig:eval:simple_toctou:enforce_plan}
 \end{figure}
 
-Bugs with a long tail of reproduction times make the third step
-difficult.  The obvious way of testing whether a bug has been fixed is
-to simply run the program and see if it reproduces, but if the time
-taken for the bug to reproduce is highly unpredictable then it is
-difficult to decide how long to run the program for before concluding
-that the bug has been fixed.  {\Technique} cannot hope to completely
-eliminate such unpredictability, but, qualitatively, a bug where the
-$95^{th}$ percentile differs from the $5^{th}$ percentile by a tenth
-of a percent is likely to be far easier to work with than one where
-they differ by a factor of twelve\footnote{The obvious alternative
-  strategy of measuring what fraction of program runs reach some
-  cut-off time is also ineffective.  For this test program, the
-  optimal cut-off time for that strategy is 3.003 seconds, and it
-  would have to be run four times to achieve a p-value of 0.95, for a
-  total time of slightly over 12 seconds; almost precisely the same
-  time as would be necessary for the na\"{i}ve strategy of just
-  running the program once to reach the same p value.}.
-
-The time taken by the analysis is quite reasonable here.  The
-\gls{verificationcondition} generation step takes $0.77 \pm_p 0.02$
-seconds, from ten runs, including the initial static analysis phase,
-and converting it to a \gls{bugenforcer} takes $0.13 \pm_p 0.01$
-seconds.  Real programs would, of course, take far longer.
+The time taken to build the enforcer is again modest: $0.13 \pm_p
+0.01$ seconds, mean and population standard deviation of ten runs.  As
+before, this is best thought of as a lower bound on the time taken to
+build an enforcer; more realistic tests will usually take longer.
 
 \subsubsection{Fixing the bug}
 {\Implementation} can also generate a fix for this bug.  In this case,
@@ -464,11 +435,8 @@ fix, the crashing thread completes $352.5 \pm_p 0.2 {\times} 10^6$
 iterations of the loop per second; with one, it completes $95.9 \pm_p
 0.2 {\times} 10^6$ (mean and standard deviation of ten runs each of
 ten seconds, discarding any runs in which the unfixed program
-crashed).  Neither distribution suffered from a noticeable long tail
-in either direction (checked using the Anderson-Darling and
-Jarque-Bera tests at the 90\% level and by manual inspection).  That
-gives an overhead of roughly a factor of 3.7.  This is obviously
-rather large, but is probably close to {\technique}'s worst
+crashed).  That gives an overhead of roughly a factor of 3.7.  This is
+obviously rather large, but is probably close to {\technique}'s worst
 case\footnote{Ignoring the loss of concurrency inherent lock-based
   fixes.}: the read-side critical section is very small and runs with
 very high frequency, and so the patch must acquire and release the
@@ -501,30 +469,31 @@ infrastructure.
   }
   \caption{Performance of some variants of the fix, in millions of
     loop iterations completed per second.  The original program
-    completed $352.5 \pm_p 0.2$ million iterations per second, when it
-    did not crash.  All measurements mean and population standard
-    deviation of ten runs, each for ten seconds.}
+    completed $352.5 \pm_p 0.2$ million iterations per second.  All
+    measurements mean and population standard deviation of ten runs,
+    each for ten seconds, with any run which crashed repeated until it
+    did not crash.}
   \label{table:eval:simple_toctou:other_fixes}
 \end{table}
 
 As a further point of comparison, I also produced a version of this
 fix which used debug breakpoints to gain control of the program rather
-than branches.  This completed $6379000 \pm_p 7000$ loop iterations per
-second, even with the actual locking disabled, giving it an overhead
-of roughly a factor of 55.  This would be problematic in a production
-environment.
+than branches.  This completed $6379000 \pm_p 7000$ loop iterations
+per second, even with the actual locking disabled, giving it an
+overhead of roughly a factor of 55.  This might be problematic in a
+production environment.
 
 \subsection{Indexed TOCTOU bug (indexed\_toctou)}
 
 \label{sect:eval:indexed_toctou}
 
-In this variant of a TOCTOU bug, there are multiple instances of the
+In this variant of a TOCTOU bug, shown in
+\autoref{fig:eval:indexed_toctou}, there are multiple instances of the
 structure which is being raced on and the bug will only manifest if
 the reading and writing threads happen to coincide\footnote{This bug
   was used as an example in \autoref{sect:reproducing_bugs}.}.  This
-bug exercises the side condition-checking part of {\technique}'s crash
-enforcers.  The code involved in the race is shown in
-\autoref{fig:eval:indexed_toctou}.  Except where otherwise noted,
+bug exercises the side condition-checking part of the
+\gls{bugenforcer} mechanism.  Except where otherwise noted,
 \verb|NR_PTRS| is set to 100.
 
 \begin{figure}
@@ -606,13 +575,12 @@ would.  The full CDFs are shown in
   \label{fig:eval:indexed_toctou:nr_ptrs}
 \end{figure}
 
-As a final test, I investigated the effect changing the
-\texttt{NR\_PTRS} parameter.  The results are shown in
-\autoref{fig:eval:indexed_toctou:nr_ptrs}.  I ran each
-configuration 100 times at each of the sampled abscissae and timed how
-long it took to reproduce the bug; these charts show the $25^{th}$,
-$50^{th}$, and $75^{th}$ percentiles and the mean and standard
-deviation of the mean.
+I also investigated the effect changing the \texttt{NR\_PTRS}
+parameter.  The results are shown in
+\autoref{fig:eval:indexed_toctou:nr_ptrs}.  I ran each configuration
+100 times at each of the sampled abscissae and timed how long it took
+to reproduce the bug; these charts show the $25^{th}$, $50^{th}$, and
+$75^{th}$ percentiles and the mean and standard deviation of the mean.
 
 The most obvious property of these charts is that the behaviour of the
 case without the enforcer is quite ``noisy''.  Some of this noise is
@@ -621,10 +589,9 @@ very long positive tail, and 100 samples is barely sufficient for the
 $75^{th}$ percentile to become meaningful.  Much of it, though,
 reflects the actual behaviour of the program.  The dips in
 reproduction time around $\texttt{NR\_PTRS} = 200$ and
-$\texttt{NR\_PTRS} = 400$, for instance, are both reproducible, and
-persisted across multiple repeats of the experiment on the same
-machine\footnote{This means that plotting a regression line on the
-  chart is something of an abuse, but I believe that this is the
+$\texttt{NR\_PTRS} = 400$, for instance, are both
+reproducible\footnote{This means that plotting a regression line on
+  the chart is something of an abuse, but I believe that this is the
   clearest way of presenting this data.}.  I am unable to explain this
 precise behaviour, beyond speculating that it might be due to some
 aliasing effect between those values of \texttt{NR\_PTRS} and some
@@ -640,22 +607,15 @@ the significant reduction in the time take to reproduce it.
 The automatic fix generator works well with this bug, and produces
 roughly the same fix as it did in the simple\_toctou bug: one critical
 section which covers the two critical loads in the read thread and one
-which covers the critical store in the write thread.  To characterise
-the performance overheads of the fix I again counted the number of
-times the read and write loops execute per second with and without the
-fix applied, running the test for ten seconds and discarding any runs
-in which the test program crashed.  Without a fix applied, the test
-completed the crashing thread loop $9.6 \pm_p 0.5 {\times} 10^5$ times
-per second and the interfering thread loop $9.0 \pm_p 0.2 {\times}
-10^5$ times per second; with a fix, it completed $8.3 \pm_p 0.3 \times
-10^5$ crashing loops and $7.8 \pm_p 0.2 \times 10^5$ interfering loops
-(mean and standard deviation of ten runs).  The overhead was therefore
-roughly 15\% on both the read and write sides of the test.  This is
-far smaller than the factor of four reported in the simple\_toctou
-case, largely because the test loop in this case includes a call to
-\verb|random|, which is rather expensive relative to simple lock
-operations and helps to amortise the cost of the additional
-synchronisation.
+which covers the critical store in the write thread.  The overhead in
+this case was, however, proportionally much smaller, at around 15\%
+rather than a factor of four (see \autoref{table:eval:fix_overheads}
+for full details).  The emphasis must be on ``proportionally'': the
+cost of the patch and lock operations in microseconds remains
+unchanged, but the benchmark loop now includes a call to
+\texttt{random}, which is itself quite expensive.  The patch overheads
+therefore account for a smaller fraction of the test program's run
+time and their performance impact is lower.
 
 \subsection{Biassed indexed TOCTOU bugs (crash\_indexed\_toctou, interfering\_indexed\_toctou)}
 
@@ -665,11 +625,11 @@ interfering or crashing thread's loops, such that either the
 interfering thread (for interfering\_indexed\_toctou) or the crashing
 thread (for crash\_indexed\_toctou) runs far more often than the
 other.  These tests are intended to illustrate the importance of
-placing delays at appropriate operations in the crash enforcement
-message-passing system.  The results are shown in
-\autoref{fig:biassed_indexed_toctou:times}.  These results show
-that, while the delay placement mechanism is not always guaranteed to
-find the best possible placement, it does avoid some very poor ones.
+placing delays at appropriate points in the happens-before graph.  The
+results are shown in \autoref{fig:biassed_indexed_toctou:times}.
+These results show that, while the delay placement mechanism is not
+always guaranteed to find the best possible placement, it does avoid
+some very poor ones.
 
 \begin{figure}
   \input{eval/artificial_bugs/special/delay_positioning.tex}
@@ -2484,6 +2444,12 @@ line below and to the right of the main violin plot; any feature which
 is vertically smaller than this is highly likely to be an analysis
 artifact and should be ignored.
 
+The chart also shows an estimated standard deviation of the density as
+pale blue limning around the main violins; the width of the limn gives
+the standard deviation of the density at that point, on the same scale
+as the width of the violin.  These estimates were produced using 1000
+full-size bootstrap resamplings of the original data.
+
 Note that time is shown on a log scale, which is necessary as the data
 shows interesting behaviour across many orders of magnitude.  This
 means that it is difficult to simultaneously assign convenient
@@ -2501,7 +2467,6 @@ same scale as the rest of the probabilities.
 
 The configuration used for this experiment was slightly different from
 that used for most of the other experiments:
-
 \begin{itemize}
 \item The timeout was increased from sixty seconds to five minutes, as
   that made the data easier to interpret for high values of
@@ -2518,7 +2483,6 @@ that used for most of the other experiments:
   without performing any re-runs are shown on the chart with dashed
   grey lines.
 \end{itemize}
-
 The results of this experiment are therefore not directly comparable
 with the results of the other experiments.
 

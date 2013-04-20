@@ -72,7 +72,7 @@ def parse_series(data):
     return {"times": samples, "nr_post_timeout": nr_timeouts,
             "nr_pre_dismiss": nr_dismiss, "nr_post_oom": nr_oom,
             "nr_pre_failure": nr_pre_failed}
-for (alpha, data) in series.iteritems():
+for (alpha, data) in series.iteritems(): # [(10, series[10])]:
     print
     print "  %%%% alpha = %d" % alpha
     common.kde_chart(offset, common.alpha_to_x(alpha), parse_series, data)

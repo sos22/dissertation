@@ -2,6 +2,7 @@ import sys
 import os
 import math
 import cPickle
+import random
 
 cache = "data_cache.pkl"
 
@@ -473,10 +474,41 @@ def kde_chart(offset, x_coord, parse_series, data):
     base_y = offset
     chart_top = offset + figheight
 
+    # Bootstrap for confidence interval
+    alts = []
+    for i in xrange(0, 200):
+        alt = []
+        for i in xrange(len(data[0])):
+            alt.append(random.choice(data[0]))
+        s = parse_series(alt)
+        _augment(s)
+        alts.append(s)
+    def density_sd(y):
+        m = math.log(y_to_time(y) / mintime)
+        samples = [alt["density"](m) for alt in alts]
+        m = sum(samples) / len(samples)
+        sd = (sum([(x - m) ** 2 for x in samples]) / len(samples)) **.5
+        return sd
+    def rate_sd(key):
+        samples = [alt[key]/alt["tot_samples"] for alt in alts]
+        m = sum(samples) / len(samples)
+        sd = (sum([(x - m) ** 2 for x in samples]) / len(samples)) ** .5
+        return sd
+
     # Draw the box parts
     def limmed_rectangle(key, y0, height):
         y1 = y0 + height
+
+        # Do the with-sd version first
         pct = with_repeats[key] / with_repeats["tot_samples"]
+        pct_sd = pct + rate_sd(key)
+        width = pct_sd / height
+        x0 = x_coord - width * box_width
+        x1 = x_coord + width * box_width
+        if width != 0:
+            print "  \\draw [fill,color=blue!50] (%f, %f) rectangle (%f, %f);" % (x0, y0,
+                                                                                  x1, y1)
+        # Now the without-sd one.
         width = pct / height
         x0 = x_coord - width * box_width
         x1 = x_coord + width * box_width
@@ -534,7 +566,7 @@ def kde_chart(offset, x_coord, parse_series, data):
     area_above = 0
     _x = base_y - 5
     while _x < chart_top + 5:
-        _x += 0.01
+        _x += 1 / points_per_cm
         d = density_at_y(with_repeats, _x)
         if _x < base_y:
             area_below += d
@@ -543,9 +575,9 @@ def kde_chart(offset, x_coord, parse_series, data):
         else:
             area_above += d
     del _x
-    area = area * 0.01 / alpha
-    area_below = area_below * 0.01 / alpha
-    area_above = area_above * 0.01 / alpha
+    area = area / (alpha * points_per_cm)
+    area_below = area_below / (alpha * points_per_cm)
+    area_above = area_above / (alpha * points_per_cm)
     if abs(area - 1) > 0.01:
         sys.stderr.write("Excessive defect in data; area should be 1, is %f\n" % area)
     area_cm2 = area * box_width * 2 * with_repeats["frac_in_data"]
@@ -555,37 +587,42 @@ def kde_chart(offset, x_coord, parse_series, data):
                                                                                              area_cm2 / with_repeats["frac_in_data"]))
     del area
 
+
     # Now calculate the points.
     def calc_points(series):
-        pts1 = []
-        pts2 = []
         mode = None
         y = base_y
-        frac_in_data = series["frac_in_data"]
+        densities = []
         while y < chart_top:
             d = density_at_y(series, y)
-            pts1.append((x_coord - d * box_width * frac_in_data / alpha, y))
-            pts2.append((x_coord + d * box_width * frac_in_data / alpha, y))
+            densities.append((y, d))
             if mode == None or d > mode[1]:
                 mode = (y, d)
-            y += 1 / points_per_cm
-        series["pts1"] = pts1
-        series["pts2"] = pts2
-        return mode
+            y += 1/points_per_cm
+        series["mode"] = mode[0]
+        series["densities"] = densities
     mode = calc_points(with_repeats)
     if without_repeats != None:
         calc_points(without_repeats)
     def draw_plot(series, cmd):
-        print "  %s" % cmd
-        pts1 = series["pts1"]
-        pts2 = series["pts2"]
-        for i in xrange(len(pts1)):
+        print "  %s" % cmd,
+        d = series["densities"]
+        frac_in_data = series["frac_in_data"]
+        scale = box_width * frac_in_data / alpha
+        for i in xrange(len(d)):
             if i != 0:
                 print "        -- ",
-            print "(%f, %f)" % pts1[i]
-        for i in xrange(len(pts2)):
-            print "        -- (%f, %f)" % pts2[-i - 1]
+            p = d[i]
+            print "(%f, %f)" % (x_coord - p[1] * scale, p[0])
+        for i in xrange(len(d)):
+            p = d[-i - 1]
+            print "        -- (%f, %f)" % (x_coord + p[1] * scale, p[0])
         print "        ;"
+
+    # Limm with SD
+    with_sd = {"densities": [(y, d + density_sd(y)) for (y, d) in with_repeats["densities"]],
+               "frac_in_data": with_repeats["frac_in_data"]}
+    draw_plot(with_sd, "\\draw[fill,color=blue!50]")
 
     # Plot itself
     draw_plot(with_repeats, "\\draw[fill]")
@@ -598,10 +635,11 @@ def kde_chart(offset, x_coord, parse_series, data):
         draw_plot(without_repeats, "\\draw[dashed,color=black!50]")
 
     # Label.
-    print "  \\node at (%f, %f) {%s};" % (x_coord, mode[0], pct_label(with_repeats["frac_in_data"]))
+    mode = with_repeats["mode"]
+    print "  \\node at (%f, %f) {%s};" % (x_coord, mode, pct_label(with_repeats["frac_in_data"]))
     print "  \\begin{scope}[white]"
     draw_plot(with_repeats, "  \\path[clip]")
-    print "    \\node at (%f,%f) {%s};" % (x_coord, mode[0], pct_label(with_repeats["frac_in_data"]))
+    print "    \\node at (%f,%f) {%s};" % (x_coord, mode, pct_label(with_repeats["frac_in_data"]))
     print "  \\end{scope}"
 
     # Put in the mean and sd of mean
