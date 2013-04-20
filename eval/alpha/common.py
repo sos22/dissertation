@@ -127,7 +127,7 @@ def parse_crashing(path, l, start_cntr = 0):
     sample["initial_crashing_states"] = int(w[4])
 
     line = l.readline().strip()
-    if line in ["Child failed in run_in_child, signal 11", "OOM kill in checkWhetherInstructionCanCrash()"]:
+    if line in ["Child failed in run_in_child, signal 11", "OOM kill in checkWhetherInstructionCanCrash()", ""]:
         sample["bpm_oom"] = True
         sample["bpm_timeout"] = False
         return sample
@@ -158,6 +158,7 @@ def parse_crashing(path, l, start_cntr = 0):
         sample["gsc_timed_out"] = False
         return sample
     if line == "Child timed out in run_in_child":
+        sample["gsc_oom"] = False
         sample["gsc_timed_out"] = True
         return sample
     w = line.split()
@@ -168,8 +169,12 @@ def parse_crashing(path, l, start_cntr = 0):
     line = l.readline().strip()
     if line == "Child timed out in run_in_child":
         sample["gsc_timed_out"] = True
+        sample["gsc_oom"] = False
         return sample
-
+    if line == "OOM kill in checkWhetherInstructionCanCrash()":
+        sample["gsc_oom"] = True
+        sample["gsc_timed_out"] = False
+        return sample
     w = line.split()
     if len(w) != 6 or w[0] != "getStoreCFGs" or w[1] != "took" or w[3] != "seconds," or w[4] != "produced":
         fail("%s lacks a GSC line (%s)" % (path, line))
@@ -225,7 +230,22 @@ def read_input():
             for (i_key, i_data) in si.iteritems():
                 assert bi.has_key(i_key)
                 bi[i_key] = i_data
-        series[alpha] = base.values()
+
+        try:
+            p = os.listdir("nr/%d" % alpha)
+        except:
+            sys.stderr.write("Missing non-repeat data for alpha=%d; skipping.\n" % alpha)
+            p = None
+        if p == None:
+            nr = None
+        else:
+            nr = []
+            for logfile in p:
+                path = "nr/%d/%s" % (alpha, logfile)
+                l = file(path)
+                sample = parse_crashing(path, l)
+                nr.append(sample)
+        series[alpha] = (base.values(), nr)
 
     f = file(cache, "w")
     cPickle.dump(series, f)
@@ -301,7 +321,7 @@ def alpha_axis(series):
     for alpha in series:
         print "  \\node at (%f,0) [below] {%d};" % (alpha_to_x(alpha), alpha)
     def area_for_prob(p):
-        return p * box_width
+        return p * box_width * 2
     def len_for_prob(p):
         return area_for_prob(p) ** .5
 
@@ -371,143 +391,230 @@ def mean(data):
         m2 = math.e ** m2
     return (m, (var / (len(data) - 1)) ** .5, m2, m2a, m2b)
 
+def erf(x):
+    # constants
+    a1 =  0.254829592
+    a2 = -0.284496736
+    a3 =  1.421413741
+    a4 = -1.453152027
+    a5 =  1.061405429
+    p  =  0.3275911
+
+    # Save the sign of x
+    sign = 1
+    if x < 0:
+        sign = -1
+    x = abs(x)
+
+    # A&S formula 7.1.26
+    t = 1.0/(1.0 + p*x)
+    y = 1.0 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1)*t*math.exp(-x*x)
+
+    return sign*y
+
+def gaussian_kernel(bandwidth, location):
+    kfnorm = (math.pi * 2) **.5 * bandwidth
+    def res(x):
+        delta = location - x
+        delta /= bandwidth
+        return (math.e ** (-0.5 * delta**2)) / kfnorm
+    return res
+def truncated_gaussian(upper_bound):
+    def res(bandwidth, location):
+        underlying = gaussian_kernel(bandwidth, location)
+        scale = (1 + erf( (upper_bound - location) / (bandwidth * math.sqrt(2)))) / 2
+        def r(x):
+            if x > upper_bound:
+                return 0
+            return underlying(x) / scale
+        return r
+    return res
+def guess_bandwidth(pts):
+    mean = sum(pts) / len(pts)
+    sd = (sum([ (x - mean)**2 for x in pts]) / len(pts))**.5
+    return sd / (len(pts) ** .2)
+def density_estimator(pts, kernel, bandwidth):
+    kernels = [kernel(bandwidth, d) for d in pts]
+    def res(k):
+        return sum([kernel(k) for kernel in kernels]) / len(kernels)
+    return res
+
 height_pre_dismiss_box = 0.5
 height_pre_failure_box = 0.5
 height_post_timeout_box = 0.5
 height_post_oom_box = 0.5
 maxtime = 300
-def kde_chart(offset, x_coord, nr_pre_dismiss, nr_pre_failure, data, nr_post_timeout, nr_post_oom,
-              limm):
-    if limm:
-        decoration = "color=black!50,dotted"
-    else:
-        decoration = "fill"
-    tot_samples = float(len(data))
-    if nr_pre_dismiss != None:
-        tot_samples += nr_pre_dismiss
-    if nr_pre_failure != None:
-        tot_samples += nr_pre_failure
-    if nr_post_timeout != None:
-        tot_samples += nr_post_timeout
-    if nr_post_oom != None:
-        tot_samples += nr_post_oom
-    frac_in_data = len(data) / tot_samples
+def _augment(series):
+    if series == None:
+        return
+    series["tot_samples"] = float(len(series["times"]))
+    for k in ["nr_pre_dismiss", "nr_pre_failure", "nr_post_timeout", "nr_post_oom"]:
+        if series[k] != None:
+            series["tot_samples"] += series[k]
+    series["frac_in_data"] = len(series["times"]) / series["tot_samples"]
+    ldata = [math.log(d / mintime) for d in series["times"]]
+    kernel = truncated_gaussian(math.log(maxtime/mintime))
+    bw = guess_bandwidth(ldata)
+    series["density"] = density_estimator(ldata, kernel, bw)
+    series["bandwidth"] = bw
+def pct_label(pct):
+    label = "%.0f\\%%" % (round(pct * 100, 0))
+    if label == "0\\%":
+        label = "$<\!\!\!1$\\%"
+    return label
 
-    ldata = map(math.log, data)
-    mean = sum(ldata) / len(ldata)
-    sd = (sum([ (x - mean)**2 for x in ldata]) / len(ldata))**.5
-    bandwidth = sd / (len(ldata) ** .2)
+def kde_chart(offset, x_coord, with_repeats, without_repeats):
+    _augment(with_repeats)
+    _augment(without_repeats)
 
-    area = 0
-    base_y = 0
-
-    def limmed_rectangle(width, y0, y1):
-        if width == 0:
-            return
-        print "  \\draw [%s] (%f, %f) rectangle (%f, %f);" % (decoration,
-                                                              x_coord - width * box_width,
-                                                              offset + y0,
-                                                              x_coord + width * box_width,
-                                                              offset + y1)
+    # Y-extent of the actual density plot part of the graph.
+    base_y = offset
+    chart_top = offset + figheight
 
     # Draw the box parts
-    if nr_pre_dismiss != None:
-        density_pre_dismiss = nr_pre_dismiss / (tot_samples * height_pre_dismiss_box)
-        limmed_rectangle(density_pre_dismiss, base_y, base_y + height_pre_dismiss_box)
+    def limmed_rectangle(key, y0, height):
+        y1 = y0 + height
+        pct = with_repeats[key] / with_repeats["tot_samples"]
+        width = pct / height
+        x0 = x_coord - width * box_width
+        x1 = x_coord + width * box_width
+        if width != 0:
+            print "  \\draw [fill] (%f, %f) rectangle (%f, %f);" % (x0, y0,
+                                                                    x1, y1)
+            label = pct_label(pct)
+            print "  \\node at (%f, %f) {%s};" % (x_coord, (y0 + y1) / 2, label)
+            print "  \\begin{scope}[white]"
+            print "    \\path[clip] (%f, %f) -- (%f, %f) -- (%f, %f) -- (%f, %f);" % (x0, y0,
+                                                                                      x1, y0,
+                                                                                      x1, y1,
+                                                                                      x0, y1)
+            print "    \\node at (%f, %f) {%s};" % (x_coord, (y0 + y1) / 2, label)
+            print "  \\end{scope}"
+            area = width * box_width * 2 * (y1 - y0)
+            sys.stderr.write("Box for %f -> width %f, height %f, area %f; tot area %f\n" % (pct, width * box_width * 2,
+                                                                                            y1 - y0, area, area / pct))
+        if without_repeats != None:
+            pct = without_repeats[key] / without_repeats["tot_samples"]
+            width = pct / height
+            x0 = x_coord - width * box_width
+            x1 = x_coord + width * box_width
+            if width != 0:
+                print "  \\draw [dashed,color=black!50] (%f, %f) rectangle (%f, %f);" % (x0, y0, x1, y1)
+    if with_repeats["nr_pre_dismiss"] != None:
+        limmed_rectangle("nr_pre_dismiss", base_y, height_pre_dismiss_box)
         base_y += height_pre_dismiss_box
-        area += density_pre_dismiss * 2 * box_width * height_pre_dismiss_box
-        sys.stderr.write("nr_pre_dismiss %d/%d -> area %f = %f * 2 * %f * %f\n" % (nr_pre_dismiss, tot_samples, area, density_pre_dismiss, box_width, height_pre_dismiss_box))
-    if nr_pre_failure != None:
-        density_pre_failure = nr_pre_failure / (tot_samples * height_pre_failure_box)
-        limmed_rectangle(density_pre_failure, base_y, base_y + height_pre_failure_box)
+        chart_top -= height_pre_dismiss_box
+    if with_repeats["nr_pre_failure"] != None:
+        limmed_rectangle("nr_pre_failure", base_y, height_pre_failure_box)
         base_y += height_pre_failure_box
-        area += density_pre_failure * 2 * box_width * height_pre_failure_box
-    tot_height = figheight - base_y
-    if nr_post_oom != None:
-        density_post_oom = nr_post_oom / (tot_samples * height_post_oom_box)
-        tot_height -= height_post_oom_box
-        limmed_rectangle(density_post_oom, tot_height, tot_height + height_post_oom_box)
-        area += density_post_oom * 2 * box_width * height_post_oom_box
-    if nr_post_timeout != None:
-        density_post_timeout = nr_post_timeout / (tot_samples * height_post_timeout_box)
-        tot_height -= height_post_timeout_box
-        limmed_rectangle(density_post_timeout, tot_height, tot_height + height_post_timeout_box)
-        area += density_post_timeout * 2 * box_width * height_post_timeout_box
+        chart_top -= height_pre_failure_box
+    if with_repeats["nr_post_oom"] != None:
+        chart_top -= height_post_oom_box
+        limmed_rectangle("nr_post_oom", chart_top, height_post_oom_box)
+    if with_repeats["nr_post_timeout"] != None:
+        chart_top -= height_post_timeout_box
+        limmed_rectangle("nr_post_timeout", chart_top, height_post_timeout_box)
 
-
-    # Scale will be y = alpha log(t) + beta
-    alpha = (tot_height - base_y) / (math.log(maxtime) - math.log(mintime))
-    beta = base_y -alpha * math.log(mintime)
-
-    _kfnorm = (math.pi * 2) **.5
-    def kernel_function(bandwidth, delta):
-        delta /= bandwidth
-        return (math.e ** (-0.5 * delta**2)) / (_kfnorm * bandwidth)
-    def density_at(val):
-        return sum([kernel_function(bandwidth, d - val) for d in ldata]) * frac_in_data / len(ldata)
-
-    sys.stderr.write("Kernel bandwidth %e\n" % bandwidth)
-    #_acc = 0
-    #_foox = -10
-    #while _foox < 10:
-    #    _acc += kernel_function(bandwidth, _foox)
-    #    _foox += 0.00001
-    #sys.stderr.write("Kernel function -> %f\n" % (_acc * 0.00001))
+    alpha = (chart_top - base_y) / (math.log(maxtime / mintime))
+    def time_to_y(t):
+        return alpha * math.log(t / mintime) + base_y
+    def y_to_time(y):
+        return (math.e ** ((y - base_y) / alpha)) * mintime
+    def density_at_y(series, y):
+        return series["density"](math.log(y_to_time(y) / mintime))
 
     points_per_cm = 100.0
 
-    # Sanity check: is the area about right?
-    main_area = 0
-    y = base_y
-    while y < tot_height:
-        time = math.e ** ( (y - base_y - beta) / alpha )
-        d = density_at(math.log(time))
-        main_area += d / (points_per_cm * alpha)
-        y += 1 / points_per_cm
-    main_area *= box_width * 2
-    sys.stderr.write("alpha = %f, Area: %f + %f = %f, frac_in_data = %f\n" % (alpha, area, main_area, area + main_area, frac_in_data))
+    # Sanity check: is the area about right?  Fail out if we've lost
+    # or gained more than 1%
+    area = 0
+    area_below = 0
+    area_above = 0
+    _x = base_y - 5
+    while _x < chart_top + 5:
+        _x += 0.01
+        d = density_at_y(with_repeats, _x)
+        if _x < base_y:
+            area_below += d
+        elif _x <= chart_top:
+            area += d
+        else:
+            area_above += d
+    del _x
+    area = area * 0.01 / alpha
+    area_below = area_below * 0.01 / alpha
+    area_above = area_above * 0.01 / alpha
+    if abs(area - 1) > 0.01:
+        sys.stderr.write("Excessive defect in data; area should be 1, is %f\n" % area)
+    area_cm2 = area * box_width * 2 * with_repeats["frac_in_data"]
+    sys.stderr.write("Area %f, above %f, below %f (%f cm^2 for %f; total area %f cm^2)\n" % (area, area_above, area_below,
+                                                                                             area_cm2,
+                                                                                             with_repeats["frac_in_data"],
+                                                                                             area_cm2 / with_repeats["frac_in_data"]))
+    del area
 
-    # Now do the actual density plot
-    print "  \\draw [%s] " % decoration,
-    isFirst = True
-    y = base_y
-    while y < tot_height:
-        # Convert y to time
-        time = math.e ** ( (y - base_y - beta) / alpha )
-        # Get the density
-        d = density_at(math.log(time))
-        # Actually put in the point
-        if not isFirst:
-            print "        -- ",
-        isFirst = False
-        print "(%f,%f) %%%% %f" % (x_coord - d * box_width, y + offset, time)
-        # Move on to next point
-        y += 1 / points_per_cm
-    # And back down the other side
-    while y > base_y:
-        time = math.e ** ( (y - base_y - beta) / alpha )
-        d = density_at(math.log(time))
-        print "        -- (%f,%f) %%%% %f" % (x_coord + d * box_width, y + offset, time)
-        y -= 1 / points_per_cm
-    # Done
-    print "        ;"
+    # Now calculate the points.
+    def calc_points(series):
+        pts1 = []
+        pts2 = []
+        mode = None
+        y = base_y
+        frac_in_data = series["frac_in_data"]
+        while y < chart_top:
+            d = density_at_y(series, y)
+            pts1.append((x_coord - d * box_width * frac_in_data / alpha, y))
+            pts2.append((x_coord + d * box_width * frac_in_data / alpha, y))
+            if mode == None or d > mode[1]:
+                mode = (y, d)
+            y += 1 / points_per_cm
+        series["pts1"] = pts1
+        series["pts2"] = pts2
+        return mode
+    mode = calc_points(with_repeats)
+    if without_repeats != None:
+        calc_points(without_repeats)
+    def draw_plot(series, cmd):
+        print "  %s" % cmd
+        pts1 = series["pts1"]
+        pts2 = series["pts2"]
+        for i in xrange(len(pts1)):
+            if i != 0:
+                print "        -- ",
+            print "(%f, %f)" % pts1[i]
+        for i in xrange(len(pts2)):
+            print "        -- (%f, %f)" % pts2[-i - 1]
+        print "        ;"
 
-    if limm:
-        def time_to_y(time):
-            return alpha * math.log(time) + beta
+    # Plot itself
+    draw_plot(with_repeats, "\\draw[fill]")
+    # Bandwidth indicator
+    print "  \\draw (%f, %f) -- (%f, %f);" % (x_coord + box_width, time_to_y(mintime),
+                                              x_coord + box_width, time_to_y(mintime * math.e ** with_repeats["bandwidth"]))
 
-        # Put in the mean and sd of mean
-        mean = sum(data) / len(data)
-        sd = (sum([ (x - mean)**2 for x in data]) / (len(data) * (len(data) - 1)))**.5
-        print "  \\draw [color=black!50] (%f,%f) -- (%f, %f);" % (x_coord - box_width,
-                                                                  time_to_y(mean) + offset,
-                                                                  x_coord + box_width,
-                                                                  time_to_y(mean) + offset)
-        print "  \\draw [color=black!50] (%f, %f) rectangle (%f, %f);" % (x_coord - box_width,
-                                                                          time_to_y(mean - sd) + offset,
-                                                                          x_coord + box_width,
-                                                                          time_to_y(mean + sd) + offset)
-    
+    # Plot without repeats
+    if without_repeats != None:
+        draw_plot(without_repeats, "\\draw[dashed,color=black!50]")
+
+    # Label.
+    print "  \\node at (%f, %f) {%s};" % (x_coord, mode[0], pct_label(with_repeats["frac_in_data"]))
+    print "  \\begin{scope}[white]"
+    draw_plot(with_repeats, "  \\path[clip]")
+    print "    \\node at (%f,%f) {%s};" % (x_coord, mode[0], pct_label(with_repeats["frac_in_data"]))
+    print "  \\end{scope}"
+
+    # Put in the mean and sd of mean
+    data = with_repeats["times"]
+    mean = sum(data) / len(data)
+    sd = (sum([ (x - mean)**2 for x in data]) / (len(data) * (len(data) - 1)))**.5
+    print "  \\draw [color=black!50] (%f,%f) -- (%f, %f);" % (x_coord - .25,
+                                                              time_to_y(mean),
+                                                              x_coord + .25,
+                                                              time_to_y(mean))
+    print "  \\draw [color=black!50] (%f, %f) rectangle (%f, %f);" % (x_coord - .25,
+                                                                      time_to_y(mean - sd),
+                                                                      x_coord + .25,
+                                                                      time_to_y(mean + sd))
+
 def kde_axis(offset, include_pre_dismiss, include_pre_failure,
              include_post_oom, include_post_timeout):
     print "  %% KDE axis"
@@ -518,7 +625,6 @@ def kde_axis(offset, include_pre_dismiss, include_pre_failure,
     if include_pre_failure:
         print "  \\node at (0, %f) [left] {Pre-failed};" % (base_y + height_pre_failure_box / 2 + offset)
         base_y += height_pre_failure_box
-
     tot_height = figheight - base_y
     if include_post_oom:
         print "  \\node at (0, %f) [left] {Out of memory};" % (tot_height - height_post_oom_box / 2 + offset)
@@ -527,16 +633,17 @@ def kde_axis(offset, include_pre_dismiss, include_pre_failure,
         print "  \\node at (0, %f) [left] {Timeout};" % (tot_height - height_post_timeout_box / 2 + offset)
         tot_height -= height_post_timeout_box
 
-    # Scale will be y = alpha log(t) + beta
-    alpha = (tot_height - base_y) / (math.log(maxtime) - math.log(mintime))
-    beta = base_y - alpha * math.log(mintime)
-    def time_to_y(time):
-        return alpha * math.log(time) + beta
+    alpha = (tot_height - base_y) / (math.log(maxtime / mintime))
+    def time_to_y(t):
+        return alpha * math.log(t / mintime) + base_y
+    def y_to_time(y):
+        return (math.e ** ((y - base_y) / alpha)) * mintime
 
-    sys.stderr.write("alpha %f, beta %f, tot_height %f, base_y %f\n" % (alpha, beta, tot_height, base_y))
-                     
+    sys.stderr.write("alpha %f, tot_height %f, base_y %f\n" % (alpha, tot_height, base_y))
+    sys.stderr.write("mintime %f -> %f, maxtime %f -> %f\n" % (mintime, time_to_y(mintime),
+                                                               maxtime, time_to_y(maxtime)))
     print "  \\draw (0,%f) -- (0, %f);" % (base_y + offset, offset + tot_height)
-    for k in ["0.001", "0.01", "0.1", "1", "10", "100", "300"]:
+    for k in ["0.0001", "0.001", "0.01", "0.1", "1", "10", "100", "300"]:
         if float(k) >= mintime:
             print "  \\node at (0, %f) [left] {%s};" % (time_to_y(float(k)) + offset, k)
             print "  \\draw [color=black!10] (0,%f) -- (%f, %f);" % (time_to_y(float(k)) + offset, figwidth, time_to_y(float(k)) + offset)

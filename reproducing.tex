@@ -1311,6 +1311,7 @@ operations at 490ms or 540ms, because those fall outside of the
 interval.
 
 \begin{figure}
+  {\hfill}
   \subfigure[][Intervals overlap; message is sent]{
     \begin{tikzpicture}
       \draw[->,decorate,decoration={snake,segment length=2mm, amplitude=1mm}]
@@ -1318,7 +1319,7 @@ interval.
         (0mm,-8mm) node (TX) {\textbf{TX}} (0,-10mm) --
         (0mm,-40mm);
       \draw (-4mm,-8mm) -- (-6mm,-8mm) -- (-6mm,-23mm) -- (-4mm,-23mm);
-      \draw (-20mm,-16mm) node {TX interval};
+      \draw (-18mm,-16mm) node {TX interval};
 
       \draw[->,decorate,decoration={snake,segment length=2mm, amplitude=1mm}]
         (13mm,0mm) -- (13mm,-16mm)
@@ -1330,6 +1331,7 @@ interval.
     \end{tikzpicture}
     \label{fig:enforce:message_windows:tx_first}
   }
+  \hspace{-5mm}
   \subfigure[][Intervals overlap; message is sent]{
     \begin{tikzpicture}
       \draw[->,decorate,decoration={snake,segment length=2mm, amplitude=1mm}]
@@ -1349,8 +1351,9 @@ interval.
     \end{tikzpicture}
     \label{fig:enforce:message_windows:rx_first}
   }
-  {\hfill}
+  \hspace{-2mm}
   \subfigure[][Intervals do not overlap; no message can be sent.]{
+    \hspace{4mm}
     \begin{tikzpicture}
       \draw[->,decorate,decoration={snake,segment length=2mm, amplitude=1mm}]
         (0mm,0mm) -- (0,-5mm)
@@ -1368,8 +1371,11 @@ interval.
       \node [right = 0.3 of RX] {};
       \node [left = 0.3 of TX] {};
     \end{tikzpicture}
+    \hspace{4mm}
     \label{fig:enforce:message_windows:failed}
   }
+  {\hfill}
+  \vspace{-12pt}
   \caption{Overlapping TX and RX intervals allow the message to be
     sent, regardless of which operation is ordered first.  If the
     intervals do not overlap then no message can be sent.}
@@ -1428,11 +1434,11 @@ corresponding to
   the presentation.}.
 
 This algorithm solves the problem of not knowing how long to wait by
-always waiting for the maximum possible time, and the problem of not
+always waiting for the maximum possible time and the problem of not
 knowing which of many possible peers to synchronise with by
 synchronising with all of them.  That is similar but not quite
 identical to the desired behaviour.  In particular, in the desired
-semantics, when a message operation is destined to fail, it should not
+semantics, when a message operation is destined to fail it should not
 wait at all, whereas here failing operations wait for the maximum
 possible time; in other words, the non-deterministic part of the
 desired behaviour is correctly implemented, but the non-causal part is
@@ -1445,26 +1451,27 @@ investigated this at all.
 
 This algorithm assumes that it is possible to delay an arbitrary LLI
 for as long as desired, whenever desired, with no adverse effects on
-any other part of the program.  This is not entirely true.  In
-particular, it is common for a single HLI, and hence a single concrete
-program thread, to run multiple LLIs, and it is not possible to delay
-one LLI in a thread without also delaying all of the others.  What
-effect will these spurious delays have on the program and the
-enforcer?  Delaying an unbound LLI is generally safe, as it just
-causes the enforcement plan to start a little later, which might lead
-to poor performance but will not completely prevent the plan from
+any other part of the program.  This is not entirely true.  It is
+common for a single HLI, and hence a single concrete program thread,
+to run multiple LLIs, and it is not possible to delay one LLI in a
+thread without also delaying all of the others (as otherwise the
+different LLIs would reach the \textbf{Emul} phase at different
+times).  What effect will these spurious delays have on the program
+and the enforcer?  Delaying an unbound LLI is generally safe, as it
+just causes the enforcement plan to start a little later, which might
+lead to poor performance but will not completely prevent the plan from
 succeeding.  Delaying a bound LLI is not.  The problem is that
 delaying a bound LLI will have knock-on effects on the LLI to which it
 has bound, which might cause \emph{that} LLI to fail its part of the
 plan, and in the extreme case might completely prevent certain bugs
-from reproducing.  To be a little more concrete, suppose that the plan
-requires that LLI $l_1$ be delayed but does not impose any delay on
-LLI $l_2$, which is in the same HLI, and that $l_2$ is bound to the
-LLI $l_3$ in another HLI.  $l_3$ will eventually advance to a point
-which requires further communication with $l_2$.  If $l_2$ is
-excessively delayed then this message operation will time out, causing
-both $l_2$ and $l_3$ to fail.  If this happens consistently then it
-might make it impossible to reproduce the bug.
+from reproducing.  Suppose that the plan requires that LLI $l_1$ be
+delayed but does not impose any delay on LLI $l_2$, which is in the
+same HLI, and that $l_2$ is bound to the LLI $l_3$ in another HLI.
+$l_3$ will eventually advance to a point which requires further
+communication with $l_2$.  If $l_2$ is excessively delayed then this
+message operation will time out, causing both $l_2$ and $l_3$ to fail.
+If this happens consistently then it might make it impossible to
+reproduce the bug.
 
 Fortunately, this problem is easily averted by defining the bound
 message timeout more carefully.  Rather than timing out after $l_3$
@@ -1472,7 +1479,7 @@ has been waiting for more than time $\tau$, the plan should fail if
 $l_2$ takes more than $\tau$ to advance from one message operation to
 the next, excluding the time it wastes due to $l_1$'s message
 operations.  The HLI can track this information for each LLI, and
-$l_3$ adjust its timeout as appropriate.  This avoids the
+$l_3$ can adjust its timeout as appropriate.  This avoids the
 issue\editorial{Or at least, it does the one case I've actually seen
   this, and I think it does in the general case as well.}.
 
@@ -1503,8 +1510,8 @@ other then the overhead of the enforcer can be reduced without
 affecting its efficacy by moving some of the delay from the more
 frequent operation to the less frequent one.  {\Implementation} takes
 advantage of this by only delaying a thread at a \textbf{TX} operation
-$A$ if $A$ has run fewer times, in this run of the program, than the
-matching \textbf{RX} operation, and vice versa.
+if that operation has run fewer times, in this run of the program,
+than the matching \textbf{RX} operation, and vice versa.
 
 \section{Implementing the $\smLoad{}$ operation}
 
@@ -1531,9 +1538,9 @@ matter.
 A second, less severe, problem is that the address, when it becomes
 evaluatable, might refer to invalid memory, even when the original
 program is guaranteed to only ever access valid memory.  The problem
-here is that the side-condition placement strategy can sometimes, in
-effect, lift memory accesses past control-flow branches, and if that
-control-flow branch was a test of the validity of the pointer then the
+here is that the side-condition placement strategy can sometimes lift
+memory accesses past control-flow branches, and if that control-flow
+branch was a test of the validity of the pointer then the
 side-condition might involve invalid pointers.  {\Implementation}
 solves this problem by simply catching page faults generated while
 evaluating side conditions.  If any such faults occur then the

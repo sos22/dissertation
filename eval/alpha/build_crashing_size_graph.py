@@ -51,7 +51,7 @@ descrs = ["Instructions", "Unsimplified states", "Simplified states"]
 for k in xrange(len(keys)):
     print "  %%%% k = %s" % keys[k]
     alpha_axis(common.figwidth * k, series, k % 2, descrs[k])
-    for (alpha, data) in series.iteritems():
+    for (alpha, (data, _)) in series.iteritems():
         do_one(k * common.figwidth, alpha, keys[k], data)
 
 common.figwidth *= 3

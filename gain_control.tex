@@ -32,6 +32,7 @@ these corrupted instructions\footnote{Instructions will only be
     \mathit{MustInterpret}: & \{\textsc{Instruction}\}
     \end{array}\right\}
   \end{displaymath}
+  \vspace{-12pt}
   \caption{The \textsc{PatchStrategy} type}
   \label{fig:patch_strategy_type}
 \end{figure}
@@ -45,30 +46,32 @@ patch problem using the \textsc{PatchStrategy} type, illustrated in
   program which will be replaced with branch instructions.
 \item $\mathit{Cont}$ is a set of instructions which are not patched
   themselves but which will be run in the interpreter anyway.
-\item $\mathit{MustInterpret}$ is a set of instructions where the
-  enforcement plan requires us to gain control, but where the patches
-  described in this strategy would be insufficient to do so.
+\item $\mathit{MustInterpret}$ is a set of instructions at which we
+  must gain control but the strategy built so far is insufficient to
+  do so.
 \end{itemize}
 
-There are various constraints on the validity of a
-\textsc{PatchStrategy} which are best explained inductively.  The
-empty \textsc{PatchStrategy}, which has all three sets empty, is a
-valid strategy, and corresponds to the case where the program is
-completely unmodified.  There are three rules for generating a new
-valid \textsc{PatchStrategy} from an existing one:
+A \textsc{PatchStrategy} is valid if it ensures that the program never
+executes one of the corrupted instructions.  The empty strategy, in
+which all of the sets are empty, representing the initial unpatched
+program, is a valid strategy, but is also not very useful.  There are
+three rules for transforming one valid strategy into another, or into
+a set of others:
 
 \begin{itemize}
 \item
+  $\textbf{Extend}(i)$ This rule extends the \textsc{PatchStrategy} by
+  adding a new instruction $i$ to $\mathit{MustInterpret}$.
+\item
   \textbf{PatchDirect} This rule transforms a \textsc{PatchStrategy}
   by removing an instruction $i$ from the $\mathit{MustInterpret}$ set
-  and adding it to the $\mathit{Patch}$ one.  The enforcer will
+  and adding it to the $\mathit{Patch}$ one, so that the enforce will
   therefore gain control at $i$ by replacing $i$ with a branch to the
   interpreter.  This could potentially corrupt the instructions
-  following $i$; if so, \textsc{BuildPatchStrategy} adds those
-  instructions to $\mathit{MustInterpret}$.  This rule is only valid
-  if the branch at instruction $i$ would not itself corrupt or be
-  corrupted by one of the other instructions in the $\mathit{Patch}$
-  set.
+  following $i$; if so, the corrupted instructions are added to
+  $\mathit{MustInterpret}$.  This rule is only valid if the branch at
+  instruction $i$ would not itself corrupt or be corrupted by one of
+  the other instructions in the $\mathit{Patch}$ set.
 \item
   \textbf{Prefix} This rule also removes an instruction $i$ from
   $\mathit{MustInterpret}$, but does not add it to $\mathit{Patch}$
@@ -76,17 +79,13 @@ valid \textsc{PatchStrategy} from an existing one:
   instead adds $i$ to $\mathit{Cont}$ and all of $i$'s predecessors to
   $\mathit{MustInterpret}$, so that the enforcer gains control before
   $i$ starts and then maintains control when the program branches to
-  $i$.  This rule is only valid if {\technique} can find all of the
-  predecessors of $i$.
-\item
-  $\textbf{Extend}(i)$ This rule extends the \textsc{PatchStrategy} by
-  adding a new instruction $i$ to $\mathit{MustInterpret}$.
+  $i$.  This rule is only valid $i$ is not the first instruction in a
+  function.
 \end{itemize}
 
-{\Technique} must find a valid \textsc{PatchStrategy} in which
-$\mathit{MustInterpret} = \varnothing$ and $\mathit{Cont} \cup
-\mathit{Patch}$ includes all of the instructions at which the enforcer
-must gain control.  The algorithm for doing so is shown in
+\todo{SSR} The algorithm uses these rules to explore the space of
+valid strategies until it finds one which guarantees control in all of
+the needed places.  The algorithm for doing so is shown in
 \autoref{fig:patch_search_algorithm}.  This algorithm starts with an
 empty \textsc{PatchStrategy} (line 2).  It considers each instruction
 at which it must gain control in turn (line 3).  For each one, it adds
@@ -96,10 +95,7 @@ explores from there using the first two strategy generating rules
 $\mathit{MustInterpret}$ state (lines 7 to 9).  The algorithm then
 loops again adding another instruction from $\mathit{gainControl}$ to
 $\mathit{MustInterpret}$, and repeats until every instruction has been
-added.  The resulting strategy is then guaranteed to gain control of
-the program at every instruction in $\mathit{gainControl}$ and to
-ensure that the program never executes one of the corrupted
-instructions.
+added.
 
 \begin{figure}
   \begin{algorithmic}[1]
@@ -123,7 +119,7 @@ instructions.
   \caption{Patch search algorithm.  $\mathit{gainControl}$ is the set
     of instructions at which the enforcer must gain control of the
     program.  Not shown: {\implementation}'s implementation records
-    all of the stratgies which it has visited so far so as to avoid
+    all of the strategies which it has visited so far so as to avoid
     re-visiting them.}
   \label{fig:patch_search_algorithm}
 \end{figure}
@@ -159,24 +155,16 @@ which minimises the cost of patch\footnote{The result is only usually
   anyway (see \autoref{sect:eval:genfix}), and so this would not be a
   good trade-off.}.
 
-Calculating the set of predecessor instructions, necessary to apply
-the \textbf{Prefix} rule, is itself marginally complicated.  The
-crashing \gls{cfg} building algorithm, described in
-\autoref{sect:derive:build_crashing_cfg}, needs to solve the same
-problem, and {\technique} uses a similar solution here.  There is one
-important difference, however: if the \gls{cfg}-building algorithm
-misses a predecessor then the analysis will be incomplete, which is
-irritating but tolerable, whereas if the \textsc{PatchStrategy}
-builder misses one then the program will potentially crash, which is
-more of a problem.  This could happen if the strategy corrupts an
-instruction $i$ and there are control-flow edges to $i$ which are
-possible in the program but not in the \gls{programmodel}.  The most
-common reason for an edge to be missing from the \gls{programmodel} is
-if it is an indirect call which did not occur during the dynamic
-analysis phase.  {\Implementation} avoids that particular problem by
-simply disabling the \textbf{Prefix} strategy for the first
-instruction in any function, which ensures that such instructions will
-never be corrupted in the final strategy.
+The condition on the \textbf{Prefix} rule, that the instruction must
+not be the first one in a function, perhaps requires further
+explanation.  The here is that functions in the main program might be
+called from libraries, and the \gls{programmodel} will not be able to
+detect such calls unless they are observed during the dynamic analysis
+phase.  Missing such a call would lead to the algorithm producing an
+incorrect \textsc{PatchStrategy} which might either fail to gain
+control when necessary or, worse, allow the program to execute
+corrupted instructions, causing it to misbehave.  Simply disabling the
+\textbf{Prefix} rule at the start of a function avoids the issue.
 
 This can sometimes lead to the patch problem being unsolvable if the
 entire function is smaller than a single branch instruction, as in

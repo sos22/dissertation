@@ -2433,7 +2433,9 @@ The table includes three different types of error indicator:
   experiment and resampled them with replacement to produce a further
   10,000 sample sets each of size 1000.  I then used these 10,000
   sample sets to compute 10,000 estimates of the ratio.  I report the
-  population standard deviation of those estimates as $y$.
+  population standard deviation of those estimates as $y$.  I also
+  manually inspected the generated estimates to confirm that there
+  were not an excessive number of outliers in either sense.
 \end{itemize}
 
 \subsubsection{Effects of the $\alpha$ parameter}
@@ -2465,17 +2467,18 @@ time taken to derive the \gls{crashingthread} {\StateMachines},
 including deriving the \gls{cfg}, compiling it to a {\StateMachine},
 performing the initial simplification, and deriving C-atomic.  The
 results are shown in the violin plot in
-\autoref{fig:perf:alpha:bpm:unopt}.  This chart shows an estimate
-of the probability density function of the time taken to build the
+\autoref{fig:perf:alpha:bpm:unopt}.  This chart shows an estimate of
+the probability density function of the time taken to build the
 crashing {\StateMachines} for each value of \gls{alpha}, including
 building the initial \gls{cfg}, compiling to a {\StateMachine}, and
 performing the initial simplifications.  The density function was
-estimated in log space using a gaussian kernel density estimator and a
-bandwidth of $\sigma.n^{-0.2}$, where $\sigma$ is the log space
-population standard deviation and $n$ the number of samples, in
-accordance with Silverman's Rule of Thumb\needCite{}.  The chart also
-shows the mean excluding timeouts, plus or minus one standard
-deviation of that mean, as a hollow gray rectangle.
+estimated in log space using a truncated gaussian kernel density
+estimator with the threshold set to the timeout time and a bandwidth
+of $\sigma.n^{-0.2}$, where $\sigma$ is the log space population
+standard deviation and $n$ the number of samples, in accordance with
+Silverman's Rule of Thumb\needCite{}.  The chart also shows the mean
+excluding timeouts, plus or minus one standard deviation of that mean,
+as a hollow gray rectangle.
 
 Note that time is shown on a log scale, which is necessary as the data
 shows interesting behaviour across many orders of magnitude.  This
@@ -2513,14 +2516,11 @@ that used for most of the other experiments:
 The results of this experiment are therefore not directly comparable
 with the results of the other experiments.
 
-\todo{This is going to need re-writing once I get the results of the
-  current batch of experiments.}
-
 The overall shape of this chart is roughly what one would expect: the
 time taken to analyse a particular potentially-crashing instruction
 rises roughly exponentially with the value of \gls{alpha}, and the
 proportion of timeouts rises rapidly once \gls{alpha} exceeds a
-certain value, which in this case is about 40.
+certain value, which in this case is about 50.
 
 The next thing I investigated was the effect of \gls{alpha} on the
 size of the \glspl{crashingthread}.  The results are shown in
@@ -2661,9 +2661,7 @@ broadly the same pattern, for essentially similar reasons.
     The time taken includes building the interfering {\StateMachine},
     rederiving crashing {\StateMachine}, deriving \gls{ic-atomic}
     constraints, building the \gls{verificationcondition}, and the
-    final satisfiability check.  In the $\alpha = 10$ case 2.5\% of
-    runs completed in less than 1ms; these are not included in the
-    chart.}
+    final satisfiability check.}
   \label{fig:perf:alpha:gvc:unopt}
 \end{figure}
 
