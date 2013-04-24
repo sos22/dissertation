@@ -444,7 +444,7 @@ height_pre_dismiss_box = 0.5
 height_pre_failure_box = 0.5
 height_post_timeout_box = 0.5
 height_post_oom_box = 0.5
-maxtime = 300
+maxtime = 600
 def _augment(series):
     if series == None:
         return
@@ -454,7 +454,8 @@ def _augment(series):
             series["tot_samples"] += series[k]
     series["frac_in_data"] = len(series["times"]) / series["tot_samples"]
     ldata = [math.log(d / mintime) for d in series["times"]]
-    kernel = truncated_gaussian(math.log(maxtime/mintime))
+    #kernel = truncated_gaussian(math.log(maxtime/mintime))
+    kernel = gaussian_kernel
     bw = guess_bandwidth(ldata)
     series["density"] = density_estimator(ldata, kernel, bw)
     series["bandwidth"] = bw
@@ -476,7 +477,7 @@ def kde_chart(offset, x_coord, parse_series, data):
 
     # Bootstrap for confidence interval
     alts = []
-    for i in xrange(0, 200):
+    for i in xrange(0, 10):
         alt = []
         for i in xrange(len(data[0])):
             alt.append(random.choice(data[0]))
