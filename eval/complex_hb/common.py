@@ -17,9 +17,7 @@ def load_data(re):
         fl = file(f)
         samples = [float(l.strip()) for l in fl.xreadlines()]
         fl.close()
-        mean = sum(samples) / float(len(samples))
-        sd = (sum([(x - mean) ** 2 for x in samples]) / (len(samples) * (len(samples) - 1.0))) ** .5
-        data[idx] = (mean, sd)
+        data[idx] = samples
     return data
 
 def preamble():
@@ -43,12 +41,18 @@ def y_axis(labels, time_to_y):
         print "  \\draw[color=black!10] (0,%f) -- (%f,%f);" % (y, fig_width, y)
     print "  \\node at (-12pt,%f) [rotate=90,left = 1, anchor = north] {Time to build \\glspl{verificationcondition}, seconds};" % (fig_height / 2)
 
+def mean_sd(vals):
+    mean = sum(vals) / len(vals)
+    sd = (sum([(x - mean)**2 for x in vals]) / len(vals)) ** .5
+    return (mean, sd)
+
 def plot_data(time_to_y, data):
     # And the data
     data = data.items()
     data.sort()
     print "  %% Main data"
-    for (count, (time, sd)) in data:
+    for (count, samples) in data:
+        (time, sd) = mean_sd(samples)
         w = error_bar_width / 2
         x = count_to_x(count)
         mean = time_to_y(time)

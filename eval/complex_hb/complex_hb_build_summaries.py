@@ -8,36 +8,48 @@ import random
 
 import common
 
-maxtime = 1000.0
+maxtime = 2000.0
 mintime = 0.001
 regression_threshold1 = 0
 regression_threshold2 = 40
+nr_replicates = 1000
+
+def get_quantile(data, q):
+    idx = q * len(data)
+    idx1 = int(idx)
+    idx2 = idx1 + 1
+    if idx2 >= len(data):
+        return data[-1]
+    return data[idx1] * (idx - idx1) + data[idx2] * (1 - idx + idx1)
 
 def time_to_y(t):
     if t > maxtime:
         return common.fig_height
     if t < mintime:
         return 0
-    #math.log(t / mintime) / math.log(maxtime/mintime) * common.fig_height
-    return (t - mintime) / (maxtime - mintime) * common.fig_height
+    return math.log(t / mintime) / math.log(maxtime/mintime) * common.fig_height
+    #return (t - mintime) / (maxtime - mintime) * common.fig_height
 
-def mean_sd(vals):
-    mean = sum(vals) / len(vals)
-    sd = (sum([(x - mean)**2 for x in vals]) / len(vals)) ** .5
-    return (mean, sd)
 data = common.load_data(re.compile(r"complex_hb_([0-9]*)\.build_summary_time"))
-pts = [(x[0], x[1][0], x[1][1]) for x in data.iteritems() if x[0] < regression_threshold2 and x[0] > regression_threshold1]
+
+abscissae = [13, 17, 21, 23, 25, 29, 3, 33, 37, 41, 43, 45, 49, 5, 53, 63, 65, 69, 73, 77, 79, 9]
+abscissae.sort()
+#data = {}
+#for k in abscissae:
+#    data[k] = [1.01 ** k + random.gauss(0, 0.0001) for _ in xrange(10)]
+#    #data[k] = [0.5 + 0.04 * k + 0.003 * k ** 2 + 0.0002 * k ** 3 + 0.00001 * k ** 4 + random.gauss(0, 5) for _ in xrange(10)]
+
 common.preamble()
 common.x_axis()
-common.y_axis(["0", "20", "40", "60", "80", "100", "120", "140", "160", "180", "200", "300", "310", "320", "330", "340", "350", "370", "380", "400"], time_to_y)
-common.plot_data(time_to_y, data)
+common.y_axis(["0.1", "1", "2", "4", "10", "20", "40", "80", "150", "300"], time_to_y)
 
 from numpy import matrix
 def quartic_regression(pts):
     def regression_basis(x):
         return [1, x, x**2, x**3, x**4]
-    x_matrix = matrix([regression_basis(x) for (x,_y,_sd) in pts])
-    y_matrix = matrix([[y] for (_x,y,_sd) in pts])
+    a = list(filter(lambda x: regression_threshold1 <= x < regression_threshold2, pts.iterkeys()))
+    x_matrix = matrix([regression_basis(x) for x in a])
+    y_matrix = matrix([pts[x] for x in a])
     coeff_matrix = (x_matrix.T * x_matrix).I * x_matrix.T * y_matrix
     regression_coefficients = coeff_matrix.T.tolist()[0]
 
@@ -50,7 +62,32 @@ def quartic_regression(pts):
         return acc
     return (regression_coefficients) + [predict]
 
-predict = quartic_regression(pts)[-1]
+# Bootstrap a confidence interval
+def gen_replicate(data):
+    d = {}
+    for (k, v) in data.iteritems():
+        d[k] = [random.choice(v) for _ in xrange(len(v))]
+    return d
+replicates = [quartic_regression(gen_replicate(data))[-1] for _ in xrange(nr_replicates)]
+def bootstrap_confidence_interval(x, interval, replicates):
+    samples = [r(x) for r in replicates]
+    samples.sort()
+    return (get_quantile(samples, (1 - interval) / 2),
+            get_quantile(samples, (1 + interval) / 2))
+
+bs_interval = {}
+for abs in xrange(0,101,1):
+    bs_interval[abs] = bootstrap_confidence_interval(abs, .9, replicates)
+q = bs_interval[0]
+print "  \\fill [color=black!50] (%f, %f) -- (%f, %f)" % (common.count_to_x(0), time_to_y(q[0]),
+                                                          common.count_to_x(0), time_to_y(q[1]))
+for a in xrange(5,101,5):
+    print "        -- (%f, %f)" % (common.count_to_x(a), time_to_y(bs_interval[a][1]))
+for a in reversed(xrange(5, 101,5)):
+    print "        -- (%f, %f)" % (common.count_to_x(a), time_to_y(bs_interval[a][0]))
+print "        -- cycle;"
+
+predict = quartic_regression(data)[-1]
 print "  \\draw[dotted] ",
 first = True
 for x in xrange(3, 100):
@@ -61,21 +98,23 @@ for x in xrange(3, 100):
     print "(%f,%f)" % (common.count_to_x(x), time_to_y(p))
 print "        ;"
 
+common.plot_data(time_to_y, data)
+
 def exponential_regression(pts):
     # Exponential regression to form y = alpha * e ** (beta * x) + gamma.
     # Have to do this one numerically.
     def predict(alpha, beta, gamma, x):
         return alpha * math.e ** (beta * x) + gamma
     def defect(alpha, beta, gamma):
-        return sum([((predict(alpha, beta, gamma, x) - y)/1) ** 2 for (x,y,sd) in pts])
-    sum_data = sum([y for (_x, y, _sd) in pts])
+        return sum([(predict(alpha, beta, gamma, x) - y) ** 2 for (x,ys) in pts.iteritems() for y in ys])
+    sum_y = sum(sum(y) for y in pts.itervalues())
+    n = sum(len(x) for x in pts.itervalues())
     def alpha_gamma(beta):
-        sum_eb = sum([math.e ** (beta * x) for (x,_y,_sd) in pts])
-        sum_yeb = sum([y * math.e ** (beta * x) for (x,y,_sd) in pts])
-        sum_2eb = sum([math.e ** (2 * beta * x) for (x,_y,_sd) in pts])
-        n = len(data)
-        alpha = (n * sum_yeb - sum_data * sum_eb) / (n * sum_2eb - sum_eb * sum_eb)
-        gamma = (sum_data - alpha * sum_eb) / n
+        sum_eb = sum(math.e ** (beta * x) * len(ys) for (x,ys) in pts.iteritems())
+        sum_yeb = sum(y * math.e ** (beta * x) for (x,ys) in pts.iteritems() for y in ys)
+        sum_2eb = sum(math.e ** (2 * beta * x) * len(ys) for (x,ys) in pts.iteritems())
+        alpha = (n * sum_yeb - sum_y * sum_eb) / (n * sum_2eb - sum_eb * sum_eb)
+        gamma = (sum_y - alpha * sum_eb) / n
         return (alpha, gamma)
 
     # Lacking any better ideas for where to start.
@@ -83,8 +122,8 @@ def exponential_regression(pts):
 
     (alpha, gamma) = alpha_gamma(beta)
     current_defect = defect(alpha, beta, gamma)
-    ratio = 1.5
-    for _ in xrange(1000):
+    ratio = 1.1
+    for _ in xrange(100):
         beta_high = beta * ratio
         beta_low = beta / ratio
         (alphah, gammah) = alpha_gamma(beta_high)
@@ -113,11 +152,28 @@ def exponential_regression(pts):
             ratio = ratio ** .99
     return (alpha, beta, gamma, lambda x: predict(alpha, beta, gamma, x))
 
-(alpha, beta, gamma, predict) = exponential_regression(pts)
+restrict_data = {}
+for (k, v) in data.iteritems():
+    if regression_threshold1 <= k <= regression_threshold2:
+        restrict_data[k] = v
+(alpha, beta, gamma, predict) = exponential_regression(restrict_data)
 
 sys.stderr.write("import math\n")
 sys.stderr.write("def exp_predictor(x):\n")
 sys.stderr.write("    return %f * math.e ** (%f * x) + %f\n\n" % (alpha, beta, gamma))
+
+replicates = [exponential_regression(gen_replicate(restrict_data))[-1] for _ in xrange(nr_replicates)]
+bs_interval = {}
+for abs in xrange(0,101):
+    bs_interval[abs] = bootstrap_confidence_interval(abs, .9, replicates)
+q = bs_interval[0]
+print "  \\fill [color=black!50] (%f, %f) -- (%f, %f)" % (common.count_to_x(0), time_to_y(q[0]),
+                                                          common.count_to_x(0), time_to_y(q[1]))
+for a in xrange(5,101,5):
+    print "        -- (%f, %f)" % (common.count_to_x(a), time_to_y(bs_interval[a][1]))
+for a in reversed(xrange(5, 101,5)):
+    print "        -- (%f, %f)" % (common.count_to_x(a), time_to_y(bs_interval[a][0]))
+print "        -- cycle;"
 
 print "  \\draw ",
 first = True
@@ -129,9 +185,15 @@ for x in xrange(3, 100):
     print "(%f,%f)" % (common.count_to_x(x), time_to_y(p))
 print "        ;"
 
-# Do a bootstrap
+# # Do a bootstrap
+# nr_replicates = 100
 # def resample():
-#     return [random.choice(pts) for _ in pts]
+#     d = {}
+#     for (k, v) in data.iteritems():
+#         d[k] = [random.choice(v) for _ in xrange(nr_replicates)]
+#     return d
+# exp_regress = 
+
 # def bootstrap(regression_fn, labels):
 #     samples = [regression_fn(resample()) for _ in xrange(10000)]
 #     p = [mean_sd([x[i] for x in samples]) for i in xrange(len(labels))]
