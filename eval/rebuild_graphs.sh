@@ -11,18 +11,19 @@ cd artificial_bugs
 # ./multi_bugs.py > special/multi_bugs.tex
 # ./multi_threads.py > special/multi_threads.tex
 # ./crash_time_to_cdf.py > crash_time_cdfs.tex
+# ./cdf1.py > cdf1.tex
 cd ..
 
 cd complex_hb
-./complex_hb_build_summaries.py > complex_hb_build_summaries.tex
+#./complex_hb_build_summaries.py > complex_hb_build_summaries.tex
 cd ..
 
 cd alpha
 cd unopt
-#../build_bpm_graph.py > bpm.tex
-#../build_gsc_graph.py > gsc.tex
-#../build_gvc_graph.py > gvc.tex
-#../build_crashing_size_graph.py > crashing_size.tex
+../build_bpm_graph.py > bpm.tex
+../build_gsc_graph.py > gsc.tex
+../build_gvc_graph.py > gvc.tex
+../build_crashing_size_graph.py > crashing_size.tex
 cd ..
 
 cd opt
@@ -30,7 +31,7 @@ cd opt
 # ../build_gsc_graph.py opt > gsc.tex
 # ../build_gvc_graph.py > gvc.tex
 # ../build_crashing_size_graph.py > crashing_size.tex
-# cd ..
+cd ..
 cd ..
 
 cd bubble_charts
