@@ -581,133 +581,60 @@ each of these enforcers loaded.  As mentioned above, MySQL has such a
 test suite, and so I generated a complete set of enforcers for it.
 This took three hours and twelve minutes\editorial{Repeats?}, using
 ten cores on a twelve core AMD Opteron 6168 with 16GiB of memory, and
-produced a total of 10188 \glspl{bugenforcer}.  I then re-ran the
+produced a total of 10173 \glspl{bugenforcer}.  I then re-ran the
 \texttt{rpl\_change\_master} test ten times with each of these
 enforcers loaded, again running ten tests in parallel.  These tests
 were run such that every enforcer was tested $n$ times before any
 enforcer ran $n+1$ times, and the order in which enforcers ran, and
 hence which enforcers ran in parallel, was randomised for every
 repeat.  As a baseline, I also ran the test 10,000 times without any
-\glspl{bugenforcer} attached; \todo{...} of these runs suffered
-crashes, giving a baseline failure rate of one in \todo{...}.
+\glspl{bugenforcer} attached.
 
-As expected, one of the enforcers was able to consistently reproduce
-the \bugname{mysql} bug discussed above.  Two other enforcers were
-also able to reproduce essentially similar bugs elsewhere in MySQL; I
-was unaware of these bugs before running the tool.  These three
-enforcers caused the relevant bugs to reproduce on every run of the
-test suite.
+The results are shown in \autoref{tab:eval:does:finding_unknown}.
+Three of the enforcers were able to reproduce the bugs for which they
+were designed.  The first, hereafter referred to as enforcer A,
+reproduced the \bugname{mysql} bug, as desired.  The other two,
+enforcers B and C, reproduced essentially similar races elsewhere in
+MySQL; I was unaware of these bugs before running this experiment.
+All three bugs were very rare without an enforcer, or with the wrong
+enforcer, but reproduced very easily when an appropriate enforcer was
+used, precisely as desired.
 
-Several other runs of MySQL suffered from one of these bugs, despite
-the \glspl{bugenforcer} in use at the time being designed for other
-bugs.  Many of these simply reflect the fact that these are real bugs:
-if the buggy program is run enough times then it will eventually crash
-due to one of them, even without {\technique}'s assistance; the
-\glspl{bugenforcer} simply reduce the number of times which the
-program needs to be run.
-
+It is perhaps surprising that the reproduction rates are lower with an
+inappropriate enforcer than they are with no enforcer at all.  This
+reflects the fact that randomly adding delays to a program's execution
+is not an effective way of reproducing bugs: delaying a thread reduces
+the program's effective concurrency, and unless the delays are
+carefully positioned this will outweigh the benefits of encouraging it
+to explore less-common schedules.
 
 \begin{table}
-\todo{Come up with a better way of summarising this data.}
-\begin{tabular}{lllllllll}
-ID    & res1         & res2         & res3         & res4         & res5         & res6         & res7         & res8\\
-17    &              &              &              &              &              & Spurious \\
-183   &              &              &              & Spurious \\
-219   &              &              & Spurious \\
-243   &              &              &              &             & Spurious \\
-263   &              &              &              & Spurious \\
-264   &              &              &              & Spurious \\
-332   &              &              &              &             & Spurious \\
-346   &              &              &              & Spurious \\
-347   &              &              & Spurious \\
-410   & Spurious \\
-1041  &              &              &              &             & Spurious \\
-1082  &              &              &              &              &              & Spurious \\
-1087  &              &              &              &             & Spurious \\
-1148  &              &              &              &              &              &              & Spurious \\
-1336  &              &              &              &              &              &              & Spurious \\
-1342  &              &              &              &             & Spurious \\
-1443  &              &              & Spurious \\
-1572  &              &              &              & Spurious \\
-1586  &              &              & Spurious \\
-1653  &              &              &              &              &              & Spurious \\
-1687  &              &              &              &             & Spurious \\
-1702  &              &              &              &              &              &              &              & Spurious \\
-1782  & Spurious \\
-1787  &              &              &              & Spurious \\
-1802  &              &              &              &              &              &              &              & Spurious \\
-1829  &              &              &              &              &              &              & Spurious \\
-1886  &              &              &              &              &              &              &              & Spurious \\
-1945  &              &              &              & Spurious \\
-1956  &              &              &              &              &              &              & Spurious \\
-1976  &              &              &              &              &              & Spurious \\
-2011  &              &              &              &             & Spurious \\
-2031  &              &              &              &             & Spurious \\
-2046  &              &              &              &              &              & Spurious \\
-2081  &              &              &              &             & Spurious \\
-2093  &              &              &              &              &              &              & Spurious \\
-2130  &              &              &              &              &              &              & Spurious \\
-2174  &              &              &              & Spurious \\
-2195  &              &              &              &              &              &              &              & Spurious \\
-2206  &              &              &              &              &              &              &              & Spurious \\
-2259  & Spurious     &              & Spurious     & Spurious    & Spurious      & Spurious     & Spurious     & Spurious \\
-2305  & Spurious \\
-2379  &              &              &              &              &              &              &              & Spurious \\
-2344  & Spurious \\
-2377  &              &              &              &              &              &              & Spurious \\
-2408  &              &              & Spurious \\
-2418  &              &              &              &              &              &              &              & Spurious \\
-2447  &              &              &              & Spurious \\
-2469  &              &              & Spurious \\
-2486  & Spurious \\
-2538  &              &              &              &              &              & Spurious \\
-2632  &              &              &              & Spurious \\
-2788  &              &              &              &              &              &              & Spurious \\
-2801  &              &              &              &              &              & Spurious \\
-2839  &              &              &              &             & Spurious \\
-2849  &              &              &              &              &              &              &              & Spurious \\
-2858  &              &              &              &             & Spurious \\
-3028  & Spurious     &              & Spurious \\
-3112  &              &              &              & Spurious \\
-3152  &              &              &              & Spurious \\
-3370  &              & Spurious \\
-3372  &              &              &              & Spurious \\
-3482  &              &              & Spurious \\
-3518  &              &              & Spurious \\
-4321  & Spurious \\
-10057 &              & Spurious \\
-10095 &              &              &              &             & Spurious \\
-10065 & spurious \\
-10071 &              & Spurious \\
-10105 &              &              &              &             & Spurious \\
-10110 &              &              &              &             & Spurious \\
-10188 &              &              &              &              &              &              &              & Spurious \\
-10128 &              &              &              &              &              & Spurious \\
-10318 &              &              &              &             & Spurious \\
-10444 &              &              &              &             & Spurious \\
-10465 &              &              &              &              &              &              & Spurious \\
-10468 &              & Spurious \\
-10542 &              &              &              &              &              &              &              & Spurious \\
-10649 &              &              &              &              &              &              & Spurious \\
-10721 &              & Spurious \\
-10745 & Spurious \\
-10763 &              &              &              &              &              &              & Spurious \\
-10782 &              &              &              &              &              &              & Spurious \\
-10934 & Two variants & Two variants & Two variants & Two variants & Two variants & Two variants & Two variants & Two variants \\
-10935 & Two variants & Two variants & Two variants & Two variants & Two variants & Two variants & Two variants & Two variants \\
-10940 &              &              &              &              &              & Spurious \\
-10965 &              &              &              &             & Spurious \\
-10972 &              &              &              &              &              & Spurious \\
-10973 & Real repro   & Real         & Real         & Real        & Real          & Real         & Real \\
-11028 &              &              &              &              &              & Spurious \\
-11076 &              &              &              & Spurious \\
-11078 & Spurious \\
-11161 &              &              &              & Spurious \\
-11212 &              &              & Spurious \\
-11244 &              &              &              &              &              &              &              & Spurious \\
-11245 & Spurious \\
+  {\hfill}
+\begin{tabular}{|l|l|l|l|}
+\hline
+Enforcer & \multicolumn{3}{c|}{Reproduction rate} \\\cline{2-4}
+         & Bug A                         & Bug B                                    & Bug C \\
+\hline
+None     & 0/10000                       & $0.03 \in [0.02,0.06]_{10000}^{\infty}\%$     & $0.29 \in [0.21,0.38]_{10000}^{\infty}\%$\\
+\hdashline
+A        & $90 \in [80,100]_{10}^{\infty}\%$ & 0/10                                     & 0/10 \\
+B        & 0/10                          & 10/10                                    & 0/10 \\
+C        & 0/10                          & 0/10                                     & 10/10 \\
+\hdashline
+Other    & 0/101700                      & $0.014 \in [0.009,0.020]_{101700}^{\infty}\%$ & $0.10 \in [0.08,0.11]_{101700}^{\infty}\%$ \\
+\hline
 \end{tabular}
-\caption{Effectiveness of {\technique} at finding unknown bugs.}
+  {\hfill}
+\caption{Effectiveness of {\technique} at finding unknown bugs.  The
+  $a \in [b,c]_{d}^{\infty}\%$ notation indicates that a $a$
+  percent of the $d$ experiments with that enforcer exhibited that
+  particular bug, with a 90\% confidence for the reproduction rate of
+  $b$ to $c$ percent derived by performing a bootstrap and taking the
+  limit as the number replicates went to infinity.  It is not possible
+  to derive meaningful confidence intervals for the frequency of
+  events which happened every time or those which did not happen at
+  all, and so in those cases I report either $0/d$ (if it did not
+  happen) or $d/d$ (if it happened every time).}
 \label{tab:eval:does:finding_unknown}
 \end{table}
 
@@ -1204,7 +1131,7 @@ then, when a thread reaches one of those instructions, setting memory
 watchpoints on the accessed locations and waiting for some other
 thread to trigger the watchpoint.  When that happens, it selects one
 of the threads at random to go first.  This causes the program to
-explore its possible schedulings more quickly than it would if run
+explore its possible schedules more quickly than it would if run
 normally, without needing {\technique}'s expensive initial analysis
 phase.
 
@@ -1434,7 +1361,13 @@ memory accesses.
 \begin{figure}
   \biggraph{eval/complex_alias/complex_alias}
   \caption{Memory and time used to analyse the
-    \bugname{complex\_alias}$_{L,S}$ test.}
+    \bugname{complex\_alias}$_{L,S}$ test.  Configurations which timed
+    out are shown with a cross; those which ran out of memory are
+    shown with a circle.  Configurations which timed out on some
+    repeats and ran out of memory on others are shown with both.  When
+    drawing the contours, I assumed that failed tests would have
+    completed after double the timeout time using double the available
+    memory.  Cells in which I made that assumption are shown in red.}
   \label{fig:eval:why:complex_aliasing:result1}
 \end{figure}
 
@@ -1462,8 +1395,19 @@ would not suffer from all of these difficulties at the same time.
 analysing this program, in terms of time taken and memory consumed, as
 functions of $L$ and $S$.  Both functions clearly increase rapidly
 with both $L$ and $S$, with the analysis quickly becoming intractable
-for even quite modest numbers of memory accessing instructions.
-\todo{Say more once I actually have some data to work with.}
+for even quite modest numbers of memory accessing instructions.  The
+response to the number of loads is much stronger than the response to
+the number of stores.  This behaviour is easy to explain.  In order to
+analyse this program, {\technique} must consider every possible value
+of each of the $L$ loads.  There are $S+1$ such values, corresponding
+to the $S$ stores and the initial contents of memory, and so
+{\technique} must consider $(S+1)^L$ possible aliasing patterns.  For
+most $L$ and $S$, that function grows more quickly with $L$ than $S$,
+and so it is unsurprising that the cost of analysing the program also
+depends more strongly on $L$ than on $S$\footnote{This model is a poor
+  quantitative fit for the data, as the cost of analysing each
+  aliasing pattern is also a function of $L$ and $S$, but suffices to
+  explain some of its qualitative features.}.
 
 \begin{figure}
   {\hfill}
@@ -1523,11 +1467,12 @@ loads and stores, but the final test now consists of a series of
 independent tests on the loaded values.  The cost of analysing this
 bug is shown in \autoref{fig:eval:why:complex_aliasing:result2}.  Note
 the change in scale: this program can be analysed far more quickly,
-and with far less memory, than the previous one.  The reason is that
-{\technique}'s symbolic execution engine resolves aliasing problems
-lazily, as discussed in \autoref{sect:derive:symbolic_execute}.  There
-is therefore no need to decide precisely which of the $S$ stores
-provided the value loaded by a particular load until that value is
+and with far less memory, than the previous one.  It is also responds
+more symmetrically to $L$ and $S$.  The reason is that {\technique}'s
+symbolic execution engine resolves aliasing problems lazily, as
+discussed in \autoref{sect:derive:symbolic_execute}.  There is
+therefore no need to decide precisely which of the $S$ stores provided
+the value loaded by a particular load until that value is
 used\editorial{ugg}.  In this case, the use of the value will be a
 test of the form $l < S+1$, and all of the stores will be of values
 less than or equal to $S$, and so {\technique} will be able to show
@@ -1616,6 +1561,47 @@ with the results of the other experiments.
   important.}
 
 \subsection{Effect of the \gls{w-isolation} assumption}
+
+\subsection{Effect of the dynamic analysis on analysis time and precision}
+
+\section{Discussion}
+
+This evaluation has demonstrated several important properties of
+{\technique}:
+\begin{itemize}
+\item It is able to quickly reproduce and fix bugs in artificial test
+  programs and in real programs.  The generated fixes themselves have
+  low enough overhead to be useful in practice.
+\item It is able to find at least some previously-unknown bugs in real
+  programs.
+\item It exhibits reasonable scalability as the complexity of the
+  program to be analysed increases.
+\end{itemize}
+It therefore satisfies the original design goals discussed in
+\autoref{sect:intro:overview}.
+
+The chief weakness of the evaluation is that it considers only a small
+number of bugs in real programs, and those bugs were themselves
+selected because they interact well with {\technique}.  It is hard to
+say how these results would generalise to other programs and bugs.
+The problem here is fundamentally that the class of bugs considered by
+{\technique} is quite small: not only must the program crash in a
+detectable way, but it must do so within a few dozen instructions.
+Such bugs are a small subset of the already-small set of all
+concurrency bugs, and I have been unable to find enough in real
+programs to form the basis of a truly convincing evaluation.
+
+Nevertheless, this evaluation has shown that it is possible to find,
+reproduce, and fix concurrency bugs in large-scale multithreaded
+software given only the program binary and some minimal information on
+its memory allocation pattern, and that the generated fixes are
+themselves reasonably efficient.  This represents a useful advance
+over the state of the art; previous systems either required far more
+information about the program (such as AutoPag\needCite{} and
+ConTest\needCite{}), or had very high overhead without exotic hardware
+(such as Atom-Aid\needCite{} or AVIO\needCite{}), or targeted a more
+restricted class of bugs (such as Kivati\needCite{} or
+Tolerace\needCite{}).
 
 \section{Leftover stuff}
 
