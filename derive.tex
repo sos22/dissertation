@@ -4,20 +4,19 @@
 \todo{Say something along the lines of this bit looking only at local
   program structure, whereas other bits look at global structure.}
 
-The core of {\technique} is a system for taking potential bugs,
-described by \glspl{verificationcondition}, and turning them into
-either \glspl{bugenforcer}, which check which ones are real, or
-{\genfixes}, which eliminate some specific bugs.  This chapter
-describes one approach to finding the \glspl{verificationcondition}.
-The simplest form of the algorithm assumes that the crashing
-instruction has already been identified and then investigates
-concurrency errors which might lead to that sort of crash, and I
-describe that form first.  It can also be generalised to finding
-completely unknown bugs, albeit at the expense of quite high
+{\Technique} is, at the most basic level, a system for taking
+potential bugs, described by \glspl{verificationcondition}, and
+turning them into either \glspl{bugenforcer}, which check which ones
+are real, or {\genfixes}, which eliminate some specific bugs.  This
+chapter describes one approach to finding the
+\glspl{verificationcondition}.  The simplest form of the algorithm
+assumes that the crashing instruction has already been identified and
+then investigates concurrency errors which might lead to that sort of
+crash, and I describe that form first.  It can also be generalised to
+finding completely unknown bugs, albeit at the expense of higher
 computational cost.
 
 The basic algorithm proceeds as follows:
-
 \begin{itemize}
 \item Identify all of the instructions which the \gls{crashingthread}
   might have executed in the \gls{analysiswindow}.  In other words,
@@ -48,7 +47,6 @@ The basic algorithm proceeds as follows:
   possibility of the bug under investigation reproducing.  This step
   is described in \autoref{sect:using:check_realness}.
 \end{itemize}
-
 At this stage, {\technique} is concerned primarily with the local
 structure of the program, meaning those instructions which fit within
 the \gls{analysiswindow}.  It largely ignores more global properties,
@@ -61,10 +59,10 @@ synchronisation structure, which are dealt with by the
 
 {\Technique} considers concurrency bugs caused by unfortunate
 interleavings of the \gls{alpha} instructions prior to the crash, and
-the first step is to find the \gls{alpha} instructions which might
-have executed in the \gls{crashingthread} leading up to the crash.
-These are represented as a \gls{cfg}, showing both the instructions
-involved and the relationships between them.
+hence the first step is to find the \gls{alpha} instructions which
+might have executed in the \gls{crashingthread} leading up to the
+crash.  These are represented as a \gls{cfg}, showing both the
+instructions involved and the relationships between them.
 
 Note that the instructions in this \gls{cfg} are dynamic rather than
 static, so if the same program instruction executes twice on a single
@@ -80,7 +78,7 @@ The approach taken by {\technique} is simple: start by deriving a
 fragment of the program's static \gls{cfg} which contains all of the
 necessary static instructions, and then apply a loop unrolling
 algorithm which converts that static \gls{cfg} into a dynamic one by
-duplicating instructions as necessary.  The next sub-sections describe
+duplicating instructions as necessary.  The next subsections describe
 this process in more detail.
 
 \subsection[Building the \glsentrytext{crashingthread}'s static \glsentrytext{cfg}]{Building the \gls{crashingthread}'s static \gls{cfg}}
@@ -134,15 +132,15 @@ The nodes of the \gls{cfg} generated in
 \autoref{sect:derive:build_static_cfg} represent static instructions
 in the program, but the \glspl{cfg} used to build {\StateMachines}
 must represent the program's dynamic instructions.  {\Technique} must
-therefore the static \gls{cfg} into a dynamic one.  For completely
-acyclic \glspl{cfg} this is easy, as each static instruction executes
-at most once and it is safe to simply identify the static and dynamic
-instructions.  Loops are more difficult to handle: the instructions in
-a loop might execute multiple times, and so no such simple
-correspondence exists.  {\Technique} solves this problem by simply
-unrolling such loops until they exceed \gls{alpha} instructions, so
-that the loop can only execute at most once during the
-\gls{analysiswindow}, restoring the problem to the acyclic case.
+therefore convert the static \gls{cfg} into a dynamic one.  For
+completely acyclic \glspl{cfg} this is easy, as each static
+instruction executes at most once and it is safe to simply identify
+the static and dynamic instructions.  Loops are more difficult to
+handle: the instructions in a loop might execute multiple times, and
+so no such simple correspondence exists.  {\Technique} solves this
+problem by simply unrolling such loops until they exceed \gls{alpha}
+instructions, so that the loop can only execute at most once during
+the \gls{analysiswindow}, restoring the problem to the acyclic case.
 
 \begin{figure}
 \begin{tikzpicture}
@@ -266,12 +264,12 @@ equivalent,
 \label{fig:unrolled_cyclic_cfg}
 \vspace{-20pt}
 \end{wrapfigure}
-and the loop is now one instruction further away from the
-target instruction $D_0$.  The process then repeats, moving the cycle
-steadily further and further away from $D_0$ until all paths ending of
-length \gls{alpha} ending at $D_0$ are acyclic, at which point the
-cycle can be safely removed from the graph.  The complete algorithm is
-shown in Figure~\ref{fig:derive:read:unroll_cycle_break}.
+and the loop is now one instruction further away from the target
+instruction $D_0$.  The process then repeats, moving the cycle
+steadily further and further away from $D_0$ until all paths of length
+\gls{alpha} ending at $D_0$ are acyclic, at which point the cycle can
+be safely removed from the graph.  The complete algorithm is shown in
+Figure~\ref{fig:derive:read:unroll_cycle_break}.
 
 Note that the edge which is modified is the back edge, from $C_0$ to
 $B_0$, which points ``away from $D_0$'', and not the forwards edge
@@ -433,9 +431,8 @@ solvers represent the expression whose satisfiability
   \label{fig:derive:example_expr_bdd}
   \vspace{-30pt}
 \end{wrapfigure}
-is to be checked
-as an expression in a boolean algebra whose input variables are
-themselves expressions in some other theory.
+is to be checked as an expression in a boolean algebra whose input
+variables are themselves expressions in some other theory.
 
 \begin{table}
 \begin{tabular}{lp{11.3cm}}
@@ -448,27 +445,28 @@ $\controlEdge{tid}{A}{B}$ & True if thread $tid$ executed instruction $B$ immedi
 $\smBadPtr{expr}$ & True if $expr$ evaluates to a value which is not a valid pointer.\\
 $\smLoad{expr}$ & The initial value of the memory at location $expr$. \\
 \end{tabular}
-\caption{Types of expressions in the {\StateMachine} expression
-  language.  The usual arithmetic operators, such as addition,
-  multiplication, bit shift, etc., are also supported, but logical
-  operators such as $\wedge$ and $\vee$ are not.}
+\caption{Expressions in the {\StateMachine} expression language.  The
+  usual arithmetic operators, such as addition, multiplication, bit
+  shift, etc., are also supported, but logical operators such as
+  $\wedge$ and $\vee$ are not.}
 \label{table:state_machine_exprs}
 \end{table}
 
-Two types of BDD used in {\StateMachine} states: expression BDDs and
+{\STateMachine} states use two types of BDD: expression BDDs and
 boolean BDDs.  The difference is that boolean BDDs, or BBDDs, are
 constrained to evaluate to a simple boolean, whereas expression BDDs
 evaluate to an expression in the expression language.  An example
 expression BDD is shown in Figure~\ref{fig:derive:example_expr_bdd}.
 This BDD evaluates to $715$ if either $\smTmp{A} \not= 72$ or both
 $\smLoad{\smTmp{B}} = 9$ and $\smTmp{B} > 912$, or to $\smTmp{C}$
-otherwise.  
+otherwise.
 
-Note that $\smLoad{}$ expressions always evaluate to the initial value
-of the selected memory location, and not to the current value, which
-may be different if the {\StateMachine} has executed a \state{Store}
+Note that $\smLoad{}$ expressions always evaluate to the value which
+the selected memory location had when the {\StateMachine}
+starts\editorial{ugg}, and not to the current value, which may be
+different if the {\StateMachine} has executed a \state{Store}
 operation.  The only way to access the current contents of memory is
-via a \state{Load} side-effect.  This means that $\smLoad{}$ is a pure
+via a \state{Load} state.  This means that $\smLoad{}$ is a pure
 function and can be re-ordered freely across side-effecting
 operations, simplifying analysis.
 
@@ -555,6 +553,7 @@ avoided the bug, and so that instruction is irrelevant to determining
 when and whether the bug can actually happen.
 
 \begin{sidewaysfigure}
+  \todo{De-sideways, and remove undefined references to cfg6 etc.}
   \begin{tikzpicture}
     \node (lA) [stateIf] { \stIf{\happensBefore{\mai{cfg6}{thread1}}{\mai{cfg8}{thread2}}} };
     \node (lB) [stateSideEffect, below = of lA] { l1: \stLoad{1}{\mathrm{global\_ptr}} };
@@ -609,13 +608,13 @@ when and whether the bug can actually happen.
 \end{figure}
 
 {\STateMachines} become more interesting when they capture the
-behaviour of multiple threads.  Figure~\ref{fig:derive:cross_thread}
+behaviour of multiple threads.  \autoref{fig:derive:cross_thread}
 shows the \gls{crossproduct} of the {\StateMachines} in the previous
 figure.  Note that even though the {\StateMachine} completely captures
 the concurrent behaviour of the two {\StateMachines}, it is itself
-completely deterministic, and hence is relatively easy to simplify.
-The result of these simplifications is shown in
-Figure~\ref{fig:derive:cross_thread_opt}.  Simplification is generally
+entirely deterministic, and hence is relatively easy to simplify.  The
+result of these simplifications is shown in
+\autoref{fig:derive:cross_thread_opt}.  Simplification is generally
 cheaper than symbolic execution, and so this can provide a very
 worthwhile performance improvement.
 
@@ -637,7 +636,7 @@ more difficult.  There are three cases which require special care:
   in Figure~\ref{fig:unrolled_cyclic_cfg}, the program's original
   \gls{cfg} contained an edge from $C_0$ to $D_0$ but the unrolled
   \gls{cfg} does not include any branches from $C_1$ to a $D$-like
-  instructions.  These are converted to branches to the special
+  instruction.  These are converted to branches to the special
   {\stUnreached} state, reflecting the fact that these paths are of no
   interest to the rest of the analysis.
 
@@ -650,23 +649,20 @@ more difficult.  There are three cases which require special care:
   {\StateMachine} state, but there is no condition on the original
   program's state which can be evaluated at $A_0$ which determines
   which of $B_i$ states the {\StateMachine} must execute next.
-  {\Technique} handles converts these
-into {\StateMachine}-level
-  control flow using $\controlEdge{}{\!}{\!}$ expressions which test
-  the program's path through the dynamic \gls{cfg}.  See, for
-  instance, state $A_0'$ in
-  Figure~\ref{fig:state_machine_for_cyclic_cfg}.
+  {\Technique} converts these into {\StateMachine}-level control flow
+  using ${\controlEdgeName}()$ expressions which test the program's
+  path through the dynamic \gls{cfg}.  See, for instance, state $A_0'$
+  in \autoref{fig:state_machine_for_cyclic_cfg}.
 
 \item
   The \gls{cfg} can sometimes have multiple roots, each represented by
   a separate {\StateMachine} state, but the {\StateMachine} itself
   must have a single entry state.  {\Technique} handles these using
   $\entryExpr{}$ expressions, which simply test where a thread entered
-  The start state of Figure~\ref{fig:state_machine_for_cyclic_cfg} is
-  an example.
+  The start state of \autoref{fig:state_machine_for_cyclic_cfg} is an
+  example.
 
 \end{itemize}
-
 \begin{wrapfigure}{O}{6cm}
   \vspace{-20pt}
   \begin{centering}
@@ -742,16 +738,13 @@ discussed, and a {\StateMachine} as shown in
 \subsection{Handling library functions}
 \label{sect:derive:library_functions}
 
-{\Implementation} deals with calls to functions in the operating
-system standard library by re-implementing approximations of them as
+{\Technique} deals with calls to functions in the operating system
+standard library by re-implementing approximations of them as
 fragments of {\StateMachine}.  These fragments can then be substituted
 into {\StateMachines} as they are being built.  In effect, the library
 function is treated as a special sort of instruction, and compiled in
-exactly the same way as any other instruction\footnote{In particular,
-  memory accesses made by the library function are treated as if they
-  were made by the call instruction for the purposes of computing the
-  interfering stores set and in the dynamic aliasing analysis.}.  This
-is generally straightforwards and I do not give full details here.
+exactly the same way as any other instruction.  This is generally
+straightforwards and I do not give full details here.
 
 Library function handling is particularly important when investigating
 double-free bugs, as the actual crash will occur in the library
@@ -836,11 +829,8 @@ it is sufficient for the most common kind.
     pthread\_mutex\_unlock functions.  $\mathit{arg0}$ is an
     expression for the first argument register.  $\smTmp{1}$ is a
     fresh {\StateMachine} temporary.  $\mathit{tid}$ is a constant
-    identifying the current thread; either 0 for the
-    \gls{crashingthread} or 1 for the \gls{interferingthread}.  The
-    \textsc{mux} tag on the memory accesses is a hint to the alias
-    analysis that these accesses will not alias with normal memory
-    accesses.}
+    identifying the current thread; either 2 for the
+    \gls{crashingthread} or 2 for the \gls{interferingthread}.}
   \label{fig:library_mux}
 \end{figure}
 
@@ -858,7 +848,7 @@ operations.
 \label{sect:derive:simplify_sm}
 
 The {\StateMachines} generated by this process are faithful
-representations of the original program's machine code, and therefore
+representations of the original program's machine code, and hence
 contain large amounts of information which is not relevant to the bug
 which is being investigated.  {\Technique} therefore attempts to
 simplify them before moving on to the rest of the analysis.  This
@@ -874,27 +864,27 @@ The most important simplifications used by {\technique} are:
   registers and {\StateMachine} temporaries.
 \item Register copy propagation, using the algorithm from the
   dcc\cite{Cifuentes1994} decompiler.  One minor extension present in
-  {\implementation} but not dcc is that {\implementation} can make use
-  of \state{Assert} side-effects during this transformation, so that,
-  for instance, if $x$ is asserted to be less than $7$ then the
-  expression $x > 22$ can be replaced by \false.  This does not
-  require any important changes to the algorithm, beyond a few simple
-  rules describing when such rewrites are valid.
+  {\technique} but not dcc is that {\technique} can make use of
+  \state{Assert} side-effects during this transformation, so that, for
+  instance, if $x$ is asserted to be less than $7$ then the expression
+  $x > 22$ can be replaced by \false.  This does not require any
+  important changes to the algorithm, beyond a few simple rules
+  describing when such rewrites are valid.
 \item \state{$\Phi$} elimination.  {\STateMachines} are maintained in
   SSA form throughout most of the analysis process, so as to undo the
   effects of compiler register coalescing, but the resulting
   \state{$\Phi$} side-effects are themselves quite difficult to
-  analyse.  The problem is that the effect of a \state{$\Phi$}
-  side-effect depends on the control-flow context in which it is
-  executed without making that dependency explicit.  The
-  \state{$\Phi$} elimination simplification replaces the
-  \state{$\Phi$} side-effects with expression BDDs (see
-  \autoref{sect:sm_expr_language}) whose internal nodes are the
-  program's control flow expressions and whose leaves are the value
-  which would be selected by the \state{$\Phi$} in the appropriate
-  control flow context.  This makes the control flow dependency
-  explicit, and hence makes the {\StateMachine} easier to analyse.
-\item Aliasing analysis, which determines how \state{Store} and
+  analyse.  The problem is that the behaviour of a \state{$\Phi$}
+  state depends on the control-flow context in which it is executed,
+  without making that dependency explicit.  The \state{$\Phi$}
+  elimination simplification replaces the \state{$\Phi$} side-effects
+  with expression BDDs (see \autoref{sect:sm_expr_language}) whose
+  internal nodes are the program's control flow expressions and whose
+  leaves are the value which would be selected by the \state{$\Phi$}
+  in the appropriate control flow context.  This makes the control
+  flow dependency explicit, and hence makes the {\StateMachine} easier
+  to analyse.
+\item Alias analysis, which determines how \state{Store} and
   \state{Load} operations might interact.  This values to be forwarded
   from \state{Store}s to \state{Load}s, or from $\smLoad{}$s if a
   \state{Load} always loads the initial contents of memory.  This is
@@ -909,7 +899,7 @@ The effect of these simplification passes is to take a {\StateMachine}
 which represents all of the program's behaviour in the
 \gls{analysiswindow} and transform it to one which represents only the
 behaviour which is most relevant to the bug under investigation.  This
-reduces the complexity of symbolically executing them, giving a useful
+reduces the complexity of symbolic execution, with a concomitant
 reduction in the total time to analyse a program.
 
 \section{Building the interfering thread's \StateMachines}
@@ -964,14 +954,14 @@ investigated is a bad pointer dereference, knowing that the value
 stored into a shared structure had previously been dereferenced by the
 interfering thread, and hence is definitely a valid pointer, is often
 useful.  The approach taken by {\implementation} is to first generate
-a set of minimal \glspl{cfg} (i.e. ones in which every root is a
-member of $\beta$) and to then extend them backwards to include a
-small amount of additional context, provided that doing so does not
-increase the number of paths through the \gls{cfg} or cause the length
-of any path to exceed \gls{alpha}.  In other words, a \gls{cfg} rooted
-at instruction A will be extended to include its predecessor
-instruction B provided that B is A's only predecessor and that the
-longest path starting at A is at most $\alpha - 1$ instructions long.
+a set of minimal \glspl{cfg} (i.e. one in which every root is a member
+of $\beta$) and to then extend them backwards to include a small
+amount of additional context, provided that doing so does not increase
+the number of paths through the \gls{cfg} or cause the length of any
+path to exceed \gls{alpha}.  In other words, a \gls{cfg} rooted at
+instruction A will be extended to include its predecessor instruction
+B provided that B is A's only predecessor and that the longest path
+starting at A is at most $\alpha - 1$ instructions long.
 
 \subsection[Building the \glsentrytext{interferingthread} \glsentrytext{cfg}s]{Building the \gls{interferingthread} \glspl{cfg}}
 
@@ -980,7 +970,7 @@ that for building crashing ones: find $i2c$ and $\beta$ using the
 \gls{programmodel}, derive a cyclic static \gls{cfg}, unroll it to
 form an acyclic dynamic one, potentially extend it with a small amount
 of extra context, and then decompile the resulting \glspl{cfg} to a
-{\StateMachine}.  
+{\StateMachine}\editorial{Golly that's a long sentence.}.
 
 Building the static \gls{cfg} is simple: starting from each member of
 $\beta$, explore forwards for \gls{alpha} instructions (crossing
@@ -1071,28 +1061,26 @@ instruction are redundant\footnote{The symmetrical statement is also
 
 The complete algorithm is shown in
 Figure~\ref{fig:derive:store_cfg_unroll_alg}.  Note that in this
-algorithm duplicating a node duplicates its \emph{outgoing} edges,
+algorithm, duplicating a node duplicates its \emph{outgoing} edges,
 whereas when building a crashing thread \gls{cfg} the \emph{incoming}
 edges are duplicated.  This reflects the fact that interfering thread
 \glspl{cfg} are built up forwards from members of $\beta$ while
 crashing thread \glspl{cfg} are built up backwards from the target
 instruction.
 
-\newpage
 The algorithm relies on two utility functions:
 \begin{itemize}
-\item \textsc{findEdgeToBeBroken} just finds the closing edge of some
-  cycle in the graph.  The precise choice of edge is not
-  important\editorial{I \emph{think} it'll converge on the same thing
-    regardless, but it might be nice to show that.  It's certainly
-    guaranteed to be correct, but confluence would also be a nice
-    property.}.  In {\implementation}'s implementation, this is a
-  breadth-first search starting from some arbitrarily chosen root of
-  the \gls{cfg} and reporting the first edge to close a cycle.  If the graph
-  reachable from that root is acyclic then {\implementation} moves on
-  to the next root.  If the sub-graph reachable from every root is
-  acyclic then the whole graph is acyclic and nothing more needs to be
-  done.
+\item \textsc{findEdgeToBeBroken} finds the closing edge of some cycle
+  in the graph; the precise choice is not important\editorial{I
+    \emph{think} it'll converge on the same thing regardless, but it
+    might be nice to show that.  It's certainly guaranteed to be
+    correct, but confluence would also be a nice property.}.  In
+  {\implementation}, this determined via a breadth-first search
+  starting from some arbitrarily chosen root of the \gls{cfg} and
+  reporting the first edge to close a cycle.  If the graph reachable
+  from that root is acyclic then {\implementation} moves on to the
+  next root.  If the sub-graph reachable from every root is acyclic
+  then the whole graph is acyclic and nothing more needs to be done.
 \item \textsc{combineLabels} is also simple, and is responsible for
   computing the label for the new node which would be produced by
   duplicating $\mathit{edge}.\mathit{end}$.  This node will have the
@@ -1106,7 +1094,6 @@ The resulting \gls{cfg} can then be compiled to a {\StateMachine} in
 the same way as a \gls{crashingthread}'s \gls{cfg} is.
 
 As an example, consider this cyclic \gls{cfg}:
-
 \begin{tikzpicture}
   \node (A) at (0,2) [CommCfgInstr] {$A$};
   \node (B) [CfgInstr, below=of A] {$B$} edge [in=30,out=-30,loop] ();
@@ -1138,7 +1125,6 @@ $i2c^\sharp$.  In this example, \gls{alpha} is five.  Suppose that
 as the first cycle-close edge to be broken.  The algorithm will then
 attempt to break that cycle by duplicating $B$.  The resulting graph
 will look like this:
-
 \begin{tikzpicture}
   \node (A) at (0,2) [CommCfgInstr] {$A$};
   \node (B) [CfgInstr, below=of A] {$B$} edge [in=210,out=150,loop,killEdge] ();
@@ -1171,7 +1157,6 @@ whereas the shortest cyclic path starting at $A$ was previously
 $A$,$B$,$B$, of length 3, it is now $A$, $B$, $B_1$, $B$, of length 4.
 Suppose that the next edge to be broken is from $C$ to $A$.  The
 algorithm will do so by duplicating $A$:
-
 \begin{tikzpicture}
   \node (A) at (0,2) [CommCfgInstr] {$A$};
   \node (B) [CfgInstr, below=of A] {$B$};
@@ -1204,7 +1189,6 @@ algorithm will do so by duplicating $A$:
 
 Suppose it now selects the $B_1$ to $B$ edge as the cycle-completing
 edge.  It will then duplicate $B$:
-
 \begin{tikzpicture}
   \node (A) at (0,2) [CommCfgInstr] {$A$};
   \node (B) [CfgInstr, below=of A] {$B$};
@@ -1238,11 +1222,9 @@ edge.  It will then duplicate $B$:
     \end{tabular}
   };
 \end{tikzpicture}
-
 The length of the shortest cyclic path start at $A$ has again
 increased, this time from four to five.  Now duplicate $B$ because of
 the $A_1$ to $B$ cycle-completing edge:
-
 \begin{tikzpicture}
   \node (A) at (0,2) [CommCfgInstr] {$A$};
   \node (B) [CfgInstr, below=of A] {$B$};
@@ -1286,7 +1268,6 @@ In this case, the new label would have an overall minimum of 5,
 matching \gls{alpha}, and so there can be no paths through the new
 node which start with a $\beta$ instruction and end at $i2c^\sharp$
 one, and so the edge is simply deleted:
-
 \begin{tikzpicture}
   \node (A) at (0,2) [CommCfgInstr] {$A$};
   \node (B) [CfgInstr, below=of A] {$B$};
@@ -1328,7 +1309,6 @@ one, and so the edge is simply deleted:
 
 This process iterates, removing one cycle-completing edge at a time,
 until the graph is completely acyclic:
-
 \begin{tikzpicture}
   \node (A) at (0,2) [CommCfgInstr] {$A$};
   \node (B) [CfgInstr, below=of A] {$B$};
@@ -1369,7 +1349,6 @@ until the graph is completely acyclic:
     \end{tabular}
   };
 \end{tikzpicture}
-
 As desired, the graph has been rendered acyclic while preserving all
 paths of length up to five instructions.
 
@@ -1410,8 +1389,8 @@ brief overview of the most important features here:
 \begin{itemize}
 \item The symbolic execution engine considers only a single
   {\StateMachine} at a time, even when investigating the parallel
-  behaviour of two threads.  Rather than investigating interleavings
-  of the threads in the symbolic execution engine, as is done in, for
+  behaviour of two threads.  Rather than investigating thread
+  interleavings in the symbolic execution engine, as is done in, for
   instance, ESD\cite{Zamfir2010}, {\technique} instead encodes them
   into special cross-product {\StateMachines}, described in
   \autoref{sect:using:build_cross_product}.
@@ -1427,7 +1406,7 @@ brief overview of the most important features here:
 
   This is not a particularly efficient approach.  {\Implementation}
   relies on two facts to mitigate the problems.  First, where the
-  relationship between \state{Store}s and \state{Load}s is simple the
+  relationship between \state{Store}s and \state{Load}s is simple,  the
   {\StateMachine} simplifiers will forward data between them before
   the symbolic execution starts, eliminating both from the
   {\StateMachine}.  Second, {\implementation} maintains a cache of
@@ -1448,8 +1427,8 @@ brief overview of the most important features here:
   technique such as CEGAR\cite{Clarke2000}.  This is primarily because
   of the use of a flat memory representation: memory is a single
   object, and so it makes little sense to talk about modelling one
-  part of it accurately and another part inaccurately, and without
-  that CEGAR would provide little benefit.  The use of lazy aliasing
+  part of it accurately and another part inaccurately, without which
+  CEGAR would provide little benefit.  The use of lazy aliasing
   resolution provides some of the benefit of CEGAR, as it allows some
   aliasing queries which do not affect program behaviour to be
   skipped\editorial{Might want an example of that?  It's not very
@@ -1477,53 +1456,53 @@ brief overview of the most important features here:
 The \gls{inferredassumption} is a condition on the program's state
 which ensures that the \glslink{crashingthread}{crashing} and
 \glslink{interferingthread}{interfering} threads do not crash when run
-atomically, in either order.  It has two parts: the \gls{ci-atomic}
-constraint, the condition under which running the
-\glslink{crashingthread}{crashing} {\StateMachine} and then the
+atomically, in either order.  It has two parts: \gls{ci-atomic}, the
+condition under which running the \glslink{crashingthread}{crashing}
+{\StateMachine} followed by the
 \glslink{interferingthread}{interfering} {\StateMachine} survives, and
-the \gls{ic-atomic} one, the condition under which running the
-\glslink{interferingthread}{interfering} {\StateMachine} and then the
-\glslink{crashingthread}{crashing} one survives.  Each sub-condition
-is formed by concatenating the two input {\StateMachines} in the
-appropriate order, symbolically executing them, and then taking the
-disjunction of all paths which end in the {\stSurvive} state.  The
-\gls{inferredassumption} itself is then formed from the conjunction of
-these two sub-constraints.
+\gls{ic-atomic}, the condition under which running them in the
+opposite order does.  Each sub-condition is formed by concatenating
+the two input {\StateMachines} in the appropriate order, symbolically
+executing them, and then taking the disjunction of all paths which end
+in the {\stSurvive} state.  The \gls{inferredassumption} itself is
+then formed from the conjunction of these two sub-constraints.
 
 One might reasonably ask why building the composite {\StateMachine} is
 superior to simply symbolically executing one {\StateMachine} until it
 reaches the {\stSurvive} state and then starting the other
 {\StateMachine} in the resulting configuration.  This would correctly
 implement the desired behaviour, and would be somewhat simpler to
-implement.  The great advantage of building a composite
-{\StateMachine} is that the composite {\StateMachine} can be
-simplified using the standard {\StateMachine} simplification passes,
-which usually reduces the complexity of symbolic execution by a useful
-amount, even when the input {\StateMachines} were themselves
-simplified as far as possible.  This is because the composite
-{\StateMachine} is ``closed'': it contains all potentially relevant
-operations, and so the simplification passes can assume that there are
-no potentially interfering operations in another thread, giving them
-far more scope to eliminate memory accesses.  The result is that
-symbolically executing the simplified composite {\StateMachine} is
-almost always much faster than executing the input {\StateMachines} in
-turn.  \todo{Not much evidence of that.}
+implement.  The advantage of building a composite {\StateMachine} is
+that the composite {\StateMachine} can be further simplified using the
+standard {\StateMachine} simplification passes, which usually reduces
+the complexity of symbolic execution by a useful amount, even when the
+input {\StateMachines} were themselves simplified as far as possible.
+This is because the composite {\StateMachine} is ``closed'': it
+contains all potentially relevant operations, and so the
+simplification passes can assume that there are no potentially
+interfering operations in another thread, giving them far more scope
+to eliminate memory accesses.  The result is that symbolically
+executing the simplified composite {\StateMachine} is almost always
+much faster than executing the input {\StateMachines} in turn.
 
 \subsection{Building cross-product {\StateMachines}}
 \label{sect:using:build_cross_product}
+
+\todo{I'm making this look quite hard.  It really, really isn't.  It's
+  just an absolutely bog-standard cross product algorithm.}
 
 The symbolic execution engine is only capable of exploring one
 {\StateMachine} at a time, and so if cross-thread behaviours are to be
 investigated then the two single-threaded {\StateMachines} must be
 combined into a single multi-threaded one.  This new {\StateMachine}
-must capture the complete behaviour of every possible interaction the
-two input {\StateMachines}, so that any possible interleaving of their
-states is represented by a path through the combined {\StateMachine}.
-The approach used by {\technique} is essentially to take a
-cross-product of the two {\StateMachines}.  This is a new
-{\StateMachine} whose states correspond to pairs of states in the
-input {\StateMachine} and whose transitions correspond to advancing
-one or other of the two input {\StateMachines}.
+must capture the complete behaviour of every possible interaction
+between the two input {\StateMachines}, so that any possible
+interleaving of their states is represented by a path through the
+combined {\StateMachine}.  The approach used by {\technique} is
+essentially to take a cross-product of the two {\StateMachines}.  This
+is a new {\StateMachine} whose states correspond to pairs of states in
+the input {\StateMachine} and whose transitions correspond to
+advancing one or other of the two input {\StateMachines}.
 
 \begin{figure}
   \begin{displaymath}
@@ -1538,6 +1517,82 @@ one or other of the two input {\StateMachines}.
   \caption{\textsc{Configuration} type for the cross-product algorithm.}
   \label{fig:cross_product:configuration}
 \end{figure}
+
+\begin{figure}
+  \begin{displaymath}
+    \mathit{initial} = \left(\begin{array}{rrll}
+      \multirow{2}{*}{\bigg\{} & \mathit{crashingState} = & \mathit{crashing}_0, & \multirow{2}{*}{\bigg\},} \\
+                               & \mathit{crashingHasIssued} = & \false\\
+      \multirow{2}{*}{\bigg\{} & \mathit{interferingState} = & \mathit{interfering}_0, & \multirow{2}{*}{\bigg\},} \\
+                               & \mathit{interferingHasIssued} = & \false\\
+      \multicolumn{2}{r}{\mathit{atomic} = } & \varnothing \\
+    \end{array}\right)
+  \end{displaymath}
+  \caption{Initial \textsc{Configuration} for the cross-product
+    algorithm.  $\mathit{crashing}_0$ is the first state of the
+    crashing {\StateMachine} and $\mathit{interfering}_0$ that of the
+    interfering one.}
+  \label{fig:cross_product:initial}
+\end{figure}
+
+The algorithm used to build the cross-product {\StateMachine} is best
+understood as a graph generating node-replacement grammar using
+{\StateMachine} states as terminals and \textsc{Configuration}s, shown
+in \autoref{fig:cross_product:configuration}, as non-terminals.  The
+grammar starts with a single non-terminal, shown in
+\autoref{fig:cross_product:initial}, and then uses the rules shown in
+\autoref{fig:cross_product:algorithm} to expand that initial
+non-terminal into a new graph.  The rules should be read as
+pattern-matching systems: whenever a non-terminal matches one of the
+patterns to the left of the $\Rightarrow$, it is replaced with the
+graph on the right, substituting in variables as
+appropriate\editorial{bit of an unbound reference.}.  This might
+generate additional non-terminals, in which case the process repeats
+until no more non-terminals remain.  If the same non-terminal is
+generated several times then they are merged, so that the non-terminal
+has one incoming edge for each position in which it is generated.  The
+resulting graph of {\StateMachine} states then forms the cross-product
+{\StateMachine}\editorial{That's a bit dense.}.
+
+The rules are individually quite simple:
+\begin{itemize}
+\item The first two rules are trivial and simply show how to process
+  {\StateMachine}-local operations in the crashing {\StateMachine}:
+  the operation itself is copied verbatim to the output
+  {\StateMachine}, with new \textsc{Configuration}s generated to
+  represent what the crashing {\StateMachine} does next.  Operations
+  local to the interfering {\StateMachine} are handled symmetrically.
+  The only slight subtlety lies in determining whether an operation is
+  local to a particular {\StateMachine}; in other words, whether it
+  can influence or be influenced by the other {\StateMachine}.  Most
+  side-effects only depend upon and only modify the {\StateMachine}
+  temporaries, and so 
+
+\item The second rule shows how to handle \state{If} states in the
+  crashing {\StateMachine}.  The non-terminal on the left of the
+  $\Rightarrow$ will match any \textsc{Configuration} in which the
+  crashing {\StateMachine} is at an \state{If} state and will generate
+  the graph fragment shown on the right.  This consists of a new
+  (terminal) \state{If} state whose successors are new (non-terminal)
+  \textsc{Configuration}s corresponding to the test in the crashing
+         {\StateMachine} evaluating to either {\true}, on the left, or
+         {\false}, on the right.  The rule for handling \state{If}
+         states in the interfering {\StateMachine}, not shown in the
+         figure, is symmetrical.
+
+\item The first three rules implement atomic blocks in the crashing
+  {\StateMachine}.  Rule \circled{1} says that the crashing
+  {\StateMachine} can start a new atomic block if it is currently at a
+  {\stStartAtomic} state (because the $\mathit{crashingState}$
+  component of the \textsc{Configuration} on the left begins
+  {\stStartAtomic}), neither {\StateMachine} is currently in an atomic
+  block (because the $\mathit{atomic}$ component is $\varnothing$),
+  and the atomic block cannot race with the current interfering
+  {\StateMachine} state (because the condition on the right requires
+  $C$ to be local; the precise definition of local is given later).
+  Starting an atomic block means discarding the {\stStartAtomic}
+  side-effect and setting $\mathit{atomic}$ to $\mathit{crashing}$.
+\end{itemize}
 
 The algorithm used is quite simple.  The core idea is to identify each
 state of the output {\StateMachine} with a particular
@@ -1556,95 +1611,108 @@ the output {\StateMachine} in the process.
 \vspace{-1cm}
   \begin{displaymath}
     \begin{array}{cccp{5cm}c}
-      \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateSideEffect] {{\stStartAtomic}};
-          \node at (0,-10mm) (A) {B};
-          \draw[->] (r) -- (A);
-        \end{tikzpicture}}, b_1\right\},\left\{C, b_2\right\}, \varnothing \right) & \!\!\!\Rightarrow\!\!\! & (\{B, b_1\}, \{C, b_2\}, \mathit{crashing}) & And likewise for interfering thread. & \circled{1}\\
-
-      \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateSideEffect] {{\stEndAtomic}};
-          \node at (0,-10mm) (A) {B};
-          \draw[->] (r) -- (A);
-        \end{tikzpicture}}, b_1\right\},\left\{C, b_2\right\}, \mathit{crashing} \right) & \!\!\!\Rightarrow\!\!\! & (\{B, b_1\}, \{C, b_2\}, \varnothing ) & And likewise for interfering thread. & \circled{2}\\
-
-      \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateSideEffect] {$A$: \state{MemoryAccess}};
-          \node at (0,-10mm) (A) {B};
-          \draw[->] (r) -- (A);
-        \end{tikzpicture}}, b_1\right\},\left\{C, b_1\right\},\mathit{crashing}\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-8mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateSideEffect] {$A$: \state{MemoryAccess}};
-          \node at (0,-10mm) (A) {$(\{B, \true\}, \{C, b_1\}, \mathit{crashing})$};
-          \draw[->] (r) -- (A);
-        \end{tikzpicture}} & And likewise for interfering thread. & \circled{3}\\
-
       \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[node distance=0.5cm,font=\small]
-          \node at (0,0) (r) [stateIf] {\stIf{c}};
-          \node at (-5mm, -10mm) (A) {$A$};
-          \node at (5mm, -10mm) (B) {$B$};
+          \node at (0,0) (r) [stateIf] {\stIf{m}};
+          \node at (-5mm, -10mm) (A) {$A_0$};
+          \node at (5mm, -10mm) (B) {$A_1$};
           \draw[->,ifTrue] (r) -- (A);
           \draw[->,ifFalse] (r) -- (B);
-      \end{tikzpicture}}, b_1\right\},\left\{C, b_2\right\},a\right) & \!\!\!\Rightarrow\!\!\! & \hspace{-5mm}\raisebox{-10mm}{\begin{tikzpicture}[node distance=0.5cm,font=\small]
-          \node at (0,0) (r) [stateIf] {\stIf{c} };
-          \node at (-20mm, -10mm) (A) { $(\{A, b_1\}, \{C, b_2\}, a)$ };
-          \node at (20mm, -10mm) (B) { $(\{B, b_1\}, \{C, b_2\}, a)$ };
+      \end{tikzpicture}}, i_a\right\},\left\{B, i_b\right\},z\right) & \!\!\!\Rightarrow\!\!\! & \hspace{-5mm}\raisebox{-8mm}{\begin{tikzpicture}[node distance=0.5cm,font=\small]
+          \node at (0,0) (r) [stateIf] {\stIf{m} };
+          \node at (-20mm, -10mm) (A) { $(\{A_0, i_a\}, \{B, i_b\}, z)$ };
+          \node at (20mm, -10mm) (B) { $(\{A_1, i_a\}, \{B, i_b\}, z)$ };
           \draw[->,ifTrue] (r) -- (A);
           \draw[->,ifFalse] (r) -- (B);
-        \end{tikzpicture}}\hspace{-5mm} & And likewise for interfering thread. & \circled{4}\\
+        \end{tikzpicture}}\hspace{-5mm} & \hspace{-3mm}\raisebox{2mm}{\parbox{5.2cm}{Likewise for interfering thread.}} & \circled{1}\\
+
+      \left(\left\{\raisebox{-6mm}{\begin{tikzpicture}[font=\small]
+          \node at (0,0) (r) [stateSideEffect] {$a$};
+          \node at (0,-10mm) (A) {$A$};
+          \draw[->] (r) -- (A);
+        \end{tikzpicture}}, i_a\right\},\left\{B, i_b\right\},z\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-8mm}{\begin{tikzpicture}[font=\small]
+          \node at (0,0) (r) [stateSideEffect] {$a$};
+          \node at (0,-10mm) (A) {$(\{A, i_a\}, \{B, i_b\}, z)$};
+          \draw[->] (r) -- (A);
+        \end{tikzpicture}} &\hspace{-3mm}\parbox{5.2cm}{If $a$ is a local side-effect.  Likewise for interfering thread.} & \circled{2}\\
 
       \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateSideEffect] {A};
-          \node at (0,-10mm) (A) {B};
+          \node at (0,0) (r) [stateSideEffect] {$a$};
+          \node at (0,-10mm) (A) {$A$};
           \draw[->] (r) -- (A);
-        \end{tikzpicture}}, b_1\right\},\left\{C, b_2\right\},a\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-10mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateSideEffect] {A};
-          \node at (0,-10mm) (A) {$(\{B, b_1\}, \{C, b_2\}, a)$};
+        \end{tikzpicture}}, i_a\right\},\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
+          \node at (0,0) (r) [stateSideEffect] {$b$};
+          \node at (0,-10mm) (A) {$B$};
           \draw[->] (r) -- (A);
-        \end{tikzpicture}} & If $A$ is a local side-effect.  Likewise for interfering thread. & \circled{5}\\
-
-      \left(\left\{\raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {\state{Terminal}};
-      \end{tikzpicture}}, b_1\right\}, \{A, b_2\}, a\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-4mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {{\stUnreached}};
-      \end{tikzpicture}} & If $b_1 \wedge b_2 = \false$.  Likewise for interfering thread. & \circled{6}\\
-      
-      \left(\left\{\raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {{\stCrash}};
-      \end{tikzpicture}}, \true\right\}, \{A, \true\}, a\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {{\stCrash}};
-      \end{tikzpicture}} &  & \circled{7} \\
-      
-      \left(\left\{\raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {{\stSurvive}};
-      \end{tikzpicture}}, \true\right\}, \{A, \true\}, a\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {{\stSurvive}};
-      \end{tikzpicture}} &  & \circled{8} \\
-      
-      \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateSideEffect] {$A$: \state{MemoryAccess}};
-          \node at (0,-10mm) (A) {B};
-          \draw[->] (r) -- (A);
-        \end{tikzpicture}}, b_1\right\},\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateSideEffect] {$C$: \state{MemoryAccess}};
-          \node at (0,-10mm) (A) {D};
-          \draw[->] (r) -- (A);
-        \end{tikzpicture}}, b_2\right\}, \varnothing\!\!\!\right) & \!\!\!\Rightarrow\!\!\! & \hspace{-5mm}\raisebox{-16mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateIf] {\stIf{\happensBefore{A}{C}}};
-          \node at (-22mm, -10mm) [stateSideEffect] (A) {$A$};
-          \node at (22mm, -10mm) [stateSideEffect] (C) {$C$};
-          \node at (-22mm, -20mm) (B) {$(\{B, \true\}, \{C, b_2\}, \varnothing)$};
-          \node at (22mm, -20mm) (D) {$(\{A, b_1\}, \{D, \true\}, \varnothing)$};
+        \end{tikzpicture}}, i_b\right\}, \varnothing\!\right) & \!\!\!\Rightarrow\!\!\! & \hspace{-5mm}\raisebox{-22mm}{\begin{tikzpicture}[font=\small]
+          \node at (0,0) (r) [stateIf] {\stIf{\happensBefore{a}{b}}};
+          \node at (-25mm, -10mm) [stateSideEffect] (A) {$A$};
+          \node at (25mm, -10mm) [stateSideEffect] (C) {$B$};
+          \node at (-25mm, -30mm) (B) {$\left(\{A, \true\}, \left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
+                \node at (0,0) (Br) [stateSideEffect] {$b$};
+                \node at (0,-10mm) (BA) {$B$};
+                \draw[->] (Br) -- (BA);
+            \end{tikzpicture}}, i_b\right\}, \varnothing\!\right)$};
+          \node at (25mm, -30mm) (D) {$\left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
+                \node at (0,0) (Dr) [stateSideEffect] {$a$};
+                \node at (0,-10mm) (DA) {$A$};
+                \draw[->] (Dr) -- (DA);
+            \end{tikzpicture}}, i_a\right\}, \{B, \true\}, \varnothing\!\right)$};
           \draw[->,ifTrue] (r) -- (A);
           \draw[->,ifFalse] (r) -- (C);
           \draw[->] (A) -- (B);
           \draw[->] (C) -- (D);
-        \end{tikzpicture}}\hspace{-5mm} & When $A$ and $C$ are non-local. & \circled{9}\\
+        \end{tikzpicture}}\hspace{-5mm} & \hspace{-3mm}\parbox{5.2cm}{When $a$ and $b$ are non-local.} & \circled{3}\\
+
+      \left(\left\{\raisebox{-3mm}{\begin{tikzpicture}[font=\small]
+          \node [stateTerminal] {\state{T}};
+      \end{tikzpicture}}, i_a\right\}, \{A, i_b\}, z\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-2mm}{\begin{tikzpicture}[font=\small]
+          \node [stateTerminal] {{\stUnreached}};
+      \end{tikzpicture}} & \hspace{-3mm}\parbox{5.2cm}{If $i_a \wedge i_b = \false$.  Likewise for interfering thread.} & \circled{4}\\
+      
+      \left(\left\{\raisebox{-3mm}{\begin{tikzpicture}[font=\small]
+          \node [stateTerminal] {{\stCrash}};
+      \end{tikzpicture}}, \true\right\}, \{A, \true\}, z\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-3mm}{\begin{tikzpicture}[font=\small]
+          \node [stateTerminal] {{\stCrash}};
+      \end{tikzpicture}} &  & \circled{5} \\
+      
+      \left(\left\{\raisebox{-3mm}{\begin{tikzpicture}[font=\small]
+          \node [stateTerminal] {{\stSurvive}};
+      \end{tikzpicture}}, \true\right\}, \{A, \true\}, z\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-3mm}{\begin{tikzpicture}[font=\small]
+          \node [stateTerminal] {{\stSurvive}};
+      \end{tikzpicture}} &  & \circled{6} \\
+      
+      \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
+          \node at (0,0) (r) [stateSideEffect] {{\stStartAtomic}};
+          \node at (0,-10mm) (A) {$A$};
+          \draw[->] (r) -- (A);
+        \end{tikzpicture}}, i_a\right\},\left\{B, i_b\right\}, \varnothing\!\right) & \!\!\!\Rightarrow\!\!\! & (\{A, i_a\}, \{B, i_b\}, \mathit{crashing}) & \hspace{-3mm}\parbox{5.2cm}{Likewise for interfering thread.  Additional condition in text.} & \circled{7}\\
+
+      \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
+          \node at (0,0) (r) [stateSideEffect] {{\stEndAtomic}};
+          \node at (0,-10mm) (A) {$A$};
+          \draw[->] (r) -- (A);
+        \end{tikzpicture}}, i_a\right\},\left\{B, i_b\right\}, \mathit{crashing} \right) & \!\!\!\Rightarrow\!\!\! & (\{A, i_a\}, \{B, i_b\}, \varnothing ) & \hspace{-3mm}\parbox{5.2cm}{Likewise for interfering thread.} & \circled{8}\\
+
+      \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
+          \node at (0,0) (r) [stateSideEffect] {$a$};
+          \node at (0,-10mm) (A) {$A$};
+          \draw[->] (r) -- (A);
+        \end{tikzpicture}}, i_a\right\},\left\{B, i_b\right\},\mathit{crashing}\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-8mm}{\begin{tikzpicture}[font=\small]
+          \node at (0,0) (r) [stateSideEffect] {$a$};
+          \node at (0,-10mm) (A) {$(\{A, \true\}, \{B, i_b\}, \mathit{crashing})$};
+          \draw[->] (r) -- (A);
+        \end{tikzpicture}} & \hspace{-3mm}\parbox{5.2cm}{Likewise for interfering thread.} & \circled{9}\\
 
     \end{array}
   \end{displaymath}
   \caption{The cross product algorithm as a node replacement graph
-    grammar.  Only the most important features of the algorithm are
-    shown here; refer to the text for a more complete description.}
+    grammar.  $A$, $A_0$, and $A_1$ match fragments of the crashing
+    {\StateMachine} and $a$ matches a single state from the crashing
+    {\StateMachine}.  $B$ and $b$ match fragments of and a single
+    state in, respectively, the interfering {\StateMachine}.  $i_a$
+    and $i_b$ match either {\true} or {\false}.  $z$ matches any of
+    $\varnothing$, $\mathit{crashing}$, or $\mathit{interfering}$.
+    $m$ matches a boolean BDD.  \state{T} matches any terminal state.}
   \label{fig:cross_product:algorithm}
 \end{sidewaysfigure}
 
@@ -1785,7 +1853,6 @@ The simplifications needed in this example are quite simple, and it
 would have been possible to include equivalent optimisations in the
 symbolic execution engine itself.  This would be more difficult for
 more complex simplifications, for two reasons:
-
 \begin{itemize}
 \item Simplification passes can easily look ahead in the
   {\StateMachine}, whereas symbolic execution primarily considers a
@@ -1797,7 +1864,6 @@ more complex simplifications, for two reasons:
   symbolic execution engine needs to perform additional work in order
   to share results.
 \end{itemize}
-
 There is also an engineering consideration which argues in favour of
 building and simplifying the cross-product {\StateMachine}, rather
 than integrating equivalent optimisations into the symbolic execution
@@ -1887,36 +1953,36 @@ the number of paths through a program rises exponentially in the size
 of the program, and this can prevent na\"ive symbolic execution
 systems from being applied to realistically large programs.  In the
 case of \technique, there are two main causes of path explosion:
-
 \begin{itemize}
 \item
-  Aliasing.  If the various simplification passes and the dynamic
-  analysis cannot determine how memory accessing instructions alias
-  then the symbolic execution engine must consider every possible
-  aliasing pattern, of which there are $O(n^m)$, where $n$ is number
-  of \state{Load} operations and $m$ the number of \state{Store} ones.
-  This grows rather quickly in the number of unsolvable aliasing
-  problems.  The use of lazy alias resolution helps mitigate this to
-  some extent, but does not eliminate it completely.  This represents
-  one of the major limitations to \technique's scalability.
+  \textit{Aliasing}.  If the various simplification passes and the
+  dynamic analysis cannot determine how memory accessing instructions
+  alias then the symbolic execution engine must consider every
+  possible aliasing pattern, of which there are $O(m^n)$, where $n$ is
+  the number of \state{Load} operations and $m$ the number of
+  \state{Store} ones.  This grows rather quickly in the number of
+  unsolvable aliasing problems.  The use of lazy alias resolution
+  helps mitigate this to some extent, but does not eliminate it
+  completely.  This represents one of the major limitations to
+  \technique's scalability.
 \item
-  Thread interleaving.  The cross-product {\StateMachine} will have
-  $O(nm)$ states, where $n$ is number of states in the read-side
-  {\StateMachine} and $m$ the number in the write-side one.  The
-  number of paths through the combined {\StateMachine} then grows as
-  $O(2^{nm})$, which again grows rather quickly.
+  \textit{Thread interleaving}.  The cross-product {\StateMachine}
+  will have $O(nm)$ states, where $n$ is number of states in the
+  read-side {\StateMachine} and $m$ the number in the write-side one.
+  The number of paths through the combined {\StateMachine} then grows
+  as $O(2^{nm})$, which again grows rather quickly.
 \end{itemize}
-
 The result is that, in the common case where the read-side
 {\StateMachine} consists mostly of \state{Load} operations and
 write-side one mostly of \state{Store} ones, the symbolic execution
-engine might have to consider up to $O(2^{nm}.n^m)$ distinct paths when
-evaluating the cross-product {\StateMachine}.  This is obviously
-completely infeasible for even moderate values of $n$ and $m$.  For
-good performance, {\technique} relies on the various simplification
-and analysis techniques to reduce $n$ and $m$ to manageably small
-values.  Fortunately, as discussed in the evaluation, they are able to
-do so in a useful set of cases.
+engine might have to consider up to $O(2^{nm}.m^n)$ distinct paths
+when evaluating the cross-product {\StateMachine}.  This is
+impractical for even moderate values of $n$ and $m$.  For good
+performance, {\technique} relies on the various simplification and
+analysis techniques to reduce $n$ and $m$ to manageably small values.
+Fortunately, as discussed in the evaluation, they are able to do so in
+a useful set of cases\editorial{SMH objected to that sentence, but I
+  don't know why.}
 
 \section{The W isolation assumption}
 \label{sect:derive:w_isolation}
@@ -1962,7 +2028,6 @@ The \gls{w-isolation} assumption enables three main optimisations:
   \gls{crashingthread}, which can sometimes provide a useful
   performance improvement.
 \end{itemize}
-
 The analysis is almost always faster with the \gls{w-isolation}
 assumption, but cannot handle as broad a class of program behaviour.
 I evaluate these effects experimentally in
@@ -1971,13 +2036,15 @@ I evaluate these effects experimentally in
 \section{Finding unknown bugs}
 \label{sect:derive:unknown_bugs}
 
-The discussion in \autoref{sect:derive:build_crashing_cfg} assumed
-that the crashing instruction had already been somehow identified
-before {\technique} starts.  {\Technique} can also be used to discover
-unknown bugs.  The scheme used is quite simple: enumerate all of the
-instructions in a program which might crash due to a bug of the class
-being investigated and then consider each independently in turn.  This
-is obviously only feasible if the majority of instructions can be
+\todo{Try to fold in a bit earlier.}
+
+The discussion so far focused on the case where the crashing
+instruction has already been somehow identified before {\technique}
+starts.  {\Technique} can also be used to discover unknown bugs.  The
+scheme used is conceptually simple: enumerate all of the instructions
+in a program which might crash due to a bug of the class being
+investigated, and then consider each independently in turn.  This is
+obviously only feasible if the majority of instructions can be
 dismissed quickly.  Fortunately, they can be: {\implementation} takes,
 on average, a few hundred of milliseconds per instruction on fairly
 modest hardware, allowing even large programs with millions of
@@ -2037,13 +2104,15 @@ of these timeouts in more detail in the evaluation.
 \section{The program model}
 \label{sect:program_model}
 
+\todo{Odd placement}
+
 {\Technique} models the part of the program which is directly involved
 in a crash via the {\StateMachine} mechanism, but these are only
 capable of analysing relatively small fragments of the program.  This
 means that they cannot express global properties such as the structure
 of the heap.  {\Technique} instead captures these properties in its
-\gls{programmodel}, a model of some important aspects of the program
-built before the main analysis starts.
+\gls{programmodel}, a model of some important aspects of the program's
+behaviour built before the main analysis starts.
 
 \todo{Say more.}
 
@@ -2051,13 +2120,14 @@ built before the main analysis starts.
 \label{sect:program_model:dynamic_alias}
 
 The most important part of the \gls{programmodel} is the memory access
-model, which shows how the program accesses memory during normal
-operation.  This is used both for aliasing analysis during
+model, which describes how the program accesses memory during normal
+operation.  This is used both for alias analysis during
 {\StateMachine} simplification (Section~\ref{sect:derive:simplify_sm})
-and to find the $\beta$ and $i2c$ sets when building the interfering
-\gls{cfg} (Section~\ref{sect:derive:write_side}).  The memory access
-model is itself composed of two parts: a model of how the program
-accesses its stack and a model of accesses to non-stack memory.
+and also to find the $\beta$ and $i2c$ sets when building the
+interfering \gls{cfg} (Section~\ref{sect:derive:write_side}).  The
+memory access model is itself composed of two parts: a model of how
+the program accesses its stack and a model of accesses to non-stack
+memory.
 
 The stack model is built using a fairly conventional function-local
 static pointer escape analysis\needCite{} and I give only a high-level
@@ -2067,13 +2137,12 @@ should not be any pointers to function-local variables unless the
 function being analysed creates one.  If the analysis can show that
 one pointer is to a local variable and another pointer existed before
 the function started then it is safe to assume that the two pointers
-definitely do not alias.  This static analysis therefore attempts to
-track which registers and memory locations might contain pointers to
-the local stack frame.  This is usually sufficient for the
-{\StateMachine} simplifiers to be able to determine which, if any,
-stack frames a given memory access might refer to.  Simple arithmetic
-considerations are then usually sufficient to determine accesses to
-local variables.
+do not alias.  This static analysis therefore attempts to track which
+registers and memory locations might contain pointers to the local
+stack frame.  This is usually sufficient for the {\StateMachine}
+simplifiers to be able to determine which, if any, stack frames a
+given memory access might refer to; simple arithmetic considerations
+can then usually determine the specific local variable.
 
 The non-stack memory model is more complex.  It is much more difficult
 to characterise the structure of non-stack memory, such as the heap,
@@ -2081,9 +2150,11 @@ using static analysis: not only is the heap structure itself more
 complicated, in terms of the number of objects which point at other
 objects, but the information is harder to locate, as it is no longer
 localised to any particular function or program module.  These
-problems make it difficult to accurately model the heap even when the
-analysis tool has full access to the program's source code\needCite{},
-and attempting to do so given only a binary is completely infeasible.
+problems make it difficult to accurately model the heap statically
+even when the analysis tool has full access to the program's source
+code\needCite{}, and attempting to do so given only a binary is
+completely infeasible\editorial{SMH objected to this sentence and I
+  don't know why.}.
 
 {\Technique} instead relies on a dynamic analysis to model accesses to
 non-stack locations.  The aim of this analysis is to discover the
@@ -2135,7 +2206,7 @@ instructions\footnote{{\Implementation} also tracks which accesses are
   implementation of the later analysis phases, but this does not
   meaningfully change the algorithm.}.  Any instruction which accesses
 that memory chunk adds itself to the set.  The result of the analysis
-is then the set of all labels generated by the program, suitable
+is then the set of all labels generated by the program, suitably
 indexed.  Given that, implementing $\mathit{alias}'$ is trivial.
 
 This scheme, as presented, has one important weakness, which is that
@@ -2144,14 +2215,15 @@ assumes that memory is type stable\cite{Greenwald1996}.  This is
 generally reasonable for statically-allocated structures, such as
 those in the BSS segment\cite[Section~7.6]{Stevens}, but not for
 dynamically-allocated structures such as those allocated via
-\texttt{malloc} or \texttt{operator new}.  {\Implementation} relies on
-being able to identify such dynamic memory allocators so that it can
-reset the labels on memory addresses.  This is easy for allocators
-provided by standard system libraries, such as \texttt{malloc}, but
-much harder for program-specific allocators.  It might be possible to
-identify such allocators using a variant of the techniques described
-by Cozzie et al.\cite{Cozzie2008}, but I have not investigated that at
-this time.  Instead, {\implementation} relies on manually annotating
+\texttt{malloc} or \texttt{operator new}\editorial{SMH dislikes that;
+  not sure why.}.  {\Implementation} relies on being able to identify
+such dynamic memory allocators so that it can reset the labels on
+memory addresses.  This is easy for allocators provided by standard
+system libraries, such as \texttt{malloc}, but much harder for
+program-specific allocators.  It might be possible to identify such
+allocators using a variant of the techniques described by Cozzie et
+al.\cite{Cozzie2008}, but I have not investigated that at this time.
+Instead, {\implementation} relies on manually annotating any custom
 allocation functions in the program.  This is not an unreasonable
 burden: for mysql, the necessary annotations amount to an additional
 twenty lines across the entire program, and none of the other programs
@@ -2179,7 +2251,10 @@ map from one block to the set of blocks reachable from that block.  It
 is therefore not safe to ``upgrade'' a block from thread-private to
 thread-shared if there is any possibility of that block containing a
 thread-private pointer; upgrading blocks early and pessimistically
-means that it is never necessary to do so.
+means that it is never necessary to do so\editorial{SMH dislikes this
+  para, despite the fact that it exists solely because in a previous
+  draft, which didn't have it, he objected that the policy was too
+  conservative.}.
 
 \todo{Talk about what happens if this is incomplete?}
 
@@ -2192,35 +2267,28 @@ The algorithm for building the \gls{crashingthread} \gls{cfg} given in
 Section~\ref{sect:derive:build_crashing_cfg} assumes that there is
 some function $\mathit{predecessors}$ which maps from an instruction
 to the set of instructions which might execute immediately before it.
-This is not completely trivial given only a binary program.  One
-obvious approach would be to simply build the program's entire
-\gls{cfg}, starting from its entry point and disassembling forwards
-from there until the complete set of successor instructions is known
-for every instruction.  This \gls{cfg} would then make determining the
-predecessors of a given instruction trivial.  Unfortunately, building
-it is itself quite complicated:
+This is not completely trivial to determine given only a binary
+program.  One obvious approach would be to simply build the program's
+entire \gls{cfg}, starting from its entry point and disassembling
+forwards from there until the complete set of successor instructions
+is known for every instruction.  Unfortunately, finding the set of
+entry points is not always easy, as there can be branches into the
+main program from libraries or from the operating system.  Worse, any
+non-trivial program will contain indirect branches, whose successors
+can only be determined at run time.
 
-\begin{itemize}
-\item Finding the set of entry points is not always easy, as there can
-  be branches into the main program from libraries or from the
-  operating system.
-\item Any non-trivial program will contain indirect branches:
-  instructions whose successors can only be determined at run time.
-\end{itemize}
-
-{\Implementation} avoids these issues by using information from the
+{\Implementation} avoids these issues using information from the
 dynamic analysis.  In addition to the program's memory accessing
 patterns, the dynamic analysis also tracks the targets of all indirect
 branches and all branches into the program from outside of it, and
 then simply assumes that this information is complete.  This allows
-the program's complete \gls{cfg} to be computed, making the
-instruction predecessor problem trivial.
+the program's complete \gls{cfg} to be computed, making it possible to
+determine the predecessors of any instruction.
 
 \subsection{Other information in the program model}
 
-The \gls{programmodel} also includes some information obtained from
+The \gls{programmodel} includes some further information obtained from
 static analysis:
-
 \begin{itemize}
 \item As discussed previously, a pointer escape analysis used to
   determine when a value loaded from memory might contain a pointer to
@@ -2232,20 +2300,19 @@ static analysis:
     real programs.} and in the presence of most forms of tail call
   elimination\needCite{}.
 \item A liveness analysis is used to identify the arguments to
-  functions, which provides useful hints to some of the other analysis
+  functions, which provides useful hints to some of the later analysis
   steps.
 \item A function characterisation analysis identifies some simple
   wrappers around functions such as \texttt{free} and \texttt{abort}.
   These functions can then be replaced by the appropriate library
   model (see Section~\ref{sect:derive:library_functions}) rather than
   needing to be translated into {\StateMachines}.
-\item A variant of Value Set Analysis\needCite{} is used to determine
+\item A variant of value-set analysis\needCite{} is used to determine
   some simple properties of registers at particular instructions.
   This includes showing that the register definitely is or definitely
   is not a valid pointer, or that one register is equal to another
   register plus or minus a constant.
 \end{itemize}
-
 These analyses collectively act to give {\technique} some limited
 sensitivity beyond its \gls{analysiswindow} with only modest
 computational cost.

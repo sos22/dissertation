@@ -34,7 +34,7 @@ useful to have some tools to help
     \path [line,->] (repro) to node [right] {{\Genfix} generation} (fix);
   \end{tikzpicture}
 }
-\caption{Basic pipeline}
+\caption{System overview}
 \label{fig:basic_pipeline}
 \end{wrapfigure}
 developers deal with this kind of
@@ -45,21 +45,21 @@ bug.
 The basic approach is shown in Figure~\ref{fig:basic_pipeline}.  The
 process starts by building a \gls{programmodel}, showing how the
 program behaves when it is operating normally, using primarily dynamic
-analysis (\autoref{sect:program_model}).  This \gls{programmodel} is
-then used to locate potentially relevant fragments of the program and
-to build {\StateMachines} which model their behaviour
-(\autoref{sect:derive}).  These {\StateMachines} are then symbolically
-executed to determine whether they might exhibit the bug under
-investigation, and, if so, under what circumstances; the results are
-summarised as a set of \glspl{verificationcondition}.  This set
-usually contains a large number of false positives, and so the next
-step is to prune it back down using \glspl{bugenforcer}: special
-schedulers which, when applied to the running program, make it far
-more likely that the bug will reproduce quickly
-(\autoref{sect:reproducing_bugs}).  Any bugs which do reproduce can
-then be passed to the final {\genfix} generation phase which binary
-patches the program to introduce synchronisation which eliminates the
-bug (\autoref{sect:fix_global_lock}).
+analysis (\autoref{sect:program_model}).  This
+whole-\gls{programmodel} is then used to locate potentially relevant
+fragments of the program and to build {\StateMachines} which model
+their behaviour (\autoref{sect:derive}).  These {\StateMachines} are
+then\editorial{then then then} symbolically executed to determine
+whether they might exhibit the bug under investigation, and, if so,
+under what circumstances; the results are summarised as a set
+of \glspl{verificationcondition}.  This set usually contains a large
+number of false positives, and so the next step is to prune it back
+down using \glspl{bugenforcer}: special schedulers which, when applied
+to the running program, make it far more likely that the bug will
+reproduce quickly (\autoref{sect:reproducing_bugs}).  Any bugs which
+\emph{do} reproduce can then be passed to the final {\genfix} generation
+phase which applies binary patches to the program to eliminate the bug
+(\autoref{sect:fix_global_lock}).
 
 One important decision which must be made when designing this kind of
 tool is how much higher-level semantic information to use, and in
@@ -73,14 +73,13 @@ analyse.  {\Technique} takes the extreme position of operating on
 machine code as far as possible, only relying on access to source code
 when absolutely necessary.  For some non-trivial programs, including
 Thunderbird and pbzip2, the technique can produce useful results
-without any access to source code at all, and for most others very
+without any access to source code at all, and for most others, very
 little information is needed (MySQL, for instance, required two
 functions related to memory allocation to be manually annotated).
 
 \section{Contributions}
 
 This dissertation makes several contributions:
-
 \begin{itemize}
 \item
   Suggest a novel method of finding concurrency-related bugs given
@@ -94,15 +93,14 @@ This dissertation makes several contributions:
   in simple programs quickly, and that the analysis techniques scale
   up to find real bugs in realistic programs.
 \end{itemize}
-
 I give a detailed description of {\technique} and some results
-obtained using \implementation, my implementation of it.  These
+obtained using \implementation, my prototype implementation.  These
 include details of the fixes generated for a selection of bugs, both
 artificial ones and some from real programs (including one which was
-unknown to the author before writing the tool), and a demonstration
-that the analysis scales to realistically large programs with
-acceptable computational cost.  I also show that the fixes generated
-often have sufficiently low overhead to be useful.
+unknown to the author before writing the tool), along with a
+demonstration that the analysis scales to realistically large programs
+with acceptable computational cost.  I also show that the fixes
+generated typically have sufficiently low overhead to be useful.
 
 \section{Type of bug considered}
 \label{sect:types_of_bugs}
@@ -113,7 +111,6 @@ from shared data structure while another thread, the
 ``\gls{interferingthread}'', simultaneously modifies it, and these
 concurrent updates cause the crashing thread to crash quickly.  In a
 little more detail:
-
 \begin{itemize}
 \item The threads must be operating on a data structure located
   somewhere in shared memory.  The data structure does not need to be
@@ -132,7 +129,7 @@ little more detail:
   be some regions of the crashing and interfering threads such that
   running those regions in parallel can crash but running them
   atomically, in either order, will not.
-\item The crashing thread must crash quickly.  {\Technique} uses a
+\item The crashing thread must crash ``quickly''.  {\Technique} uses a
   finite \gls{analysiswindow} \gls{alpha} and will only consider
   reordering concurrent operations which occur at most \gls{alpha}
   instructions before the crash.  Bugs which require knowledge of the
@@ -145,7 +142,6 @@ little more detail:
   the program to be analysed and how much information about the bug is
   available before analysis starts.
 \end{itemize}
-
 This clearly does not include every possible type of concurrent bug
 (it does not, for instance, include any but the most trivial deadlock
 bugs, and complicated memory corruption bugs are difficult to handle),
@@ -180,14 +176,16 @@ Crashing thread:          & Interfering thread: \\
 \\
 1: Load $t_0$ from loc1        & 6: Load $t_3$ from loc1 \\
 2: Store $t_0+1$ to loc2       & 7: Store $t_3$ to loc2 \\
-\textit{Something complicated} & 8: Store $t_3 + 1$ to loc2 \\
+\textit{Complicated local computation} & 8: Store $t_3 + 1$ to loc2 \\
 3: Load $t_1$ from loc1        & \\
 4: Load $t_2$ from loc2        & \\
 5: Crash if $t_1 = t_2$ & \\
 \end{tabular}
 \hfill
 \end{centering}
-\caption{Partial fix for the bug in Figure~\ref{fig:mandatory_concurrency1}.}
+\caption{Partial fix for the bug in
+  Figure~\ref{fig:mandatory_concurrency1}.  The complicated local
+  computation does not modify loc1 or loc2.}
 \label{fig:mandatory_concurrency2}
 \end{figure}
 
@@ -195,23 +193,23 @@ The class of bugs described above does not include order violation
 bugs, and so {\technique} will never report any.  Order violation bugs
 in the program can, however, still sometimes affect the results.
 Consider, for instance, the threads shown in
-Figure~\ref{fig:mandatory_concurrency1}.  These threads have an order
+\autoref{fig:mandatory_concurrency1}.  These threads have an order
 violation bug, in that the thread on the left will crash if it can get
 from statement 2 to statement 3 before the thread on the right
 executes.  As expected, {\technique} will discover that running the
 left-hand thread in isolation always leads to a crash, and so will not
 report a bug here.  Suppose now that the ordering violation bug is
-fixed as shown in Figure~\ref{fig:mandatory_concurrency2}.
-{\Technique} \emph{will} report a potential bug in this program:
-running the two threads atomically, in either order, will not crash,
-for any starting values of loc1 and loc2, but interleaving them might
-(consider, for instance, the order 1, 2, 6, 7, 3, 4, 5).  In other
-words, the ordering violation bug has hidden the atomicity violation
-one and {\technique} will not find either.
+fixed as shown in \autoref{fig:mandatory_concurrency2}.  {\Technique}
+\emph{will} report a potential bug in this program: running the two
+threads atomically, in either order, will not crash, for any starting
+values of loc1 and loc2, but interleaving them might (consider, for
+instance, the order 1, 2, 6, 7, 3, 4, 5).  In other words, the
+ordering violation bug has hidden the atomicity violation one and
+{\technique} will not find either.
 
-This is an irritating property for {\technique} to have.  Fortunately,
-it is unlikely to be a serious issue in real programs.  Most
-concurrency bugs in real programs tend to be at least moderately
+This is an undesirable property for {\technique} to have.
+Fortunately, it is unlikely to be a serious issue in real programs.
+Most concurrency bugs in real programs tend to be at least moderately
 difficult to reproduce, as otherwise the developers of the software
 will fix them quickly, and for this class of bugs that means that the
 complicated computation between statements 2 and 3 must take long
@@ -229,31 +227,28 @@ unlikely that real programs would be able to trigger this behaviour.
 \section{Execution model}
 
 In addition to restricting the class of bugs, {\technique} also
-somewhat restricts the class of programs and execution environments
-which it considers.  In particular, it assumes that the processor
-implements a strongly-ordered memory model in which memory accesses
-are never re-ordered.  This is not actually true for any processors in
-wide-spread use today, but is a reasonable approximation for the
-widely-used AMD64 architecture\needCite{}.  Architectures with a
-weaker memory ordering, such as Alpha\needCite{} or ARM\needCite{},
-would require more involved processing.
+restricts the execution environment by assuming a strongly-ordered
+memory model.  In other words\editorial{ugg}, it assumes that memory
+accesses are seen by all processors in the order in which they appear
+in the program.  This is a reasonable approximation for the
+widely-used x86 architecture\needCite{}.  Architectures with a weaker
+memory ordering, such as Alpha\needCite{} or ARM\needCite{}, would
+require more involved processing.
 
 {\Technique} also assumes that the program has no real-time
-constraints.  This means that it cannot find any bugs which manifest
-by violating one of those constraints.  It also means that the bug
-fixing and bug reproducing stages, which rely on being able to
-arbitrarily delay instructions, might introduce additional such bugs.
-Modelling real-time properties of a program is in general very hard,
-even with unrestricted access to a program's source code and
-significant manual assistance\needCite{}; attempting to infer the
-necessary properties directly from machine code is completely
+constraints, both when discovering bugs, when it will not be able to
+detect bugs which lead to one of those constraints being violated, and
+when reproducing and fixing bugs, when it might introduce such
+violations itself.  Modelling real-time properties of a program is in
+general very hard, even with unrestricted access to a program's source
+code and significant manual assistance\needCite{}; attempting to infer
+the necessary properties directly from machine code is completely
 impractical.  Fortunately, most programs have only very soft real-time
 constraints, which can be violated on occasion with only moderate loss
-of functionality, and so this is a tolerable limitation.
+of functionality.
 
 {\Implementation}, my implementation of {\technique}, makes some
 additional simplifying assumptions beyond these:
-
 \begin{itemize}
 \item It assumes that the program does not make use of any unaligned
   memory accesses.  For many architectures this would be a sound
@@ -277,9 +272,246 @@ additional simplifying assumptions beyond these:
   mediated through inter-process shared memory, or the effects of APIs
   like \texttt{ptrace}.
 \end{itemize}
+The first of these are simple implementation limitations; fixing them
+would require some engineering effort, but no deep conceptual changes.
+Removing the final assumption would require {\implementation} to be
+able to model the behaviour of several processes at once, which would
+require significant changes to the implementation but only modest ones
+to {\technique} itself.
 
-Fixing the first three would be a simple matter of programming, with
-no deep conceptual changes needed.  Removing the final assumption
-would require {\implementation} to be able to model the behaviour of
-several processes at once, which would require significant changes to
-the implementation but only modest ones to {\technique} itself.
+\section{Model of program modification}
+
+{\Technique} relies on being able to modify a program's behaviour in
+order to reproduce and then to fix bugs, and aims to do so soundly, in
+the sense that it should never introduce additional bugs.  It is not
+immediately apparent what this means without access to a formal
+specification of the program's desired behaviour.  It might, for
+instance, be that the program is designed to investigate the possible
+ways in which a particular processor can interleave memory accesses,
+and to report its results by either exiting normally or crashing with
+an unhandled page fault.  There is no general way for an automated
+tool to distinguish such a program from one which is intended to
+always exit normally but occasionally crashes due to an unintended
+race condition.
+
+This issue is most easily understood by recasting the problem from
+changing the behaviour of the program to changing the behaviour of the
+system on which it is running.  Most programs are designed to work
+with a broad class of computers, rather than with one particular
+physical system, and so if it exhibits behaviour A on one system and
+behaviour B on another then forcing it to exhibit behaviour B on both
+systems is unlikely to introduce a bug into a correct program.  This
+gives a reasonable definition of what it means to soundly modify a
+program without a specification: a modification is safe if it is
+equivalent to moving the program from one computer system to another
+similar one.  For {\technique}, two systems are similar if they differ
+only in the time taken to run instructions.  Prior systems have used
+different definitions; this is discussed in more detail in
+\autoref{sect:rw:theory_of_fixing}.
+
+\section{Graph generating grammars}
+
+\todo{So the way this works requires the implementation to track which
+  non-terminal each terminal was produced from, so that it can re-use
+  them later.  I think I've said enough to make that obvious, but I've
+  not said it explicitly anywhere.  It's not very interesting, but it
+  is quite important, so should maybe say it somewhere.}
+
+Several of the algorithms in this dissertation are described in terms
+of graph generating node-replacement grammars, and so I now briefly
+review this formalism, with reference to the example in
+\autoref{fig:intro:graph_grammar}.  This shows a simple grammar which
+produces directed graphs of (terminal) integers starting from a single
+(non-terminal) integer.  The grammar works by matching a pattern (on
+the left of the $\Rightarrow$) against some non-terminal in the graph,
+using it to generate a new fragment of graph (on the right of the
+$\Rightarrow$), and replacing the non-terminal with the fragment.
+This repeats until there are no more non-terminals in the graph.  A
+non-terminal can only be generated at most once; if a rule generates
+the same non-terminal multiple times then they are merged.
+
+\begin{figure}
+  {\hfill}
+  \tikzstyle{graphNT}+=[text width=1cm]
+  \begin{tabular}{lclcrcc}
+    \tikzstyle{graphNT}+=[text width=1cm]
+    \graphNT{$n$} $\Rightarrow$ & \raisebox{-6mm}{\begin{tikzpicture}
+        \node (n) {$n$};
+        \node (nn) [style=graphNT, below=.5 of n] {$3n+1$};
+        \draw[->] (n) -- (nn);
+      \end{tikzpicture}} & \circled{A} & \hspace{1cm} &
+
+    \graphNT{2} $\Rightarrow$ & \raisebox{-6mm}{
+      \begin{tikzpicture}
+        \node (2) {2};
+        \node (1) [style = graphNT, below = .5 of 2] {1};
+        \draw[->] (2) -- (1);
+      \end{tikzpicture}
+    } & \circled{C} \\
+    \\
+
+    \graphNT{$m$} $\Rightarrow$ & \raisebox{-6mm}{\begin{tikzpicture}
+        \node (m) {$m$};
+        \node (mm) [style=graphNT, below left =.5 of m] {$\frac{m}{2}$};
+        \node (mmm) [style=graphNT, below right = .5 of m] {$\frac{m}{2} - 2$};
+        \draw[->] (m) -- (mm);
+        \draw[->] (m) -- (mmm);
+    \end{tikzpicture}} & \circled{B} & &
+
+    \graphNT{4} $\Rightarrow$ & \raisebox{-6mm}{
+      \begin{tikzpicture}
+        \node (4) {4};
+        \node (2) [style=graphNT, below = .5 of 4] {2};
+        \draw[->] (4) -- (2);
+      \end{tikzpicture}
+    } & \circled{D} \\
+  \end{tabular}
+  {\hfill}
+  \caption{Rules for the example graph generating grammar.  The
+    terminal nodes for this grammar are positive integers and the
+    non-terminals are positive integers in boxes. $n$ matches odd
+    integers and $m$ matches even integers other than two and four.
+    Circled letters are labels used to refer to the rules in the
+    text.}
+  \label{fig:intro:graph_grammar}
+\end{figure}
+
+\autoref{fig:intro:graph_grammar:expansion} shows how to apply this
+grammar to the initial non-terminal \graphNT{3}.  The only rule which
+matches this initial non-terminal is \circled{A} with $n=3$, which
+generates a new terminal $n = 3$, a new non-terminal \graphNT{$3n+1$}
+= \graphNT{10}, and a single edge connecting them.  This new
+non-terminal matches rule \circled{B} with $m = 10$, and so that rule
+is now applied.  It generates another terminal, $m = 10$, and two new
+non-terminals, \graphNT{$\frac{m}{2}$} = \graphNT{5} and
+\graphNT{$\frac{m}{2}-2$} = \graphNT{3}.  \graphNT{5} is added to the
+graph in the obvious way.  \graphNT{3}, by contrast, has already been
+expanded once, and so rather than adding a new node to the graph the
+grammar creates an edge to the result of its previous expansion.  This
+process repeats, expanding one non-terminal at a time, until no more
+non-terminals remain in the graph.  The resulting graph is shown on
+the right of the figure.
+
+\begin{figure}
+  {\hfill}
+  \tikzstyle{graphNT}+=[text width=1em]
+  \begin{tikzpicture}
+    \node (a) {
+      \begin{tikzpicture}
+        \node (3a) {\graphNT{3}};
+      \end{tikzpicture}
+    };
+
+    \node [right = of a] (b) {
+      \begin{tikzpicture}
+        \node (3b) {3};
+        \node (10b) [below = of 3b,style=graphNT] {10};
+        \draw[->] (3b) -- (10b);
+      \end{tikzpicture}
+    };
+    \draw[->,double] (a) to node [above] {\circled{A}} (b);
+
+    \node [right = of b] (c) {
+      \begin{tikzpicture}
+        \node (3c) {3};
+        \node (10c) [below = of 3c] {10};
+        \node (5c) [below = of 10c] {\graphNT{5}};
+        \path (3c.east) ++ (.4,0) node (dummyC0) {};
+        \path (10c.east) ++ (.4,0) node (dummyC1) {};
+        \draw[->] (3c) -- (10c);
+        \draw[->] (10c) -- (5c);
+        \draw[->] (10c.east) .. controls (dummyC1) and (dummyC0) .. node [left] (edgec) {} (3c.east);
+      \end{tikzpicture}
+    };
+    \draw[->,double] (b) to node [above] {\circled{B}} (c);
+
+    \node [right = of c] (d) {
+      \begin{tikzpicture}
+        \node (3d) {3};
+        \node (10d) [below = of 3d] {10};
+        \node (5d) [below = of 10d] {5};
+        \node (16d) [below = of 5d] {\graphNT{16}};
+        \path (3d.east) ++ (.4,0) node (dummyD0) {};
+        \path (10d.east) ++ (.4,0) node (dummyD1) {};
+        \draw[->] (3d) -- (10d);
+        \draw[->] (10d) -- (5d);
+        \draw[->] (10d.east) .. controls (dummyD1) and (dummyD0) .. node [left] (edged) {} (3d.east);
+        \draw[->] (5d) -- (16d);
+      \end{tikzpicture}
+    };
+    \draw[->,double] (c) to node [above] {\circled{A}} (d);
+
+    %% \node (dummyF) at (3c -| edgec) {};
+    %% \node (3f) [right = of dummyF] {\graphNT{3} = 3};
+    %% \node (10f) [below = of 3f] {\graphNT{10} = 10};
+    %% \node (5f) [below = of 10f] {\graphNT{5} = 5};
+    %% \node (16f) [below = of 5f] {\graphNT{16} = 16};
+    %% \path (node cs:name=16f,anchor=south) ++ (0,.-1) node (8f) {\graphNT{8} = 8};
+    %% \path (node cs:name=16f,anchor=south) ++ (3,.-1) node (6f) {\graphNT{6} = 6};
+    %% \path (node cs:name=6f,anchor=south) ++ (0,.-1) node [text height=12.5pt] (1f) {\graphNT{1} = 1};
+    %% \path (node cs:name=8f,anchor=south) ++ (+1,.-1) node [text height=12.5pt] (2f) {\graphNT{2} = 2};
+    %% \path (node cs:name=8f,anchor=south) ++ (-1,.-1) node [text height=12.5pt] (4f) {\graphNT{4} = 4};
+    %% \path (3f.east) ++ (.4,0) node (dummyF0) {};
+    %% \path (10f.east) ++ (.4,0) node (dummyF1) {};
+    %% \draw[->] (3f) -- (10f);
+    %% \draw[->] (10f) -- (5f);
+    %% \draw[->] (10f.east) .. controls (dummyF1) and (dummyF0) .. (3f.east);
+    %% \draw[->] (5f) -- (16f);
+    %% \draw[->] (16f) -- (8f);
+    %% \draw[->] (16f) -- (6f);
+    %% \draw[->] (8f) -- (4f);
+    %% \draw[->] (8f) -- (2f);
+    %% \draw[->] (node cs:name=6f,angle=90) .. controls (perpendicular cs:horizontal line through={(3f.east)},vertical line through={(node cs:name=6f,angle=90)}) .. node [left] (edgeg) {} (3f.east);
+    %% \draw[->] (6f) -- (1f);
+    %% \draw[->] (2f) -- (1f);
+    %% \draw[->] (4f) -- (2f);
+    %% \path (4f.south) ++ (0,-.5) node (dummyF2) {};
+    %% \path (1f.south) ++ (0,-.5) node (dummyF3) {};
+    %% \draw[->] (1f.south) .. controls (1f.south |- dummyF3) and (4f.south |- dummyF2) .. (4f.south);
+    %% \draw[->,double] (dummyF) to node [above] {$\ldots$} (3f);
+    %% \node [right = 0 of 6f] (edgef) {};
+
+
+    %%\path (3f -| edgef) ++ (-1,0) node (dummyG) {};
+
+    \node [right = of d] (g) {
+      \begin{tikzpicture}
+        \node (3g) [text height = 12pt] {3};
+        \node (10g) [text height= 13pt, below = of 3g] {10};
+        \node (5g) [text height = 13pt, below = of 10g] {5};
+        \node (16g) [text height = 13pt, below = of 5g] {16};
+        \path (node cs:name=16g,anchor=south) ++ (-.25,.-1) node [text height=13pt] (8g) {8};
+        \path (node cs:name=16g,anchor=south) ++ (1.5,.-1) node [text height=13pt] (6g) {6};
+        \path (node cs:name=6g,anchor=south) ++ (-.25,.-1) node [text height=13pt] (1g) {1};
+        \path (node cs:name=8g,anchor=south) ++ (+0.25,.-1) node [text height=13pt] (2g) {2};
+        \path (node cs:name=8g,anchor=south) ++ (-0.75,.-1) node [text height=13pt] (4g) {4};
+        \draw[->] (3g) -- (10g);
+        \draw[->] (10g) -- (5g);
+        \draw[->] (10g.east) to [bend right=90] (3g.east);
+        \draw[->] (5g) -- (16g);
+        \draw[->] (16g) -- (8g);
+        \draw[->] (16g) -- (6g);
+        \draw[->] (8g) -- (4g);
+        \draw[->] (8g) -- (2g);
+        \draw[->] (6g.north) .. controls (6g.north |- 3g.east) .. node [left] (edgeg) {} (3g.east);
+        \draw[->] (6g) -- (1g);
+        \draw[->] (2g) -- (1g);
+        \draw[->] (4g) -- (2g);
+        \path (4g.south) ++ (0,-.5) node (dummyG2) {};
+        \path (1g.south) ++ (0,-.5) node (dummyG3) {};
+        \draw[->] (1g.south) .. controls (1g.south |- dummyG3) and (4g.south |- dummyG2) .. (4g.south);
+      \end{tikzpicture}
+    };
+    \draw[->,double] (d) to node [above] {\ldots} (g);
+  \end{tikzpicture}
+  {\hfill}
+  \caption[Expansion of a non-terminal using the rules in
+    \autoref{fig:intro:graph_grammar}]{Expansion of the non-terminal
+    \graphNT{$\mathrm{3}$} using the rules in
+    \autoref{fig:intro:graph_grammar}.}
+  \label{fig:intro:graph_grammar:expansion}
+\end{figure}
+
+
+\section{Discussion}
+\todo{Closing and linking text goes here.}
