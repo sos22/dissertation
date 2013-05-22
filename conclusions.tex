@@ -1,53 +1,4 @@
-\chapter{Conclusions and future work}
-
-\section{Conclusions}
-
-I have described {\technique}, a set of techniques for finding,
-reproducing, and fixing synchronisation bugs starting from a runnable
-copy of the program, without access to the source and with minimal
-manual user intervention.  I have also described by implementation of
-it, {\implementation}, and discussed in detail its performance and
-effects on a variety of real and artificial test bugs and programs.
-The result is that {\technique} is highly effective at all of its
-goals when used on the artificial test cases, and performs well enough
-to be useful for some more realistic tests taken from very large
-existing pieces of software.  I have also demonstrated some of the
-limitations of {\technique} in its current form; primarily, that it
-struggles to solve the aliasing problems necessary to handle more
-complicated bugs.  Finally, I have compared {\technique} to a variety
-of existing systems, highlighting similarities and differences.
-
-The most important contribution of this work is the crash enforcement
-mechanism, which can take a description of a concurrency bug in a
-particular format and convert it into a modified version of a program
-which is far more likely to exhibit the bug.  This process can take
-advantage of any side-conditions necessary for the bug to reproduce,
-over and above the actual concurrency pattern required, allowing it to
-reproduce the bug far more quickly and reliably than simpler schedule
-enforcement schemes.  The additional computational time necessary to
-generate these enforcers, given the bug description, is modest, and
-easily outweighed by the reduction in reproduction time.
-
-A variant of the same technique can also be used to fix bugs.  These
-fixes have very low overhead, comparable to that which could be
-obtained by a hand-crafted fix for the same bug, and can be deployed
-to protect existing programs very easily.  On the other hand, the set
-of bugs which can be completely protected by these fixes is somewhat
-smaller than the set which can be easily reproduced.  Nevertheless, I
-have demonstrated that this technique can be used to generate
-effective and low-overhead fixes for at least some concurrency errors
-in real programs.
-
-As a secondary contribution, I also outlined a new scheme for finding
-concurrency-related bugs in binary programs.  The results of this part
-of the dissertation are perhaps less convincing; it found very few
-bugs in real programs, and is computationally very expensive.  I
-briefly discussed how combining it with existing work might help to
-improve on these weaknesses.  Even without those possible future
-refinements, the algorithm is embarrassingly parallel, and so its
-performance is likely to improve as hardware execution facilities
-become more parallel; precisely the situation in which it would be
-most useful.
+\chapter{Future work and conclusions}
 
 \section{Future work}
 
@@ -75,12 +26,11 @@ much the same effect.
 
 \subsection{Reproducing bugs}
 
-As described in \autoref{sect:reproducing_bugs}, and in particular the
-discussion related to Figure~\ref{fig:reproduce:cyclic1}, {\technique}
+As described in \autoref{sect:reproduce:unenforcable}, {\technique}
 cannot enforce every possible happens-before graph.  The fundamental
 problem is that rather than enforcing a requirement that $A$ happens
 before $B$, {\technique} enforces the stronger requirement that $A$
-happen \emph{immediate} before $B$.  This introduces additional edges
+happen \emph{immediately} before $B$.  This introduces additional edges
 into the happens-before graph, and if one of those edges closes a
 cycle then the graph becomes unenforcible.  In other words, the
 problem is that {\technique} uses synchronous messages to enforce what
@@ -131,20 +81,69 @@ schemes which make better use of it.
 \end{wrapfigure}
 One approach to doing so makes use of a kind of extended hazard
 pointer\cite{Michael2004}.  Consider, for example, the threads in
-Figure~\ref{fig:concl:hb_graph}.  This is intended to indicate that
-there is one thread which issues two loads and another which issues
-two stores, and the program will crash if both stores occur in between
-the two loads and the variable $\mathit{idx}$ has the same value in
-both threads.  One way of preventing this bug would be to have the
-first thread publish a ``hazard'', containing the value of its
-$\mathit{idx}$ variable, before running the first load and clear it
-after the second one.  The second thread could then check for such
-hazards before running the first store and, if it finds one with a
-matching $\mathit{idx}$, make sure to wait for the hazard to clear
-before running the second one.  This would fix the bug and allow the
-two threads to run in parallel for most of the critical section, or
-for all of it when the $\mathit{idx}$s do not match.  The loss of
+Figure~\ref{fig:concl:hb_graph}.  This is intended to illustrate a
+construction in which there is one thread which issues two loads and
+another which issues two stores, and the program will crash if both
+stores occur in between the two loads and the variable $\mathit{idx}$
+has the same value in both threads.  One way of preventing this bug
+would be to have the first thread publish a ``hazard'', containing the
+value of its $\mathit{idx}$ variable, before running the first load
+and clear it after the second one.  The second thread could then check
+for such hazards before running the first store and, if it finds one
+with a matching $\mathit{idx}$, make sure to wait for the hazard to
+clear before running the second one.  This would fix the bug and allow
+the two threads to run in parallel for most of the critical section,
+or for all of it when the $\mathit{idx}$s differ.  The loss of
 concurrency associated with the fix would therefore usually be much
-lower.  On the other hand, managing the hazards would itself be
-potentially quite complex, which might itself lead to reduced
-performance in some cases.
+lower.  On the other hand, managing the hazards would potentially be
+quite complex, which might itself lead to reduced performance in some
+cases.
+
+\section{Conclusions}
+
+I have described {\technique}, a set of techniques for finding,
+reproducing, and fixing synchronisation bugs starting from a runnable
+copy of the program, without access to the source and with minimal
+manual user intervention.  I have also described my prototype
+implementation, {\implementation}, and discussed in detail its
+performance and effects on a variety of real and artificial test bugs
+and programs.  The result is that {\technique} is highly effective at
+all of its goals when used on the artificial test cases, and performs
+well enough to be useful for some more realistic tests taken from very
+large existing pieces of software.  I have also demonstrated some of
+the limitations of {\technique} in its current form; primarily, that
+it struggles to solve the aliasing problems necessary to handle more
+complicated bugs.  Finally, I have compared {\technique} to a variety
+of existing systems, highlighting similarities and differences.
+
+The most important contribution of this work is the crash enforcement
+mechanism, which can take a description of a concurrency bug in a
+particular format and convert it into a modified version of the
+program which is far more likely to exhibit the bug.  This process can
+take advantage of any side-conditions necessary for the bug to
+reproduce, over and above the actual concurrency pattern required,
+allowing it to reproduce the bug far more quickly and reliably than
+simpler schedule enforcement schemes.  The additional computational
+time necessary to generate these enforcers, given the bug description,
+is modest, and easily outweighed by the reduction in reproduction
+time.
+
+A variant of the same technique can also be used to fix bugs.  These
+fixes have very low overhead, comparable to that which could be
+obtained by a hand-crafted fix for the same bug, and can be deployed
+to protect existing programs very easily.  On the other hand, the set
+of bugs which can be completely protected by these fixes is somewhat
+smaller than the set which can be easily reproduced.  Nevertheless, I
+have demonstrated that this technique can be used to generate
+effective and low-overhead fixes for at least some concurrency errors
+in real programs.
+
+I also outlined a new scheme for finding concurrency-related bugs in
+binary programs.  The results of this part of the dissertation are
+perhaps less convincing; it found very few bugs in real programs, and
+is computationally very expensive.  I briefly discussed how combining
+it with existing work might help to improve on these weaknesses.  Even
+without those possible future refinements, the algorithm is
+embarrassingly parallel, and so its performance is likely to improve
+as hardware execution facilities become more parallel; precisely the
+situation in which it would be most useful.

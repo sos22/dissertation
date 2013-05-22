@@ -280,6 +280,7 @@ require significant changes to the implementation but only modest ones
 to {\technique} itself.
 
 \section{Model of program modification}
+\label{sect:intro:theory_of_fixing}
 
 {\Technique} relies on being able to modify a program's behaviour in
 order to reproduce and then to fix bugs, and aims to do so soundly, in
@@ -311,11 +312,14 @@ different definitions; this is discussed in more detail in
 
 \section{Graph generating grammars}
 
+\label{sect:intro:graph_grammar}
 \todo{So the way this works requires the implementation to track which
   non-terminal each terminal was produced from, so that it can re-use
   them later.  I think I've said enough to make that obvious, but I've
   not said it explicitly anywhere.  It's not very interesting, but it
   is quite important, so should maybe say it somewhere.}
+
+\todo{This section is generally a bit messy.}
 
 Several of the algorithms in this dissertation are described in terms
 of graph generating node-replacement grammars, and so I now briefly
@@ -327,8 +331,8 @@ the left of the $\Rightarrow$) against some non-terminal in the graph,
 using it to generate a new fragment of graph (on the right of the
 $\Rightarrow$), and replacing the non-terminal with the fragment.
 This repeats until there are no more non-terminals in the graph.  A
-non-terminal can only be generated at most once; if a rule generates
-the same non-terminal multiple times then they are merged.
+non-terminal can only be generated at most once; if a non-terminal is
+generated multiple times then they are merged.
 
 \begin{figure}
   {\hfill}
@@ -367,30 +371,30 @@ the same non-terminal multiple times then they are merged.
     } & \circled{D} \\
   \end{tabular}
   {\hfill}
-  \caption{Rules for the example graph generating grammar.  The
+  \caption{Productions for the example graph generating grammar.  The
     terminal nodes for this grammar are positive integers and the
     non-terminals are positive integers in boxes. $n$ matches odd
     integers and $m$ matches even integers other than two and four.
-    Circled letters are labels used to refer to the rules in the
+    Circled letters are labels used to refer to the productions in the
     text.}
   \label{fig:intro:graph_grammar}
 \end{figure}
 
 \autoref{fig:intro:graph_grammar:expansion} shows how to apply this
-grammar to the initial non-terminal \graphNT{3}.  The only rule which
-matches this initial non-terminal is \circled{A} with $n=3$, which
-generates a new terminal $n = 3$, a new non-terminal \graphNT{$3n+1$}
-= \graphNT{10}, and a single edge connecting them.  This new
-non-terminal matches rule \circled{B} with $m = 10$, and so that rule
-is now applied.  It generates another terminal, $m = 10$, and two new
-non-terminals, \graphNT{$\frac{m}{2}$} = \graphNT{5} and
-\graphNT{$\frac{m}{2}-2$} = \graphNT{3}.  \graphNT{5} is added to the
-graph in the obvious way.  \graphNT{3}, by contrast, has already been
-expanded once, and so rather than adding a new node to the graph the
-grammar creates an edge to the result of its previous expansion.  This
-process repeats, expanding one non-terminal at a time, until no more
-non-terminals remain in the graph.  The resulting graph is shown on
-the right of the figure.
+grammar to the initial non-terminal \graphNT{3}.  The only production
+which matches this initial non-terminal is \circled{A} with $n=3$,
+which generates a new terminal $n = 3$, a new non-terminal
+\graphNT{$3n+1$} = \graphNT{10}, and a single edge connecting them.
+This new non-terminal matches production \circled{B} with $m = 10$,
+and so that production is now applied.  It generates another terminal,
+$m = 10$, and two new non-terminals, \graphNT{$\frac{m}{2}$} =
+\graphNT{5} and \graphNT{$\frac{m}{2}-2$} = \graphNT{3}.  \graphNT{5}
+is added to the graph in the obvious way.  \graphNT{3}, by contrast,
+has already been expanded once, and so rather than adding a new node
+to the graph the grammar creates an edge to the result of its previous
+expansion.  This process repeats, expanding one non-terminal at a
+time, until no more non-terminals remain in the graph.  The resulting
+graph is shown on the right of the figure.
 
 \begin{figure}
   {\hfill}
@@ -505,9 +509,9 @@ the right of the figure.
     \draw[->,double] (d) to node [above] {\ldots} (g);
   \end{tikzpicture}
   {\hfill}
-  \caption[Expansion of a non-terminal using the rules in
+  \caption[Expansion of a non-terminal using the productions in
     \autoref{fig:intro:graph_grammar}]{Expansion of the non-terminal
-    \graphNT{$\mathrm{3}$} using the rules in
+    \graphNT{$\mathrm{3}$} using the productions in
     \autoref{fig:intro:graph_grammar}.}
   \label{fig:intro:graph_grammar:expansion}
 \end{figure}

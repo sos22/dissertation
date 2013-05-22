@@ -119,31 +119,11 @@ used in \autoref{sect:derive:write_side}, and generally produces
 results which are at least broadly reasonable\editorial{That kind of
   implies I had much more choice in the matter than I actually did.}.
 
-\label{sect:fixing:rw_afix}
-\todo{Maybe move to related work?} This algorithm is quite similar to
-that used in AFix\cite{Jin2011}\footnote{But note that the present
-  author implemented that part of {\implementation} in June 2010,
-  before AFix was published.}.  There are, however, several
-differences between them.  Most obviously, the AFix algorithm
-considers only simple two-access critical sections, whereas this
-algorithm can enforce more complex $n$-access ones.  Even where there
-are precisely two accesses to be protected, the set of instructions in
-the critical section can differ slightly, because {\technique} will
-exit the critical section if the thread leaves the \gls{cfg} in the
-{\StateMachine}, whereas AFix exits if the thread cannot reach another
-protected instruction in the current function invocation.  This can be
-either an advantage or a disadvantage, depending on why an instruction
-is missing from the {\StateMachine} \gls{cfg}.  Some instructions will
-be missing because they were cut off by the \gls{alpha} limit on the
-\gls{analysiswindow}; releasing the lock for these instructions is
-usually undesirable, as it re-introduces some of the concurrent
-interleavings which the patch was supposed to eliminate.  Other
-instructions will be missing because an earlier analysis phase has
-shown that the program cannot suffer the bug if it follows that path;
-releasing the lock here is safe, and can sometimes lead to better
-parallelism and liveness behaviour.
-
 \section{The interpreter}
+
+\todo{SMH \emph{hates} the interpreter-based description, but I find
+  his reasoning deeply unconvincing.}
+
 
 The conceptually simplest way of introducing these synchronisation
 operations is by modifying a hypothetical machine code interpreter so
@@ -258,11 +238,11 @@ unavailable, as they are used by the program to be protected; main
 memory does not work, because most of the state needs to be
 thread-local; and anything based on system calls is undesirable
 because the state needs to be accessed so frequently, sometimes
-multiple times per instruction.  The approach taken by
-{\implementation} is to encode the per-thread state into the program's
-instruction pointer, creating a duplicate of each program instruction
-for each \textsc{InterpreterState} which that program instruction
-might execute in.  This is practical because the number of
+multiple times per original program instruction.  The approach taken
+by {\implementation} is to encode the per-thread state into the
+program's instruction pointer, creating a duplicate of each program
+instruction for each \textsc{InterpreterState} which that program
+instruction might execute in.  This is practical because the number of
 \textsc{InterpreterState}s per program instruction is usually very
 small, often just one, and so the number of duplicates is manageable.
 
@@ -281,13 +261,19 @@ containing both the original pointer and the \textsc{InterpreterState}
 structure.  The interpreter described above shows how the original
 program's \gls{cfg} can be combined with the fix plan to give a new
 \gls{cfg} expressed in terms of these extended instruction pointers,
-and the compiler then lowers this extended \gls{cfg} back into
-ordinary machine code.  The lowering process itself is easiest to
+and the compiler then just needs to lower this extended \gls{cfg} back
+into ordinary machine code.  The lowering process itself is easiest to
 think about as a kind of partial evaluation\cite{Jones1993} or
 supercompilation\cite{Sorensen2008} of the interpreter, fixing the
 program machine code and the intended synchronisation while leaving
-the program's inputs unspecified.
-
+the program's inputs unspecified\editorial{Alternative way of thinking
+  about this: We want to convert the interpreter into a JIT.  We copy
+  the key insight from PIN that automorphic compilers should use an
+  intermediate form which is similar to their output form and use an
+  intermediate form which is just the original instruction plus an
+  \textsc{InterpreterState}.  Given that, the JIT becomes sufficiently
+  simple that we can just do the entire thing offline before we start,
+  at which point we have a compiler.}.
 \begin{itemize}
 \item \textbf{Lock} phases partially evaluate to either the machine
   code for a lock operation (if the lock is not currently held and the

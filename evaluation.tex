@@ -229,9 +229,11 @@ notation indicates that $[x,y]$ form a 90\% confidence interval for
 the statistic derived by a bootstrap over $a$ samples with $b$
 replicates.  $x \pm_{\mu}^a y$ indicates that the mean of the
 statistic is $x$ and the estimated standard deviation of the mean $y$,
-again with $a$ samples.
+again with $a$ samples.  \todo{Not convinced that an SD is the right
+  way of characterising it, as tempting as the CLT makes it.}
 
 \begin{table}
+  {\hfill}
   \begin{tabular}{|l|l|}
     \hline
     Test program & Time building enforcer \\
@@ -241,8 +243,9 @@ again with $a$ samples.
     \bugname{double\_free}    & $0.199 \pm^{10}_p 0.009$s \\
     \hline
   \end{tabular}
+  {\hfill}
   \caption{Time taken to build \glspl{bugenforcer} for the artificial
-    test programs.}
+    test programs. \todo{Ugly.}}
   \label{tab:eval:artificial_bugs:build_enforcer_times}
 \end{table}
 
@@ -253,11 +256,14 @@ again with $a$ samples.
     summary statistics.  Note log scale.  All times in seconds.  Means
     calculated ignoring timeouts.  Grey region gives a 90\% confidence
     interval, computed using the Dvoretsky-Kiefer-Wolfowitz-Massart
-    (DKWM) inequality \todo{Cite for DKWM?}.}
+    (DKWM) inequality \todo{Cite for DKWM?}.  Note that DKWM
+    confidence intervals are curve-wise rather than point-wise
+    i.e. there is a 90\% confidence that the entire curve is within
+    the shaded region, rather than that any given point is.}
 \end{figure}
 
 This figure shows quite clearly that the enforcers are able to reduce
-the time taken to reproduce these bugs.  They are particularly
+the time taken to reproduce these bugs and that they are particularly
 effective at eliminating large outliers in which the bug takes a very
 long time to reproduce.  This is a potentially useful property: with
 fewer outliers, the behaviour of a bug will be, qualitatively, more
@@ -285,7 +291,7 @@ to understand the bug even without a reduction in reproduction time.
     \hspace{1em}Environmental thread    & & $0.089 \pm_{\mu}^{10} 0.001$ & \\
     \hline
   \end{tabular}
-  \caption{}
+  \caption{Performance characteristics of generated fixes \todo{Need more data.}}
   \label{tab:eval:artificial_bugs:fixes}
 \end{table}
 
@@ -296,21 +302,23 @@ low overhead and can be built very quickly, as shown in
 \autoref{tab:eval:artificial_bugs:fixes}.
 
 The performance metric used is the time taken by each of the threads
-to complete one iteration of its test loop\footnote{Averaged over ten
-  intervals each of ten seconds.  Any intervals which crashed were
-  repeated.}.  This is to some extent an arbitrary metric, as most of
-the tests contain calls to \texttt{sleep} in their main loop, and so
-the metric could be set to almost any value by adjusting the length of
-the sleep.  The increase in the cost of the loop, shown in the final
-column\footnote{The difference is given as $x \pm y$, where $x$ is the
-  difference of means and $y$ a standard deviation in the estimate of
-  $x$ computed from the standard deviations of the previous two
-  columns.}, is more meaningful, and gives an estimate of the cost of
-the patching and locking operations which {\implementation} uses to
-implement its critical sections.  As can be seen, it is generally on
-the order of a few microseconds, suggesting that {\technique} fixes
-will have reasonable overhead provided that the buggy code executes
-less than on the order of a million times per second.
+to complete one iteration of its test loop\footnote{Averaged over
+  eleven intervals each of ten seconds, discarding the first.  Any
+  intervals which crashed were repeated. \todo{Didn't bother discard
+    first; re-run.}}.  This is to some extent an arbitrary metric, as
+most of the tests contain calls to \texttt{sleep} in their main loop,
+and so the metric could be set to almost any value by adjusting the
+length of the sleep.  The increase in the cost of the loop, shown in
+the final column\footnote{The difference is given as $x \pm y$, where
+  $x$ is the difference of means and $y$ a standard deviation in the
+  estimate of $x$ computed from the standard deviations of the
+  previous two columns.}, is more meaningful, and gives an estimate of
+the cost of the patching and locking operations which
+{\implementation} uses to implement its critical sections.  As can be
+seen, it is generally on the order of a few microseconds, suggesting
+that {\technique} fixes will have reasonable overhead provided that
+the buggy code executes less than on the order of a million times per
+second.
 
 \subsection{Bugs in real programs}
 
@@ -525,7 +533,7 @@ infrequently, and only in a background thread.
     \bugname{mysql}      & \\
     \bugname{thunderbird} & \\
   \end{tabular}
-  \caption{Time taken to convert \glspl{verificationcondition} to fixes.}
+  \caption{Time taken to convert \glspl{verificationcondition} to fixes. \todo{Fill with numbers}}
   \label{tab:eval:real_bugs:time_building_fixes}
 \end{table}
 
@@ -573,32 +581,59 @@ fix a bug.
 
 \subsubsection{Finding unknown bugs}
 
+\begin{table}
+  {\hfill}
+  \begin{tabular}{|l|l|l|}
+    \hline
+    Phase & Time taken & Cores used \\
+    \hline
+    Building \gls{programmodel} & $571 \pm_{\mu}^{10} 1$s & 1\\
+    Deriving \glspl{verificationcondition} & $8500 \pm_{\mu}^{10} 100$s & 10 \\
+    Converting to \glspl{bugenforcer} & $204 \pm_{\mu}^{10} 3$s & 10 \\
+    \hline
+  \end{tabular}
+  {\hfill}
+  \caption{Time taken to generate a full suite of \glspl{bugenforcer}
+    for MySQL on an AMD Opteron 6168 with 16GiB of memory.  The
+    complete analysis was run eleven times and the results of the
+    first run discarded; the results here are the average of the
+    remaining ten runs.  Operating system disk caches were discarded
+    in between each run.  The last two phases were parallelised; the
+    first was not.}
+  \label{tab:eval:does:building_all_enforcers_times}
+\end{table}
+
 {\Technique} can also be used to discover unknown bugs, if the program
 has a reasonable automated test suite, by having it consider every
 possible crash at every instruction in the program, generating a
 \glspl{bugenforcer} for each, and then running the test suite with
 each of these enforcers loaded.  As mentioned above, MySQL has such a
 test suite, and so I generated a complete set of enforcers for it.
-This took three hours and twelve minutes\editorial{Repeats?}, using
-ten cores on a twelve core AMD Opteron 6168 with 16GiB of memory, and
-produced a total of 10173 \glspl{bugenforcer}.  I then re-ran the
-\texttt{rpl\_change\_master} test ten times with each of these
-enforcers loaded, again running ten tests in parallel.  These tests
-were run such that every enforcer was tested $n$ times before any
-enforcer ran $n+1$ times, and the order in which enforcers ran, and
-hence which enforcers ran in parallel, was randomised for every
-repeat.  As a baseline, I also ran the test 10,000 times without any
-\glspl{bugenforcer} attached.
-
-The results are shown in \autoref{tab:eval:does:finding_unknown}.
-Three of the enforcers were able to reproduce the bugs for which they
-were designed.  The first, hereafter referred to as enforcer A,
-reproduced the \bugname{mysql} bug, as desired.  The other two,
-enforcers B and C, reproduced essentially similar races elsewhere in
-MySQL; I was unaware of these bugs before running this experiment.
-All three bugs were very rare without an enforcer, or with the wrong
-enforcer, but reproduced very easily when an appropriate enforcer was
-used, precisely as desired.
+This took three roughly two and a half hours\footnote{See
+  \autoref{tab:eval:does:building_all_enforcers_times} for full
+  details.}, and produced a total of 10173 \glspl{bugenforcer}.  To
+test the effectiveness of these enforcers, I ran the
+\texttt{rpl\_change\_master} test repeatedly with each\footnote{This
+  experiment was structured as a series of eleven rounds, with each
+  enforcer used once in each round.  Apart stragglers at the end of
+  each round, I tested ten enforcers in parallel.  The order of
+  \glspl{bugenforcer}, and hence which \glspl{bugenforcer} ran in
+  parallel with which other \glspl{bugenforcer}, was chosen randomly
+  in each round.  The system used for this test was the same Opteron
+  6168 as was used to generate the \glspl{bugenforcer}.  I discarded
+  the results of the first round of testing; the results here are for
+  the remaining ten rounds.  The results for the no-enforcer case were
+  produced by running the test 10,000 times with no enforcer attached,
+  again running ten instances of the test in parallel.}; the results
+are shown in \autoref{tab:eval:does:finding_unknown}.  Three of the
+enforcers were able to reproduce the bugs for which they were
+designed.  The first, hereafter referred to as enforcer A, reproduced
+the \bugname{mysql} bug, as desired.  The other two, enforcers B and
+C, reproduced essentially similar races elsewhere in MySQL; I was
+unaware of these bugs before running this experiment.  All three bugs
+were very rare without an enforcer, or with the wrong enforcer, but
+reproduced very easily when an appropriate enforcer was used,
+precisely as desired.
 
 It is perhaps surprising that the reproduction rates are lower with an
 inappropriate enforcer than they are with no enforcer at all.  This
@@ -615,22 +650,22 @@ to explore less-common schedules.
 Enforcer & \multicolumn{3}{c|}{Reproduction rate} \\\cline{2-4}
          & Bug A                         & Bug B                                    & Bug C \\
 \hline
-None     & 0/10000                       & $0.03 \in [0.02,0.06]_{10000}^{\infty}\%$     & $0.29 \in [0.21,0.38]_{10000}^{\infty}\%$\\
+None     & 0/10000                       & $0.03 \in [0.02,0.06]^{10000}_{\infty}\%$     & $0.29 \in [0.21,0.38]^{10000}_{\infty}\%$\\
 \hdashline
-A        & $90 \in [80,100]_{10}^{\infty}\%$ & 0/10                                     & 0/10 \\
+A        & $90 \in [80,100]^{10}_{\infty}\%$ & 0/10                                     & 0/10 \\
 B        & 0/10                          & 10/10                                    & 0/10 \\
 C        & 0/10                          & 0/10                                     & 10/10 \\
 \hdashline
-Other    & 0/101700                      & $0.014 \in [0.009,0.020]_{101700}^{\infty}\%$ & $0.10 \in [0.08,0.11]_{101700}^{\infty}\%$ \\
+Other    & 0/101700                      & $0.014 \in [0.009,0.020]^{101700}_{\infty}\%$ & $0.10 \in [0.08,0.11]^{101700}_{\infty}\%$ \\
 \hline
 \end{tabular}
   {\hfill}
 \caption{Effectiveness of {\technique} at finding unknown bugs.  The
-  $a \in [b,c]_{d}^{\infty}\%$ notation indicates that a $a$
+  $a \in [b,c]^{d}_{\infty}\%$ notation indicates that a $a$
   percent of the $d$ experiments with that enforcer exhibited that
   particular bug, with a 90\% confidence for the reproduction rate of
   $b$ to $c$ percent derived by performing a bootstrap and taking the
-  limit as the number replicates went to infinity.  It is not possible
+  limit as the number replicates goes to infinity.  It is not possible
   to derive meaningful confidence intervals for the frequency of
   events which happened every time or those which did not happen at
   all, and so in those cases I report either $0/d$ (if it did not
@@ -705,7 +740,8 @@ information:
   median.  These were computed using a bootstrap with 1000 replicates.
 \item The (arithmetic) mean, plus or minus one standard deviation of
   the mean, is shown as a cross with bars.  This mean is calculated
-  ignoring all failures.
+  ignoring all failures.  \todo{Why is this pm an SD rather than a
+    confidence interval?}
 \item The kernel used in estimating the probability density function
   is shown below the PDF itself.  This is the contribution which a
   single sample makes to the PDF.  It is a rectangle of height
@@ -798,7 +834,7 @@ This phase suffered a number of failures:
 \item The ``rederive crashing {\StateMachine}'' phase time out 21
   times.
 \item Running the \gls{ic-atomic} {\StateMachine} timed out 12 times
-  and ran out of memory and ran out of memory 29 times.
+  and ran out of memory 29 times.
 \item Building the cross-product {\StateMachine} timed out once.
 \item Running the cross-product {\StateMachine} timed out 17 times and
   ran out of memory once.
@@ -834,8 +870,8 @@ the necessary condition for the {\StateMachines} to avoid crashing
 when run atomically.  The cross-product symbolic execution only looks
 for atomicity violation crashes, and so it can assume that the
 \gls{ic-atomic} constraint holds.  This often eliminates a large
-number of potential initial states of the {\StateMachines}, which
-makes the symbolic execution somewhat cheaper.
+number of potential initial states of the {\StateMachines}, making the
+symbolic execution somewhat cheaper.
 
 \begin{figure}
   \centerline{
@@ -929,7 +965,8 @@ is unlikely to be a crippling limitation.
 \subsection{Structure of \glspl{bugenforcer}}
 
 \todo{I'm sure there's something I can say about this, but I don't
-  know what.}
+  know what.  Best current theory is to just give some gross measures
+  of enforcer complexity.}
 
 \subsection{Costs of building fixes}
 
@@ -1208,7 +1245,10 @@ first.
     90\% confidence interval for quantiles in grey.  Cross and bars
     give arithmetic mean and 90\% confidence interval for mean.
     Confidence intervals computed by a bootstrap with 1000
-    replicates.}
+    replicates. \todo{Re-run the with-enforcer experiment, since I had
+      delay randomisation turned off when I ran this one.  Also, I'd
+      quite like to try some higher \texttt{NR\_PTRS} values in the
+      with-enforcer case.}}
   \label{fig:eval:indexed_toctou:nr_ptrs}
 \end{figure}
 
@@ -1380,22 +1420,27 @@ instance, the program shown in
 all of the addresses unpredictable, followed by a final test on the
 sum of the loaded values.  The program is structured such that this
 test always fails, and so the program never crashes, but in order to
-prove that {\technique} must consider every possible way of evaluating
-the condition.  This program is close to {\technique}'s worst case,
-for this number of memory-accessing instructions, as there is no way
-to constrain the aliasing problem: the {\StateMachine}-level analysis
-provides no useful information because the address computation happens
-outside of the \gls{analysiswindow}; the dynamic analysis provides
-none because any instruction can alias with any other; and the
-\gls{programmodel} static analysis provides none because the address
-computation involves the \texttt{random} function.  Most real bugs
-would not suffer from all of these difficulties at the same time.
+{\technique} is unable to prove that and must consider every possible
+way of evaluating the condition.  This program is close to
+{\technique}'s worst case, for this number of memory-accessing
+instructions, as there is no way to constrain the aliasing problem:
+the {\StateMachine}-level analysis provides no useful information
+because the address computation happens outside of the
+\gls{analysiswindow}; the dynamic analysis provides none because any
+instruction can alias with any other; and the \gls{programmodel}
+static analysis provides none because the address computation involves
+the \texttt{random} function.  Most real bugs would not suffer from
+all of these difficulties at the same time.
 
 \autoref{fig:eval:why:complex_aliasing:result1} shows the cost of
 analysing this program, in terms of time taken and memory consumed, as
-functions of $L$ and $S$.  Both functions clearly increase rapidly
-with both $L$ and $S$, with the analysis quickly becoming intractable
-for even quite modest numbers of memory accessing instructions.  The
+functions of $L$ and $S$\footnote{Note that {\implementation} manages
+  most of its internal data structures using a garbage collector which
+  only runs once more than 2GB of memory has been allocated, and so
+  behaviour is likely to be qualitatively different on either side of
+  the 2GB contour.}.  Both functions clearly increase rapidly with
+both $L$ and $S$, with the analysis quickly becoming intractable for
+even quite modest numbers of memory accessing instructions.  The
 response to the number of loads is much stronger than the response to
 the number of stores.  This behaviour is easy to explain.  In order to
 analyse this program, {\technique} must consider every possible value
@@ -1474,12 +1519,12 @@ discussed in \autoref{sect:derive:symbolic_execute}.  There is
 therefore no need to decide precisely which of the $S$ stores provided
 the value loaded by a particular load until that value is
 used\editorial{ugg}.  In this case, the use of the value will be a
-test of the form $l < S+1$, and all of the stores will be of values
-less than or equal to $S$, and so {\technique} will be able to show
-that the test evaluates to \true without ever determining the precise
-correspondence between loads and stores.  This reduces the cost from
-$O((1+S)^L)$ to $O(SL)$, which is sufficient that memory aliasing
-stops being the limiting factor in the analysis.
+test of the form $l \not= S+1$, and all of the stores will be of
+values less than or equal to $S$, and so {\technique} will be able to
+show that the test evaluates to {\true} without ever determining the
+precise correspondence between loads and stores.  This reduces the
+cost from $O((1+S)^L)$ to $O(SL)$, which is sufficient that memory
+aliasing stops being the limiting factor in the analysis.
 
 \todo{Laziness also allows a kind of factorisation of the final
   condition if there are subsets of the loaded values which don't
@@ -1563,6 +1608,8 @@ with the results of the other experiments.
 \subsection{Effect of the \gls{w-isolation} assumption}
 
 \subsection{Effect of the dynamic analysis on analysis time and precision}
+
+\subsection{Sources of fix overhead}
 
 \section{Discussion}
 

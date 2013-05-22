@@ -235,7 +235,7 @@ to be from $C_1$ to $B_0$, producing the next diagram in the sequence.
 All paths which were possible in the old graph will also be possible
 in the new one, if duplicated nodes are treated as semantically
 equivalent,
-\begin{wrapfigure}{r}{3.3cm}
+\begin{figure}
 \begin{tikzpicture}
   [node distance=1 and 0.3]
   \node (A) at (0,2) [CfgInstr] {$A_0$};
@@ -263,7 +263,7 @@ equivalent,
   introduced at $C_2$.}
 \label{fig:unrolled_cyclic_cfg}
 \vspace{-20pt}
-\end{wrapfigure}
+\end{figure}
 and the loop is now one instruction further away from the target
 instruction $D_0$.  The process then repeats, moving the cycle
 steadily further and further away from $D_0$ until all paths of length
@@ -407,7 +407,7 @@ instead encoded into binary decision diagrams, or
 BDDs\cite{Brace1990}, which are themselves expressed in terms of the
 expression language.  This is analogous to the way in which SMT
 solvers represent the expression whose satisfiability
-\begin{wrapfigure}{r}{4.5cm}
+\begin{figure}
   \vspace{-17pt}
   \centerline{
   \begin{tikzpicture}
@@ -430,7 +430,7 @@ solvers represent the expression whose satisfiability
     $\smTmp{B}$ and the initial contents of program memory.}
   \label{fig:derive:example_expr_bdd}
   \vspace{-30pt}
-\end{wrapfigure}
+\end{figure}
 is to be checked as an expression in a boolean algebra whose input
 variables are themselves expressions in some other theory.
 
@@ -663,7 +663,7 @@ more difficult.  There are three cases which require special care:
   example.
 
 \end{itemize}
-\begin{wrapfigure}{O}{6cm}
+\begin{figure}
   \vspace{-20pt}
   \begin{centering}
     \texttt{
@@ -679,7 +679,7 @@ more difficult.  There are three cases which require special care:
   \caption{}
   \label{fig:derive:example_dissassembly1}
   \vspace{-24pt}
-\end{wrapfigure}
+\end{figure}
 As a somewhat unrealistic example, suppose that the \gls{cfg} in
 \autoref{fig:cyclic_cfg} were generated from the program fragment shown
 in \autoref{fig:derive:example_dissassembly1}.  The \verb|JMP_NE|
@@ -1491,19 +1491,225 @@ much faster than executing the input {\StateMachines} in turn.
 \todo{I'm making this look quite hard.  It really, really isn't.  It's
   just an absolutely bog-standard cross product algorithm.}
 
-The symbolic execution engine is only capable of exploring one
-{\StateMachine} at a time, and so if cross-thread behaviours are to be
-investigated then the two single-threaded {\StateMachines} must be
-combined into a single multi-threaded one.  This new {\StateMachine}
-must capture the complete behaviour of every possible interaction
-between the two input {\StateMachines}, so that any possible
-interleaving of their states is represented by a path through the
-combined {\StateMachine}.  The approach used by {\technique} is
-essentially to take a cross-product of the two {\StateMachines}.  This
-is a new {\StateMachine} whose states correspond to pairs of states in
-the input {\StateMachine} and whose transitions correspond to
-advancing one or other of the two input {\StateMachines}.
+{\Technique}'s symbolic execution engine is only capable of exploring
+the behaviour of one {\StateMachine} at a time, but the
+\gls{verificationcondition} is defined in terms of the parallel
+composition of two {\StateMachines}.  {\Technique} therefore builds a
+new {\StateMachine}, the \emph{cross-product {\StateMachine}}, which
+acts as this parallel composition.
 
+One way to think about this is to say that {\technique} must emulate
+the parallel composition of two {\StateMachines} using only sequential
+code.  This is difficult because there are two models of computation
+involved: a \emph{host} model, which is used to run {\technique}
+itself and has full access to the structure of the {\StateMachines},
+but not the ``current'' value of {\StateMachine} temporaries and
+program memory; and an \emph{embedded} model, implemented by the
+{\StateMachines}, which does have access to the current values of
+temporaries and program memory but is not powerful enough to represent
+the state structure of the input {\StateMachines}.  The cross-product
+algorithm stages the emulation between these models.  The first stage
+runs in the host model and generates the cross-product {\StateMachine}
+which, when executed in the embedded model, performs the second stage
+and actually emulates the parallel composition\editorial{Or, to put it
+  another way, 1A computation theory does actually have some uses.
+  This is the kind of thing which people find either insultingly
+  obvious or completely obscure; not sure what to do about that.}.
+
+A simplified version of the algorithm used by {\technique} is shown in
+\autoref{fig:derive:basic_cross_product}, as a node replacement graph
+grammar.  The grammar itself forms the first stage of the emulation,
+and the {\StateMachine} it generates forms the second.  The
+productions of the grammar are themselves quite simple.  The first two
+show how to handle a \state{If} state in one of the input
+{\StateMachines}.  The discriminant $m$ cannot be evaluated in the
+host model, as it may depend on {\StateMachine} model state, and so it
+is deferred to the second stage computation in the embedded model by
+adding an \stIf{m} state to the cross-product {\StateMachine}.
+Similarly, production \circled{2} shows how to handle side effect
+states: the host model cannot tell which side effect to do first, and
+so it defers it to the embedded model using a $\happensBeforeEdge$
+happens-before test, performing the appropriate side effect based on
+the result and then advancing one of the {\StateMachines}.  Finally,
+productions \circled{3} and \circled{4} show how to handle terminal
+states: if the crashing {\StateMachine} reaches a terminal state, the
+emulation stops and the result is that terminal state; if the
+interfering {\StateMachine} reaches one, emulation continues with just
+the crashing {\StateMachine} until it also reaches a terminal state.
+
+\begin{figure}
+  \newlength{\extrapadA}
+  \setlength{\extrapadA}{6mm}
+  \newlength{\extrapadB}
+  \setlength{\extrapadB}{3mm}
+  \newlength{\extrapadC}
+  \setlength{\extrapadC}{0mm}
+  \newcommand{\midcolumn}{~\hspace{\extrapadA}\Rightarrow\hspace{\extrapadB}~}
+  \newcommand{\lastcolumn}[1]{~\hspace{\extrapadC}\circled{#1}}
+  \centerline{
+    \begin{tabular}{m{3.7cm}m{11.5cm}}
+      Terminals: & {\STateMachine} states \\
+      Non-terminals: & Pairs $(A, B)$, where $A$ is a fragment of the crashing {\StateMachine} and $B$ a fragment of the interfering one. \\
+      {\raggedright Initial non-terminal:} & $(A_0, B_0)$, where $A_0$ is the entire crashing {\StateMachine} and $B_0$ the entire interfering one, after renaming apart any common {\StateMachine} temporaries. \\
+      \raisebox{12pt}{Productions:} &
+      \vspace{-24pt}
+      \begin{displaymath}
+        \begin{array}{lccr}
+          \left(\begin{tikzpicture}[baseline=(current bounding box.center)]
+            \node at (0,6mm) {};
+            \node at (0,0) (r) [stateIf] {\stIf{m}};
+            \node at (-5mm,-10mm) (A) {$A_0$};
+            \node at (5mm,-10mm) (B) {$A_1$};
+            \node at (0,-17mm) {};
+            \draw[->,ifTrue] (r) -- (A);
+            \draw[->,ifFalse] (r) -- (B);
+          \end{tikzpicture}, B\right) & \midcolumn & \begin{tikzpicture}[baseline=(current bounding box.center)]
+            \node at (0,7mm) {};
+            \node at (0,0) (r) [stateIf] {\stIf{m}};
+            \node at (-10mm, -10mm) (A) { $(A_0, B)$ };
+            \node at (10mm, -10mm) (B) { $(A_1, B)$ };
+            \node at (0,-18mm) {};
+            \draw[->,ifTrue] (r) -- (A);
+            \draw[->,ifFalse] (r) -- (B);
+          \end{tikzpicture} & \lastcolumn{$1_a$} \\
+          \left(\hspace{0.2mm}A, \begin{tikzpicture}[baseline=(current bounding box.center)]
+            \node at (0,6mm) {};
+            \node at (0,0) (r) [stateIf] {\stIf{m}};
+            \node at (-5mm,-10mm) (A) {$B_0$};
+            \node at (5mm,-10mm) (B) {$B_1$};
+            \node at (0,-17mm) {};
+            \draw[->,ifTrue] (r) -- (A);
+            \draw[->,ifFalse] (r) -- (B);
+          \end{tikzpicture}\right) & \midcolumn & \begin{tikzpicture}[baseline=(current bounding box.center)]
+            \node at (0,7mm) {};
+            \node at (0,0) (r) [stateIf] {\stIf{m}};
+            \node at (-10mm, -10mm) (A) { $(A, B_0)$ };
+            \node at (10mm, -10mm) (B) { $(A, B_1)$ };
+            \node at (0,-18mm) {};
+            \draw[->,ifTrue] (r) -- (A);
+            \draw[->,ifFalse] (r) -- (B);
+          \end{tikzpicture} & \lastcolumn{$1_b$} \\
+          \left(\hspace{3.13mm}\begin{tikzpicture}[baseline=(current bounding box.center)]
+            \node at (0,6mm) {};
+            \node at (0,0) (r) [stateSideEffect,minimum height=16pt] {$a$};
+            \node at (0,-10mm) (A) {$A$};
+            \node at (0,-17mm) {};
+            \draw[->] (r) -- (A);
+          \end{tikzpicture}\hspace{3.2mm},\hspace{3.2mm}\begin{tikzpicture}[baseline=(current bounding box.center)]
+            \node at (0,6mm) {};
+            \node at (0,0) (r) [stateSideEffect,minimum width=1.23em] {$b$};
+            \node at (0,-10mm) (A) {$B$};
+            \node at (0,-17mm) {};
+            \draw[->] (r) -- (A);
+          \end{tikzpicture}\hspace{3.13mm}\right) & \midcolumn & \begin{tikzpicture}[baseline=(current bounding box.center)]
+            \node at (0,7mm) {};
+            \node at (0,0) (r) [stateIf] {\stIf{\happensBefore{a}{b}}};;
+            \node at (-10mm,-12mm) [stateSideEffect,minimum height=16pt] (A) { $a$ };
+            \node at (10mm,-12mm) [stateSideEffect,minimum width=1.23em] (B) { $b$ };
+            \node at (-10mm,-30mm) (A2) { $\left(A, \begin{tikzpicture}
+                \node at (0,0) (rr) [stateSideEffect,minimum width=1.23em] {$b$};
+                \node at (0,-10mm) (rb) {$B$};
+                \draw[->] (rr) -- (rb);
+                \end{tikzpicture}\right)$ };
+            \node at (10mm,-30mm) (B2) { $\left(\begin{tikzpicture}
+                \node at (0,0) (rr) [stateSideEffect,minimum width=1.23em] {$a$};
+                \node at (0,-10mm) (rb) {$A$};
+                \draw[->] (rr) -- (rb);
+                \end{tikzpicture}, B\right)$ };
+            \draw[->,ifTrue] (r) -- (A);
+            \draw[->] (A) -- (A2);
+            \draw[->,ifFalse] (r) -- (B);
+            \draw[->] (B) -- (B2);
+          \end{tikzpicture} & \lastcolumn{2} \\
+          \left(\hspace{2.5mm}\raisebox{-.55em}{\tikz{\node [stateTerminal] {\state{t}};}}\begin{tikzpicture}
+            \node at (0,0mm) {};
+            \node at (0,-12mm) {};
+          \end{tikzpicture}\hspace{-.6mm},\hspace{4.65mm}B\hspace{4.4mm}\right) & \midcolumn & \begin{tikzpicture}[baseline=(current bounding box.center)]
+            \node at (0,7mm) {};
+            \node at (0,-4mm) (r) [stateTerminal] {\state{t}};
+            \node at (0,-18mm) {};
+          \end{tikzpicture} & \lastcolumn{3}\\
+          \left(\hspace{3.13mm}\begin{tikzpicture}[baseline=(current bounding box.center)]
+            \node at (0,6mm) {};
+            \node at (0,0) (r) [stateSideEffect,minimum height=16pt] {$a$};
+            \node at (0,-10mm) (A) {$A$};
+            \node at (0,-17mm) {};
+            \draw[->] (r) -- (A);
+          \end{tikzpicture}\hspace{3.2mm}, \hspace{3mm}\raisebox{-.55em}{\tikz{\node [stateTerminal] {\state{t}};}} \hspace{2mm}\right) & \midcolumn & \begin{tikzpicture}[baseline=(current bounding box.center)]
+            \node at (0,7mm) {};
+            \node at (0,2mm) (r) [stateSideEffect,minimum height=16pt]{$a$};
+            \node at (0,-12mm) (A) {$\left(A,\raisebox{.35em}{\tikz{\node [stateTerminal] {\state{t}};}}\right)$};
+            \node at (0,-18mm) {};
+            \draw[->] (r) -- (A);
+          \end{tikzpicture} & \lastcolumn{4} \\
+        \end{array}
+      \end{displaymath}
+      \vspace{-24pt}
+    \end{tabular}
+  }
+  \caption{A basic {\StateMachine} cross-product algorithm, expressed
+    as a node replacement graph generating grammar.  $m$ matches
+    boolean BDDs; $A_0$, $A_1$, and $A$ match fragments of the
+    crashing {\StateMachine}; $B_0$, $B_1$, and $B$ match fragments of
+    the interfering {\StateMachine}; $a$ and $b$ match individual
+    states within the crashing and interfering {\StateMachines},
+    respectively; \state{t} matches any terminal state.}
+  \label{fig:derive:basic_cross_product}
+\end{figure}
+
+The actual algorithm used by {\technique} includes several refinements
+over this basic one:
+\begin{itemize}
+\item The input {\StateMachines} may contain atomic blocks delimited
+  by {\stStartAtomic} and {\stEndAtomic} states, and the simple
+  grammar does not respect them.  Fixing this is quite straightforward
+  by extending the grammar's non-terminal structure with a final
+  field, $\mathit{atomic}$, which indicates which, if any, of the
+  {\StateMachines} are currently within atomic blocks.  This is
+  maintained as the {\StateMachines} perform {\stStartAtomic} and
+  {\stEndAtomic} states and is used to restrict the interleavings
+  generated by the grammar.
+\item The grammar, as presented, will consider every possible
+  interleaving of the two {\StateMachines}, including the trivial ones
+  in which one or other completes atomically.  This is correct but
+  inefficient, as the atomic orderings have already been considered in
+  the \gls{inferredassumption}.  Fixing this is, again, simple, by
+  extending the grammar's non-terminal structure with two additional
+  fields, $\mathit{crashingHasIssued}$ and
+  $\mathit{interferingHasIssued}$, which track whether the crashing
+  and interfering machines have issued\editorial{undef} any side
+  effects\editorial{undef}.  If either {\StateMachine} terminates
+  without having done so then the cross-product {\StateMachine} ends
+  in the {\stUnreached} state, so that the relevant paths will not be
+  included in the \gls{verificationcondition}.
+
+  Note that this refinement executions in which the {\StateMachines}
+  run in series, rather than those in which they run linearizably.
+  The latter would perhaps be more useful, as it could potentially
+  eliminate more paths and hence reduce the cost of later symbolic
+  execution, but is far more difficult to calculate.
+\item The cross-product {\StateMachine} produced by this grammar will
+  explore every possible interleaving of the input {\StateMachines}'
+  states.  This is usually redundant, as many of these interleavings
+  will be equivalent.  In other words\editorial{ugg}, the na\"ive
+  cross-product does not take advantage of partial order redundancies.
+  {\Technique} ameliorates this weakness by only generating
+  happens-before tests for \emph{non-local} states.  A side effect
+  state is non-local if it can influence or be influenced by some
+  future action of the other {\StateMachine}; conversely, it is local
+  if it cannot.  Note that this is definition is context dependent:
+  whether a side effect is local depends on the possible future
+  actions of the other {\StateMachine}.  So\editorial{ugg}, for
+  instance, to determine whether a load in the crashing
+  {\StateMachine} is local, {\technique} will look forwards through
+  the interfering {\StateMachine} and check whether it contains any
+  stores with which the load might alias.  A {\stStartAtomic} side
+  effect is considered non-local if any of the side effects in the
+  atomic block which it starts are non-local\editorial{ugg}.
+\item This grammar can sometimes duplicate side effect states, which
+  might break static single assignment form.  {\Technique} uses a
+  separate post pass to restore the SSA invariant.
+\end{itemize}
 \begin{figure}
   \begin{displaymath}
     \textsc{Configuration} = \left(\begin{array}{rrll}
@@ -1517,6 +1723,52 @@ advancing one or other of the two input {\StateMachines}.
   \caption{\textsc{Configuration} type for the cross-product algorithm.}
   \label{fig:cross_product:configuration}
 \end{figure}
+The extended non-terminal type, \textsc{Configuration}, is shown in
+\autoref{fig:cross_product:configuration}, its initial value in
+\autoref{fig:cross_product:initial}, and the extended productions in
+\autoref{fig:cross_product:algorithm}.  Many of the productions have
+symmetrical versions which simply swap the roles of the crashing and
+interfering {\StateMachines}; for the sake of brevity, I show only the
+crashing {\StateMachine} production and mark it with a *.
+
+\todo{Linkage}
+\begin{itemize}
+\item Production \circled{$1'$} corresponds to productions \circled{$1_a$}
+  and \circled{$1_b$} in the simple grammar.  Similarly, \circled{$2'$}
+  corresponds to \circled{2} and \circled{$3'$} corresponds to
+  \circled{3}.  These need no further explanation.
+\item Production \circled{$4'$} allows either of the {\StateMachines}
+  to advance past a local side effect without needing to perform a
+  happens-before test, implementing a limited form of partial-order
+  reduction.
+\item Production \circled{$5'$} causes paths in which one
+  {\StateMachine} finishes before the other starts to end in the
+  {\stUnreached} state, effectively eliminating those paths from
+  consideration.
+\item Productions \circled{$6'$}, \circled{$7'$}, and \circled{$8'$}
+  implement atomic blocks by allowing {\StateMachines} to,
+  respectively, enter a local atomic block, leave a block, and
+  progress within a block.  Entering a non-local atomic block requires
+  combining productions \circled{$6'$} and \circled{$2'$}, which
+  produces a large number of unenlightening special cases, and I do
+  not give details here.
+\end{itemize}
+For example, the cross-product of the {\StateMachines} in
+\autoref{fig:cross_product_input} is given in
+\autoref{fig:cross_product_output}, showing the non-terminals and
+productions used to produce all of the output states.  This captures
+every possible interleaving of the two input {\StateMachines} into a
+single cross-product {\StateMachine}, allowing {\technique} to build
+the \gls{verificationcondition} using a simple single-threaded
+symbolic execution engine.  Note that while this example produced a
+tree-structured {\StateMachine}, in the general case the result is a
+directed acyclic graph, so that if a single non-terminal is generated
+multiple times the resulting sub-graphs will be shared rather than
+being duplicated.  This reduces the worst-case number of states in the
+cross-product {\StateMachine} from $O(\binom{L+S}{L})$ to $O(LS)$,
+where $L$ is the number of states in the crashing {\StateMachine} and
+$S$ the number in the interfering one, which often reduces the cost of
+symbolically executing it by a useful amount.
 
 \begin{figure}
   \begin{displaymath}
@@ -1535,82 +1787,10 @@ advancing one or other of the two input {\StateMachines}.
   \label{fig:cross_product:initial}
 \end{figure}
 
-The algorithm used to build the cross-product {\StateMachine} is best
-understood as a graph generating node-replacement grammar using
-{\StateMachine} states as terminals and \textsc{Configuration}s, shown
-in \autoref{fig:cross_product:configuration}, as non-terminals.  The
-grammar starts with a single non-terminal, shown in
-\autoref{fig:cross_product:initial}, and then uses the rules shown in
-\autoref{fig:cross_product:algorithm} to expand that initial
-non-terminal into a new graph.  The rules should be read as
-pattern-matching systems: whenever a non-terminal matches one of the
-patterns to the left of the $\Rightarrow$, it is replaced with the
-graph on the right, substituting in variables as
-appropriate\editorial{bit of an unbound reference.}.  This might
-generate additional non-terminals, in which case the process repeats
-until no more non-terminals remain.  If the same non-terminal is
-generated several times then they are merged, so that the non-terminal
-has one incoming edge for each position in which it is generated.  The
-resulting graph of {\StateMachine} states then forms the cross-product
-{\StateMachine}\editorial{That's a bit dense.}.
-
-The rules are individually quite simple:
-\begin{itemize}
-\item The first two rules are trivial and simply show how to process
-  {\StateMachine}-local operations in the crashing {\StateMachine}:
-  the operation itself is copied verbatim to the output
-  {\StateMachine}, with new \textsc{Configuration}s generated to
-  represent what the crashing {\StateMachine} does next.  Operations
-  local to the interfering {\StateMachine} are handled symmetrically.
-  The only slight subtlety lies in determining whether an operation is
-  local to a particular {\StateMachine}; in other words, whether it
-  can influence or be influenced by the other {\StateMachine}.  Most
-  side-effects only depend upon and only modify the {\StateMachine}
-  temporaries, and so 
-
-\item The second rule shows how to handle \state{If} states in the
-  crashing {\StateMachine}.  The non-terminal on the left of the
-  $\Rightarrow$ will match any \textsc{Configuration} in which the
-  crashing {\StateMachine} is at an \state{If} state and will generate
-  the graph fragment shown on the right.  This consists of a new
-  (terminal) \state{If} state whose successors are new (non-terminal)
-  \textsc{Configuration}s corresponding to the test in the crashing
-         {\StateMachine} evaluating to either {\true}, on the left, or
-         {\false}, on the right.  The rule for handling \state{If}
-         states in the interfering {\StateMachine}, not shown in the
-         figure, is symmetrical.
-
-\item The first three rules implement atomic blocks in the crashing
-  {\StateMachine}.  Rule \circled{1} says that the crashing
-  {\StateMachine} can start a new atomic block if it is currently at a
-  {\stStartAtomic} state (because the $\mathit{crashingState}$
-  component of the \textsc{Configuration} on the left begins
-  {\stStartAtomic}), neither {\StateMachine} is currently in an atomic
-  block (because the $\mathit{atomic}$ component is $\varnothing$),
-  and the atomic block cannot race with the current interfering
-  {\StateMachine} state (because the condition on the right requires
-  $C$ to be local; the precise definition of local is given later).
-  Starting an atomic block means discarding the {\stStartAtomic}
-  side-effect and setting $\mathit{atomic}$ to $\mathit{crashing}$.
-\end{itemize}
-
-The algorithm used is quite simple.  The core idea is to identify each
-state of the output {\StateMachine} with a particular
-\textsc{Configuration} of the two input {\StateMachines}, illustrated
-in \autoref{fig:cross_product:configuration}.  The output
-{\StateMachine} starts in a \textsc{Configuration} with neither input
-{\StateMachine} in an atomic block, both {\StateMachines} at their
-initial state, and with neither having issued any memory accesses.
-This initial \textsc{Configuration} is then expanded into a full
-{\StateMachine} by applying the rewrite system shown in
-\autoref{fig:cross_product:algorithm}, hence exploring all of the
-\textsc{Configuration}s reachable from the initial one and building
-the output {\StateMachine} in the process.
-
 \begin{sidewaysfigure}
 \vspace{-1cm}
   \begin{displaymath}
-    \begin{array}{cccp{5cm}c}
+    \begin{array}{cccp{5cm}cc}
       \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[node distance=0.5cm,font=\small]
           \node at (0,0) (r) [stateIf] {\stIf{m}};
           \node at (-5mm, -10mm) (A) {$A_0$};
@@ -1623,17 +1803,7 @@ the output {\StateMachine} in the process.
           \node at (20mm, -10mm) (B) { $(\{A_1, i_a\}, \{B, i_b\}, z)$ };
           \draw[->,ifTrue] (r) -- (A);
           \draw[->,ifFalse] (r) -- (B);
-        \end{tikzpicture}}\hspace{-5mm} & \hspace{-3mm}\raisebox{2mm}{\parbox{5.2cm}{Likewise for interfering thread.}} & \circled{1}\\
-
-      \left(\left\{\raisebox{-6mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateSideEffect] {$a$};
-          \node at (0,-10mm) (A) {$A$};
-          \draw[->] (r) -- (A);
-        \end{tikzpicture}}, i_a\right\},\left\{B, i_b\right\},z\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-8mm}{\begin{tikzpicture}[font=\small]
-          \node at (0,0) (r) [stateSideEffect] {$a$};
-          \node at (0,-10mm) (A) {$(\{A, i_a\}, \{B, i_b\}, z)$};
-          \draw[->] (r) -- (A);
-        \end{tikzpicture}} &\hspace{-3mm}\parbox{5.2cm}{If $a$ is a local side-effect.  Likewise for interfering thread.} & \circled{2}\\
+        \end{tikzpicture}}\hspace{-5mm} & & \circled{$1'$} & *\\
 
       \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
           \node at (0,0) (r) [stateSideEffect] {$a$};
@@ -1645,8 +1815,8 @@ the output {\StateMachine} in the process.
           \draw[->] (r) -- (A);
         \end{tikzpicture}}, i_b\right\}, \varnothing\!\right) & \!\!\!\Rightarrow\!\!\! & \hspace{-5mm}\raisebox{-22mm}{\begin{tikzpicture}[font=\small]
           \node at (0,0) (r) [stateIf] {\stIf{\happensBefore{a}{b}}};
-          \node at (-25mm, -10mm) [stateSideEffect] (A) {$A$};
-          \node at (25mm, -10mm) [stateSideEffect] (C) {$B$};
+          \node at (-25mm, -10mm) [stateSideEffect] (A) {$a$};
+          \node at (25mm, -10mm) [stateSideEffect] (C) {$b$};
           \node at (-25mm, -30mm) (B) {$\left(\{A, \true\}, \left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
                 \node at (0,0) (Br) [stateSideEffect] {$b$};
                 \node at (0,-10mm) (BA) {$B$};
@@ -1661,37 +1831,41 @@ the output {\StateMachine} in the process.
           \draw[->,ifFalse] (r) -- (C);
           \draw[->] (A) -- (B);
           \draw[->] (C) -- (D);
-        \end{tikzpicture}}\hspace{-5mm} & \hspace{-3mm}\parbox{5.2cm}{When $a$ and $b$ are non-local.} & \circled{3}\\
+        \end{tikzpicture}}\hspace{-5mm} & \hspace{-3mm}\parbox{5.2cm}{When $a$ and $b$ are non-local.} & \circled{$2'$} & \\
 
       \left(\left\{\raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {\state{T}};
+          \node [stateTerminal] {\state{t}};
+      \end{tikzpicture}}, \true\right\}, \{A, \true\}, z\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-3mm}{\begin{tikzpicture}[font=\small]
+          \node [stateTerminal] {\state{t}};
+      \end{tikzpicture}} &  & \circled{$3'$} \\
+
+      \left(\left\{\raisebox{-6mm}{\begin{tikzpicture}[font=\small]
+          \node at (0,0) (r) [stateSideEffect] {$a$};
+          \node at (0,-10mm) (A) {$A$};
+          \draw[->] (r) -- (A);
+        \end{tikzpicture}}, i_a\right\},\left\{B, i_b\right\},z\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-8mm}{\begin{tikzpicture}[font=\small]
+          \node at (0,0) (r) [stateSideEffect] {$a$};
+          \node at (0,-10mm) (A) {$(\{A, i_a\}, \{B, i_b\}, z)$};
+          \draw[->] (r) -- (A);
+        \end{tikzpicture}} &\hspace{-3mm}\parbox{5.2cm}{If $a$ is a local side-effect.} & \circled{$4'$} & *\\
+
+      \left(\left\{\raisebox{-3mm}{\begin{tikzpicture}[font=\small]
+          \node [stateTerminal] {\state{t}};
       \end{tikzpicture}}, i_a\right\}, \{A, i_b\}, z\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-2mm}{\begin{tikzpicture}[font=\small]
           \node [stateTerminal] {{\stUnreached}};
-      \end{tikzpicture}} & \hspace{-3mm}\parbox{5.2cm}{If $i_a \wedge i_b = \false$.  Likewise for interfering thread.} & \circled{4}\\
-      
-      \left(\left\{\raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {{\stCrash}};
-      \end{tikzpicture}}, \true\right\}, \{A, \true\}, z\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {{\stCrash}};
-      \end{tikzpicture}} &  & \circled{5} \\
-      
-      \left(\left\{\raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {{\stSurvive}};
-      \end{tikzpicture}}, \true\right\}, \{A, \true\}, z\right) & \!\!\!\Rightarrow\!\!\! & \raisebox{-3mm}{\begin{tikzpicture}[font=\small]
-          \node [stateTerminal] {{\stSurvive}};
-      \end{tikzpicture}} &  & \circled{6} \\
+      \end{tikzpicture}} & \hspace{-3mm}\parbox{5.2cm}{If $i_a \wedge i_b = \false$.} & \circled{$5'$} & *\\
       
       \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
           \node at (0,0) (r) [stateSideEffect] {{\stStartAtomic}};
           \node at (0,-10mm) (A) {$A$};
           \draw[->] (r) -- (A);
-        \end{tikzpicture}}, i_a\right\},\left\{B, i_b\right\}, \varnothing\!\right) & \!\!\!\Rightarrow\!\!\! & (\{A, i_a\}, \{B, i_b\}, \mathit{crashing}) & \hspace{-3mm}\parbox{5.2cm}{Likewise for interfering thread.  Additional condition in text.} & \circled{7}\\
+        \end{tikzpicture}}, i_a\right\},\left\{B, i_b\right\}, \varnothing\!\right) & \!\!\!\Rightarrow\!\!\! & (\{A, i_a\}, \{B, i_b\}, \mathit{crashing}) & \hspace{-3mm}\parbox{5.2cm}{If the atomic block is local.} & \circled{$6'$} & *\\
 
       \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
           \node at (0,0) (r) [stateSideEffect] {{\stEndAtomic}};
           \node at (0,-10mm) (A) {$A$};
           \draw[->] (r) -- (A);
-        \end{tikzpicture}}, i_a\right\},\left\{B, i_b\right\}, \mathit{crashing} \right) & \!\!\!\Rightarrow\!\!\! & (\{A, i_a\}, \{B, i_b\}, \varnothing ) & \hspace{-3mm}\parbox{5.2cm}{Likewise for interfering thread.} & \circled{8}\\
+        \end{tikzpicture}}, i_a\right\},\left\{B, i_b\right\}, \mathit{crashing} \right) & \!\!\!\Rightarrow\!\!\! & (\{A, i_a\}, \{B, i_b\}, \varnothing ) & & \circled{$7'$} & *\\
 
       \left(\left\{\raisebox{-8mm}{\begin{tikzpicture}[font=\small]
           \node at (0,0) (r) [stateSideEffect] {$a$};
@@ -1701,8 +1875,7 @@ the output {\StateMachine} in the process.
           \node at (0,0) (r) [stateSideEffect] {$a$};
           \node at (0,-10mm) (A) {$(\{A, \true\}, \{B, i_b\}, \mathit{crashing})$};
           \draw[->] (r) -- (A);
-        \end{tikzpicture}} & \hspace{-3mm}\parbox{5.2cm}{Likewise for interfering thread.} & \circled{9}\\
-
+        \end{tikzpicture}} & If $a$ is non-local. & \circled{$8'$} & *
     \end{array}
   \end{displaymath}
   \caption{The cross product algorithm as a node replacement graph
@@ -1712,9 +1885,24 @@ the output {\StateMachine} in the process.
     state in, respectively, the interfering {\StateMachine}.  $i_a$
     and $i_b$ match either {\true} or {\false}.  $z$ matches any of
     $\varnothing$, $\mathit{crashing}$, or $\mathit{interfering}$.
-    $m$ matches a boolean BDD.  \state{T} matches any terminal state.}
+    $m$ matches a boolean BDD.  \state{T} matches any terminal
+    state. *: production also applies with the crashing and
+    interfering {\StateMachines} swapped.}
   \label{fig:cross_product:algorithm}
 \end{sidewaysfigure}
+
+\todo{blah} Importantly, the cross-product {\StateMachine} can itself
+be simplified using the usual {\StateMachine} simplification passes,
+and this can often lead to useful simplifications even when the input
+{\StateMachines} have already been simplified as far as possible.
+Simplifying the example cross-product {\StateMachine} will produce the
+{\StateMachine} shown in Figure~\ref{fig:cross_product_output_opt}.
+In this case, the actual symbolic execution step will be trivial, and
+will report that the program will reach a {\stCrash} state precisely
+when $y = 0 \wedge \happensBefore{A}{F} \wedge LD(x) \not= 0 \wedge
+\happensBefore{F}{C}$; in other words, if $y$ is nonzero, the initial
+value of $x$ is non-zero, and statement F intercedes between
+statements A and C, precisely as desired.
 
 \begin{figure}
   \begin{subfloat}
@@ -1753,25 +1941,58 @@ the output {\StateMachine} in the process.
 \end{figure}
 
 \begin{figure}
-  \begin{tikzpicture}[align=center]
-    \node[stateIf, initial above] (A) {(\{$A$, {\false}\}, \{$E$, {\false}\})\\\stIf{y \not= 0} };
-    \node[stateTerminal, right = of A] (B) {(\{$A$, {\false}\}, \{$I$, {\false}\})\\{\stUnreached} };
-    \node[stateIf, below = of A] (C) {(\{$A$, {\false}\}, \{$F$, {\false}\})\\\stIf{\happensBefore{A}{F}} };
-    \node[stateSideEffect, below = of C] (D) {$A$\\\stLoad{1}{x} };
-    \node[stateSideEffect, right = of C] (E) {$F$\\\stStore{0}{x} };
-    \node[stateIf, below = of D] (F) {(\{$B$, {\true}\}, \{$E$, {\false}\})\\\stIf{\smTmp{1} = 0} };
-    \node[stateTerminal, below = of E] (G) {(\{$A$, {\false}\}, \{$I$, {\true}\})\\\stUnreached };
-    \node[stateTerminal, right = of F] (H) {(\{$G$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
-    \node[stateIf, below = of F] (I) {(\{$C$, {\true}\}, \{$E$, {\false}\})\\\stIf{\happensBefore{C}{F}} };
-    \node[stateSideEffect, below = of I] (J) {$C$\\\stLoad{2}{x}};
-    \node[stateSideEffect, right = of I] (K) {$F$\\\stStore{0}{x}};
-    \node[stateIf, below = of J] (L) {(\{D, {\true}\}, \{$E$, {\false}\})\\\stIf{\smBadPtr{\smTmp{2}}}};
-    \node[stateSideEffect, right = of K] (M) {(\{$C$, {\true}\}, \{$I$, {\true}\})\\\stLoad{2}{x}};
-    \node[stateTerminal, below = of L] (N) {(\{$H$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
-    \node[stateTerminal, right = of N] (O) {(\{$G$, {\true}\}, \{$E$, {\false}\})\\\stUnreached };
-    \node[stateIf, below = of M] (P) {(\{D, {\true}\}, \{$I$, {\true}\})\\\stIf{\smBadPtr{\smTmp{2}}} };
-    \node[stateTerminal] at (5.5,-14.8) (Q) {(\{$G$, {\true}\}, \{$I$, {\true}\})\\\stSurvive };
-    \node[stateTerminal, below = of P] (R) {(\{$G$, {\true}\}, \{$I$, {\true}\})\\\stCrash };
+  \newcommand{\boxLabel}[2]{\small \raisebox{-1.5pt}{\circled{$#1'$}} #2}
+  % \labelBox{x0}{y0}{width}{height}{ruleId}{state}
+  \newcommand{\labelBox}[6]{
+    \fill [color=blue!20] (#1, #2) rectangle (#1 + #3, #2 + #4);
+    \node at (#1, #2 + #4 + .1) [below right] {\boxLabel{#5}{#6}};
+  }
+  \newcommand{\nodeWidth}{4.3cm}
+  \newcommand{\nodeHeight}{1.0cm}
+  \begin{tikzpicture}[align=center, node distance = 1 and 1.0]
+    \labelBox{-2.4}{-.6}{4.8}{1.65}{1}{\{$A$, {\false}\}, \{$E$, {\false}\}}
+    \labelBox{2.9}{-.6}{4.8}{1.65}{5}{(\{$A$, {\false}\}, \{$I$, {\false}\})}
+
+    \fill [color=blue!20] (-2.4, -0.9) -- (7.7, -0.9) -- (7.7, -2.65) -- (2.4, -2.65) -- (2.4, -4.65) -- (-2.4, -4.65);
+    \node at (-2.4, -0.8) [below right] {\boxLabel{2}{(\{$A$, {\false}\}, \{$F$, {\false}\})} };
+
+    \labelBox{2.9}{-4.65}{4.8}{1.65}{5}{(\{$A$, {\false}\}, \{$I$, {\true}\})}
+    \labelBox{-2.4}{-6.6}{4.8}{1.65}{1}{(\{$B$, {\true}\}, \{$F$, {\false}\})}
+    \labelBox{2.9}{-6.6}{4.8}{1.65}{5}{(\{$G$, {\true}\}, \{$F$, {\false}\})}
+
+    \fill [color=blue!20] (-2.4, -6.9) -- (7.7, -6.9) -- (7.7, -8.7) -- (2.4, -8.7) -- (2.4, -10.7) -- (-2.4, -10.7);
+    \node at (-2.4, -6.8) [below right] {\boxLabel{2}{(\{$C$, {\true}\}, \{$F$, {\false}\})}};
+
+    \labelBox{8.2}{-8.7}{4.8}{1.8}{4}{(\{$C$, {\true}\}, \{$I$, {\true}\})}
+    \labelBox{8.2}{-10.7}{4.8}{1.8}{1}{(\{$D$, {\true}\}, \{$I$, {\true}\})}
+    \labelBox{8.2}{-12.7}{4.8}{1.8}{3}{(\{$H$, {\true}\}, \{$I$, {\true}\})}
+    \labelBox{2.9}{-12.7}{4.8}{1.8}{3}{(\{$G$, {\true}\}, \{$I$, {\true}\})}
+    \labelBox{-2.4}{-12.7}{4.8}{1.8}{1}{(\{$D$, {\true}\}, \{$F$, {\false}\})}
+
+    \labelBox{-2.4}{-14.7}{4.8}{1.8}{1}{(\{$H$, {\true}\}, \{$F$, {\false}\})}
+    \labelBox{2.9}{-14.7}{4.8}{1.8}{1}{(\{$H$, {\true}\}, \{$G$, {\false}\})}
+
+    \node at (0,1.5) (start) {start};
+    \node at (0,0) [stateIf, minimum width=\nodeWidth, minimum height=\nodeHeight] (A) {\stIf{y \not= 0} };
+    \node[stateTerminal, right = of A, minimum width=\nodeWidth, minimum height=\nodeHeight] (B) {{\stUnreached} };
+
+    \node[stateIf, below = of A, minimum width=\nodeWidth, minimum height=\nodeHeight] (C) {\stIf{\happensBefore{A}{F}} };
+    \node[stateSideEffect, below = of C, minimum width=\nodeWidth, minimum height=\nodeHeight] (D) {\stLoad{1}{x} };
+    \node[stateSideEffect, right = of C, minimum width=\nodeWidth, minimum height=\nodeHeight] (E) {\stStore{0}{x} };
+    \node[stateIf, below = of D, minimum width=\nodeWidth, minimum height=\nodeHeight] (F) {\stIf{\smTmp{1} = 0} };
+    \node[stateTerminal, below = of E, minimum width=\nodeWidth, minimum height=\nodeHeight] (G) {\stUnreached };
+    \node[stateTerminal, right = of F, minimum width=\nodeWidth, minimum height=\nodeHeight] (H) {\stUnreached };
+    \node[stateIf, below = of F, minimum width=\nodeWidth, minimum height=\nodeHeight] (I) {\stIf{\happensBefore{C}{F}} };
+    \node[stateSideEffect, below = of I, minimum width=\nodeWidth, minimum height=\nodeHeight] (J) {\stLoad{2}{x}};
+    \node[stateSideEffect, right = of I, minimum width=\nodeWidth, minimum height=\nodeHeight] (K) {\stStore{0}{x}};
+    \node[stateIf, below = of J, minimum width=\nodeWidth, minimum height=\nodeHeight] (L) {\!\!\!\stIf{\smBadPtr{\smTmp{2}}}\!\!\!};
+    \node[stateSideEffect, right = of K, minimum width=\nodeWidth, minimum height=\nodeHeight] (M) {\stLoad{2}{x}};
+    \node[stateTerminal, below = of L, minimum width=\nodeWidth, minimum height=\nodeHeight] (N) {\stUnreached };
+    \node[stateTerminal, right = of N, minimum width=\nodeWidth, minimum height=\nodeHeight] (O) {\stUnreached };
+    \node[stateIf, below = of M, minimum width=\nodeWidth, minimum height=\nodeHeight] (P) {\!\!\!\stIf{\smBadPtr{\smTmp{2}}}\!\!\!};
+    \node[stateTerminal, minimum width=\nodeWidth, minimum height=\nodeHeight, below = of P] (R) {\stCrash };
+    \node[stateTerminal, minimum width=\nodeWidth, minimum height=\nodeHeight] at (R-|K) (Q) {\stSurvive };
+    \draw[->] (start) -- (A);
     \draw[->,ifTrue] (A) -- (B);
     \draw[->,ifFalse] (A) -- (C);
     \draw[->,ifTrue] (C) -- (D);
@@ -1791,63 +2012,12 @@ the output {\StateMachine} in the process.
     \draw[->,ifFalse] (P) -- (R);
   \end{tikzpicture}
   \caption{Cross product of the {\StateMachines} shown in
-    Figure~\ref{fig:cross_product_input}.  The $\mathit{atomic}$ field
-    of the configuration is always $\varnothing$ for these input
-    {\StateMachines} and is not shown.}
+    \autoref{fig:cross_product_input}.  Blue boxes show the
+    non-terminals and productions used to generate each part of the
+    graph.  The $\mathit{atomic}$ field of the non-terminal is always
+    $\varnothing$ for these input {\StateMachines} and is not shown.}
   \label{fig:cross_product_output}
 \end{figure}
-
-Figures~\ref{fig:cross_product_input}
-and~\ref{fig:cross_product_output} show an example of the
-cross-product algorithm.  In this case there are no atomic blocks and
-so the $\mathit{atomic}$ field of the \textsc{Configuration} is not
-shown.  The algorithm starts with the configuration (\{$A$,
-{\false}\}, \{$E$, {\false}\}), indicating that the crashing thread
-{\StateMachine} is in state $A$ and has not issued any memory accesses
-and that the interfering thread {\StateMachine} is in state $E$ and
-has also not issued any memory accesses.  This matches rule
-\circled{4} in \autoref{fig:cross_product:algorithm}, which generates
-the state at the top-left of \autoref{fig:cross_product_output} and
-produces two new configurations: (\{$A$, {\false}\}, \{$I$,
-{\false}\}), for when the condition is true, and (\{$A$, {\false}\},
-\{$F$, {\false}\}), for when it is false.
-
-$I$ is a terminal state, and so the true successor
-\textsc{Configuration} matches rule \circled{6} and expands to just
-\stUnreached.  This \textsc{Configuration} corresponds to a path in
-which the interfering {\StateMachine} finishes before the crashing one
-has started.  Such paths will already have been considered when
-computing \gls{ic-atomic}, and hence should not contribute to the
-\gls{verificationcondition}.  Setting the end state to {\stUnreached}
-achieves that.
-
-The false successor \textsc{Configuration}, by contrast, shows state
-$A$, a load in the \gls{crashingthread}, racing against state $F$, a
-store in the interfering one, matching rule \circled{9}.  The
-algorithm therefore produces a new $\stIf{}$ state which tests a
-happens-before expression $\happensBefore{A}{F}$ to decide which
-{\StateMachine} goes first.  The successors of this state will
-immediately issue the appropriate access and then move on to an
-appropriate \textsc{Configuration}.  In this case, that means either
-issuing $F$ and moving to \textsc{Configuration} (\{$A$, {\false}\},
-\{$I$, {\true}\}) or issuing $A$ and moving to \textsc{Configuration}
-(\{$B$, {\true}\}, {$E$, {\false}\}).  These successor
-  \textsc{Configuration}s are themselves further expanded until they
-  eventually reach one which matches rule \circled{7} or \circled{8},
-  at which point the expansion finishes.
-
-Importantly, the cross-product {\StateMachine} can itself be
-simplified using the usual {\StateMachine} simplification passes, and
-this can often lead to useful simplifications even when the input
-{\StateMachines} have already been simplified as far as possible.
-Simplifying the example cross-product {\StateMachine} will produce the
-{\StateMachine} shown in Figure~\ref{fig:cross_product_output_opt}.
-In this case, the actual symbolic execution step will be trivial, and
-will report that the program will reach a {\stCrash} state precisely
-when $y = 0 \wedge \happensBefore{A}{F} \wedge LD(x) \not= 0 \wedge
-\happensBefore{F}{C}$; in other words, if $y$ is nonzero, the initial
-value of $x$ is non-zero, and statement F intercedes between
-statements A and C, precisely as desired.
 
 The simplifications needed in this example are quite simple, and it
 would have been possible to include equivalent optimisations in the
@@ -1884,68 +2054,6 @@ halves the implementation effort.
   \label{fig:cross_product_output_opt}
 \end{figure}
 
-The algorithm used by {\technique} has some other properties not
-illustrated in this example:
-
-\begin{itemize}
-\item If the algorithm visits the same \textsc{Configuration} multiple times
-  then it will re-use the previously-generated state rather than
-  applying the rules again.  In other words, the output
-  {\StateMachine} forms a DAG of states rather than necessarily being
-  tree-structured.  This means that the number of states in the output
-  {\StateMachine} grows as roughly $O(nm)$, where $n$ is the number of
-  states in the crashing thread {\StateMachine} and $m$ the number in
-  the interfering thread one, rather than in proportion to the number
-  of potential interleavings, which is $O(2^{\mathrm{min}(n,m)})$.
-  This makes it much easier to scale {\technique} to larger
-  {\StateMachines}.
-
-\item
-  Atomic blocks are correctly maintained.  Rules \circled{1},
-  \circled{2}, and \circled{3} ensure that if one of the other
-          {\StateMachines} enters an atomic block then the other will
-          not make any further progress until it exits again,
-          precisely as desired.
-
-\item \todo{This is an obvious point badly explained.} The rules give
-  in \autoref{fig:cross_product:algorithm} depend on whether the two
-  current states in the \textsc{Configuration} are local or non-local.
-  In the example, states $A$ and $F$ are considered to be non-local,
-  and hence trigger rule \circled{9} and generate a
-  $\happensBeforeEdge$ test.  If they had been local then they would
-  instead have triggered rule \circled{5} and only one possible
-  ordering would have been considered.  It is therefore important to
-  correctly determine which effects are non-local.  It is not
-  sufficient to simply consider whether the current
-  \gls{crashingthread} memory access might alias with the current
-  \gls{interferingthread} one, as even when those two do not interfere
-  it is possible for the \gls{crashingthread} access to race with
-  something later in the \gls{interferingthread}, or vice versa.  To
-  determine whether the current crashing access is thread-local,
-  {\technique} looks ahead through the interfering {\StateMachine},
-  and considers the crashing access to be non-local if it could alias
-  with any possible future interfering memory access, and likewise for
-  the current interfering access.  This ensures that every possible
-  ordering of racing accesses between the two threads is correctly
-  considered.
-
-\item 
-  Some \textsc{Configuration}s could satisfy more than one of the rules if, for
-  instance, both {\StateMachines} have simultaneously reached local
-  side-effects.  In that case, {\technique} prefers to advance the
-  {\StateMachine} whose current state has the smallest number of
-  successor states, as this tends to result in the smallest possible
-  output {\StateMachine}.  When both input {\StateMachines} have the
-  same number of successor states it advances the \gls{crashingthread}
-  {\StateMachine}.
-
-\item These rules will sometimes duplicate states in the input
-  {\StateMachines} into multiple places in the output one.  This could
-  potentially violate SSA form.  {\Technique} uses a further
-  post-processing step to restore the SSA invariant, introducing
-  additional variables and \state{$\Phi$} side-effects as necessary.
-\end{itemize}
-
 \subsection{Path explosion}
 
 One common problem in symbolic execution systems is path explosion:
@@ -1960,15 +2068,15 @@ case of \technique, there are two main causes of path explosion:
   alias then the symbolic execution engine must consider every
   possible aliasing pattern, of which there are $O(m^n)$, where $n$ is
   the number of \state{Load} operations and $m$ the number of
-  \state{Store} ones.  This grows rather quickly in the number of
-  unsolvable aliasing problems.  The use of lazy alias resolution
-  helps mitigate this to some extent, but does not eliminate it
-  completely.  This represents one of the major limitations to
-  \technique's scalability.
+  \state{Store} ones\editorial{Check that}.  This grows rather quickly
+  in the number of unsolvable aliasing problems.  The use of lazy
+  alias resolution helps mitigate this to some extent, but does not
+  eliminate it completely.  This represents one of the major
+  limitations to \technique's scalability.
 \item
   \textit{Thread interleaving}.  The cross-product {\StateMachine}
   will have $O(nm)$ states, where $n$ is number of states in the
-  read-side {\StateMachine} and $m$ the number in the write-side one.
+  crashing {\StateMachine} and $m$ the number in the interfering one.
   The number of paths through the combined {\StateMachine} then grows
   as $O(2^{nm})$, which again grows rather quickly.
 \end{itemize}
@@ -2307,11 +2415,12 @@ static analysis:
   These functions can then be replaced by the appropriate library
   model (see Section~\ref{sect:derive:library_functions}) rather than
   needing to be translated into {\StateMachines}.
-\item A variant of value-set analysis\needCite{} is used to determine
-  some simple properties of registers at particular instructions.
-  This includes showing that the register definitely is or definitely
-  is not a valid pointer, or that one register is equal to another
-  register plus or minus a constant.
+\item A simplified version of value-set
+  analysis\cite{Balakrishnan2004} is used to determine some simple
+  properties of registers at particular instructions.  This includes
+  showing that the register definitely is or definitely is not a valid
+  pointer, or that one register is equal to another register plus or
+  minus a constant.
 \end{itemize}
 These analyses collectively act to give {\technique} some limited
 sensitivity beyond its \gls{analysiswindow} with only modest
