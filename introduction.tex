@@ -14,8 +14,8 @@ software development techniques become more widespread, especially
 amongst less able developers, we should expect to see the frequency of
 serious bugs in important software increase.  It would therefore be
 useful to have some tools to help
-\begin{wrapfigure}{r}{6.9cm}
-  \vspace{-5mm}
+\begin{wrapfigure}{O}{7.3cm}
+\begin{mdframed}
 \centerline{
   \begin{tikzpicture}
     [block/.style = rectangle,draw,fill=blue!20,
@@ -36,13 +36,15 @@ useful to have some tools to help
 }
 \caption{System overview}
 \label{fig:basic_pipeline}
+\end{mdframed}
+\vspace{-12pt}
 \end{wrapfigure}
 developers deal with this kind of
 error.  This dissertation presents automated techniques to discover,
 characterise, reproduce, and then fix a certain class of concurrency
 bug.
 
-The basic approach is shown in Figure~\ref{fig:basic_pipeline}.  The
+The basic approach is shown in \autoref{fig:basic_pipeline}.  The
 process starts by building a \gls{programmodel}, showing how the
 program behaves when it is operating normally, using primarily dynamic
 analysis (\autoref{sect:program_model}).  This
@@ -51,15 +53,15 @@ fragments of the program and to build {\StateMachines} which model
 their behaviour (\autoref{sect:derive}).  These {\StateMachines} are
 then\editorial{then then then} symbolically executed to determine
 whether they might exhibit the bug under investigation, and, if so,
-under what circumstances; the results are summarised as a set
-of \glspl{verificationcondition}.  This set usually contains a large
+under what circumstances; the results are summarised as a set of
+\glspl{verificationcondition}.  This set usually contains a large
 number of false positives, and so the next step is to prune it back
 down using \glspl{bugenforcer}: special schedulers which, when applied
 to the running program, make it far more likely that the bug will
 reproduce quickly (\autoref{sect:reproducing_bugs}).  Any bugs which
-\emph{do} reproduce can then be passed to the final {\genfix} generation
-phase which applies binary patches to the program to eliminate the bug
-(\autoref{sect:fix_global_lock}).
+\emph{do} reproduce can then be passed to the final {\genfix}
+generation phase which applies binary patches to the program to
+eliminate the bug (\autoref{sect:fix_global_lock}).
 
 One important decision which must be made when designing this kind of
 tool is how much higher-level semantic information to use, and in
@@ -73,7 +75,7 @@ analyse.  {\Technique} takes the extreme position of operating on
 machine code as far as possible, only relying on access to source code
 when absolutely necessary.  For some non-trivial programs, including
 Thunderbird and pbzip2, the technique can produce useful results
-without any access to source code at all, and for most others, very
+without any access to source code at all, and for most others very
 little information is needed (MySQL, for instance, required two
 functions related to memory allocation to be manually annotated).
 
@@ -149,9 +151,8 @@ but it does include some interesting ones.
 
 \subsection{Order-violation bugs}
 
-\begin{figure}
-\begin{centering}
-\hfill
+\begin{sanefig}
+{\hfill}
 \begin{tabular}{p{8cm}l}
 Crashing thread:\hfill         & Interfering thread: \\
 \\
@@ -162,13 +163,12 @@ Crashing thread:\hfill         & Interfering thread: \\
 4: Load $t_2$ from loc2        & \\
 5: Crash if $t_1 = t_2$ & \\
 \end{tabular}
-\hfill
-\end{centering}
+{\hfill}
 \caption{An order violation bug.}
 \label{fig:mandatory_concurrency1}
-\end{figure}
+\end{sanefig}
 
-\begin{figure}
+\begin{sanefig}
 \begin{centering}
 \hfill
 \begin{tabular}{p{8cm}l}
@@ -187,7 +187,7 @@ Crashing thread:          & Interfering thread: \\
   Figure~\ref{fig:mandatory_concurrency1}.  The complicated local
   computation does not modify loc1 or loc2.}
 \label{fig:mandatory_concurrency2}
-\end{figure}
+\end{sanefig}
 
 The class of bugs described above does not include order violation
 bugs, and so {\technique} will never report any.  Order violation bugs
@@ -334,7 +334,7 @@ This repeats until there are no more non-terminals in the graph.  A
 non-terminal can only be generated at most once; if a non-terminal is
 generated multiple times then they are merged.
 
-\begin{figure}
+\begin{sanefig}
   {\hfill}
   \tikzstyle{graphNT}+=[text width=1cm]
   \begin{tabular}{lclcrcc}
@@ -378,7 +378,7 @@ generated multiple times then they are merged.
     Circled letters are labels used to refer to the productions in the
     text.}
   \label{fig:intro:graph_grammar}
-\end{figure}
+\end{sanefig}
 
 \autoref{fig:intro:graph_grammar:expansion} shows how to apply this
 grammar to the initial non-terminal \graphNT{3}.  The only production
@@ -396,7 +396,7 @@ expansion.  This process repeats, expanding one non-terminal at a
 time, until no more non-terminals remain in the graph.  The resulting
 graph is shown on the right of the figure.
 
-\begin{figure}
+\begin{sanefig}
   {\hfill}
   \tikzstyle{graphNT}+=[text width=1em]
   \begin{tikzpicture}
@@ -514,7 +514,7 @@ graph is shown on the right of the figure.
     \graphNT{$\mathrm{3}$} using the productions in
     \autoref{fig:intro:graph_grammar}.}
   \label{fig:intro:graph_grammar:expansion}
-\end{figure}
+\end{sanefig}
 
 
 \section{Discussion}

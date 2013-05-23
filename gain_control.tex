@@ -24,7 +24,7 @@ these corrupted instructions\footnote{Instructions will only be
   which has the same effect as just using a single very large branch
   instruction.}.
 
-\begin{figure}[tp]
+\begin{sanefig}
   \begin{displaymath}
     \textsc{PatchStrategy} = \left\{\begin{array}{rl}
     \mathit{Patch}: & \{\textsc{Instruction}\} \\
@@ -35,7 +35,7 @@ these corrupted instructions\footnote{Instructions will only be
   \vspace{-12pt}
   \caption{The \textsc{PatchStrategy} type}
   \label{fig:patch_strategy_type}
-\end{figure}
+\end{sanefig}
 
 {\Implementation} represents solutions and partial solutions to the
 patch problem using the \textsc{PatchStrategy} type, illustrated in
@@ -93,23 +93,23 @@ loops again adding another instruction from $\mathit{gainControl}$ to
 $\mathit{MustInterpret}$, and repeats until every instruction has been
 added.
 
-\begin{figure}
+\begin{sanefig}
   \begin{algorithmic}[1]
     \Procedure{BuildPatchStrategy}{$\mathit{gainControl}$}
-    \State {$\mathit{currentSoln} \gets \textsc{PatchStrategy}(\mathit{Patch} = \{\}, \mathit{Cont} = \{\}, \mathit{MustInterpret} = \{\})$}
+    \State {$\mathit{soln} \gets \textsc{PatchStrategy}(\mathit{Patch} = \{\}, \mathit{Cont} = \{\}, \mathit{MustInterpret} = \{\})$}
     \For {$i \in \mathit{gainControl}$}
-      \State {$q \gets \queue{\textbf{Extend}(i)(\mathit{currentSoln})}$}
+      \State {$q \gets \queue{\textbf{Extend}(i)(\mathit{soln})}$}
       \While {\true}
         \State {$\mathit{s} \gets \mathit{pop}(q)$}
         \If {$s.\mathit{MustInterpret} = \{\}$}
-          \State {$\mathit{currentSoln} \gets s$}
+          \State {$\mathit{soln} \gets s$}
           \State \textbf{break}
         \Else
           \State {$q \gets q + \mathbf{PatchDirect}(s) + \mathbf{Prefix}(s)$}
         \EndIf
       \EndWhile
     \EndFor
-    \State \Return $\mathit{currentSoln}$
+    \State \Return $\mathit{soln}$
     \EndProcedure
   \end{algorithmic}
   \caption{Patch search algorithm.  $\mathit{gainControl}$ is the set
@@ -118,7 +118,7 @@ added.
     all of the strategies which it has visited so far so as to avoid
     re-visiting them.}
   \label{fig:patch_search_algorithm}
-\end{figure}
+\end{sanefig}
 
 This algorithm, as stated, leaves the order in which
 \textsc{PatchStrategy}s are removed from the queue ambiguous.  This

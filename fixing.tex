@@ -9,11 +9,11 @@ done in detail.
 
 \section{Identifying the instructions which must be protected}
 
-\begin{figure}
+\begin{sanefig}
   \hspace{-5mm}\subfigure[][\gls{crashingthread}]{
     \texttt{
       \begin{tabular}{lll}
-        1 & \multicolumn{2}{l}{ptr = complicated\_local\_condition();}\\
+        1 & \multicolumn{2}{l}{ptr = complex\_local\_condition();}\\
         2 & \multicolumn{2}{l}{dptr = *ptr;}\\
         3 & \multicolumn{2}{l}{if (dptr != NULL) \{}\\
         4 & &dptr = *ptr1;\\
@@ -27,7 +27,7 @@ done in detail.
       \begin{tabular}{ll}
         \\
         \\
-        7 & ptr = complicated\_local\_condition();\\
+        7 & ptr = complex\_local\_condition();\\
         8 & *ptr = NULL;\\
         \\
         \\
@@ -36,7 +36,7 @@ done in detail.
   }
   \caption{An example bug}
   \label{fig:fix_bug:complex_local}
-\end{figure}
+\end{sanefig}
 
 The first step in producing such a fix is determining which parts of
 the dynamic \glspl{cfg} are to be included in the critical sections.
@@ -53,7 +53,7 @@ strategy for fixing this bug would be to make statements \texttt{2},
 statement \texttt{8}.  The dynamic \glspl{cfg} will include those
 instructions, and so making them atomic would correctly fix the bug,
 but are also likely to include at least a suffix of
-\texttt{complicated\_local\_condition()}, if not the entire function,
+\texttt{complex\_local\_condition()}, if not the entire function,
 and will therefore protect more than necessary. This will lead to a
 higher than necessary loss of concurrency, and hence potentially
 higher than necessary performance overhead.
@@ -70,15 +70,15 @@ cause a crash.  It can be omitted from the atomic regions.  It is
 therefore sufficient to restrict the protected regions to contain only
 paths which start and end with instructions which are mentioned in
 $\happensBeforeEdge$ tests.  This eliminates
-\texttt{complicated\_local\_condition()} from the critical sections
+\texttt{complex\_local\_condition()} from the critical sections
 while leaving statements \texttt{2}, \texttt{3}, \texttt{4}, and
 \texttt{8} protected, as desired.
 
-\begin{figure}
+\begin{sanefig}
   \centerline{
     \texttt{
       \begin{tabular}{l}
-        ptr = complicated\_local\_calculation();\\
+        ptr = complex\_local\_calculation();\\
         *ptr = NULL;\\
         *ptr = NULL;\\
       \end{tabular}
@@ -88,7 +88,7 @@ while leaving statements \texttt{2}, \texttt{3}, \texttt{4}, and
     \autoref{fig:fix_bug:complex_local}'s
     \texttt{interfering\_thread}.}
   \label{fig:fix_bug:complex_local2}
-\end{figure}
+\end{sanefig}
 
 Note that this is not guaranteed to produce an optimally small
 selection of critical sections.  Consider, for example, a program with
@@ -150,7 +150,7 @@ nodes; rather than acquiring or releasing the lock as threads enter or
 leave the \gls{cfg}, the interpreter acquires or releases the lock as
 this set becomes non-empty or empty.
 
-\begin{figure}
+\begin{sanefig}
   \begin{displaymath}
     \begin{array}{llll}
       \textsc{InterpreterState} = & (\mathit{active}: &\textsc{Set}(\textsc{CfgNode}), &\\
@@ -162,7 +162,7 @@ this set becomes non-empty or empty.
   \caption{\textsc{InterpreterState} type, the state maintained by the
     interpreter.}
   \label{fig:fix_bugs:interpreter_state}
-\end{figure}
+\end{sanefig}
 
 The interpreter cycles repeatedly through these phases:
 \begin{itemize}
