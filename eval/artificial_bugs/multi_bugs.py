@@ -17,7 +17,7 @@ series = [("special/multi_bugs.crash_times_data", "No enforcer"),
 for i in xrange(len(series)):
     s = read_series(series[i][0])
     plot_series(s[0], i)
-print "\\end{tikzpicture}\\\\"
+print "\\end{tikzpicture}}"
 
 print "\\centerline{"
 print "\\begin{tabular}{lll}"
@@ -33,4 +33,3 @@ do_one(3, series[3][1])
 print "  \\\\"
 print "\\end{tabular}"
 print "}"
-print "\\vspace{-15pt}"

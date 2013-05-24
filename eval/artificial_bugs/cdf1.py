@@ -6,8 +6,8 @@ import random
 import decimal
 
 figheight = 4.5
-figwidth = 14.5
-sep = 0.8
+figwidth = 14.3
+sep = 0.7
 chartwidth = (figwidth - 2 * sep) / 3
 mintime = 0.1
 maxtime = 180
@@ -211,7 +211,7 @@ statistics = [("Mean", "rcl", lambda (d, _nr_timeouts): clt_mean(d)),
               ("Median", None, lambda d: __bootstrap_quantile(d, .5)),
               ("$90^{th}$ percentile", None, lambda d: __bootstrap_quantile(d, .9))]
 
-print r"\begin{tabular}{|l|" + "l|" * len(statistics) + "}"
+print r"\begin{tabular}{|p{2.85cm}|" + "l|" * len(statistics) + "}"
 print "\\hline"
 print " & " + " & ".join([x[0] for x in statistics]) + "\\\\"
 for testprog in ["indexed_toctou", "multi_variable", "double_free"]:

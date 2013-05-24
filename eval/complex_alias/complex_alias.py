@@ -7,8 +7,8 @@ import os
 import itertools
 import random
 
-figwidth = 7.0
-figheight = 7.0
+figwidth = 6.0
+figheight = 6.0
 sep = 1.0
 tick_width = 0.05
 timeout_time = 300

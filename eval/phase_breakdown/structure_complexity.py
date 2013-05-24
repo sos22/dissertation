@@ -4,7 +4,7 @@ import sys
 import math
 import decimal
 
-figwidth = 6.0
+figwidth = 5.5
 figheight = 5.0
 
 logscale = True
@@ -24,7 +24,7 @@ class indented_file(object):
 def draw_cdf(output, fname, label, lower_data_limit, upper_data_limit):
     output.writeln("\\subfigure[][%s]{" % label)
     output.indent += 1
-    output.writeln("\\begin{tikzpicture}")
+    output.writeln("\!\!\!\\begin{tikzpicture}")
 
     with file(fname) as f:
         data = sorted(map(float, f.xreadlines()))

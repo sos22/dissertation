@@ -87,7 +87,7 @@ def plot_series(data, idx):
     print " -- (%f, %f);" % (fig_width, perc_to_y(last_y))
 
 def print_preamble(x_label = True):
-    print "\\begin{tikzpicture}"
+    print "\centerline{\\begin{tikzpicture}"
     # Draw axes
     print "  \\draw[->] (0,0) -- (0,5);"
     print "  \\draw[->] (0,0) -- (%f,0);" % fig_width

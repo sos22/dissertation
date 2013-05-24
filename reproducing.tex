@@ -177,6 +177,28 @@ threads (in this case, $\mathit{idx1}$ is local to the crashing thread
 and $\mathit{idx2}$ to the interfering one), so that no single thread
 can evaluate the condition by itself.
 
+\Technique{} solves all of these problems by modelling the program as
+a message-passing system.  A happens-before ordering X before Y is
+modelled by a message sent by X, after it completes, and received by
+Y, before it starts.  In the first example, there will be two
+messages, one from \texttt{l2} to \texttt{l9} and one from \texttt{l9}
+to \texttt{l5}.
+
+These messages are synchronous, in the sense that a message operation
+cannot complete unless both the sender and the receiver are
+simultaneously at the relevant instructions, as illustrated by the
+Petri net in \autoref{fig:message_petri_net}\editorial{SMH doesn't
+  like Petri nets.}.  One way of reading this diagram is that the
+process starts with two threads, in the two before locations, which
+are then merged into a single thread in the message operation
+transition, and which then split apart into separate threads in the
+two after places.  This suggests a possible strategy for evaluating
+the side-condition: if the message operation transition represents the
+merging of the two threads, it should be able to access both threads'
+local state, and so be able to evaluate the $\mathit{idx1} =
+\mathit{idx2}$ side-condition.  This is the strategy adopted by
+       {\technique}.
+
 \begin{sanefig}
   \centerline{
   \begin{tikzpicture}
@@ -203,28 +225,6 @@ can evaluate the condition by itself.
     multiplicity one and all places have capacity one.}
   \label{fig:message_petri_net}
 \end{sanefig}
-
-\Technique{} solves all of these problems by modelling the program as
-a message-passing system.  A happens-before ordering X before Y is
-modelled by a message sent by X, after it completes, and received by
-Y, before it starts.  In the first example, there will be two
-messages, one from \texttt{l2} to \texttt{l9} and one from \texttt{l9}
-to \texttt{l5}.
-
-These messages are synchronous, in the sense that a message operation
-cannot complete unless both the sender and the receiver are
-simultaneously at the relevant instructions, as illustrated by the
-Petri net in \autoref{fig:message_petri_net}\editorial{SMH doesn't
-  like Petri nets.}.  One way of reading this diagram is that the
-process starts with two threads, in the two before locations, which
-are then merged into a single thread in the message operation
-transition, and which then split apart into separate threads in the
-two after places.  This suggests a possible strategy for evaluating
-the side-condition: if the message operation transition represents the
-merging of the two threads, it should be able to access both threads'
-local state, and so be able to evaluate the $\mathit{idx1} =
-\mathit{idx2}$ side-condition.  This is the strategy adopted by
-       {\technique}.
 
 \section{Outline of algorithm}
 
@@ -296,6 +296,42 @@ instructions, $A_1$, $B_1$, and $C_1$, and that the bug reproduces if
 either $x = 7$ and $D_0$ happens between $A_1$ and $B_1$ or if $y = 9$
 and $D_0$ happens between $B_1$ and $C_1$.
 
+This bug might produce a \gls{verificationcondition} something like
+the one in \autoref{fig:reproducing:slice_eg:before}.  The
+\gls{verificationcondition} correctly represents the intended
+behaviour, but mixes the happens-before tests $\happensBeforeEdge$
+with tests of the program's ordinary state, like the tests of $x = 7$
+and $y = 9$, making it more difficult to enforce.
+\autoref{fig:reproducing:slice_eg:after} shows a
+semantically-equivalent BDD which is slightly easier to work with.
+Now all of the happens-before tests occur before any of the tests of
+ordinary program state, and so can be separated out relatively easily.
+
+This BDD has, in effect, three parts: two conditions on ordinary
+program state, \circled{1} and \circled{2}, and a network of tests of
+$\happensBeforeEdge$ conditions which selects between them.  Each path
+through the initial network corresponds to a different ordering of the
+program's instructions and the conditions on ordinary program state
+provide the side-condition which must be enforced when the program
+follows that path.  In this case, there are only two paths:
+$\happensBefore{D_0}{B_1}$, $\happensBefore{A_1}{D_0}$, \circled{1}
+and ${\neg}\happensBefore{D_0}{B_1}$, $\happensBefore{D_0}{C_1}$,
+\circled{2}.  {\Technique} will therefore try to enforce two
+happens-before graphs, corresponding to the two ways in which the bug
+can reproduce.  The two side conditions will be checked independently.
+
+This example also illustrates the importance of side-condition
+checking.  One of the ways of reproducing this bug requires that $D_0$
+happens before $B_1$, while the other requires that $D_0$ happens
+after $B_1$.  These clearly cannot both happen at once.  Without
+side-condition checking, {\technique} would always try to enforce the
+first ordering, which would be unfortunate if the second represented a
+real bug and the first did not.  With side-condition checking,
+{\technique} will only try to enforce the first ordering if $x = 7$,
+and, if the side-conditions are correct, enforcing the ordering in
+that case will definitely lead to a crash, and so the fact that the
+two graphs are incompatible does not cause any actual problems.
+
 \begin{sanefig}
   \todo{SMH had forgotten what the dotted lines meant by the time he
     got here (despite also commenting on the explanation of what the
@@ -361,43 +397,7 @@ and $D_0$ happens between $B_1$ and $C_1$.
   \caption{Example BDD}
 \end{sanefig}
 
-This bug might produce a \gls{verificationcondition} something like
-the one in \autoref{fig:reproducing:slice_eg:before}.  The
-\gls{verificationcondition} correctly represents the intended
-behaviour, but mixes the happens-before tests $\happensBeforeEdge$
-with tests of the program's ordinary state, like the tests of $x = 7$
-and $y = 9$, making it more difficult to enforce.
-\autoref{fig:reproducing:slice_eg:after} shows a
-semantically-equivalent BDD which is slightly easier to work with.
-Now all of the happens-before tests occur before any of the tests of
-ordinary program state, and so can be separated out relatively easily.
-
-This BDD has, in effect, three parts: two conditions on ordinary
-program state, \circled{1} and \circled{2}, and a network of tests of
-$\happensBeforeEdge$ conditions which selects between them.  Each path
-through the initial network corresponds to a different ordering of the
-program's instructions and the conditions on ordinary program state
-provide the side-condition which must be enforced when the program
-follows that path.  In this case, there are only two paths:
-$\happensBefore{D_0}{B_1}$, $\happensBefore{A_1}{D_0}$, \circled{1}
-and ${\neg}\happensBefore{D_0}{B_1}$, $\happensBefore{D_0}{C_1}$,
-\circled{2}.  {\Technique} will therefore try to enforce two
-happens-before graphs, corresponding to the two ways in which the bug
-can reproduce.  The two side conditions will be checked independently.
-
-This example also illustrates the importance of side-condition
-checking.  One of the ways of reproducing this bug requires that $D_0$
-happens before $B_1$, while the other requires that $D_0$ happens
-after $B_1$.  These clearly cannot both happen at once.  Without
-side-condition checking, {\technique} would always try to enforce the
-first ordering, which would be unfortunate if the second represented a
-real bug and the first did not.  With side-condition checking,
-{\technique} will only try to enforce the first ordering if $x = 7$,
-and, if the side-conditions are correct, enforcing the ordering in
-that case will definitely lead to a crash, and so the fact that the
-two graphs are incompatible does not cause any actual problems.
-
-The computation complexity of BDD re-ordering operations is, in the
+The computational complexity of BDD re-ordering operations is, in the
 worst case, $O(2^n)$ if the BDD moves from a particularly good
 ordering to a particularly bad one.  {\Technique} very rarely
 encounters this worst case, for several reasons.  Most simply, the BDD
@@ -750,32 +750,6 @@ of the other paths will be preserved in the unevaluable one.  If all
 of the paths through the BDD are preserved then the BDD behaviour is
 as well.
 
-\begin{sanefig}
-  \centerline{
-    \begin{tikzpicture}
-      \node (b) [BddNode, color=blue] {$\textsc{rbx}_2 = 72$};
-      \node (a) [BddNode, below = 2 of b] {$\textsc{rax}_1 = 93$};
-      \node (c) [BddNode, below = of a] {$\textsc{rcx}_1 = \textsc{rcx}_2$};
-      \node (true) [BddLeaf, below = of c] {\true};
-      \node (false) [BddLeaf, right = of true] {\false};
-      \node (alpha) at (false |- 1,-1.3) [BddNode] {$\controlEdge{1}{C}{D_0}$};
-      \draw[BddTrue] (b) -- (a);
-      \draw[BddFalse] (b) -- (alpha);
-      \draw[BddTrue] (alpha) -- (a);
-      \draw[BddFalse] (alpha) -- (false);
-      \draw[BddTrue] (a) -- (c);
-      \draw[BddFalse] (a) to [bend left=20] (false);
-      \draw[BddTrue] (c) -- (true);
-      \draw[BddFalse] (c) -- (false);
-    \end{tikzpicture}
-  }
-  \caption{Reordering of the BDD in
-    \autoref{fig:place_conditions_example:bdd1} at CFG node $X$.
-    $\textsc{rbx}_2$ and $\textsc{rcx}_2$ are the only available input
-    expressions.  Evaluable BDD variables are shown in blue. In this
-    case, no non-trivial factorisation is possible.  \todo{Unref?}}
-\end{sanefig}
-
 The residual BDD which is unevaluable at $A$ must now be propagated
 through the graph until we find some place at which it can be
 evaluated.  The first place we encounter, $B$, has the same available
@@ -878,7 +852,7 @@ been placed on the control flow graph.  The results are shown in
           \node (true) [BddLeaf] {\true};
         \end{tikzpicture}
       }\\
-      Reordered BDD & \multicolumn{3}{c}{Condition evaluable at $A$} & Residual condition\\
+      Reordered BDD & \multicolumn{3}{c}{Condition evaluable at $N$} & Residual condition\\
     \end{tabular}
   }
   \caption{Factorisation of the BDD in
@@ -898,7 +872,7 @@ been placed on the control flow graph.  The results are shown in
     \node[below = of B] (C) {$C$};
     \node[below = of C] (D) {$D_0$};
     \node[left = 4cm of D] (D1) {$D_1$};
-    \node[above = 0 of D1] {\shortstack{$\controlEdge{1}{C}{D_0}$\\$\textsc{rbx}_2 = 72 \vee$}};
+    \node[above = 0 of D1] {\shortstack{$\controlEdge{1}{C}{D_0} \vee$\\$\textsc{rbx}_2 = 72$}};
     \node at (t2 |- A) (X) {$X$};
     \node at (t2 |- B) (Y) {$Y$};
     \node at (t2 |- D) (Z) {$Z$};
@@ -910,7 +884,7 @@ been placed on the control flow graph.  The results are shown in
     \draw[->] (Y) -- (Z);
     \draw[->] (D1) to [bend right=55] (D);
     \draw[->,happensBeforeEdge] (B) to node [above] {M} node [below] {$\textsc{rcx}_1 = \textsc{rcx}_2$} (Y);
-    \draw[->,happensBeforeEdge] (Z) to node [above] {N} node [below] {\shortstack{$\controlEdge{1}{C}{D_0}$\\$\textsc{rbx}_2 = 72 \vee$}} (D);
+    \draw[->,happensBeforeEdge] (Z) to node [above] {N} node [below] {\shortstack{$\controlEdge{1}{C}{D_0} \vee$\\$\textsc{rbx}_2 = 72$}} (D);
   \end{tikzpicture}
   \caption{Final placement of side-condition checks for the example
     control flow graph in \autoref{fig:place_conditions_example}}

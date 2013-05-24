@@ -16,7 +16,7 @@ for bug in ["crash_indexed_toctou", "interfering_indexed_toctou"]:
     for i in xrange(len(series)):
         s = read_series(series[i][0])
         plot_series(s[0], i)
-    print "\\end{tikzpicture}"
+    print "\\end{tikzpicture}}"
     print "\\label{fig:eval:delay_positioning:%s}" % bug
     print "}"
 

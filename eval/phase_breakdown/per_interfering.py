@@ -178,6 +178,7 @@ replicates = [sequences_to_chartset([random.choice(sequences) for _ in xrange(le
 (charts, defect_samples, total_samples) = sequences_to_chartset(sequences)
 
 main_fig = common.Figure(time_to_y, y_to_time, [])
+main_fig.figwidth -= 0.5
 main_fig.boxes.append(common.Box(main_fig.lowest() - 0.5,
                                  main_fig.lowest(),
                                  lambda x: x.pre_dismissed,

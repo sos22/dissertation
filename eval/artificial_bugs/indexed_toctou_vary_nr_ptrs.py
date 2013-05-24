@@ -4,7 +4,7 @@ import sys
 import math
 import random
 
-fig_width = 14.0
+fig_width = 13.0
 fig_height = 8.0
 b_width = 0.2
 nr_replicates = 10000

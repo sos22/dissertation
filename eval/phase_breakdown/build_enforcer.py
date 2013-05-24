@@ -179,6 +179,7 @@ replicates = [sequences_to_chartset([random.choice(sequences) for _ in xrange(le
 main_fig = common.Figure(time_to_y, y_to_time, [])
 main_fig.nr_time_steps = 100.0
 main_fig.kernel_box_height = 1.0
+main_fig.figwidth -= 0.3
 main_fig.boxes.append(common.Box(main_fig.lowest() - 0.5,
                                  main_fig.lowest(),
                                  lambda x: x.pre_dismissed,

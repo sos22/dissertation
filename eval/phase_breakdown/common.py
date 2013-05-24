@@ -164,7 +164,7 @@ def draw_line(output, base, pts):
 def draw_furniture(output, settings):
     for t_label in ["0.00001", "0.0001", "0.001", "0.01", "0.1", "1", "10", "100"]:
         y = settings.time_to_y(float(t_label))
-        output.write("\\draw [color=black!10] (%f, %f) -- (%f, %f);\n" % (-settings.x_scale, y, settings.figwidth, y))
+        output.write("\\draw [color=black!10] (%f, %f) -- (%f, %f);\n" % (-settings.x_scale, y, settings.figwidth-settings.x_scale, y))
         output.write("\\node at (%f, %f) [left] {%s};\n" % (-settings.x_scale, y, t_label))
     output.write("\\draw [color=black!10] (%f, %f) -- (%f, %f);\n" % (-settings.x_scale, y, settings.figwidth, y))
     for box in settings.boxes:
