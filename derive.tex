@@ -112,11 +112,17 @@ is shown in Figure~\ref{fig:derive:static_read_cfg_single_function}.
 This implements a depth-limited breadth-first search starting at the
 crashing instruction and exploring backwards through the program's
 control flow.  Note that this can result in a \gls{cfg} with multiple
-roots.  There is a slight subtlety on line 13, which determines the
-predecessors of a given instruction.  This is not always completely
-trivial given only a program binary; full details of {\technique}'s
-approach are given in \autoref{sect:program_model:instr_predecessors}.
-\todo{Not a good thing to ref like that.}
+roots.
+
+This algorithm depends on being able to find the predecessors of an
+arbitrary instruction, which is not always straightforwards given only
+the program binary.  {\Technique} relies on information collected
+during the dynamic analysis phase to do so, and in particular a
+mapping from computed branches to the sets of instructions which can
+follow those branches.  That mapping, together with a list of the
+program's entry points, allows {\technique} to build a complete static
+CFG of the program's instructions, allowing it to find an
+instruction's predecessors when necessary.
 
 \subsection[Converting the static \glsentrytext{cfg} to a dynamic one]{Converting the static \gls{cfg} to a dynamic one}
 \label{sect:derive:handling_loops}
@@ -1350,6 +1356,72 @@ until the graph becomes completely acyclic:
 As desired, the graph has been rendered acyclic while preserving all
 paths of length up to five instructions.
 
+\section{Generating {\StateMachines} for unknown bugs}
+\label{sect:derive:unknown_bugs}
+
+The discussion so far focused on the case where the crashing
+instruction was somehow identified before {\technique} starts.
+{\Technique} can also be used to discover unknown bugs, by simply
+enumerating all of the instructions in a program which might crash due
+to a bug of the class being investigated and considering each in turn.
+This is obviously only feasible if the majority of instructions can be
+dismissed quickly.  Fortunately, they can be: {\implementation} takes,
+on average, a few hundred of milliseconds per instruction on fairly
+modest hardware, allowing even large programs with millions of
+instructions to be analysed in a few days.  Further, this approach is
+embarrassingly parallel, and so would be expected to scale well as
+hardware concurrency increases; precisely the scenario in which it
+would be most useful.
+
+Identifying instructions which might crash depends on the type of bug
+which is to be investigated.  {\Implementation} considers three types
+of bug:
+
+\begin{itemize}
+\item Assertion-failure type crashes.  These are caused by the program
+  calling a function such as \verb|__assert_fail| or \verb|abort|
+  provided by an operating system library.  Finding such functions is
+  generally straightforward given the usual dynamic linker
+  information, and the whole-program CFG, discussed earlier, can then
+  provide all of their callers.  Each such caller is treated as a
+  potential bug.
+\item Double free errors.  These are caused by the program calling
+  \verb|free| in an incorrect manner.  Again, the dynamic linker
+  information allows {\implementation} to quickly find all calls to
+  \verb|free| in the program, and these calls are used as the
+  potentially-crashing instructions in the program.
+\item Bad pointer dereferences.  Any memory-accessing instruction
+  could potentially dereference a bad pointer, and so
+  {\implementation} simply enumerates all memory accessing
+  instructions discovered by the initial static analysis.
+\end{itemize}
+
+\subsection{Timeouts}
+
+Many of the algorithms used by {\technique} require far more time in
+their worst case than in their expected case, in many cases by many
+orders of magnitude.  This is irritating but tolerable when the
+analysis is being used to investigate a specific bug, but far more of
+a problem when the analysis is applied speculatively to a very large
+number of potential bugs.  Suppose, for instance, that the analysis
+completes in 500ms in 99.9\% of cases but takes three years in the
+remaining 0.1\% of cases.  An analysis which fails 0.1\% of the time
+would still be quite useful, and so this is reasonable for analysing
+specific bugs.  On the other hand, if the analysis is run 10,000 times
+then the probability of one of at least one of the steps taking three
+years is very close to one, and the analysis is effectively useless.
+
+{\Technique} works around this problem by applying timeouts to the
+various analysis steps, ensuring that it can produce at least some
+useful results in a reasonable time even when it occasionally
+encounters one of its bad cases.  {\Implementation} uses two
+independent timeouts: one for the per-\gls{crashingthread} work, such
+as deriving the crashing {\StateMachine} or the interfering
+\glspl{cfg}, and one for the per-\gls{interferingthread} work, such as
+deriving \gls{ic-atomic} or the final satisfiability check.  These
+timeouts are both set by default to 60 seconds.  I discuss their
+effects in more detail in the evaluation.
+
 \section{Generating a verification condition}
 \label{sect:using:check_realness}
 
@@ -1426,8 +1498,7 @@ most important features here:
   CEGAR would provide little benefit.  The use of lazy aliasing
   resolution provides some of the benefit of CEGAR, as it allows some
   aliasing queries which do not affect program behaviour to be
-  skipped\editorial{Might want an example of that?  It's not very
-    important, and a pain to explain properly.}.
+  skipped.
 
 \item Unlike most symbolic execution engines, the one used by
   {\implementation} does not attempt to detect when it revisits a
@@ -1477,9 +1548,6 @@ turn.
 
 \subsection{Building cross-product {\StateMachines}}
 \label{sect:using:build_cross_product}
-
-\todo{I'm making this look quite hard.  It really, really isn't.  It's
-  just an absolutely bog-standard cross product algorithm.}
 
 {\Technique}'s symbolic execution engine is only capable of exploring
 the behaviour of one {\StateMachine} at a time, but the
@@ -2047,7 +2115,7 @@ directly:
     \labelBox{-2.4}{-12.7}{4.8}{1.8}{1}{(\{$D$, {\true}\}, \{$F$, {\false}\})}
 
     \labelBox{-2.4}{-14.7}{4.8}{1.8}{1}{(\{$H$, {\true}\}, \{$F$, {\false}\})}
-    \labelBox{2.8}{-14.7}{4.8}{1.8}{1}{(\{$H$, {\true}\}, \{$G$, {\false}\})}
+    \labelBox{2.8}{-14.7}{4.8}{1.8}{1}{(\{$G$, {\true}\}, \{$F$, {\false}\})}
 
     \node at (0,1.5) (start) {start};
     \node at (0,0) [stateIf, minimum width=\nodeWidth, minimum height=\nodeHeight] (A) {\stIf{y \not= 0} };
@@ -2085,8 +2153,8 @@ directly:
     \draw[->,ifTrue] (L) -- (N);
     \draw[->,ifFalse] (L) -- (O);
     \draw[->] (M) -- (P);
-    \draw[->,ifTrue] (P) -- (Q);
-    \draw[->,ifFalse] (P) -- (R);
+    \draw[->,ifFalse] (P) -- (Q);
+    \draw[->,ifTrue] (P) -- (R);
   \end{tikzpicture}
   \caption{Cross product of the {\StateMachines} shown in
     \autoref{fig:cross_product_input}.  Blue boxes show the
@@ -2197,15 +2265,11 @@ the cross-product {\StateMachine}.  This is impractical for even
 moderate values of $n$ and $m$.  For good performance, {\technique}
 relies on the various simplification and analysis techniques to reduce
 $n$ and $m$ to manageably small values.  Fortunately, as discussed in
-the evaluation, they are able to do so in a useful set of
-cases\editorial{SMH objected to that sentence, but I don't know why.}
+the evaluation, they are able to do so in a useful set of cases.
 
 \section{The \glsentrytext{w-isolation} property}
 \label{sect:derive:w_isolation}
 
-\todo{The name is perhaps a little obscure.}
-
-\noindent
 In practice, {\technique}'s most important limitation is the need to
 solve a large number of aliasing problems.  This can be somewhat
 ameliorated by assuming that the crashing {\StateMachine} never stores
@@ -2251,118 +2315,42 @@ assumption, but cannot handle as broad a class of program behaviour.
 I evaluate these effects experimentally in
 \autoref{sect:eval:w_isolation}.
 
-\section{Finding unknown bugs}
-\label{sect:derive:unknown_bugs}
-
-\todo{Try to fold in a bit earlier.}
-
-The discussion so far focused on the case where the crashing
-instruction has already been somehow identified before {\technique}
-starts.  {\Technique} can also be used to discover unknown bugs.  The
-scheme used is conceptually simple: enumerate all of the instructions
-in a program which might crash due to a bug of the class being
-investigated, and then consider each independently in turn.  This is
-obviously only feasible if the majority of instructions can be
-dismissed quickly.  Fortunately, they can be: {\implementation} takes,
-on average, a few hundred of milliseconds per instruction on fairly
-modest hardware, allowing even large programs with millions of
-instructions to be analysed in a few days.  Further, this approach is
-embarrassingly parallel, and so would be expected to scale well as
-hardware concurrency increases, which is precisely the scenario in
-which it would be most useful.
-
-Identifying instructions which might crash depends on the type of bug
-which is to be investigated, but is generally straightforwards.
-{\Implementation} considers three types of crash:
-
-\begin{itemize}
-\item Assertion-failure type crashes.  These are caused by the program
-  calling a function such as \verb|__assert_fail| or \verb|abort|
-  provided by an operating system library.  Finding such functions is
-  generally straightforward given the usual dynamic linker
-  information, and the initial whole-program static analysis phase can
-  then find all callers of those functions.
-\item Double free errors.  These are caused by the program calling
-  \verb|free| in an incorrect manner.  Again, the dynamic linker
-  information allows {\implementation} to quickly find all calls to
-  \verb|free| in the program, and these calls are used as the
-  potentially-crashing instructions in the program.
-\item Bad pointer dereferences.  Any memory-accessing instruction
-  could potentially dereference a bad pointer, and so
-  {\implementation} simply enumerates all memory accessing
-  instructions discovered by the initial static analysis.
-\end{itemize}
-
-\subsection{Timeouts}
-
-Many of the algorithms used by {\technique} require far more time in
-their worst case than in their expected case, in many cases by many
-orders of magnitude.  This is irritating but tolerable when the
-analysis is being used to investigate a specific bug, but far more of
-a problem when the analysis is applied speculatively to a very large
-number of potential bugs.  Suppose, for instance, that the analysis
-completes in 500ms in 99.9\% of cases but takes three years in the
-remaining 0.1\% of cases.  An analysis which fails 0.1\% of the time
-would still be quite useful, and so this is reasonable for analysing
-specific bugs.  On the other hand, if the analysis is run 10,000 times
-then the probability of one of at least one of the steps taking three
-years is very close to one, and the analysis is effectively useless.
-
-{\Technique} works around this problem by applying timeouts to the
-various analysis steps, ensuring that it can produce at least some
-useful results in a reasonable time even when it occasionally
-encounters one of its bad cases.  {\Implementation} uses two
-independent timeouts: one for the per-\gls{crashingthread} work, such
-as deriving the crashing {\StateMachine} or the interfering
-\glspl{cfg}, and one for the per-\gls{interferingthread} work, such as
-deriving \gls{ic-atomic} or the final satisfiability check.  These
-timeouts are both set by default to 60 seconds.  I discuss the effects
-of these timeouts in more detail in the evaluation.
-
-\section{The program model}
+\section{The \glsentrytext{programmodel}}
 \label{sect:program_model}
 
-\todo{Odd placement}
-
-{\Technique} models the part of the program which is directly involved
-in a crash via the {\StateMachine} mechanism, but these are only
-capable of analysing relatively small fragments of the program.  This
-means that they cannot express global properties such as the structure
-of the heap.  {\Technique} instead captures these properties in its
-\gls{programmodel}, a model which captures some important aspects of
-the program's behaviour.
-
-\todo{Say more.}
-
-\subsection{Memory access model}
-\label{sect:program_model:dynamic_alias}
-
-The most important part of the \gls{programmodel} is the memory access
-model, which describes how the program accesses memory during normal
-operation.  This is used both for alias analysis during
+In addition to the {\StateMachine}-level aliasing analysis,
+{\technique} also makes use of an \gls{programmodel}, built before the
+main analysis starts, which describes how the program accesses memory
+during normal operation.  This is used both for alias analysis during
 {\StateMachine} simplification (\autoref{sect:derive:simplify_sm}) and
 also to find the $\beta$ and $i2c$ sets when building the interfering
 \gls{cfg} (\autoref{sect:derive:write_side}).  The memory access model
 is itself composed of two parts: a model of how the program accesses
-its stack and a model of accesses to non-stack memory.
+its stack and a model of accesses to non-stack memory.  I describe
+each in turn.
 
-The stack model is built using a fairly conventional function-local
-static pointer escape analysis\needCite{} and I give only a high-level
-description of it here.  The core idea is to observe that stack frames
-are in some sense ``created'' when a function starts, and so there
-should not be any pointers to function-local variables unless the
-function being analysed creates one.  If the analysis can show that
-one pointer is to a local variable and another pointer existed before
-the function started then it is safe to assume that the two pointers
-do not alias.  This static analysis therefore attempts to track which
-registers and memory locations might contain pointers to the local
-stack frame.  This is usually sufficient for the {\StateMachine}
-simplifiers to be able to determine which, if any, stack frames a
-given memory access might refer to; simple arithmetic considerations
-can then usually determine the specific local variable.
+\subsection{The stack model}
+\todo{Slightly feeble para} The stack model is built using a fairly
+conventional function-local static pointer escape analysis\needCite{}
+based on the observation that stack frames are in some sense
+``created'' when a function starts, and so there should not be any
+pointers to function-local variables unless the function being
+analysed creates one.  If one pointer is to a local variable and
+another pointer existed before the function started then it is safe to
+assume that they do not alias, and so the static analysis attempts to
+track which registers and memory locations might contain pointers to
+the local stack frame.  This is usually sufficient for the
+{\StateMachine} simplifiers to be able to determine which, if any,
+stack frames a given memory access might refer to; simple arithmetic
+considerations can then usually determine the specific local variable.
+As part of this analysis, {\technique} discovers any registers which
+have constant value at a particular instruction, or those which are
+equal to another register plus a constant, and this information is
+also used during {\StateMachine} simplification.
 
-The non-stack memory model is more complex.  It is much more difficult
-to characterise the structure of non-stack memory, such as the heap,
+\subsection{The non-stack model}
+\todo{This is a bit of a mess.}  It is much more difficult to
+characterise the structure of non-stack memory, such as the heap,
 using static analysis: not only is the heap structure itself more
 complicated, in terms of the number of objects which point at other
 objects, but the information is harder to locate, as it is no longer
@@ -2370,94 +2358,59 @@ localised to any particular function or program module.  These
 problems make it difficult to accurately model the heap statically
 even when the analysis tool has full access to the program's source
 code\needCite{}, and attempting to do so given only a binary is
-completely infeasible\editorial{SMH objected to this sentence and I
-  don't know why.}.
+completely infeasible.
 
 {\Technique} instead relies on a dynamic analysis to model accesses to
-non-stack locations.  The aim of this analysis is to discover the
-aliasing relation $\mathit{alias}(i, i')$ which is true precisely when
-instructions $i$ and $i'$ might access the same memory location.  The
-intuition is that most fields in most data structures are accessed by
-a relatively small number of instructions in the program, and so if it
-were possible to map from an instruction $i$ to the set of fields
-accessed by that instruction $\mathit{ifs}(i)$ then
-$\mathit{alias}'(i,i') = (\mathit{ifs}(i) \cap \mathit{ifs}(i) \not=
-\varnothing)$ would be a reasonable approximation to $\mathit{alias}$.
-Unfortunately, $\mathit{ifs}$ is a difficult function to build as it
-is defined in terms of structure fields, and there are no structure
-fields at the machine code level where {\technique} operates.
+non-stack locations.  The intended behaviour of this analysis is to
+first recover the structure of memory in terms of aggregate structure
+types and their fields, identifying the field which each memory
+location holds, and to track which program instructions access each
+field.  Two instructions are considered to alias if they ever access
+the same field.  This behaviour cannot, however, be directly
+implemented, because fields and types are source-level constructs, and
+{\technique} has access only to the compiled program.  {\Technique}
+therefore approximates by identifying fields with the sets of
+instructions which access them.  Memory is divided into fixed-size
+chunks\footnote{Each chunk is eight bytes for {\implementation}.  This
+  represents a reasonable trade-off between precision, which argues
+  for smaller chunks, and analysis performance, which argues for
+  larger ones.}, each of which is labelled with the set of
+instructions which access it; the final result is the set of all such
+labels generated by the program.
 
-A little bit of algebra allows us to re-express $\mathit{alias}'$ like
-so:
-\begin{displaymath}
-\mathit{alias}'(i, i') = \left(i' \in \bigcup_{f \in \mathit{ifs}(i)} \mathit{ifs^{\dagger}}(f)\right)
-\end{displaymath}
-where $\mathit{ifs}^{\dagger}$ is an inverse of $\mathit{ifs}$ which
-maps from a field to the set of instructions which access that field.
-This inverse is also expressed in terms of fields, and so it might
-appear to have made the problem worse.  The composition of the two
-functions, $\mathit{il}(i) = \{\mathit{ifs}^{\dagger}(f) | f \in
-\mathit{ifs}(i)\}$, however, does not require the caller to make any
-reference to fields.  The types of these functions are perhaps
-informative:
-\begin{itemize}
-\item $\mathit{ifs}: \textsc{Instruction} \rightarrow \mathit{set}(\textsc{Field})$
-\item $\mathit{ifs}^{\dagger}: \textsc{Field} \rightarrow \mathit{set}(\textsc{Instruction})$
-\item $\mathit{il}: \textsc{Instruction} \rightarrow \mathit{set}(\mathit{set}(\textsc{Instruction}))$
-\end{itemize}
-In other words, $\mathit{il}$ is formed from $\mathit{ifs}$ by
-identifying fields with the sets of instructions which access them.
-This, finally, allows us to define the structure produced by the alias
-analysis: it is simply the set of all fields, expressed as sets of
-instructions, which might be returned by $\mathit{il}$.  Two
-instructions are considered to potentially alias if they ever appear
-in the same field.
+This approximation is generally quite accurate, and where it does
+produce results different from using source-level fields usually
+produces a better \gls{programmodel}.  There is, however, one
+important situation in which it fails completely: releasing
+dynamically-allocated memory with \texttt{free}.  This effectively
+changes the aggregate type associated with a memory region, and hence
+all of the fields contained within it.  If the dynamic analysis fails
+to notice that this has happened then the old fields will be merged
+with those of any structure which is later allocated, potentially
+leading to a very imprecise aliasing table.  {\Technique} relies on
+identifying such type-changing functions manually.  This is not an
+unreasonable burden: for MySQL, the necessary annotations amount to an
+additional twenty lines across the entire program, and none of the
+other programs examined in the evaluation required any annotations at
+all.  It might be possible to identify such allocators using a variant
+of the techniques described by Cozzie et al.\cite{Cozzie2008}, but I
+have not investigated that at this time.
 
-Given this conceptual work, implementing the dynamic analysis itself
-is quite simple.  {\Implementation} does so using a Valgrind skin.
-The program's memory is divided into fixed-size chunks\footnote{These
-  chunks are 8 bytes, for {\implementation}.}, each of which has a
-label consisting of a set of accessing
-instructions\footnote{{\Implementation} also tracks which accesses are
-  reads, which writes, and which both, as this simplifies the
-  implementation of the later analysis phases, but this does not
-  meaningfully change the algorithm.}.  Any instruction which accesses
-that memory chunk adds itself to the set.  The result of the analysis
-is then the set of all labels generated by the program, suitably
-indexed.  Given that, implementing $\mathit{alias}'$ is trivial.
+\todo{Talk about what happens if this is incomplete?}
 
-This scheme, as presented, has one important weakness, which is that
-it identifies memory locations with fields.  In other words, it
-assumes that memory is type stable\cite{Greenwald1996}.  This is
-generally reasonable for statically-allocated structures, such as
-those in the BSS segment\cite[Section~7.6]{Stevens}, but not for
-dynamically-allocated structures such as those allocated via
-\texttt{malloc} or \texttt{operator new}\editorial{SMH dislikes that;
-  not sure why.}.  {\Implementation} relies on being able to identify
-such dynamic memory allocators so that it can reset the labels on
-memory addresses.  This is easy for allocators provided by standard
-system libraries, such as \texttt{malloc}, but much harder for
-program-specific allocators.  It might be possible to identify such
-allocators using a variant of the techniques described by Cozzie et
-al.\cite{Cozzie2008}, but I have not investigated that at this time.
-Instead, {\implementation} relies on manually annotating any custom
-allocation functions.  This is not an unreasonable burden: for mysql,
-the necessary annotations amount to an additional twenty lines across
-the entire program, and none of the other programs examined in the
-evaluation required any annotations at all.
-
-{\Implementation} includes one minor refinement to the basic analysis
-described above.  It is fairly common for programs to allocate new
-heap structures using a function such as \texttt{malloc} and to then
-initialise this structure using a series of stores.  These stores will
-never race, so it would be helpful to avoid spending excessive time
-considering what would happen if they did.  {\Technique} avoids doing
-so by marking blocks of memory returned from \texttt{malloc} as
-thread-local, and they remain so until a pointer to them is stored in
-non-stack memory.  Entries in the aliasing table include a flag
-indicating whether the access is thread-private or potentially racing,
-and this is used by later phases of the analysis to constrain the
-aliasing problem.
+\subsection{Escape analysis}
+{\Implementation} includes one minor refinement to the basic dynamic
+analysis described above.  It is fairly common for programs to
+allocate new heap structures using a function such as \texttt{malloc}
+and to then initialise this structure using a series of stores.  These
+stores will never race, so it would be helpful to avoid spending
+excessive time considering what would happen if they did.
+{\Technique} avoids doing so by marking blocks of memory returned from
+\texttt{malloc} as thread-local, and they remain so until a pointer to
+them is stored in non-stack memory.  Entries in the aliasing table
+include a flag indicating whether the access is thread-private or
+potentially racing, and this is used by later phases of the analysis
+to constrain the aliasing problem.
 
 This policy might seem to be overly conservative: a block of memory is
 marked as shared whenever a pointer to it is stored into any non-stack
@@ -2468,39 +2421,17 @@ map from one block to the set of blocks reachable from that block.  It
 is therefore not safe to ``upgrade'' a block from thread-private to
 thread-shared if there is any possibility of that block containing a
 thread-private pointer; upgrading blocks early and pessimistically
-means that it is never necessary to do so\editorial{SMH dislikes this
-  para, despite the fact that it exists solely because in a previous
-  draft, which didn't have it, he objected that the policy was too
-  conservative.}.
-
-\todo{Talk about what happens if this is incomplete?}
-
-\subsection{Finding the predecessors of an instruction}
-\label{sect:program_model:instr_predecessors}
-
-\todo{This isn't very clever, really.}
-
-The algorithm for building the \gls{crashingthread} \gls{cfg} given in
-Section~\ref{sect:derive:build_crashing_cfg} assumes that there is
-some function $\mathit{predecessors}$ which maps from an instruction
-to the set of instructions which might execute immediately before it.
-This is not completely trivial to determine given only a binary
-program.  One obvious approach would be to simply build the program's
-entire \gls{cfg}, starting from its entry point and disassembling
-forwards from there until the complete set of successor instructions
-is known for every instruction.  Unfortunately, finding the set of
-entry points is not always easy, as there can be branches into the
-main program from libraries or from the operating system.  Worse, any
-non-trivial program will contain indirect branches, whose successors
-can only be determined at run time.
-
-{\Implementation} avoids these issues using information from the
-dynamic analysis.  In addition to the program's memory accessing
-patterns, the dynamic analysis also tracks the targets of all indirect
-branches and all branches into the program from outside of it, and
-then simply assumes that this information is complete.  This allows
-the program's complete \gls{cfg} to be computed, making it possible to
-determine the predecessors of any instruction.
+means that it is never necessary to do so.
 
 \section{Discussion}
-\todo{Some kind of closing text goes here.}
+
+This chapter has shown how to derive {\StateMachines} representing a
+particular bug and how to convert these into
+\glspl{verificationcondition}.  It has also shown how to derive
+      {\StateMachines} for every possible bug of a particular form in
+      a program.  These are not, however, particularly useful by
+      themselves, as many of the {\StateMachines} will represent false
+      positives.  The following chapters show how to convert them
+      into, first, \glspl{bugenforcer}, which cause a particular bug
+      to reproduce more easily, and, then, fixes, which completely
+      eliminate whichever bugs actually do reproduce.
