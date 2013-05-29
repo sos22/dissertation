@@ -161,12 +161,11 @@ def draw_line(output, base, pts):
         output.write("(%f, %f)\n" % (base + deltax, y))
     output.write("        ;\n")
 
-def draw_furniture(output, settings):
+def draw_furniture(output, chart_keys, settings):
     for t_label in ["0.00001", "0.0001", "0.001", "0.01", "0.1", "1", "10", "100"]:
         y = settings.time_to_y(float(t_label))
-        output.write("\\draw [color=black!10] (%f, %f) -- (%f, %f);\n" % (-settings.x_scale, y, settings.figwidth-settings.x_scale, y))
+        output.write("\\draw [color=black!10] (%f, %f) -- (%f, %f);\n" % (-settings.x_scale, y, (len(chart_keys) + 1) * settings.figwidth / (len(chart_keys) + 2), y))
         output.write("\\node at (%f, %f) [left] {%s};\n" % (-settings.x_scale, y, t_label))
-    output.write("\\draw [color=black!10] (%f, %f) -- (%f, %f);\n" % (-settings.x_scale, y, settings.figwidth, y))
     for box in settings.boxes:
         output.write("\\node at (%f, %f) [left] {%s};\n" % (-settings.x_scale, (box.lower + box.upper) / 2.0, box.label))
     output.write("\\node at (%f, %f) [left] {Kernel};\n" % (-settings.x_scale, settings.y_min - settings.kernel_box_height / 2))
@@ -229,6 +228,41 @@ def plot_pdf(output, x, time_samples, replicated_samples, pdf_prob, settings, ke
 
     bw = guess_bandwidth(samples)
 
+    pdf = density_estimator(samples, uniform_kernel, bw)
+    densities = [(y, pdf(y) * pdf_prob) for y in float_range(y_min, y_max, (y_max - y_min) / nr_time_steps)]
+
+    # White-out background region.
+    output.write("  \\fill [color=white]")
+    first = True
+    last_zero = False
+    for (y, deltax) in [(y, -d) for (y, d) in densities]:
+        if not first:
+            output.write("        ")
+            if deltax == 0 and last_zero:
+                output.write("-- ")
+            else:
+                output.write("-- ")
+        first = False
+        if deltax == 0:
+            last_zero = True
+        else:
+            last_zero = False
+        output.write("(%f, %f)\n" % (x + deltax, y))
+    for (y, deltax) in reversed(densities[:-1]):
+        if not first:
+            output.write("        ")
+            if deltax == 0 and last_zero:
+                output.write("-- ")
+            else:
+                output.write("-- ")
+        first = False
+        if deltax == 0:
+            last_zero = True
+        else:
+            last_zero = False
+        output.write("(%f, %f)\n" % (x + deltax, y))
+    output.write("        ;\n")
+
     # Plot the error region first
     replicates = [density_estimator(map(time_to_y, t), uniform_kernel, bw) for t in replicated_samples]
 
@@ -269,8 +303,6 @@ def plot_pdf(output, x, time_samples, replicated_samples, pdf_prob, settings, ke
         output.write("        -- (%f, %f)" % (x, y))
     output.write("        ;\n")
 
-    pdf = density_estimator(samples, uniform_kernel, bw)
-
     # Median line
     median = _quantile(samples, .5)
     medians = sorted((_quantile(map(time_to_y, r), .5) for r in replicated_samples))
@@ -290,9 +322,10 @@ def plot_pdf(output, x, time_samples, replicated_samples, pdf_prob, settings, ke
                                                                                                                                  x + lower_median_width, lower_median))
     output.write("  \\draw (%f, %f) -- (%f, %f); " % (x - median_width, median, x + median_width, median))
 
-    densities = [(y, pdf(y) * pdf_prob) for y in float_range(y_min, y_max, (y_max - y_min) / nr_time_steps)]
+    # Now do the main PDF.
     draw_line(output, x, [(y, -d) for (y, d) in densities])
-    draw_line(output, x, [(y, d) for (y, d) in reversed(densities[:-1])])
+    draw_line(output, x, list(reversed(densities[:-1])))
+
     # Kernel
     bw_y = y_min - settings.kernel_box_height / 2
     output.write("  \\draw (%f, %f) rectangle (%f, %f);\n" % (x, bw_y - bw / 2, x + 1.0/bw * pdf_prob / len(samples), bw_y + bw / 2))

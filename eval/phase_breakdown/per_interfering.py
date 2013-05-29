@@ -14,8 +14,8 @@ ic_atomic_false = "ic-atomic is false"
 bubble_keys = set(["compiling interfering CFG", "simplifying interfering CFG", "rederive crashing",
                    "early-out", "build ic-atomic", "simplify ic-atomic", "execute ic-atomic",
                    "cross build", "cross simplify", "cross symbolic", "sat check"])
-bubble_key_to_chart_key = {"compiling interfering CFG": "cicfg",
-                           "simplifying interfering CFG": "cicfg",
+bubble_key_to_chart_key = {"compiling interfering CFG": "sicfg",
+                           "simplifying interfering CFG": "sicfg",
                            "rederive crashing": "rc",
                            "early-out": "rc",
                            "build ic-atomic": "sia",
@@ -25,10 +25,10 @@ bubble_key_to_chart_key = {"compiling interfering CFG": "cicfg",
                            "cross simplify": "cs",
                            "cross symbolic": "ce",
                            "sat check": "ce"}
-chart_keys = ["cicfg", "rc", "sia", "eia", "cs", "ce"]
+chart_keys = ["sicfg", "rc", "sia", "eia", "cs", "ce"]
 chart_labels = {"cicfg": "Build interfering \\gls{cfg}",
                 "sicfg": "Build interfering {\\StateMachine}",
-                "rc": "Rederive crashing",
+                "rc": "Rederive crashing {\\StateMachine}",
                 "early-out": "Early-out check",
                 "bia": "Build \\gls{ic-atomic} {\\StateMachine}",
                 "sia": "Build \\gls{ic-atomic} {\\StateMachine}",
