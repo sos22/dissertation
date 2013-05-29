@@ -15,7 +15,7 @@ for (fname, _descr) in series:
     s = read_series(fname)
     plot_series(s[0], i)
     i += 1
-print "\\end{tikzpicture}"
+print "\\end{tikzpicture}}"
 
 print "\\centerline{"
 print "{\hfill}",
@@ -28,4 +28,3 @@ print "{\hfill}",
 do_one(2, series[2][1])
 print "{\hfill}",
 print "}"
-print "\\vspace{-15pt}"

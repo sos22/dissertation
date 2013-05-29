@@ -430,6 +430,34 @@ def truncated_gaussian(upper_bound):
             return underlying(x) / scale
         return r
     return res
+def uniform_kernel(bandwidth, location):
+    def res(x):
+        if abs(location - x) < bandwidth / 2:
+            return 1.0 / bandwidth
+        else:
+            return 0.0
+    return res
+def truncated_uniform(upper_bound):
+    def k(bandwidth, location):
+        def res(x):
+            if location + bandwidth / 2 < upper_bound:
+                lower = location - bandwidth / 2
+                upper = location + bandwidth / 2
+            else:
+                width = 2 * (upper_bound - location)
+                if location > upper_bound:
+                    sys.stderr.write("upper bound %f, location %f?\n" % (upper_bound, location))
+                width *= bandwidth
+                width **= .5
+                lower = upper_bound - width
+                upper = upper_bound
+            assert upper <= upper_bound
+            if lower <= x < upper:
+                return 1.0 / (upper - lower)
+            else:
+                return 0
+        return res
+    return k
 def guess_bandwidth(pts):
     mean = sum(pts) / len(pts)
     sd = (sum([ (x - mean)**2 for x in pts]) / len(pts))**.5
@@ -444,7 +472,7 @@ height_pre_dismiss_box = 0.5
 height_pre_failure_box = 0.5
 height_post_timeout_box = 0.5
 height_post_oom_box = 0.5
-maxtime = 600
+maxtime = 320
 def _augment(series):
     if series == None:
         return
@@ -455,8 +483,9 @@ def _augment(series):
     series["frac_in_data"] = len(series["times"]) / series["tot_samples"]
     ldata = [math.log(d / mintime) for d in series["times"]]
     #kernel = truncated_gaussian(math.log(maxtime/mintime))
-    kernel = gaussian_kernel
-    bw = guess_bandwidth(ldata)
+    #kernel = gaussian_kernel
+    kernel = truncated_uniform(math.log(maxtime/mintime))
+    bw = guess_bandwidth(ldata) * 2
     series["density"] = density_estimator(ldata, kernel, bw)
     series["bandwidth"] = bw
 def pct_label(pct):

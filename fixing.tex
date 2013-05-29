@@ -9,11 +9,11 @@ done in detail.
 
 \section{Identifying the instructions which must be protected}
 
-\begin{figure}
-  \hspace{-5mm}\subfigure[][\texttt{crashing\_thread}]{
+\begin{sanefig}
+  \hspace{-5mm}\subfigure[][\gls{crashingthread}]{
     \texttt{
       \begin{tabular}{lll}
-        1 & \multicolumn{2}{l}{ptr = complicated\_local\_condition();}\\
+        1 & \multicolumn{2}{l}{ptr = complex\_local\_condition();}\\
         2 & \multicolumn{2}{l}{dptr = *ptr;}\\
         3 & \multicolumn{2}{l}{if (dptr != NULL) \{}\\
         4 & &dptr = *ptr1;\\
@@ -22,12 +22,12 @@ done in detail.
       \end{tabular}
     }
   }
-  \hspace{-10mm}\subfigure[][\texttt{interfering\_thread}]{
+  \hspace{-10mm}\subfigure[][\Gls{interferingthread}]{
     \texttt{
       \begin{tabular}{ll}
         \\
         \\
-        7 & ptr = complicated\_local\_condition();\\
+        7 & ptr = complex\_local\_condition();\\
         8 & *ptr = NULL;\\
         \\
         \\
@@ -36,7 +36,7 @@ done in detail.
   }
   \caption{An example bug}
   \label{fig:fix_bug:complex_local}
-\end{figure}
+\end{sanefig}
 
 The first step in producing such a fix is determining which parts of
 the dynamic \glspl{cfg} are to be included in the critical sections.
@@ -51,33 +51,34 @@ between statements \texttt{2} and \texttt{4}, and so a reasonable
 strategy for fixing this bug would be to make statements \texttt{2},
 \texttt{3}, and \texttt{4} execute atomically with respect to
 statement \texttt{8}.  The dynamic \glspl{cfg} will include those
-instructions, and so would correctly fix the bug, but are also likely
-to include at least a suffix of
-\texttt{complicated\_local\_condition()}, if not the entire function,
+instructions, and so making them atomic would correctly fix the bug,
+but are also likely to include at least a suffix of
+\texttt{complex\_local\_condition()}, if not the entire function,
 and will therefore protect more than necessary. This will lead to a
 higher than necessary loss of concurrency, and hence potentially
 higher than necessary performance overhead.
 
-\todo{Not the best bit of writing I've ever done.} The
-\gls{verificationcondition} provides the information necessary to
-avoid this problem.  As discussed in \autoref{sect:derive}, the
-\gls{verificationcondition} includes all of the conditions on
+\todo{Not the best bit of writing I've ever done.} 
+
+It is possible to derive a smaller set of critical sections using the
+\gls{verificationcondition}.  As discussed in \autoref{sect:derive},
+the \gls{verificationcondition} includes all of the conditions on
 instruction interleaving which influence whether the bug will
-reproduce.  Any instruction not mentioned in a happens-before test
-$\happensBeforeEdge$ cannot be involved in a race which might cause a
-crash, and hence can be omitted from the atomic regions.  It is
+reproduce, and so any instruction not mentioned in a happens-before
+test $\happensBeforeEdge$ cannot be involved in a race which might
+cause a crash.  It can be omitted from the atomic regions.  It is
 therefore sufficient to restrict the protected regions to contain only
 paths which start and end with instructions which are mentioned in
 $\happensBeforeEdge$ tests.  This eliminates
-\texttt{complicated\_local\_condition()} from the critical sections
+\texttt{complex\_local\_condition()} from the critical sections
 while leaving statements \texttt{2}, \texttt{3}, \texttt{4}, and
 \texttt{8} protected, as desired.
 
-\begin{figure}
+\begin{sanefig}
   \centerline{
     \texttt{
       \begin{tabular}{l}
-        ptr = complicated\_local\_calculation();\\
+        ptr = complex\_local\_calculation();\\
         *ptr = NULL;\\
         *ptr = NULL;\\
       \end{tabular}
@@ -87,16 +88,14 @@ while leaving statements \texttt{2}, \texttt{3}, \texttt{4}, and
     \autoref{fig:fix_bug:complex_local}'s
     \texttt{interfering\_thread}.}
   \label{fig:fix_bug:complex_local2}
-\end{figure}
+\end{sanefig}
 
-Note that this is not guaranteed to produce an optimal selection of
-critical sections, in the sense that sections can sometimes be larger
-than is strictly necessary.  Consider, for example, a program with the
-same crashing thread as the previous example but an interfering thread
-in which the pointer is assigned to twice, as shown in
+Note that this is not guaranteed to produce an optimally small
+selection of critical sections.  Consider, for example, a program with
+the same crashing thread as the previous example but an interfering
+thread in which the pointer is assigned to twice, as shown in
 \autoref{fig:fix_bug:complex_local2}.  There are two obvious ways of
 protecting this program:
-
 \begin{itemize}
 \item
   Place both loads in the crashing thread in a single critical section and
@@ -107,7 +106,6 @@ protecting this program:
   section.  In other words, drop and re-acquire the lock in between
   the two stores.
 \end{itemize}
-
 Both approaches correctly eliminate the bug, but they will have
 different performance characteristics.  In particular, dropping and
 re-acquiring the lock reduces the size of the critical section, which
@@ -118,33 +116,14 @@ are within \gls{alpha} instructions then it uses a single critical
 section and if they are further apart then it uses two.  This is the
 simplest approach to implement, as it matches the clustering rules
 used in \autoref{sect:derive:write_side}, and generally produces
-results which at least appear reasonable.
-
-\label{sect:fixing:rw_afix}
-This algorithm is quite similar to that used in
-AFix\cite{Jin2011}\footnote{But note that the present author
-  implemented that part of {\implementation} in June 2010, before AFix
-  was published.}.  There are, however, several differences between
-them.  Most obviously, the AFix algorithm considers only simple
-two-access critical sections, whereas this algorithm can enforce more
-complex $n$-access ones.  Even where there are precisely two accesses
-to be protected the set of instructions in the critical section can
-differ slightly, because {\technique} will exit the critical section
-if the thread leaves the \gls{cfg} in the {\StateMachine}, whereas
-AFix exits if the thread cannot reach another protected instruction in
-the current function invocation.  This can be either an advantage or a
-disadvantage, depending on why an instruction is missing from the
-{\StateMachine} \gls{cfg}.  Some instructions will be missing because
-they were cut off by the \gls{alpha} limit on the
-\gls{analysiswindow}; releasing the lock for these instructions is
-usually undesirable, as it re-introduces some of the concurrent
-interleavings which the patch was supposed to eliminate.  Other
-instructions will be missing because an earlier analysis phase has
-shown that the program cannot suffer the bug if it follows that path;
-releasing the lock here is safe, and can sometimes lead to better
-parallelism and liveness behaviour.
+results which are at least broadly reasonable\editorial{That kind of
+  implies I had much more choice in the matter than I actually did.}.
 
 \section{The interpreter}
+
+\todo{SMH \emph{hates} the interpreter-based description, but I find
+  his reasoning deeply unconvincing.}
+
 
 The conceptually simplest way of introducing these synchronisation
 operations is by modifying a hypothetical machine code interpreter so
@@ -171,7 +150,7 @@ nodes; rather than acquiring or releasing the lock as threads enter or
 leave the \gls{cfg}, the interpreter acquires or releases the lock as
 this set becomes non-empty or empty.
 
-\begin{figure}
+\begin{sanefig}
   \begin{displaymath}
     \begin{array}{llll}
       \textsc{InterpreterState} = & (\mathit{active}: &\textsc{Set}(\textsc{CfgNode}), &\\
@@ -183,7 +162,7 @@ this set becomes non-empty or empty.
   \caption{\textsc{InterpreterState} type, the state maintained by the
     interpreter.}
   \label{fig:fix_bugs:interpreter_state}
-\end{figure}
+\end{sanefig}
 
 The interpreter cycles repeatedly through these phases:
 \begin{itemize}
@@ -259,11 +238,11 @@ unavailable, as they are used by the program to be protected; main
 memory does not work, because most of the state needs to be
 thread-local; and anything based on system calls is undesirable
 because the state needs to be accessed so frequently, sometimes
-multiple times per instruction.  The approach taken by
-{\implementation} is to encode the per-thread state into the program's
-instruction pointer, creating a duplicate of each program instruction
-for each \textsc{InterpreterState} which that program instruction
-might execute in.  This is practical because the number of
+multiple times per original program instruction.  The approach taken
+by {\implementation} is to encode the per-thread state into the
+program's instruction pointer, creating a duplicate of each program
+instruction for each \textsc{InterpreterState} which that program
+instruction might execute in.  This is practical because the number of
 \textsc{InterpreterState}s per program instruction is usually very
 small, often just one, and so the number of duplicates is manageable.
 
@@ -282,13 +261,19 @@ containing both the original pointer and the \textsc{InterpreterState}
 structure.  The interpreter described above shows how the original
 program's \gls{cfg} can be combined with the fix plan to give a new
 \gls{cfg} expressed in terms of these extended instruction pointers,
-and the compiler then lowers this extended \gls{cfg} back into
-ordinary machine code.  The lowering process itself is easiest to
+and the compiler then just needs to lower this extended \gls{cfg} back
+into ordinary machine code.  The lowering process itself is easiest to
 think about as a kind of partial evaluation\cite{Jones1993} or
 supercompilation\cite{Sorensen2008} of the interpreter, fixing the
 program machine code and the intended synchronisation while leaving
-the program's inputs unspecified.
-
+the program's inputs unspecified\editorial{Alternative way of thinking
+  about this: We want to convert the interpreter into a JIT.  We copy
+  the key insight from PIN that automorphic compilers should use an
+  intermediate form which is similar to their output form and use an
+  intermediate form which is just the original instruction plus an
+  \textsc{InterpreterState}.  Given that, the JIT becomes sufficiently
+  simple that we can just do the entire thing offline before we start,
+  at which point we have a compiler.}.
 \begin{itemize}
 \item \textbf{Lock} phases partially evaluate to either the machine
   code for a lock operation (if the lock is not currently held and the

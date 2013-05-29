@@ -9,9 +9,9 @@
 \tikzset{InterferingCfgInstr/.style={rectangle,minimum size=6mm,fill=green!50}}
 \tikzset{DupeInterferingCfgInstr/.style={rectangle,minimum size=6mm,fill=green!10}}
 \tikzset{NewCfgInstr/.style={rectangle,minimum size=6mm,fill=red!50}}
-\tikzset{stateSideEffect/.style={rectangle,draw}}
-\tikzset{stateIf/.style={ellipse,draw}}
-\tikzset{stateTerminal/.style={ellipse,draw}}
+\tikzset{stateSideEffect/.style={rectangle,draw,fill=white}}
+\tikzset{stateIf/.style={ellipse,draw,fill=white}}
+\tikzset{stateTerminal/.style={ellipse,draw,fill=white}}
 \tikzset{killEdge/.style={decorate,decoration={snake,segment length=1mm,post length=0.4mm}}}
 \tikzset{swungEdge/.style={color=red}}
 \tikzset{happensBeforeEdge/.style={dashed}}
@@ -25,6 +25,7 @@
 \newcommand{\needCite}{\draftonly{\editorial{need cite}}}
 \newcommand{\todo}[1]{\draftonly{\textcolor{red}{#1}}}
 
+\newcommand{\randsched}{\textbf{randsched}}
 \newcommand{\needNewTerm}[1]{\textcolor{blue}{#1}}
 \newcommand{\StateMachine}{\needNewTerm{banana}}
 \newcommand{\StateMachines}{\needNewTerm{bananas}}
@@ -45,12 +46,14 @@
 \newcommand{\mai}[2]{\mathrm{#1}\!:\!\mathrm{#2}}
 \newcommand{\happensBeforeEdge}{\leftarrowtail}
 \newcommand{\happensBefore}[2]{#1\,{\happensBeforeEdge}\,#2}
-\newcommand{\controlEdge}[3]{\mathrm{Control}(\mathrm{#1}\!:\!\mathrm{#2}\!\rightarrow\!\mathrm{#3})}
+\newcommand{\controlEdgeName}{\mathrm{Control}}
+\newcommand{\controlEdge}[3]{{\controlEdgeName}(\mathrm{#1}\!:\!\mathrm{#2}\!\rightarrow\!\mathrm{#3})}
 \newcommand{\entryExpr}[1]{\mathrm{Entry}(#1)}
 \newcommand{\smTmp}[1]{\mathrm{tmp#1}}
-\newcommand{\smLoad}[1]{\mathrm{Load}(#1)}
+\newcommand{\smLoad}[1]{\mathrm{InitMemory}(#1)}
 \newcommand{\smBadPtr}[1]{\mathrm{BadPtr}(#1)}
 \newcommand{\smReg}[2]{\textsc{#1}_{#2}}
+\newcommand{\stPhi}{\state{$\Phi$}}
 \newcommand{\stLoad}[2]{\state{Load} $\ast(#2) \rightarrow \smTmp{#1}$}
 \newcommand{\stCopy}[2]{\state{Copy} $#2 \rightarrow \smTmp{#1}$}
 \newcommand{\stStore}[2]{\state{Store} $#1 \rightarrow \ast(#2)$}
@@ -59,8 +62,11 @@
 \newcommand{\stSurvive}{\state{Survive}}
 \newcommand{\stCrash}{\state{Crash}}
 \newcommand{\stUnreached}{\state{Unreached}}
+\newcommand{\stImportRegister}{\state{ImportRegister}}
 \newcommand{\stStartAtomic}{\state{StartAtomic}}
 \newcommand{\stEndAtomic}{\state{EndAtomic}}
+
+\newcommand{\bugname}[1]{\textsf{#1}}
 
 \newcommand{\queue}[1]{\{#1\}}
 \newcommand{\map}[1]{\{#1\}}
@@ -69,7 +75,9 @@
 \newcommand{\subfigureautorefname}{\figureautorefname}
 
 \newcommand*\circled[1]{\tikz[baseline=(char.base)]{
-    \node[shape=circle,draw,inner sep=1pt] (char) {#1};}}
+    \node[shape=circle,draw,inner sep=1pt,fill=white] (char) {#1};}}
+\tikzstyle{graphNT}=[shape=rectangle,draw,double,text height=8pt,text centered, inner sep=2pt, anchor=base,fill=white]
+\newcommand{\graphNT}[1]{\tikz[baseline=(char.base)]{\node [style=graphNT] (char) {#1};}}
 
 \section{Notes to readers}
 

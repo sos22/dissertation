@@ -11,10 +11,11 @@ cd artificial_bugs
 ./multi_bugs.py > special/multi_bugs.tex
 ./multi_threads.py > special/multi_threads.tex
 ./crash_time_to_cdf.py > crash_time_cdfs.tex
+./cdf1.py > cdf1.tex
 cd ..
 
 cd complex_hb
-./complex_hb_build_summaries.py > complex_hb_build_summaries.tex
+#./complex_hb_build_summaries.py > complex_hb_build_summaries.tex
 cd ..
 
 cd alpha

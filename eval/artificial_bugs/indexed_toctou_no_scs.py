@@ -11,11 +11,16 @@ print_preamble()
 series = [("indexed_toctou.crash_times_data", "No enforcer"),
           ("indexed_toctou~0.crash_times_data", "Full enforcer"),
           ("special/indexed_toctou_no_scs.crash_times_data", "No side conditions")]
+ss = []
 for i in xrange(len(series)):
     s = read_series(series[i][0])
+    ss.append(s)
+for s in ss:
+    plot_errors(s[0])
+for (i, s) in enumerate(ss):
     plot_series(s[0], i)
 
-print "\\end{tikzpicture}\\\\"
+print "\\end{tikzpicture}}"
 
 print "\\centerline{"
 print "  {\\hfill}"
@@ -28,4 +33,3 @@ print "  {\\hfill}"
 do_one(2, series[2][1])
 print "  {\\hfill}"
 print "}"
-print "\\vspace{-15pt}"

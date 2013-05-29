@@ -24,7 +24,7 @@ these corrupted instructions\footnote{Instructions will only be
   which has the same effect as just using a single very large branch
   instruction.}.
 
-\begin{figure}[tp]
+\begin{sanefig}
   \begin{displaymath}
     \textsc{PatchStrategy} = \left\{\begin{array}{rl}
     \mathit{Patch}: & \{\textsc{Instruction}\} \\
@@ -35,12 +35,11 @@ these corrupted instructions\footnote{Instructions will only be
   \vspace{-12pt}
   \caption{The \textsc{PatchStrategy} type}
   \label{fig:patch_strategy_type}
-\end{figure}
+\end{sanefig}
 
 {\Implementation} represents solutions and partial solutions to the
 patch problem using the \textsc{PatchStrategy} type, illustrated in
 \autoref{fig:patch_strategy_type}:
-
 \begin{itemize}
 \item $\mathit{Patch}$ is the set of instructions in the original
   program which will be replaced with branch instructions.
@@ -50,14 +49,12 @@ patch problem using the \textsc{PatchStrategy} type, illustrated in
   must gain control but the strategy built so far is insufficient to
   do so.
 \end{itemize}
-
 A \textsc{PatchStrategy} is valid if it ensures that the program never
 executes one of the corrupted instructions.  The empty strategy, in
 which all of the sets are empty, representing the initial unpatched
 program, is a valid strategy, but is also not very useful.  There are
 three rules for transforming one valid strategy into another, or into
 a set of others:
-
 \begin{itemize}
 \item
   $\textbf{Extend}(i)$ This rule extends the \textsc{PatchStrategy} by
@@ -65,8 +62,8 @@ a set of others:
 \item
   \textbf{PatchDirect} This rule transforms a \textsc{PatchStrategy}
   by removing an instruction $i$ from the $\mathit{MustInterpret}$ set
-  and adding it to the $\mathit{Patch}$ one, so that the enforce will
-  therefore gain control at $i$ by replacing $i$ with a branch to the
+  and adding it to the $\mathit{Patch}$ one, so that the enforcer will
+  gain control at $i$ by replacing $i$ with a branch to the
   interpreter.  This could potentially corrupt the instructions
   following $i$; if so, the corrupted instructions are added to
   $\mathit{MustInterpret}$.  This rule is only valid if the branch at
@@ -83,12 +80,11 @@ a set of others:
   function.
 \end{itemize}
 
-\todo{SSR} The algorithm uses these rules to explore the space of
-valid strategies until it finds one which guarantees control in all of
-the needed places.  The algorithm for doing so is shown in
-\autoref{fig:patch_search_algorithm}.  This algorithm starts with an
-empty \textsc{PatchStrategy} (line 2).  It considers each instruction
-at which it must gain control in turn (line 3).  For each one, it adds
+\todo{rewrite} {\Technique} uses these rules to explore the space of
+valid \textsc{PatchStrategy}s, using the algorithm shown in
+\autoref{fig:patch_search_algorithm}.  Starting from the empty
+\textsc{PatchStrategy} (line 2), it considers each instruction at
+which it must gain control in turn (line 3).  For each one, it adds
 the instruction to the $\mathit{MustInterpret}$ set (line 4) and then
 explores from there using the first two strategy generating rules
 (lines 5 to 13) until it finds a strategy with an empty
@@ -97,23 +93,23 @@ loops again adding another instruction from $\mathit{gainControl}$ to
 $\mathit{MustInterpret}$, and repeats until every instruction has been
 added.
 
-\begin{figure}
+\begin{sanefig}
   \begin{algorithmic}[1]
     \Procedure{BuildPatchStrategy}{$\mathit{gainControl}$}
-    \State {$\mathit{currentSoln} \gets \textsc{PatchStrategy}(\mathit{Patch} = \{\}, \mathit{Cont} = \{\}, \mathit{MustInterpret} = \{\})$}
+    \State {$\mathit{soln} \gets \textsc{PatchStrategy}(\mathit{Patch} = \{\}, \mathit{Cont} = \{\}, \mathit{MustInterpret} = \{\})$}
     \For {$i \in \mathit{gainControl}$}
-      \State {$q \gets \queue{\textbf{Extend}(i)(\mathit{currentSoln})}$}
+      \State {$q \gets \queue{\textbf{Extend}(i)(\mathit{soln})}$}
       \While {\true}
         \State {$\mathit{s} \gets \mathit{pop}(q)$}
         \If {$s.\mathit{MustInterpret} = \{\}$}
-          \State {$\mathit{currentSoln} \gets s$}
+          \State {$\mathit{soln} \gets s$}
           \State \textbf{break}
         \Else
           \State {$q \gets q + \mathbf{PatchDirect}(s) + \mathbf{Prefix}(s)$}
         \EndIf
       \EndWhile
     \EndFor
-    \State \Return $\mathit{currentSoln}$
+    \State \Return $\mathit{soln}$
     \EndProcedure
   \end{algorithmic}
   \caption{Patch search algorithm.  $\mathit{gainControl}$ is the set
@@ -122,15 +118,15 @@ added.
     all of the strategies which it has visited so far so as to avoid
     re-visiting them.}
   \label{fig:patch_search_algorithm}
-\end{figure}
+\end{sanefig}
 
 This algorithm, as stated, leaves the order in which
 \textsc{PatchStrategy}s are removed from the queue ambiguous.  This
-can sometimes have a quite large effect on the number of instructions
-which must be executed in the interpreter, and hence on the
-performance overheads of the patch.  It is hard to predict precisely
-how large an impact a given strategy will have on performance without
-a detailed model of the program's behaviour, but it can reasonably be
+can sometimes have a large effect on the number of instructions which
+must be executed in the interpreter, and hence on the performance
+overheads of the patch.  It is hard to predict precisely how large an
+impact a given strategy will have on performance without a detailed
+model of the program's behaviour, but it can reasonably be
 approximated to be proportional to the number of static instructions
 affected, $|\mathit{Cont} \cup \mathit{Patch}|$.  {\Implementation}
 will therefore always choose to expand the strategy where that
@@ -158,13 +154,14 @@ which minimises the cost of patch\footnote{The result is only usually
 The condition on the \textbf{Prefix} rule, that the instruction must
 not be the first one in a function, perhaps requires further
 explanation.  The here is that functions in the main program might be
-called from libraries, and the \gls{programmodel} will not be able to
-detect such calls unless they are observed during the dynamic analysis
-phase.  Missing such a call would lead to the algorithm producing an
-incorrect \textsc{PatchStrategy} which might either fail to gain
-control when necessary or, worse, allow the program to execute
-corrupted instructions, causing it to misbehave.  Simply disabling the
-\textbf{Prefix} rule at the start of a function avoids the issue.
+called from libraries, and the \gls{programmodel}\editorial{huh?} will
+not be able to detect such calls unless they are observed during the
+dynamic analysis phase.  Missing such a call would lead to the
+algorithm producing an incorrect \textsc{PatchStrategy} which might
+either fail to gain control when necessary or, worse, allow the
+program to execute corrupted instructions, causing it to misbehave.
+Simply disabling the \textbf{Prefix} rule at the start of a function
+avoids the issue.
 
 This can sometimes lead to the patch problem being unsolvable if the
 entire function is smaller than a single branch instruction, as in
@@ -177,7 +174,8 @@ compilers, including gcc\cite[Section~3.10]{Stallman2010} and
 LLVM\needCite{}, will at high optimisation levels pad functions to a
 multiple of 16 bytes for performance reasons.
 
-An alternative approach would be to take control of the program using
+\todo{Not convinced I want this here.  Or in fact anywhere.}  An
+alternative approach would be to take control of the program using
 debug breakpoints rather than jump instructions.  These are either a
 single byte (for the \verb|int3| instruction) or no bytes at all (for
 debug registers), and so avoid the instruction clobbering problem.

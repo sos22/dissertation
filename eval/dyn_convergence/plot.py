@@ -4,10 +4,10 @@ import sys
 import math
 
 if len(sys.argv) == 3 and sys.argv[2] == "narrow":
-    fig_width = 6
+    fig_width = 5.5
     narrow = True
 else:
-    fig_width = 13
+    fig_width = 13.5
     narrow = False
 if len(sys.argv) == 3 and sys.argv[2] == "scale":
     scale = True

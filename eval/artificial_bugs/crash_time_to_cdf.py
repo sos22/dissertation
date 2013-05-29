@@ -5,7 +5,7 @@ import math
 from util import *
 
 def print_trailer(test_name):
-    print "\\end{tikzpicture}"
+    print "\\end{tikzpicture}}"
     print "\\label{fig:eval:crash_cdf:%s}" % test_name
 
 def draw_one_test(test_name):

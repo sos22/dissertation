@@ -50,6 +50,30 @@ def read_series(fname):
         t.append( (times[i], float(i)/(len(times) + nr_timeouts - 1)) )
     return (t, nr_timeouts)
 
+def plot_errors(data):
+    dkw_bound = (-math.log(0.9/2) / (2.0 * len(data))) ** .5
+    # Error region first
+    print "  \\fill [color=black!50] (0,0) -- (0, %f)" % (perc_to_y(dkw_bound))
+    for (x, y) in data:
+        if x < 0.1:
+            x = 0.1
+        y2 = y + dkw_bound
+        if y2 > 1:
+            y2 = 1
+        print "        -- (%f, %f)" % (time_to_x(x), perc_to_y(y2))
+    print "        -- (%f, %f) -- (%f, %f) -- (%f, %f)" % (fig_width, perc_to_y(1.0),
+                                                           fig_width, perc_to_y(1.0 - dkw_bound),
+                                                           time_to_x(data[-1][0]),
+                                                           perc_to_y(1.0 - dkw_bound))
+    for (x, y) in reversed(data):
+        if x < 0.1:
+            x = 0.1
+        y2 = y - dkw_bound
+        if y2 < 0:
+            y2 = 0
+        print "        -- (%f, %f)" % (time_to_x(x), perc_to_y(y2))
+    print "        -- cycle;"
+    
 def plot_series(data, idx):
     print "  \\draw%s (0,0) " % decorations[idx % len(decorations)],
     last_y = 0
@@ -63,7 +87,7 @@ def plot_series(data, idx):
     print " -- (%f, %f);" % (fig_width, perc_to_y(last_y))
 
 def print_preamble(x_label = True):
-    print "\\begin{tikzpicture}"
+    print "\centerline{\\begin{tikzpicture}"
     # Draw axes
     print "  \\draw[->] (0,0) -- (0,5);"
     print "  \\draw[->] (0,0) -- (%f,0);" % fig_width
