@@ -20,10 +20,10 @@ cd ..
 
 cd alpha
 cd unopt
-../build_bpm_graph.py > bpm.tex
-../build_gsc_graph.py > gsc.tex
-../build_gvc_graph.py > gvc.tex
-../build_crashing_size_graph.py > crashing_size.tex
+#../build_bpm_graph.py > bpm.tex
+#../build_gsc_graph.py > gsc.tex
+#../build_gvc_graph.py > gvc.tex
+#../build_crashing_size_graph.py > crashing_size.tex
 cd ..
 
 cd opt
