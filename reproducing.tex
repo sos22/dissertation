@@ -167,7 +167,28 @@ At a high level, the algorithm used has the following phases:
 \section{Extracting the happens-before graph}
 \label{sect:enforce:slice_hb_graph}
 
+\todo{Not sure how clear this bit is.}
+
+\noindent
+The first step in building a \gls{bugenforcer} is to factorise the
+\gls{verificationcondition} into a series of happens-before graphs,
+each with an associated side condition.  More formally, {\technique}
+must re-express the \gls{verificationcondition} as $\bigvee_i (h_i \wedge
+\sigma_i)$, where the $h_i$ are conjunctions of happens-before tests
+$\happensBeforeEdge$ and the $\sigma_i$ are the
+$\happensBeforeEdge$-free side-conditions.  
+
+\Technique{} implements this factorisation as a transformation on the
+BDD representation of the \gls{verificationcondition}.  Consider, for
+instance, the graph shown in
+\autoref{fig:reproducing:placement_eg_bug}.  This is intended to
+indicate that the \gls{crashingthread} has a single instruction,
+$D_0$, that the \gls{interferingthread} has three instructions, $A_1$,
+$B_1$, and $C_1$, and that the bug reproduces if either $x = 7$ and
+$D_0$ happens between $A_1$ and $B_1$ or if $y = 9$ and $D_0$ happens
+between $B_1$
 \begin{wrapfigure}{r}{5.2cm}
+  \vspace{-12pt}
   \begin{figgure}
   \begin{tikzpicture}
     \node (thread1) {\shortstack{Crashing\\thread}};
@@ -187,62 +208,38 @@ At a high level, the algorithm used has the following phases:
   \caption{}
   \label{fig:reproducing:placement_eg_bug}
   \end{figgure}
+  \vspace{-12pt}
 \end{wrapfigure}
-\noindent
-The first step in building a \gls{bugenforcer} is to factorise the
-\gls{verificationcondition} into a series of happens-before graphs,
-each with an associated side condition.  More formally, {\technique}
-must re-express the \gls{verificationcondition} as $\bigvee_i (h_i \wedge
-\sigma_i)$, where the $h_i$ are conjunctions of happens-before tests
-$\happensBeforeEdge$ and the $\sigma_i$ are the
-$\happensBeforeEdge$-free side-conditions.  
+and $C_1$.  If presented with this program, {\technique}
+will generate the \gls{verificationcondition}
+$\happensBefore{A_1}{D_0} \wedge \happensBefore{D_0}{C_1} \wedge ((x =
+7 \wedge \happensBefore{B_1}{D_0}) \vee (x = 9 \wedge
+\happensBefore{D_0}{B_1}))$.  This could be represented by either of
+the boolean BDDs shown in \autoref{fig:reproducing:slice_eg}.  These
+BDDs are semantically equivalent, but test their input expressions in
+different orders, and these different orders suggest different
+factorisations.  In particular, the second ordering shows that the
+\gls{verificationcondition} can be re-expressed as
+$((\happensBefore{D_0}{B_1} \wedge \happensBefore{A_1}{D_0}) \wedge x
+= 7) \vee ((\happensBefore{B_1}{D_0} \wedge \happensBefore{D_0}{C_1})
+\wedge x = 9)$, which is of the desired form.
 
-
-This is best understood as a
-transformation on the BDD which represents the
-\gls{verificationcondition}.  Consider, for instance, the graph shown
-in \autoref{fig:reproducing:placement_eg_bug}.  This is intended to
-indicate that the \gls{crashingthread} has a single instruction,
-$D_0$, that the \gls{interferingthread} has three instructions, $A_1$,
-$B_1$, and $C_1$, and that the bug reproduces if either $x = 7$ and
-$D_0$ happens between $A_1$ and $B_1$ or if $y = 9$ and $D_0$ happens
-between $B_1$ and $C_1$.
-
-This bug might produce a \gls{verificationcondition} something like
-the one in \autoref{fig:reproducing:slice_eg:before}.  The
-\gls{verificationcondition} correctly represents the intended
-behaviour, but mixes the happens-before tests $\happensBeforeEdge$
-with tests of the program's ordinary state, like the tests of $x = 7$
-and $y = 9$, making it more difficult to enforce.
-\autoref{fig:reproducing:slice_eg:after} shows a
-semantically-equivalent BDD which is slightly easier to work with.
-Now all of the happens-before tests occur before any of the tests of
-ordinary program state, and so can be separated out relatively easily.
-
-This BDD has, in effect, three parts: two conditions on ordinary
-program state, \circled{1} and \circled{2}, and a network of tests of
-$\happensBeforeEdge$ conditions which selects between them.  Each path
-through the initial network corresponds to a different ordering of the
-program's instructions and the conditions on ordinary program state
-provide the side-condition which must be enforced when the program
-follows that path.  In this case, there are only two paths:
-$\happensBefore{D_0}{B_1}$, $\happensBefore{A_1}{D_0}$, \circled{1}
-and ${\neg}\happensBefore{D_0}{B_1}$, $\happensBefore{D_0}{C_1}$,
-\circled{2}.  {\Technique} will therefore try to enforce two
-happens-before graphs, corresponding to the two ways in which the bug
-can reproduce.  The two side conditions will be checked independently.
-
-This example also illustrates the importance of side-condition
-checking.  One of the ways of reproducing this bug requires that $D_0$
-happens before $B_1$, while the other requires that $D_0$ happens
-after $B_1$.  These clearly cannot both happen at once.  Without
-side-condition checking, {\technique} would always try to enforce the
-first ordering, which would be unfortunate if the second represented a
-real bug and the first did not.  With side-condition checking,
-{\technique} will only try to enforce the first ordering if $x = 7$,
-and, if the side-conditions are correct, enforcing the ordering in
-that case will definitely lead to a crash, and so the fact that the
-two graphs are incompatible does not cause any actual problems.
+\newpage
+The factorisation algorithm is then simple:
+\begin{itemize}
+\item Re-express the \gls{verificationcondition} as a BDD with every
+  $\happensBeforeEdge$ expression ordered before every
+  non-$\happensBeforeEdge$ expression.
+\item Enumerate all of the paths through the initial happens-before
+  component of the BDD.
+\item For each such path, emit an $h_i$ which is the path and a
+  $\sigma_i$ which is the non-$\happensBeforeEdge$ component of the
+  BDD which starts when that path ends.
+\end{itemize}
+This factorises the \gls{verificationcondition} into a series of
+happens-before graphs, each with an associated side condition, such
+that reproducing any of the graphs when its side condition holds will
+be sufficient to reproduce the bug.
 
 \begin{sanefig}
   \todo{SMH had forgotten what the dotted lines meant by the time he
@@ -250,7 +247,7 @@ two graphs are incompatible does not cause any actual problems.
     dotted lines meant that it was too long).}
 
   \centerline{
-  \subfigure[][Before re-ordering]{
+  \subfigure[][]{
     \begin{tikzpicture}
       \node (n10) [BddNode] {$x = 7$};
       \node (n01) [BddNode, below left = of n10] {$y = 9$};
@@ -281,15 +278,13 @@ two graphs are incompatible does not cause any actual problems.
     \end{tikzpicture}
     \label{fig:reproducing:slice_eg:before}
   }
-  \subfigure[][After re-ordering]{
+  \subfigure[][]{
     \begin{tikzpicture}[node distance = 1.0 and 0]
       \node (n10) [BddNode] {$\happensBefore{D_0}{B_1}$};
       \node (n01) [BddNode, below left = of n10] {$\happensBefore{A_1}{D_0}$};
       \node (n21) [BddNode, below right = of n10] {$\happensBefore{D_0}{C_1}$};
       \node (n02) [BddNode, below = of n01] {$x = 7$};
-      \node [left = 0 of n02] {\circled{1}};
       \node (n22) [BddNode, below = of n21] {$y = 9$};
-      \node [right = 0 of n22] {\circled{2}};
       \node (true) [BddLeaf, below = of n02] {\true};
       \node (false) [BddLeaf, below = of n22] {\false};
       \draw[BddTrue] (n10) -- (n01);
@@ -306,33 +301,39 @@ two graphs are incompatible does not cause any actual problems.
     \label{fig:reproducing:slice_eg:after}
   }
   }
-  \caption{Example BDD}
+  \caption{Semantically equivalent BDDs which both represent the
+    \glsentrytext{verificationcondition} for the bug illustrated in
+    \autoref{fig:reproducing:placement_eg_bug}.  The representation on
+    the right is easily factorisable into happens-before graphs and
+    side conditions; the one on the left is not.}
+  \label{fig:reproducing:slice_eg}
 \end{sanefig}
 
-The computational complexity of BDD re-ordering operations is, in the
-worst case, $O(2^n)$ if the BDD moves from a particularly good
-ordering to a particularly bad one.  {\Technique} very rarely
-encounters this worst case, for several reasons.  Most simply, the BDD
-variable ordering used when deriving \glspl{verificationcondition}
-usually puts most of the happens-before tests near the root of the
-BDD, and so there is usually little need for extensive re-ordering
-during this phase.  Beyond that, most bugs do not have very complex
-data-dependent happens-before patterns, and so the initial
-$\happensBeforeEdge$ network part of the re-ordered BDD usually only
-has to select between a small number of conditions over the program's
-state, which further restricts the scope for excessive BDD growth.
-Finally, most bugs do not need to enforce a large number of
-happens-before edges; Musuvathi et al\cite{Musuvathi2007}, achieved
-good results enforce just two edges at a time.
-
-This does not, therefore, lead to an excessive increase in the cost of
-generating the enforcer.  Treating each graph's side condition
-independently does, however, lead to some inefficiency in the enforcer
-itself, as it is not possible to share common expressions between the
-different bugs.  A more elegant approach would be to allow the
-different graphs to share a common prefix and only have them diverge
-once they encounter the data-dependent happens-before components.  I
-have not implemented such an optimisation.
+This is a potentially expensive algorithm; re-ordering the BDD
+requires potentially exponential time and memory in the size of the
+BDD if doing so moves from a particularly good ordering to a
+particularly poor one, and enumerating the paths could likewise
+potentially discover an exponential number of paths in the number of
+happens-before tests.  {\Technique} very rarely encounters this worst
+case, for several reasons.  Most simply, the BDD variable ordering
+used when deriving \glspl{verificationcondition} usually puts most of
+the happens-before tests near the root of the BDD, and so there is
+usually little need for extensive re-ordering during this
+phase\footnote{This can also be phrased less optimistically: if
+  placing the happens-before tests near the root of the BDD leads to
+  an exponential blow-up then the prior analysis phases will also
+  usually suffer an exponential blow-up, and so the fact that
+  {\technique} did not fail during one of the earlier phases usually
+  implies that the re-ordering is safe.}.  Beyond that, most bugs do
+not have very complex data-dependent happens-before patterns, and so
+the initial $\happensBeforeEdge$ network part of the re-ordered BDD
+usually only has to select between a small number of conditions over
+the program's state, which further restricts the scope for excessive
+BDD growth.  Finally, most bugs do not need to enforce a large number
+of happens-before edges; Musuvathi et al\cite{Musuvathi2007}, achieved
+good results enforce just two edges at a time, implying that most
+\glspl{verificationcondition} will generate only short
+$\happensBeforeEdge$ paths.
 
 \subsection{Unenforcable graphs}
 \label{sect:reproduce:unenforcable}
@@ -380,6 +381,7 @@ have not implemented such an optimisation.
   \label{fig:reproduce:cyclic1}
 \end{sanefig}
 
+\noindent
 The use of synchronous messages restricts the class of bugs which can
 be reproduced.  Consider, for instance, the combined control-flow and
 happens-before graph in \autoref{fig:reproduce:cyclic_synchronous},
@@ -393,16 +395,15 @@ must wait for $B_0$.  This creates a cycle in the graph, and so this
 program would deadlock if the enforcer attempted to enforce the entire
 graph.
 
-{\Technique} detects these cycles and resolves them by discarding one
-of the happens-before edges, chosen arbitrarily.  In this particular
-case, that is sufficient to avoid the problem.  Suppose that
-{\technique} selects edge $X$ to discard (the other case is
-symmetrical).  The enforcer will now ensure that $C_1$ waits for $B_0$
-and then executes immediately before it, which is also sufficient to
-ensure that $D_1$ executes after $A_0$, as shown in
+{\Technique} resolves these cycles by discarding one of the
+happens-before edges, chosen arbitrarily.  In this particular case,
+that is sufficient to avoid the problem.  Suppose that {\technique}
+selects edge $X$ to discard (the other case is symmetrical).  The
+enforcer will now ensure that $C_1$ waits for $B_0$ and then executes
+immediately before it, which is also sufficient to ensure that $D_1$
+executes after $A_0$, as shown in
 \autoref{fig:reproduce:cyclic_decyclic}.  There is, however, no
-guarantee that this technique will always work for more complex
-graphs.
+guarantee that this approach will always work for more complex graphs.
 
 \section{Placing the evaluation of verification conditions}
 \label{sect:enforce:place_vcs}
