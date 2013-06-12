@@ -5,14 +5,35 @@ import math
 import os
 import re
 import random
+from numpy import matrix
 
-import common
+fig_height = 7.0
+fig_width = 14.0
+maxtime = 600.0
+mintime = 0.1
+maxmem = 8388608
+minmem = 4194304
+regression_threshold1 = 7
+regression_threshold2 = 20
+nr_replicates = 10000
+error_bar_width = 0.002
+cross_width = error_bar_width
+cross_height = cross_width * (fig_width / fig_height)
 
-maxtime = 2000.0
-mintime = 0.001
-regression_threshold1 = 0
-regression_threshold2 = 40
-nr_replicates = 1000
+abscissae = range(0, 41, 2)
+def float_range(start, end, step):
+    start = float(start)
+    end = float(end)
+    step = float(step)
+    while start < end:
+        yield start
+        start += step
+regression_abs = list(float_range(0,41,.1))
+
+def mean_sd(data):
+    m = sum(data) / float(len(data))
+    sd = (sum((x - m) ** 2.0 for x in data) / len(data)) ** .5
+    return (m, sd)
 
 def get_quantile(data, q):
     idx = q * len(data)
@@ -23,27 +44,18 @@ def get_quantile(data, q):
     return data[idx1] * (idx - idx1) + data[idx2] * (1 - idx + idx1)
 
 def time_to_y(t):
-    if t > maxtime:
-        return common.fig_height
-    if t < mintime:
+    if t < 0:
         return 0
-    return math.log(t / mintime) / math.log(maxtime/mintime) * common.fig_height
-    #return (t - mintime) / (maxtime - mintime) * common.fig_height
+    return math.log(t / mintime) / math.log(maxtime/mintime)
+    #return (t - mintime) / (maxtime - mintime)
+def mem_to_y(m):
+    if m < 0:
+        return 0
+    return math.log(m / minmem) / math.log(maxmem/minmem)
 
-data = common.load_data(re.compile(r"complex_hb_([0-9]*)\.build_summary_time"))
+def count_to_x(count):
+    return count / 40.0
 
-abscissae = [13, 17, 21, 23, 25, 29, 3, 33, 37, 41, 43, 45, 49, 5, 53, 63, 65, 69, 73, 77, 79, 9]
-abscissae.sort()
-#data = {}
-#for k in abscissae:
-#    data[k] = [1.01 ** k + random.gauss(0, 0.0001) for _ in xrange(10)]
-#    #data[k] = [0.5 + 0.04 * k + 0.003 * k ** 2 + 0.0002 * k ** 3 + 0.00001 * k ** 4 + random.gauss(0, 5) for _ in xrange(10)]
-
-common.preamble()
-common.x_axis()
-common.y_axis(["0.1", "1", "2", "4", "10", "20", "40", "80", "150", "300"], time_to_y)
-
-from numpy import matrix
 def quartic_regression(pts):
     def regression_basis(x):
         return [1, x, x**2, x**3, x**4]
@@ -62,45 +74,11 @@ def quartic_regression(pts):
         return acc
     return (regression_coefficients) + [predict]
 
-# Bootstrap a confidence interval
-def gen_replicate(data):
-    d = {}
-    for (k, v) in data.iteritems():
-        d[k] = [random.choice(v) for _ in xrange(len(v))]
-    return d
-replicates = [quartic_regression(gen_replicate(data))[-1] for _ in xrange(nr_replicates)]
-def bootstrap_confidence_interval(x, interval, replicates):
-    samples = [r(x) for r in replicates]
-    samples.sort()
-    return (get_quantile(samples, (1 - interval) / 2),
-            get_quantile(samples, (1 + interval) / 2))
-
-bs_interval = {}
-for abs in xrange(0,101,1):
-    bs_interval[abs] = bootstrap_confidence_interval(abs, .9, replicates)
-q = bs_interval[0]
-print "  \\fill [color=black!50] (%f, %f) -- (%f, %f)" % (common.count_to_x(0), time_to_y(q[0]),
-                                                          common.count_to_x(0), time_to_y(q[1]))
-for a in xrange(5,101,5):
-    print "        -- (%f, %f)" % (common.count_to_x(a), time_to_y(bs_interval[a][1]))
-for a in reversed(xrange(5, 101,5)):
-    print "        -- (%f, %f)" % (common.count_to_x(a), time_to_y(bs_interval[a][0]))
-print "        -- cycle;"
-
-predict = quartic_regression(data)[-1]
-print "  \\draw[dotted] ",
-first = True
-for x in xrange(3, 100):
-    p = predict(x)
-    if not first:
-        print "        -- ",
-    first = False
-    print "(%f,%f)" % (common.count_to_x(x), time_to_y(p))
-print "        ;"
-
-common.plot_data(time_to_y, data)
-
-def exponential_regression(pts):
+def exponential_regression(all_pts):
+    pts = {}
+    for (k, v) in all_pts.iteritems():
+        if regression_threshold1 <= k <= regression_threshold2:
+            pts[k] = v
     # Exponential regression to form y = alpha * e ** (beta * x) + gamma.
     # Have to do this one numerically.
     def predict(alpha, beta, gamma, x):
@@ -152,53 +130,142 @@ def exponential_regression(pts):
             ratio = ratio ** .99
     return (alpha, beta, gamma, lambda x: predict(alpha, beta, gamma, x))
 
-restrict_data = {}
-for (k, v) in data.iteritems():
-    if regression_threshold1 <= k <= regression_threshold2:
-        restrict_data[k] = v
-(alpha, beta, gamma, predict) = exponential_regression(restrict_data)
+def gen_replicate(data):
+    d = {}
+    for (k, v) in data.iteritems():
+        d[k] = [random.choice(v) for _ in xrange(len(v))]
+    return d
 
-sys.stderr.write("import math\n")
-sys.stderr.write("def exp_predictor(x):\n")
-sys.stderr.write("    return %f * math.e ** (%f * x) + %f\n\n" % (alpha, beta, gamma))
+def bootstrap_confidence_interval(x, interval, replicates):
+    samples = [r(x) for r in replicates]
+    samples.sort()
+    return (get_quantile(samples, (1 - interval) / 2),
+            get_quantile(samples, (1 + interval) / 2))
 
-replicates = [exponential_regression(gen_replicate(restrict_data))[-1] for _ in xrange(nr_replicates)]
-bs_interval = {}
-for abs in xrange(0,101):
-    bs_interval[abs] = bootstrap_confidence_interval(abs, .9, replicates)
-q = bs_interval[0]
-print "  \\fill [color=black!50] (%f, %f) -- (%f, %f)" % (common.count_to_x(0), time_to_y(q[0]),
-                                                          common.count_to_x(0), time_to_y(q[1]))
-for a in xrange(5,101,5):
-    print "        -- (%f, %f)" % (common.count_to_x(a), time_to_y(bs_interval[a][1]))
-for a in reversed(xrange(5, 101,5)):
-    print "        -- (%f, %f)" % (common.count_to_x(a), time_to_y(bs_interval[a][0]))
-print "        -- cycle;"
+times = {}
+mems = {}
+timeouts = set()
+with open("results") as f:
+    for l in f.xreadlines():
+        w = l.split()
+        if w[0] == "Rep":
+            continue
+        key = (int(w[0]) + 1) / 2
+        if times.has_key(key):
+            if w[1] == "timeout":
+                timeouts.add(key)
+            else:
+                times[key].append(float(w[2]))
+                mems[key].append(int(w[1]))
+        else:
+            # Discard first result at each count, because that avoids
+            # some kinds of initial transient.
+            times[key] = []
+            assert not mems.has_key(key)
+            mems[key] = []
 
-print "  \\draw ",
-first = True
-for x in xrange(3, 100):
-    p = predict(x)
-    if not first:
-        print "        -- ",
-    first = False
-    print "(%f,%f)" % (common.count_to_x(x), time_to_y(p))
-print "        ;"
+#data = {}
+#for k in abscissae:
+#    data[k] = [1.01 ** k + random.gauss(0, 0.0001) for _ in xrange(10)]
+#    #data[k] = [0.5 + 0.04 * k + 0.003 * k ** 2 + 0.0002 * k ** 3 + 0.00001 * k ** 4 + random.gauss(0, 5) for _ in xrange(10)]
 
-# # Do a bootstrap
-# nr_replicates = 100
-# def resample():
-#     d = {}
-#     for (k, v) in data.iteritems():
-#         d[k] = [random.choice(v) for _ in xrange(nr_replicates)]
-#     return d
-# exp_regress = 
+def draw_regression(output, regressor, data, decoration, time_to_y):
+    output.write("      % Bootstrapped confidence interval\n")
+    replicates = [regressor(gen_replicate(data))[-1] for _ in xrange(nr_replicates)]
+    bs_interval = {}
+    for abs in regression_abs:
+        bs_interval[abs] = bootstrap_confidence_interval(abs, .9, replicates)
+    q = bs_interval[0]
+    output.write("      \\fill [color=black!50] (0, %f) -- (0, %f)\n" % (time_to_y(q[0]), time_to_y(q[1])))
+    for a in regression_abs:
+        output.write("              -- (%f, %f)\n" % (count_to_x(a), time_to_y(bs_interval[a][1])))
+    for a in reversed(regression_abs):
+        output.write("              -- (%f, %f)\n" % (count_to_x(a), time_to_y(bs_interval[a][0])))
+    output.write("            -- cycle;\n")
+    predict = regressor(data)[-1]
 
-# def bootstrap(regression_fn, labels):
-#     samples = [regression_fn(resample()) for _ in xrange(10000)]
-#     p = [mean_sd([x[i] for x in samples]) for i in xrange(len(labels))]
-#     sys.stderr.write(", ".join(["%s = %e +- %e" % (labels[i], p[i][0], p[i][1]) for i in xrange(len(labels))]) + "\n")
-# bootstrap(exponential_regression, ["alpha", "beta", "gamma"])
-# bootstrap(quartic_regression, ["0", "1", "2", "3", "4"])
+    output.write("      % Regression line itself\n")
+    output.write("      \\draw%s " % decoration)
+    first = True
+    for x in regression_abs:
+        p = predict(x)
+        if not first:
+            output.write("              -- ")
+        first = False
+        output.write("  (%f,%f)\n" % (count_to_x(x), time_to_y(p)))
+    output.write("              ;\n\n")
 
-common.postamble()
+def in_layer(name, what):
+    output.write("    \\begin{pgfonlayer}{%s}%s\end{pgfonlayer}\n" % (name, what))
+
+def draw_graph(output, ysteps, data, timeouts, time_to_y):
+    output.write("    \\fill [color=white] (0,0) rectangle (1,1);\n")
+    output.write("    \\draw (%f,1) -- ++(0,.02) to node [above = -.1] {Regresion training region} (%f,1.02) -- ++(0,-.02);\n" % (count_to_x(regression_threshold1),
+                                                                                                                                  count_to_x(regression_threshold2)))
+    output.write("    \\fill [color=blue!20] (%f,0) rectangle (%f,1);\n" % (count_to_x(regression_threshold1),
+                                                                            count_to_x(regression_threshold2)))
+
+    output.write("    %% X axis\n")
+    in_layer("fg", "\\draw[->] (0,0) -- (1,0);")
+    for idx in abscissae:
+        x = count_to_x(idx)
+        output.write("    \\draw [color=black!10] (%f,0) -- (%f,1);\n" % (x, x))
+        in_layer("fg","\\path (%f, 0) node [below] {%d};" % (x, idx))
+    output.write("    \\path (0.5,-.08) node [below] {$N$};\n\n")
+
+    output.write("    %% Y axis\n")
+    in_layer("fg", "\\draw[->] (0,0) -- (0,1);")
+    for idx in ysteps:
+        y = time_to_y(float(idx))
+        output.write("    \\draw [color=black!10] (0,%f) -- (1,%f);\n" % (y, y))
+        in_layer("fg", "\\path (0,%f) node [left] {%s};" % (y, idx))
+    output.write("    \\path (-.09,.5) node [rotate=90,below] {Time, seconds};\n\n")
+
+    output.write("    %% Regressions\n")
+    output.write("    {\n")
+    output.write("      \\path [clip] (0,0) rectangle (1,1);\n")
+    output.write("      %% Quartic regression\n")
+    draw_regression(output, quartic_regression, data, "[dotted]", time_to_y)
+    output.write("      %% Exponential regression\n")
+    draw_regression(output, exponential_regression, data, "", time_to_y)
+    output.write("    }\n")
+
+    output.write("    %% Actual data\n")
+    for (k, v) in data.iteritems():
+        output.write("    %% count = %d\n" % k)
+        x = count_to_x(k)
+        if k in timeouts:
+            continue
+        (mean, sd) = mean_sd(v)
+        # Use the SD of mean
+        sd /= (len(v) - 1) ** .5
+        # Want a two-tailed 90% interval
+        sd *= 1.64
+        center = time_to_y(mean)
+        lower = time_to_y(mean - sd)
+        upper = time_to_y(mean + sd)
+        output.write("    \\draw (%f,%f) -- (%f,%f);\n" % (x, lower, x, upper))
+        output.write("    \\draw (%f,%f) -- (%f,%f);\n" % (x-error_bar_width, lower, x + error_bar_width, lower))
+        output.write("    \\draw (%f,%f) -- (%f,%f);\n" % (x-error_bar_width, upper, x + error_bar_width, upper))
+        output.write("    \\draw (%f,%f) -- (%f,%f);\n" % (x - cross_width, center - cross_height,
+                                                           x + cross_width, center + cross_height))
+        output.write("    \\draw (%f,%f) -- (%f,%f);\n" % (x + cross_width, center - cross_height,
+                                                           x - cross_width, center + cross_height))
+
+output = file("complex_hb_build_summaries.tex", "w")
+output.write("\\begin{tikzpicture}\n")
+output.write("  \\begin{scope}[xshift=0,yshift=0,xscale=%f,yscale=%f]\n" % (fig_width, fig_height))
+draw_graph(output,
+          ["0.1", "0.2", "0.4", "1", "2", "4", "10", "20", "40", "80", "150", "300", "600"],
+          times,
+          timeouts,
+          time_to_y)
+output.write("  \\end{scope}\n")
+# output.write("  \\begin{scope}[xshift=%f,yshift=0,xscale=%f,yscale=%f]\n" % (fig_width, fig_width, fig_height))
+# draw_graph(output,
+#            ["0.1", "0.2", "0.5", "1", "2", "4", "10", "20", "40", "80", "150", "300", "600"],
+#            mems,
+#            timeouts,
+#            mem_to_y)
+# output.write("  \\end{scope}\n")
+output.write("\\end{tikzpicture}\n")

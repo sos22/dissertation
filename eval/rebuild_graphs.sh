@@ -15,7 +15,7 @@ cd artificial_bugs
 cd ..
 
 cd complex_hb
-#./complex_hb_build_summaries.py > complex_hb_build_summaries.tex
+#./complex_hb_build_summaries.py
 cd ..
 
 cd complex_alias
