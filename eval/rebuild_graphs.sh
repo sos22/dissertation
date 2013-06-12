@@ -18,6 +18,11 @@ cd complex_hb
 #./complex_hb_build_summaries.py > complex_hb_build_summaries.tex
 cd ..
 
+cd complex_alias
+# ./complex_alias.py easy < easy > complex_alias_easy.tex
+# ./complex_alias.py hard < hard > complex_alias_hard.tex
+cd ..
+
 cd alpha
 cd unopt
 #../build_bpm_graph.py > bpm.tex

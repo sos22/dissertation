@@ -2,24 +2,26 @@
 
 import sys
 import math
-import re
-import os
 import itertools
 import random
 
-figwidth = 6.0
+figwidth = 6.1
 figheight = 6.0
-sep = 1.0
+sep = 1.5
 tick_width = 0.05
 timeout_time = 300
 oom_mem = 2353004544
 nr_replicates = 1000
-confidence_size = 0.99
-confidence_sd = 5
+confidence_size = 0.9
+
+easy = sys.argv[1] == "easy"
 
 random.seed(0)
 
-step = 5
+if easy:
+    step = 5
+else:
+    step = 1
 
 def quantile(vals, q):
     q *= len(vals)
@@ -27,7 +29,13 @@ def quantile(vals, q):
     idx1 = idx0 + 1
     if idx1 >= len(vals):
         return vals[-1]
-    return vals[idx0] * (1 - (q - idx0)) + vals[idx1] * (q - idx0)
+    # Avoid problems with infinities
+    if q == idx0:
+        return vals[idx0]
+    elif q == idx0 + 1:
+        return vals[idx1]
+    else:
+        return vals[idx0] * (1 - (q - idx0)) + vals[idx1] * (q - idx0)
 
 def float_range(start, end, nr_levels):
     i = float(start)
@@ -59,14 +67,14 @@ for l in sys.stdin.xreadlines():
         assert not mems.has_key(k)
         times[k] = []
         mems[k] = []
-    if w[2] in ["OOM", "timeout"]:
+    if w[2] in ["OOM", "timeout"] or (len(w) == 4 and float(w[3]) > timeout_time):
         if w[2] == "OOM":
             ooms[k] = ooms.get(k, 0) + 1
         else:
             timeouts[k] = timeouts.get(k, 0) + 1
         mems[k].append(oom_mem * 2)
         times[k].append(timeout_time * 2)
-    else:
+    elif len(w) == 4:
         times[k].append(float(w[3]))
         mems[k].append(long(w[2]))
 
@@ -82,31 +90,60 @@ def rr(lower, upper, contours):
         if lower <= c < upper:
             yield c
 
-def mean_sd(data):
-    mean = sum(data) / len(data)
-    return (mean, (sum([(x - mean) ** 2 for x in data]) / (len(data) * (len(data) - 1))) ** .5)
+def mean(data):
+    return sum(data) / float(len(data))
 
-# Assume that Y is a linear function of X.  We know that at X=0,
-# Y ~ N(m0, s0) and at X=1 Y ~ N(m1, s1).  Try to find a confidence
-# interval for the value of X which puts Y = val.
-def intercept_confidence_interval(m0, s0, m1, s1, val, confidence):
+# Assume that Y is a linear function of X.  We have a bunch of samples
+# of Y at X=0 and X=1.  Use them to produce a confidence interval for
+# the value of X which gives Y=val.
+def intercept_confidence_interval(samples0, samples1, val, confidence):
     val = float(val) # For sanity
 
-    if abs(m1 - m0) <= 0.01 * ((s0 ** 2 + s1 ** 2) ** .5):
-        return None
     def intercept(y0, y1):
         return (val - y0) / (y1 - y0)
     # Fuck it, this is too hard to do analytically.  Bootstrap it.
+    # Slightly tricky case: what do we do if the two samples are
+    # equal?  The intercept isn't well-defined in that case.  Easy
+    # answer: treat it as 0 for the lower bound, .5 for the median,
+    # and 1 for the upper bound, when the thing is in range, or
+    # -inf, nothing, or +inf otherwise.
     def gen_replicate():
-        y0 = random.gauss(m0, s0)
-        y1 = random.gauss(m1, s1)
-        r = intercept(y0, y1)
-        return r
+        y0 = random.choice(samples0)
+        y1 = random.choice(samples1)
+        if abs(y0 - y1) < abs(0.000001 * y0):
+            # Avoid rounding error with a special case when they're very close together
+            if y0 <= val <= y1 or y1 <= val <= y0:
+                return "ir"
+            else:
+                return "oor"
+        else:
+            r = intercept(y0, y1)
+            assert not math.isnan(r)
+            return r
     replicates = [gen_replicate() for _ in xrange(nr_replicates)]
     replicates.sort()
-    r = (quantile(replicates, (1 - confidence) / 2),
-         quantile(replicates, .5),
-         quantile(replicates, (1 + confidence) / 2))
+    def map_none(x, y, z):
+        if x == "ir":
+            return y
+        elif x == "oor":
+            return z
+        else:
+            return x
+    median_rep = [map_none(r, 0.5, None) for r in replicates if r != "oor"]
+    if median_rep == []:
+        return None
+    median_rep.sort()
+    median = quantile(median_rep, .5)
+
+    lower_rep = [map_none(r, 0, float("-inf")) for r in replicates]
+    lower_rep.sort()
+    lower = quantile(lower_rep, (1 - confidence) / 2)
+
+    upper_rep = [map_none(r, 1, float("+inf")) for r in replicates]
+    upper_rep.sort()
+    upper = quantile(upper_rep, (1 + confidence) / 2)
+
+    r = (lower, median, upper)
     assert (r[0] <= r[1] <= r[2]) or (r[2] <= r[1] <= r[0])
     return r
 
@@ -115,39 +152,104 @@ def defect(where):
 # Try to massage things a bit so that it fits into a
 # valid sequence.
 def build_massaged(end_state, c_cntr, state, old, idx, memo):
+    def h(m):
+        #sys.stderr.write("%*sbuild_massaged(%d, %d, %d, %s) -> %s\n" % (idx, "", end_state, c_cntr, state, old[idx:], m))
+        pass
     if idx == len(old):
         if state == end_state and (c_cntr % 2 == 0):
-            return (0, [])
+            r = (0, [])
+        elif c_cntr % 2 != 0:
+            r = (1000, [])
         else:
-            return (1000, [])
-    mem = memo.get((idx,state), None)
+            # Ended in the wrong state.  Try to fix it up.
+            fixup = None
+            if end_state == -1:
+                if state == 0:
+                    fixup = "L-"
+            elif end_state == 0:
+                if state == -1:
+                    fixup = "L+"
+                elif state == 1:
+                    fixup = "U-"
+            elif end_state == 1:
+                if state == 0:
+                    fixup = "U+"
+            if fixup == None:
+                # Give up
+                r = (1000, [])
+            else:
+                r = (1, [(fixup, (0,1))])
+        h(str(r))
+        return r
+    mem = memo.get((idx,c_cntr,state), None)
     if mem != None:
+        h("%s (memo)" % str(mem))
         return mem
     e = old[idx]
     key = e[0]
     where = e[1]
+    if not 0 <= where[0] <= 1 and 0 <= where[1] <= 1:
+        # Out of the box, no choice but to drop it.
+        r = build_massaged(end_state, c_cntr, state, old, idx + 1, memo)
+        h("%s (oob)" % str(r))
+        return r
+
     if key == "V":
-        # Always take these.
+        # We always take these, and optionally add in a couple more
+        # events as well.
+
+        # What happens if we just take it?
         (a, b) = build_massaged(end_state, c_cntr, state, old, idx + 1, memo)
-        return (a, [e] + b)
+        if state == -1:
+            # What happens if we lob in an L+?
+            (a2, b2) = build_massaged(end_state, c_cntr, 0, old, idx + 1, memo)
+            if a2 + 1 < a:
+                b = [("L+", where)] + b2
+                a = a2 + 1
+        elif state == 0:
+            # Could encounter an L-, C, or U+ from here.
+            b3 = b
+            a3 = a
+            d = 0
+            for (opt,ns,c) in [("L-", -1, 0), ("C", 0, 1), ("U+", 1, 0)]:
+                (a2, b2) = build_massaged(end_state, c_cntr+c, ns, old, idx + 1, memo)
+                if a2 + 1 < a3 + d:
+                    a3 = a2
+                    d = 1
+                    b3 = [(opt, where)] + b2
+            b = b3
+            a = a3 + d
+        else:
+            assert state == 1
+            # Try a U-
+            (a2, b2) = build_massaged(end_state, c_cntr, 0, old, idx + 1, memo)
+            if a2 + 1 < a:
+                a = a2 + 1
+                b = [("U-", where)] + b2
+        r = (a, [e] + b)
+        h("%s (vertex)" % str(r))
+        return r
 
     if key == "*" and state != 0:
         if 0 <= where[0] <= 1 and 0 <= where[1] <= 1:
             if state == -1:
                 (a, b) = build_massaged(end_state, c_cntr + 1, 1, old, idx + 1, memo)
-                return (a, [("L+", where), ("C", where), ("U+", where)] + b)
+                r = (a, [("L+", where), ("C", where), ("U+", where)] + b)
             else:
                 (a, b) = build_massaged(end_state, c_cntr + 1, -1, old, idx + 1, memo)
-                return (a, [("U-", where), ("C", where), ("L-", where)] + b)
+                r = (a, [("U-", where), ("C", where), ("L-", where)] + b)
         else:
-            return build_massaged(end_state, c_cntr, state, old, idx + 1, memo)
+            r = build_massaged(end_state, c_cntr, state, old, idx + 1, memo)
+        h("%s (*)" % str(r))
+        return r
     # Is it valid to take this one?
     isValid = ((state == 0 and key in ["L-", "C", "U+"]) or (state == -1 and key == "L+") or (state == 1 and key == "U-"))
     if key == "C" and isValid:
         # Have to take it.
         (take_defect, take_rest) = build_massaged(end_state, c_cntr + 1, state, old, idx + 1, memo)
         res = (take_defect, [e] + take_rest)
-        memo[(idx, state)] = res
+        memo[(idx, c_cntr, state)] = res
+        h("%s (forced take)" % str(res))
         return res
 
     (skip_defect, skip_rest) = build_massaged(end_state, c_cntr, state, old, idx + 1, memo)
@@ -155,7 +257,8 @@ def build_massaged(end_state, c_cntr, state, old, idx, memo):
     if not isValid:
         # Have to skip it
         res = (skip_defect, skip_rest)
-        memo[(idx, state)] = res
+        memo[(idx, c_cntr, state)] = res
+        h("%s (forced skip)" % str(res))
         return res
     assert key != "C"
     # Have a choice between skipping and taking.  Go with whichever
@@ -173,7 +276,8 @@ def build_massaged(end_state, c_cntr, state, old, idx, memo):
         res = (take_defect, [(new_key, where)] + take_rest)
     else:
         res = (skip_defect, skip_rest)
-    memo[(idx, state)] = res
+    memo[(idx, c_cntr, state)] = res
+    h("%s (choice)" % str(res))
     return res
 
 def contour_map(extent, data, suppress, nr_contours, timeouts, ooms,
@@ -191,30 +295,48 @@ def contour_map(extent, data, suppress, nr_contours, timeouts, ooms,
     def scale_y(y):
         return (y - min_y) / float(max_y - min_y) * (extent[1][1] - extent[0][1]) + extent[0][1]
 
+    print "  \\begin{pgfonlayer}{bg}"
+    print "    \\fill [color=white] (%f,%f) rectangle (%f,%f);\n" % (scale_x(min_x), scale_y(min_y),
+                                                                     scale_x(max_x), scale_y(max_y))
+    print "  \\end{pgfonlayer}"
     print "  %%% Contour map"
     print "  %% X marks"
-    for x in xrange(min_x, max_x, 5):
-        print "  \\node at (%f,%f) [below] {%d};" % (scale_x(x), scale_y(min_y), x * step)
+    if easy:
+        x_step = 10
+        y_step = 2
+    else:
+        x_step = 1
+        y_step = 10
+    for x in xrange(min_x, max_x, x_step):
+        if x == 1:
+            xx = 1
+        else:
+            xx = x - (x % x_step)
+        print "  \\node at (%f,%f) [below] {%d};" % (scale_x(xx), scale_y(min_y), xx * step)
     print "  \\node at (%f,%f) [below] {Number of loads};" % ((scale_x(min_x) + scale_x(max_x)) / 2,
                                                               scale_y(min_y) - .42)
 
     print "  %% Y marks"
-    for y in xrange(min_y, max_y, 5):
+    for y in xrange(min_y, max_y, y_step):
         print "  \\node at (%f,%f) [left] {%d};" % (scale_x(min_x), scale_y(y), y * step)
-    print "  \\node at (%f,%f) [rotate=90, below] {Number of stores};" % (scale_x(min_x) - 1.2,
+    print "  \\node at (%f,%f) [rotate=90, below] {Number of stores};" % (scale_x(min_x) - 1.3,
                                                                           (scale_y(min_y) + scale_y(max_y)) / 2)
 
+    print "  \\begin{pgfonlayer}{bg}"
     for (x,y) in data.iterkeys():
         if timeouts.has_key((x, y)) or ooms.has_key((x, y)):
             continue
         (x0, y0) = (scale_x(x), scale_y(y))
-        print "  \\fill [color=black!20] (%f, %f) rectangle (%f,%f);" % (x0-0.01, y0-0.01,
-                                                                         x0+0.01, y0+0.01)
+        print "    \\fill [color=black!20] (%f, %f) rectangle (%f,%f);" % (x0-0.01, y0-0.01,
+                                                                           x0+0.01, y0+0.01)
+    print "  \\end{pgfonlayer}"
     print "  %% Axes"
-    print "  \\draw (%f,%f) -- (%f,%f);" % (scale_x(min_x), scale_y(min_y),
-                                            scale_x(min_x), scale_y(max_y))
-    print "  \\draw (%f,%f) -- (%f,%f);" % (scale_x(min_x), scale_y(min_y),
-                                            scale_x(max_x), scale_y(min_y))
+    print "  \\begin{pgfonlayer}{fg}"
+    print "    \\draw (%f,%f) -- (%f,%f);" % (scale_x(min_x), scale_y(min_y),
+                                              scale_x(min_x), scale_y(max_y))
+    print "    \\draw (%f,%f) -- (%f,%f);" % (scale_x(min_x), scale_y(min_y),
+                                              scale_x(max_x), scale_y(min_y))
+    print "  \\end{pgfonlayer}"
 
     label_posns = {} # Map from contour to (x, y, bearing) of best
                      # place to put that countour which we've found so
@@ -223,13 +345,6 @@ def contour_map(extent, data, suppress, nr_contours, timeouts, ooms,
     print "  %% xrange %f -> %f, yrange %f -> %f" % (min_x, max_x, min_y, max_y)
     for x in xrange(min_x, max_x):
         for y in xrange(min_y, max_y):
-            s = suppress(x, y)
-            if s != None:
-                print "  \\path [fill,%s] (%f, %f) rectangle (%f,%f);" % (s,
-                                                                          scale_x(x),
-                                                                          scale_y(y),
-                                                                          scale_x(x+1),
-                                                                          scale_y(y+1))
             bl = data.get((x, y), None)
             tl = data.get((x, y+1), None)
             br = data.get((x+1, y), None)
@@ -237,22 +352,23 @@ def contour_map(extent, data, suppress, nr_contours, timeouts, ooms,
             if bl == None or tl == None or br == None or tr == None:
                 print "  %%%% Cell coords (%d,%d) missing" % (x, y)
                 continue
-            (bl,bls) = mean_sd(bl)
-            (tl,tls) = mean_sd(tl)
-            (br,brs) = mean_sd(br)
-            (tr,trs) = mean_sd(tr)
+            if suppress(x,y):
+                print "  \\begin{pgfonlayer}{bg}"
+                print "    \\path [fill,%s] (%f, %f) rectangle (%f,%f);" % ("color=red!50",
+                                                                            scale_x(x),
+                                                                            scale_y(y),
+                                                                            scale_x(x+1),
+                                                                            scale_y(y+1))
+                print "  \\end{pgfonlayer}"
             print "  %%%% Cell coords (%d,%d), corners tl = %f, tr = %f, br = %f, bl = %f" % (x, y,
-                                                                                              tl, tr, br, bl)
+                                                                                              mean(tl),
+                                                                                              mean(tr),
+                                                                                              mean(br),
+                                                                                              mean(bl))
 
             # Which contours intersect this cell at all?
-            lowest = min([bl - bls * confidence_sd,
-                          tl - tls * confidence_sd,
-                          br - brs * confidence_sd,
-                          tr - trs * confidence_sd])
-            highest = max([bl + bls * confidence_sd,
-                           tl + tls * confidence_sd,
-                           br + brs * confidence_sd,
-                           tr + trs * confidence_sd])
+            lowest = min(map(min, [tl,tr,bl,br]))
+            highest = max(map(max, [tl,tr,bl,br]))
             ccs = []
             for xc in contours:
                 if lowest < xc < highest:
@@ -294,27 +410,25 @@ def contour_map(extent, data, suppress, nr_contours, timeouts, ooms,
                 # Generate event sequence.
                 events = []
 
-                def do_line(pt, start_val, start_sd,
-                            end_val, end_sd, reverse):
+                def do_line(pt, start_samples, end_samples, reverse):
                     # Vertex
                     if reverse:
                         events.append(("V", pt(0))) 
                     else:
                         events.append(("V", pt(1))) 
                     # Contour intersections
-                    alpha = intercept_confidence_interval(start_val, start_sd,
-                                                          end_val, end_sd,
+                    alpha = intercept_confidence_interval(start_samples, end_samples,
                                                           c, confidence_size)
-                    print "  %% C = %f, start = %fpm%f, end = %fpm%f, alpha = %s" % (c, start_val,
-                                                                                     start_sd,
-                                                                                     end_val,
-                                                                                     end_sd,
-                                                                                     str(alpha))
                     if alpha == None:
-                        # Can't derive intercept, let later phases fix
-                        # it up.
-                        return
+                        return # Cannot derive intercept, let later
+                               # phases fix it up.
                     (alphal, alphac, alphah) = alpha
+                    print "  %% C = %f, start = [%s], end = [%s], intercepts = (%f,%f,%f)" % (c,
+                                                                                              start_samples,
+                                                                                              end_samples,
+                                                                                              alphal,
+                                                                                              alphac,
+                                                                                              alphah)
                     if abs(alphal - alphah) < 0.000001:
                         # Treat them as being precisely the same; fix
                         # it up from the massage pass.
@@ -338,13 +452,13 @@ def contour_map(extent, data, suppress, nr_contours, timeouts, ooms,
                             events.append(("L-", pt(alphal)))
 
                 # Top left to top right
-                do_line(lambda a: (a, 1), tl, tls, tr, trs, True)
+                do_line(lambda a: (a, 1), tl, tr, True)
                 # Top right to bottom right
-                do_line(lambda a: (1, a), br, brs, tr, trs, False)
+                do_line(lambda a: (1, a), br, tr, False)
                 # Bottom right to bottom left
-                do_line(lambda a: (a, 0), bl, bls, br, brs, False)
+                do_line(lambda a: (a, 0), bl, br, False)
                 # Bottom left to top right
-                do_line(lambda a: (0, a), bl, bls, tl, tls, True)
+                do_line(lambda a: (0, a), bl, tl, True)
 
                 (best_defect, best_massaged) = build_massaged(-1, 0, -1, events, 0, {})
                 best_start = -1
@@ -465,6 +579,8 @@ def contour_map(extent, data, suppress, nr_contours, timeouts, ooms,
                         continue
                     else:
                         abort() # Unknown tag
+                if last != None:
+                    sys.stderr.write("%s\n" % str(events))
                 assert last == None
 
     # Defect marks
@@ -479,12 +595,20 @@ def contour_map(extent, data, suppress, nr_contours, timeouts, ooms,
         print "  \\draw (%f, %f) circle(.7mm);" % (x0, y0)
 
     # Line labels
-    for (k, (x, y, bearing)) in label_posns.iteritems():
-        b = bearing * 360 / (2 * math.pi)
-        if b > 90 and b < 180:
-            b -= 180
-        print "  \\node at (%f, %f) [rotate=%f%s] {\small %s};" % (x + extent[0][0], y + extent[0][1], b, contour_labels[k][1], contour_labels[k][2])
-        sys.stderr.write("Bearing for %d -> %f\n" % (k, b))
+    # for (k, (x, y, bearing)) in label_posns.iteritems():
+    #     b = bearing * 360 / (2 * math.pi)
+    #     if b > 90 and b < 180:
+    #         b -= 180
+    #     print "  \\node at (%f, %f) [rotate=%f%s] {\small %s};" % (x + extent[0][0], y + extent[0][1], b, contour_labels[k][1], contour_labels[k][2])
+    #     sys.stderr.write("Bearing for %d -> %f\n" % (k, b))
+    print "  \\node at (%f, %f) [below left] {\\shortstack[l]{%%" % (scale_x(max_x), scale_y(max_y))
+    first = True
+    for (k, (decoration, _unknown, label)) in sorted(contour_labels.iteritems()):
+        if not first:
+            print "\\\\",
+        first = False
+        print "    \\raisebox{3.5pt}{\\tikz{\\draw [%s] (0,0) -- (0.5,0);}}\hspace{-.5pt}\small %s" % (decoration, label),
+    print "    }};"
 
 print "\\begin{tikzpicture}"
 
@@ -493,19 +617,24 @@ for (k, v) in timeouts.iteritems():
     failed[k] = failed.get(k, 0) + v
 def suppress(x, y):
     if (x,y) in failed or (x+1,y) in failed or (x,y+1) in failed or (x+1,y+1) in failed:
-        return "color=red"
+        return "color=red!30"
     else:
         return None
 contour_map( ((0,0),(figwidth,figheight)), times, suppress, 10, timeouts, ooms,
-             [1.0, 10**.5, 10.0, 10 * 10**.5, 100.0, 100 * 10**.5],
+             [1.0, 3.0, 10.0, 30.0, 100.0, 300.0],
              {1.0: ("", "", "1s"),
-              10.0: ("", "", "10s"),
-              100.0: ("", "", "100s")})
+              3.0: ("color=blue", "", "3s"),
+              10.0: ("color=brown", "", "10s"),
+              30.0: ("color=green", "", "30s"),
+              100.0: ("color=purple", "", "100s"),
+              300.0: ("", "", "300s")})
 contour_map( ((figwidth+sep, 0), (figwidth * 2 + sep, figheight)), mems, suppress, 10, timeouts, ooms,
-             [ 100000000, 300000000, 1000000000, 2000000000],
-             {(100000000): ("", "", "100MB"),
-              (300000000): ("", "", "300MB"),
-              (1000000000): ("", "", "1GB"),
-              (2000000000): ("dashed","", "2GB")})
+             [ 10000000, 30000000, 100000000, 300000000, 1000000000, 2000000000],
+             {(10000000): ("", "", "10MB"),
+              (30000000): ("color=blue", "", "30MB"),
+              (100000000): ("color=brown", "", "100MB"),
+              (300000000): ("color=green", "", "300MB"),
+              (1000000000): ("color=purple", "", "1GB"),
+              (2000000000): ("dotted","", "2GB")})
 
 print "\\end{tikzpicture}"
