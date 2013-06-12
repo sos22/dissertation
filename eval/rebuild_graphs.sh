@@ -42,3 +42,7 @@ cd ..
 cd bubble_charts
 # ./rebuild.sh
 cd ..
+
+cd dyn_convergence
+# ./rebuild.sh
+cd ..

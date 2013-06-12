@@ -1,3 +1,8 @@
+#! /bin/bash
+
+set -e
+set -x
+
 for x in binlog_stm_drop_tbl innodb_multi_update rpl_change_master timestamp_basic 
 do
 	./plot.py $x.data narrow > $x.tex

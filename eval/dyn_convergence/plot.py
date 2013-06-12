@@ -4,17 +4,17 @@ import sys
 import math
 
 if len(sys.argv) == 3 and sys.argv[2] == "narrow":
-    fig_width = 5.5
+    fig_width = 5.2
+    fig_height = 5.0
     narrow = True
 else:
     fig_width = 13.5
+    fig_height = 5.0
     narrow = False
 if len(sys.argv) == 3 and sys.argv[2] == "scale":
     scale = True
 else:
     scale = False
-
-fig_height = 7
 
 f = file(sys.argv[1], "r")
 
@@ -74,6 +74,7 @@ def pt((x, y)):
     return ((x - min_time) / t_width * fig_width, y * fig_height)
 
 print "\\begin{tikzpicture}"
+print "  \\fill [color=white] (0,0) rectangle (%f,%f);" % (fig_width, fig_height)
 print "  \\draw[->] (0,0) -- (%f,0);" % fig_width
 print "  \\draw[->] (0,0) -- (0,%f);" % fig_height
 for i in xrange(0, 11):
