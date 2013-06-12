@@ -1,9 +1,6 @@
 #! /usr/bin/env python
 
-import sys
 import math
-import os
-import re
 import random
 from numpy import matrix
 
