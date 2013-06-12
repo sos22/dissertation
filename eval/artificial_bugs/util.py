@@ -2,7 +2,7 @@ import math
 
 fig_width = 6.0
 max_time = 180
-abscissae = [0.1,0.5,1,2,4,8,16,32,64,180]
+abscissae = [0.1,0.25,0.5,1,2,4,8,16,32,64,180]
 
 decorations = ["", "[dashed]", "[dotted]","[color=black!50]"]
 def fail(msg):
@@ -88,12 +88,15 @@ def plot_series(data, idx):
 
 def print_preamble(x_label = True):
     print "\centerline{\\begin{tikzpicture}"
+    print "  \\fill [color=white] (0,0) rectangle (%f,5);" % fig_width
     # Draw axes
     print "  \\draw[->] (0,0) -- (0,5);"
     print "  \\draw[->] (0,0) -- (%f,0);" % fig_width
     # x ticks
     for i in abscissae:
         x = time_to_x(i)
+        if i == abscissae[0]:
+            x += 0.1
         print "  \\node at (%f,0) [below] {%s};" % (x, i)
         print "  \\draw [color=black!10] (%f,0) -- (%f,%f);" % (x, x, perc_to_y(1))
     if x_label:

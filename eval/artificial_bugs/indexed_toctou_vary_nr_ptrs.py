@@ -6,12 +6,25 @@ import random
 
 fig_width = 13.0
 fig_height = 8.0
-b_width = 0.2
+b_width = 0.1
+c_width = 0.05
 nr_replicates = 10000
 mintime = 0.01
+maxtime = 2000.0
+min_np = 1.
+max_np = 320000.
 
-data_dir = "special/indexed_toctou_vary_nr_ptrs_%s" % sys.argv[1]
-abscissae = [10,20,30,40,50,60,70,80,90,100,150,200,250,300,350,400,450,500,750,1000,2000,3000,4000,5000]
+yticks = [(0.01, "0.01"), (0.03, "0.03"),
+          (0.1, "0.1"), (0.3, "0.3"),
+          (1, "1.0"), (3.0, "3"),
+          (10, "10"), (30.0, "30"),
+          (100.0, "100"), (300.0, "300"),
+          (1000.0, "1000"), (2000.0, "2000")]
+
+if sys.argv[1] == "enforcer":
+    enforcer = True
+else:
+    enforcer = False
 
 def quantile(data, q):
     idx = q * len(data)
@@ -34,61 +47,70 @@ def bootstrap_stats(data, stat):
         res[k] = (quantile(s, 0.05), base[k], quantile(s, 0.95))
     return res
 
-data = {}
-for a in abscissae:
-    try:
-        f = file("%s/nr_ptrs=%d" % (data_dir, a), "r")
-    except:
-        continue
-    series = map(lambda x: float(x.strip()), f.xreadlines())
-    f.close()
+def calc_stats(data):
+    return {"mean": sum(data) / float(len(data)),
+            "p25": quantile(data, 0.25),
+            "p50": quantile(data, 0.50),
+            "p75": quantile(data, 0.75),
+            }
 
-    series.sort()
-
-    def calc_stats(data):
-        return {"mean": sum(data) / float(len(data)),
-                "p25": quantile(data, 0.25),
-                "p50": quantile(data, 0.50),
-                "p75": quantile(data, 0.75),
-                }
-    data[a] = bootstrap_stats(series, calc_stats)
-
-max_time = max([max(max(k.itervalues())) for k in data.itervalues()])
+if enforcer:
+    data = {}
+    with open("special/indexed_toctou_vary_nr_ptrs_enforcer.results") as f:
+        for l in f.xreadlines():
+            w = l.split()
+            key = int(w[0])
+            time = float(w[1])
+            if not data.has_key(key):
+                data[key] = []
+            data[key].append(time)
+    d = {}
+    for (k, v) in data.iteritems():
+        x = v[10:]
+        x.sort()
+        d[k] = bootstrap_stats(x, calc_stats)
+    data = d
+    del d
+else:
+    data_dir = "special/indexed_toctou_vary_nr_ptrs_%s" % sys.argv[1]
+    data = {}
+    for a in [10,20,30,40,50,60,70,80,90,100,150,200,250,300,350,400,450,500,750,1000,2000,3000]:
+        with open("%s/nr_ptrs=%d" % (data_dir, a)) as f:
+            series = map(lambda x: float(x.strip()), f.xreadlines())
+        series.sort()
+        data[a] = bootstrap_stats(series, calc_stats)
+abscissae = data.keys()
+abscissae.sort()
 
 def abs_to_x(a):
-    return math.log(a / float(abscissae[0])) / math.log(abscissae[-1] / float(abscissae[0])) * fig_width
+    return math.log(a / min_np) / math.log(max_np / min_np) * fig_width
 def time_to_y(t):
     if t < mintime:
         return 0
-    return math.log(t / mintime) / math.log(max_time / mintime) * fig_height
+    return math.log(t / mintime) / math.log(maxtime / mintime) * fig_height
 
 print "\\begin{tikzpicture}"
+print "  \\fill [color=white] (%f,0) rectangle (%f,%f);" % (-b_width/2, fig_width+b_width/2, fig_height);
 # Draw axes
-print "  \\draw[->] (-.1,0) -- (-.1,%f);" % fig_height
-print "  \\draw[->] (0,0) -- (%f,0);" % fig_width
+print "  \\begin{pgfonlayer}{fg}"
+print "    \\draw[->] (%f,0) -- (%f,%f);" % (-b_width/2, -b_width/2, fig_height)
+print "    \\draw[->] (0,0) -- (%f,0);" % fig_width
+print "  \\end{pgfonlayer}"
 # x ticks
-for (a,label) in [(10, "10"), (20, "20"),
-                  (40, "40"),
-                  (100, "100"), (200, "200"),
-                  (400, "400"),
-                  (1000, "1000"), (2000, "2000"),
-                  (4000, "4000")]:
+for (a,label) in [(1,"1"), (3, "3"),
+                  (10, "10"), (30, "30"),
+                  (100, "100"), (300, "300"),
+                  (1000, "1000"), (3000, "3000"),
+                  (10000, "1e4"), (30000, "3e4"),
+                  (100000, "1e5"), (300000, "3e5")]:
     print "  \\node at (%f,0) [below] {%s};" % (abs_to_x(a), label)
     print "  \\draw[color=black!10] (%f,0) -- (%f,%f);" % (abs_to_x(a), abs_to_x(a), fig_height)
 print "  \\node at (%f,-12pt) [below] {NR\_PTRS};" % (fig_width/2)
 
 # y ticks
-if sys.argv[1] == "enforcer":
-    yticks = [(0.01, "0.01"), (0.1, "0.1"),
-              (0.25, "0.25"), (0.5, "0.5"),
-              (1, "1.0"), (2.5, "2.5"), (5, "5.0")]
-else:
-    yticks = [(0.01, "0.01"), (0.1,"0.1"), (1, "1.0"),
-              (10, "10"), (100, "100"),
-              (1000, "1000")]
 for (t, label) in yticks:
-    print "  \\node at (-.1,%f) [left] {%s};" % (time_to_y(t), label)
-    print "  \\draw[color=black!10] (-.1,%f) -- (%f,%f);" % (time_to_y(t), fig_width, time_to_y(t))
+    print "  \\node at (%f,%f) [left] {%s};" % (-b_width/2, time_to_y(t), label)
+    print "  \\draw[color=black!10] (%f,%f) -- (%f,%f);" % (-b_width/2, time_to_y(t), fig_width+b_width/2, time_to_y(t))
 print "  \\node at (-14pt,%f) [rotate=90,left = 1, anchor = north] {Time to reproduce, seconds};" % (fig_height / 2)
 
 for a in abscissae:
@@ -98,30 +120,32 @@ for a in abscissae:
     p25 = data[a]["p25"]
     p50 = data[a]["p50"]
     p75 = data[a]["p75"]
-    l = abs_to_x(a)-.1
-    r = abs_to_x(a)+.1
+    l = abs_to_x(a)-b_width/2
+    r = abs_to_x(a)+b_width/2
     print "\\fill [color=black!50] (%f,%f) rectangle (%f,%f);" % (l, time_to_y(p25[0]),
                                                                   r, time_to_y(p25[2]))
     print "\\fill [color=black!50] (%f,%f) rectangle (%f,%f);" % (l, time_to_y(p50[0]),
                                                                   r, time_to_y(p50[2]))
     print "\\fill [color=black!50] (%f,%f) rectangle (%f,%f);" % (l, time_to_y(p75[0]),
                                                                   r, time_to_y(p75[2]))
+    
+    print "\\draw (%f,%f) rectangle (%f,%f);" % (l,
+                                                 time_to_y(p25[1]),
+                                                 r,
+                                                 time_to_y(p75[1]))
+    print "\\draw (%f,%f) -- (%f,%f);" % (l, time_to_y(p50[1]),
+                                          r, time_to_y(p50[1]))
+    l = abs_to_x(a) - c_width/2
+    r = abs_to_x(a) + c_width/2
     print "\\draw (%f,%f) -- (%f,%f);" % (abs_to_x(a), time_to_y(mean[0]),
                                           abs_to_x(a), time_to_y(mean[2]))
-    print "\\draw (%f,%f) -- (%f,%f);" % (abs_to_x(a)-.05, time_to_y(mean[2]),
-                                          abs_to_x(a)+.05, time_to_y(mean[2]))
-    print "\\draw (%f,%f) -- (%f,%f);" % (abs_to_x(a)-.05, time_to_y(mean[0]),
-                                          abs_to_x(a)+.05, time_to_y(mean[0]))
-    
-    print "\\draw (%f,%f) rectangle (%f,%f);" % (abs_to_x(a)-.1,
-                                                 time_to_y(p25[1]),
-                                                 abs_to_x(a)+.1,
-                                                 time_to_y(p75[1]))
-    print "\\draw (%f,%f) -- (%f,%f);" % (abs_to_x(a)-.1, time_to_y(p50[1]),
-                                          abs_to_x(a)+.1, time_to_y(p50[1]))
-    print "\\draw (%f,%f) -- (%f,%f);" % (abs_to_x(a)-.05, time_to_y(mean[1])-.05,
-                                          abs_to_x(a)+.05, time_to_y(mean[1])+.05)
-    print "\\draw (%f,%f) -- (%f,%f);" % (abs_to_x(a)+.05, time_to_y(mean[1])-.05,
-                                          abs_to_x(a)-.05, time_to_y(mean[1])+.05)
+    print "\\draw (%f,%f) -- (%f,%f);" % (l, time_to_y(mean[2]),
+                                          r, time_to_y(mean[2]))
+    print "\\draw (%f,%f) -- (%f,%f);" % (l, time_to_y(mean[0]),
+                                          r, time_to_y(mean[0]))
+    b = time_to_y(mean[1]) - c_width/2
+    t = time_to_y(mean[1]) + c_width/2
+    print "\\draw (%f,%f) -- (%f,%f);" % (l, b, r, t)
+    print "\\draw (%f,%f) -- (%f,%f);" % (r, b, l, t)
 
 print "\\end{tikzpicture}"

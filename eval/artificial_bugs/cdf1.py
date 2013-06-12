@@ -6,7 +6,7 @@ import random
 import decimal
 
 figheight = 4.5
-figwidth = 14.3
+figwidth = 14.0
 sep = 0.7
 chartwidth = (figwidth - 2 * sep) / 3
 mintime = 0.1
@@ -29,6 +29,7 @@ y_labels = map(str, xrange(0, 101, 20))
 
 print "  %% Grid"
 for idx in [0,1,2]:
+    print "\\fill [color=white] (%f,0) rectangle (%f,%f);" % (time_to_x(mintime, idx), time_to_x(maxtime, idx), figheight)
     for x_label in x_labels:
         x = time_to_x(float(x_label), idx)
         print "  \\draw [color=black!10] (%f, %f) -- (%f, %f);" % (x, 0, x, figheight)
