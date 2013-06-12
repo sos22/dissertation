@@ -7,6 +7,99 @@ involved in the thread \glspl{cfg} cannot execute in parallel,
 preventing the bug from happening.  This chapter describes how this is
 done in detail.
 
+\begin{sanefig}
+  \newcommand{\labeledHLineA}[2]{\multicolumn{4}{c}{\leaders#2\hfill #1 {\leaders#2\hfill}
+  }}
+  \newcommand{\labeledHLineB}{\leaders\vrule height .5ex depth -.45ex\hfill\textit{Indirect control-flow described in text\!}{\leavevmode\leaders\vrule height .5ex depth -.45ex\hfill}}
+  \setlength{\tabcolsep}{0pt}
+  \renewcommand{\arraystretch}{1.5}
+  \begin{tabular}{ccc p{3.8cm} c}
+    \graphNT{$(r, a, l, \textsc{CheckForEntry})$} & $\Rightarrow$ & \graphNT{$(r, a \cup \mathit{newNodes}(r), l, \textsc{Lock})$} & & \circled{1}\\
+
+    \hdashline
+    \multirow{2}{*}{\raisebox{-3mm}{\graphNT{$(r, a, l, \textsc{Lock})$}}} & \multirow{2}{*}{\raisebox{-3mm}{$\Rightarrow$}} & \begin{tikzpicture}[baseline = (current bounding box.center)]
+      \node (r) {Acquire lock};
+      \node (s) [style=graphNT, below = .3 of r] {$(r, a, \true, \textsc{Return})$};
+      \draw[->] (r) -- (s);
+    \end{tikzpicture} & If $a \not= \varnothing$ and $l = \false$ & \circled{$2_a$}\\
+    & & \graphNT{$(r, a, l, \textsc{Return})$} & Otherwise & \circled{$2_b$}\\
+
+    \hdashline
+    \multirow{2}{*}{\graphNT{$(r, a, l, \textsc{Return})$}} & \multirow{2}{*}{$\Rightarrow$} & \texttt{jmp} $r$ & If $a = \varnothing$, $l = \false$, and $r \not\in \mathit{Cont}$ & \circled{$3_a$} \\
+    & & \graphNT{$(r, a, l, \textsc{Emul})$} & Otherwise & \circled{$3_b$} \\
+
+    \hdashline
+    \graphNT{\raisebox{-5mm}{$\left(\begin{tikzpicture}[baseline = (current bounding box.center)]
+        \node (r) {\texttt{jcc}};
+        \node (s) at (-.3,-.7) {X};
+        \node (t) at ( .3,-.7) {Y};
+        \draw[->,ifTrue] (r) -- (s);
+        \draw[->,ifFalse] (r) -- (t);
+      \end{tikzpicture}, a, l, \textsc{Emul}\right)$}} & $\Rightarrow$ & \begin{tikzpicture}[baseline = (current bounding box.center)]
+      \node (r) at (.8,0) {\texttt{jcc}};
+      \node (s) at (-1,-1) [style=graphNT] {
+        \renewcommand{\arraystretch}{1}
+        \hspace{-3.5mm}\raisebox{-5mm}{
+          $\left(\!\!\!\begin{array}{l}%
+            X, \mathit{adv}(X, a),\\
+            l, \textsc{Unlock}\\
+          \end{array}
+          \!\!\!\right)$
+        }\hspace{-2mm}
+      };
+      \node (t) at (.8,-2.8) [style=graphNT] {
+        \renewcommand{\arraystretch}{1}
+        \hspace{-3.5mm}\raisebox{-5mm}{
+          $\left(\!\!\!\begin{array}{l}%
+            Y, \mathit{adv}(Y, a),\\
+            l, \textsc{Unlock}\\
+          \end{array}
+          \!\!\!\right)$
+        }\hspace{-2mm}
+      };
+      \draw[->,ifTrue] (r) -- (s);
+      \draw[->,ifFalse] (r) -- (t);
+    \end{tikzpicture} \renewcommand{\arraystretch}{1.5} & & \circled{$4_a$}\\
+    \raisebox{5mm}{\graphNT{\raisebox{-5mm}{$\left(\begin{tikzpicture}[baseline = (current bounding box.center)]
+          \node (r) {\texttt{jmp}};
+          \node (s) [below = .3 of r] {X};
+          \draw[->] (r) -- (s);
+      \end{tikzpicture}, a, l, \textsc{Emul}\right)$}}} & $\Rightarrow$ & \graphNT{$(X, \mathit{adv}(X,a), l, \textsc{Unlock})$} & & \circled{$4_b$} \\
+    \raisebox{5mm}{\graphNT{\raisebox{-5mm}{$\left(\begin{tikzpicture}[baseline = (current bounding box.center)]
+          \node (r) {\texttt{call} X};
+          \node (s) [below = .3 of r] {Y};
+          \draw[->] (r) -- (s);
+      \end{tikzpicture}, a, l, \textsc{Emul}\right)$}}} & $\Rightarrow$ &
+    \begin{tikzpicture}[baseline = (current bounding box.center)]
+      \node (r) {\texttt{push} X};
+      \node (s) [below = .3 of r] {\graphNT{$(Y, \mathit{adv}(Y,a), l, \textsc{Unlock})$}};
+      \draw[->] (r) -- (s);
+    \end{tikzpicture} & $X$ not a library function & \circled{$4_c$} \\
+    \raisebox{5mm}{\graphNT{\raisebox{-5mm}{$\left(\begin{tikzpicture}[baseline = (current bounding box.center)]
+          \node (r) {X};
+          \node (s) [below = .3 of r] {Y};
+          \draw[->] (r) -- (s);
+      \end{tikzpicture}, a, l, \textsc{Emul}\right)$}}} & $\Rightarrow$ &
+    \begin{tikzpicture}[baseline = (current bounding box.center)]
+      \node (r) {X};
+      \node (s) [below = .3 of r] {\graphNT{$(Y, \mathit{adv}(Y,a), l, \textsc{Unlock})$}};
+      \draw[->] (r) -- (s);
+    \end{tikzpicture} & Other instructions $X$ & \circled{$4_d$} \\
+    \multicolumn{4}{c}{\leaders\vrule height .5ex depth -.45ex\hfill \textit{Indirect control-flow described in text\!}
+      {\leavevmode\leaders\vrule height .5ex depth -.45ex\hfill}
+    } \\
+    \labeledHLineA{\textit{Indirect control-flow described in text\!}}{\vrule height .5ex depth -.45ex} \\
+
+    \hdashline
+    \multirow{2}{*}{\graphNT{$(r, a, l, \textsc{Unlock})$}} & \multirow{2}{*}{$\Rightarrow$} & \begin{tikzpicture}[baseline = (current bounding box.center)]
+      \node (r) {Release lock};
+      \node (s) [style=graphNT, below = .3 of r] {$(r, a, \false, \textsc{CheckForEntry})$};
+      \draw[->] (r) -- (s);
+    \end{tikzpicture} & If $a = \varnothing$ and $l = \true$ & \multirow{2}{*}{\circled{5}}\\
+    & & \graphNT{$(r, a, l, \textsc{CheckForEntry})$} & Otherwise \\
+  \end{tabular}
+\end{sanefig}
+
 \section{Identifying the instructions which must be protected}
 
 \begin{sanefig}
