@@ -1,106 +1,16 @@
 \chapter{Fixing bugs}
 \label{sect:fix_global_lock}
 
+\newcommand{\one}{~\hspace{-1.2pt}1\hspace{3.0pt}~}
+
 In addition to finding bugs, {\technique} can also be used to fix them
 by introducing a new global lock.  This ensures that the instructions
 involved in the thread \glspl{cfg} cannot execute in parallel,
 preventing the bug from happening.  This chapter describes how this is
 done in detail.
 
-\begin{sanefig}
-  \newcommand{\labeledHLineA}[2]{\multicolumn{4}{c}{\leaders#2\hfill #1 {\leaders#2\hfill}
-  }}
-  \newcommand{\labeledHLineB}{\leaders\vrule height .5ex depth -.45ex\hfill\textit{Indirect control-flow described in text\!}{\leavevmode\leaders\vrule height .5ex depth -.45ex\hfill}}
-  \setlength{\tabcolsep}{0pt}
-  \renewcommand{\arraystretch}{1.5}
-  \begin{tabular}{ccc p{3.8cm} c}
-    \graphNT{$(r, a, l, \textsc{CheckForEntry})$} & $\Rightarrow$ & \graphNT{$(r, a \cup \mathit{newNodes}(r), l, \textsc{Lock})$} & & \circled{1}\\
-
-    \hdashline
-    \multirow{2}{*}{\raisebox{-3mm}{\graphNT{$(r, a, l, \textsc{Lock})$}}} & \multirow{2}{*}{\raisebox{-3mm}{$\Rightarrow$}} & \begin{tikzpicture}[baseline = (current bounding box.center)]
-      \node (r) {Acquire lock};
-      \node (s) [style=graphNT, below = .3 of r] {$(r, a, \true, \textsc{Return})$};
-      \draw[->] (r) -- (s);
-    \end{tikzpicture} & If $a \not= \varnothing$ and $l = \false$ & \circled{$2_a$}\\
-    & & \graphNT{$(r, a, l, \textsc{Return})$} & Otherwise & \circled{$2_b$}\\
-
-    \hdashline
-    \multirow{2}{*}{\graphNT{$(r, a, l, \textsc{Return})$}} & \multirow{2}{*}{$\Rightarrow$} & \texttt{jmp} $r$ & If $a = \varnothing$, $l = \false$, and $r \not\in \mathit{Cont}$ & \circled{$3_a$} \\
-    & & \graphNT{$(r, a, l, \textsc{Emul})$} & Otherwise & \circled{$3_b$} \\
-
-    \hdashline
-    \graphNT{\raisebox{-5mm}{$\left(\begin{tikzpicture}[baseline = (current bounding box.center)]
-        \node (r) {\texttt{jcc}};
-        \node (s) at (-.3,-.7) {X};
-        \node (t) at ( .3,-.7) {Y};
-        \draw[->,ifTrue] (r) -- (s);
-        \draw[->,ifFalse] (r) -- (t);
-      \end{tikzpicture}, a, l, \textsc{Emul}\right)$}} & $\Rightarrow$ & \begin{tikzpicture}[baseline = (current bounding box.center)]
-      \node (r) at (.8,0) {\texttt{jcc}};
-      \node (s) at (-1,-1) [style=graphNT] {
-        \renewcommand{\arraystretch}{1}
-        \hspace{-3.5mm}\raisebox{-5mm}{
-          $\left(\!\!\!\begin{array}{l}%
-            X, \mathit{adv}(X, a),\\
-            l, \textsc{Unlock}\\
-          \end{array}
-          \!\!\!\right)$
-        }\hspace{-2mm}
-      };
-      \node (t) at (.8,-2.8) [style=graphNT] {
-        \renewcommand{\arraystretch}{1}
-        \hspace{-3.5mm}\raisebox{-5mm}{
-          $\left(\!\!\!\begin{array}{l}%
-            Y, \mathit{adv}(Y, a),\\
-            l, \textsc{Unlock}\\
-          \end{array}
-          \!\!\!\right)$
-        }\hspace{-2mm}
-      };
-      \draw[->,ifTrue] (r) -- (s);
-      \draw[->,ifFalse] (r) -- (t);
-    \end{tikzpicture} \renewcommand{\arraystretch}{1.5} & & \circled{$4_a$}\\
-    \raisebox{5mm}{\graphNT{\raisebox{-5mm}{$\left(\begin{tikzpicture}[baseline = (current bounding box.center)]
-          \node (r) {\texttt{jmp}};
-          \node (s) [below = .3 of r] {X};
-          \draw[->] (r) -- (s);
-      \end{tikzpicture}, a, l, \textsc{Emul}\right)$}}} & $\Rightarrow$ & \graphNT{$(X, \mathit{adv}(X,a), l, \textsc{Unlock})$} & & \circled{$4_b$} \\
-    \raisebox{5mm}{\graphNT{\raisebox{-5mm}{$\left(\begin{tikzpicture}[baseline = (current bounding box.center)]
-          \node (r) {\texttt{call} X};
-          \node (s) [below = .3 of r] {Y};
-          \draw[->] (r) -- (s);
-      \end{tikzpicture}, a, l, \textsc{Emul}\right)$}}} & $\Rightarrow$ &
-    \begin{tikzpicture}[baseline = (current bounding box.center)]
-      \node (r) {\texttt{push} X};
-      \node (s) [below = .3 of r] {\graphNT{$(Y, \mathit{adv}(Y,a), l, \textsc{Unlock})$}};
-      \draw[->] (r) -- (s);
-    \end{tikzpicture} & $X$ not a library function & \circled{$4_c$} \\
-    \raisebox{5mm}{\graphNT{\raisebox{-5mm}{$\left(\begin{tikzpicture}[baseline = (current bounding box.center)]
-          \node (r) {X};
-          \node (s) [below = .3 of r] {Y};
-          \draw[->] (r) -- (s);
-      \end{tikzpicture}, a, l, \textsc{Emul}\right)$}}} & $\Rightarrow$ &
-    \begin{tikzpicture}[baseline = (current bounding box.center)]
-      \node (r) {X};
-      \node (s) [below = .3 of r] {\graphNT{$(Y, \mathit{adv}(Y,a), l, \textsc{Unlock})$}};
-      \draw[->] (r) -- (s);
-    \end{tikzpicture} & Other instructions $X$ & \circled{$4_d$} \\
-    \multicolumn{4}{c}{\leaders\vrule height .5ex depth -.45ex\hfill \textit{Indirect control-flow described in text\!}
-      {\leavevmode\leaders\vrule height .5ex depth -.45ex\hfill}
-    } \\
-    \labeledHLineA{\textit{Indirect control-flow described in text\!}}{\vrule height .5ex depth -.45ex} \\
-
-    \hdashline
-    \multirow{2}{*}{\graphNT{$(r, a, l, \textsc{Unlock})$}} & \multirow{2}{*}{$\Rightarrow$} & \begin{tikzpicture}[baseline = (current bounding box.center)]
-      \node (r) {Release lock};
-      \node (s) [style=graphNT, below = .3 of r] {$(r, a, \false, \textsc{CheckForEntry})$};
-      \draw[->] (r) -- (s);
-    \end{tikzpicture} & If $a = \varnothing$ and $l = \true$ & \multirow{2}{*}{\circled{5}}\\
-    & & \graphNT{$(r, a, l, \textsc{CheckForEntry})$} & Otherwise \\
-  \end{tabular}
-\end{sanefig}
-
 \section{Identifying the instructions which must be protected}
+\label{sect:fix:identify}
 
 \begin{sanefig}
   \hspace{-5mm}\subfigure[][\gls{crashingthread}]{
@@ -212,216 +122,575 @@ used in \autoref{sect:derive:write_side}, and generally produces
 results which are at least broadly reasonable\editorial{That kind of
   implies I had much more choice in the matter than I actually did.}.
 
-\section{The interpreter}
+\section{Structure of fixes}
 
-\todo{SMH \emph{hates} the interpreter-based description, but I find
-  his reasoning deeply unconvincing.}
+Once {\technique} has identified which fragments of dynamic \gls{cfg}
+should be mutually exclusive, it must somehow arrange that they are.
+{\Technique}'s fixes modify the program such that it acquires and
+releases a new global lock when entering or leaving one of these
+critical sections, without otherwise altering the program's behaviour.
+This is similar to the problem faced by the crash enforcement
+interpreter, which must also insert additional operations into a
+program's execution, and one simple way to impose the necessary
+synchronisation would be to take the enforcement interpreter and
+replace the \textbf{RX} and \textbf{TX} phases with lock acquire and
+release operations, respectively.  That would be effective, but would
+have two major disadvantages.  Most importantly, it would have
+potentially high overhead, as machine code interpreters are inherently
+very slow\needCite{}, and this would prevent {\technique} from being
+used to fix bugs in frequently-used code paths; what is an acceptable
+slow-down in a tool used only in development would be completely
+unacceptable in one intended for a production environment.
+Furthermore, the machine code interpreter is itself a large and
+complicated piece of software, and hence almost certainly contains
+bugs of its own, and so any tool based on it carries the risk of
+introducing other possible forms of program misbehaviour; an
+acceptable risk in development, but not in production.
 
-
-The conceptually simplest way of introducing these synchronisation
-operations is by modifying a hypothetical machine code interpreter so
-that it performs the necessary synchronisation operations as the
-program runs, and I describe such an approach in this section.  This
-is effective, but has extremely high overhead, due to the need to run
-the entire program under an interpreter.  Later sections will show how
-to reduce this overhead, first by allowing the unprotected components
-of the program to run without the interpreter and then by dispensing
-with the interpreter completely.
-
-\todo{Linkage} The interpreter's task is to emulate the original
-program's machine code without ever allowing two threads to enter
-atomic regions at the same time.  These regions are defined in terms
-of the dynamic \gls{cfg}, and so the interpreter must manage the
-mapping between dynamic \gls{cfg} nodes and the program's static
-\gls{cfg}.  Even when the mapping between the two \glspl{cfg} is
-unambiguous, the protected regions might overlap, and the interpreter
-must ensure that no thread ever self-deadlocks by acquiring the lock
-twice.  The solution to these problems is similar to that used by
-enforcers: rather than trying to track a thread's current \gls{cfg}
-node, the interpreter tracks a set of possible current \gls{cfg}
-nodes; rather than acquiring or releasing the lock as threads enter or
-leave the \gls{cfg}, the interpreter acquires or releases the lock as
-this set becomes non-empty or empty.
+{\Technique} avoids these issues, by, in effect, partially evaluating
+the interpreter, holding the program text and desired synchronisation
+fixed and allowing the contents of registers and memory to vary.  The
+result is the ``\gls{shadowfragment}'': a new version of the relevant
+part of the program which has all necessary synchronisation added.
+The program is patched to branch to this \gls{shadowfragment} when
+appropriate, much as crash enforcers patch in branches to the
+enforcement interpreter.  Crucially, the partial evaluation of the
+\textbf{Emul} phase, which emulates the program's original
+instructions, is almost always just the original instruction itself,
+which makes it easy to achieve good performance and reducing the scope
+for errors emulating obscure processor instructions.
 
 \begin{sanefig}
-  \begin{displaymath}
-    \begin{array}{llll}
-      \textsc{InterpreterState} = & (\mathit{active}: &\textsc{Set}(\textsc{CfgNode}), &\\
-      & \,\,\mathit{holdLock}: &\textsc{Bool},\\
-      & \,\,\mathit{phase}: & \{\mathbf{CheckForEntry}, \mathbf{Lock}, \\
-      &                     & \,\,\,\mathbf{Emul}, \mathbf{Succ}, \mathbf{Unlock}\} &\!\!\!)\\
-    \end{array}
-  \end{displaymath}
-  \caption{\textsc{InterpreterState} type, the state maintained by the
-    interpreter.}
-  \label{fig:fix_bugs:interpreter_state}
+  {\hfill}
+  \subfigure[][Static \protect\gls{cfg}]{
+    \begin{tikzpicture}
+      \node (root) {};
+      \node (A) [below = of root, CfgInstr] {A};
+      \node (B) [below = of A, CfgInstr] {B};
+      \node (C) [below = of B, CfgInstr] {C};
+      \node (D) [below = of C, CfgInstr] {D};
+      \node [left = .5 of B] {};
+      \node [right = .5 of B] {};
+      \node [below = .35 of D] {\phantom{$\bot$}};
+      \draw[->] (root) -- (A);
+      \draw[->] (A) -- (B);
+      \draw[->] (B) -- (C);
+      \draw[->,ifTrue] (C) -- (D);
+      \draw[->,ifFalse] (C.west) ..controls +(-.3,0) and +(0,-0.3) .. ++(-.5,.5)
+           -- ++(0,2.228)
+           ..controls +(0,0.3) and +(-.3,0) .. ++(.49,.5)
+           -- (A.west);
+    \end{tikzpicture}
+    \label{fig:fix:eg:static}
+  }
+  {\hfill}
+  \subfigure[][Dynamic \protect\gls{cfg}]{
+    \begin{tikzpicture}
+      \node (root) {};
+      \node (B0) [below = of root, CfgInstr] {$B_0$};
+      \node (C0) [below = of B0, CfgInstr] {$C_0$};
+      \node (A0) [below = of C0, CfgInstr] {$A_0$};
+      \node (B1) [below = of A0, CfgInstr] {$B_1$};
+      \node (bot) [below = of B1] {$\bot$};
+      \node [left = of B0] {};
+      \draw[->] (root) -- (B0);
+      \draw[->] (B0) -- (C0);
+      \draw[->,ifTrue]
+          (C0.east) ..controls +(.3,0) and +(0,.3).. ++ (.5,-.5)
+          -- ++(0,-3.89)
+          ..controls +(0,-.3) and +(.3,0).. ++(-.49,-.5)
+          -- (bot.east);
+      \draw[->,ifFalse] (C0) -- (A0);
+      \draw[->] (A0) -- (B1);
+      \draw[->] (B1) -- (bot);
+    \end{tikzpicture}
+    \label{fig:fix:eg:dynamic}
+  }
+  {\hfill}
+  \subfigure[][Patch strategy]{
+    \raisebox{38mm}{
+      $\left\{
+      \begin{tabular}{rl}
+        $\mathit{Patch}$: & $\{\textrm{A}\}$\\
+        $\mathit{Cont}$:  & $\{\textrm{A}, \textrm{B}\}$\\
+      \end{tabular}
+      \right\}$
+    }
+    \label{fig:fix:eg:strategy}
+  }
+  {\hfill}
+  \subfigure[][\protect\Gls{shadowfragment}]{
+    \begin{tikzpicture}[outer sep=-2pt, node distance = 1cm and .5cm]
+      \node (A0) [CfgInstr] {A};
+      \node (Acq) [below = of A0, CfgInstr] {Acquire lock};
+      \node (B0) [below = of Acq, CfgInstr] {B};
+      \node (C) [below = of B0, CfgInstr, outer sep = -3pt] {C};
+      \node (A1) [below left = of C, CfgInstr] {A};
+      \node (B1) [below = of A1, CfgInstr] {B};
+      \node (Rel) [below right = 1 and -.5 of C, CfgInstr] {Release lock};
+      \node (D) [below = of Rel] {\texttt{jmp} D};
+      \draw[->] (A0) -- (Acq);
+      \draw[->] (Acq) -- (B0);
+      \draw[->] (B0) -- (C);
+      \draw[->,ifFalse] (C.south west) -- (A1);
+      \draw[->,ifTrue] (C.south east) -- (Rel.north);
+      \draw[->] (A1) -- (B1);
+      \draw[->] (B1.west) ..controls +(-.3,0) and +(0,-.3) .. ++(-.5,.5)
+        -- ++(0,1.88)
+        .. controls +(+0,.3) and +(-.3,0) .. ++(.5,.5)
+        -- (C.west);
+      \draw[->] (Rel) -- (D);
+    \end{tikzpicture}
+    \label{fig:fix:eg:shadow}
+  }
+  {\hfill}
+  \caption{Example of the \protect\gls{shadowfragment} algorithm; see
+    text for full explanation.}
+  \label{fig:fix:eg}
 \end{sanefig}
 
-The interpreter cycles repeatedly through these phases:
+\autoref{fig:fix:eg} illustrates this process for a simple example
+bug.  The first diagram, \autoref{fig:fix:eg:static}, shows the
+program's static \gls{cfg}; the second, \autoref{fig:fix:eg:dynamic},
+shows the dynamic one, assuming that the critical section to be
+enforced runs from the start of one instance of instruction B to the
+end of the instance in the following loop iteration.  Ideally, the fix
+would gain control of the program at instruction B, but in this case
+the patch strategy algorithm (\autoref{sect:enforce:gain_control})
+elected to gain control at instruction A and force the program to
+remain in the \gls{shadowfragment} until reaching B
+(\autoref{fig:fix:eg:strategy})\footnote{This might, for instance, be
+  because B and C are very small, so that patching B directly would
+  corrupt D, and there are a large number of branches from elsewhere
+  in the program to D, so that recovering from that corruption would
+  require a large number of further patches}.  For these inputs,
+{\technique} will generate the \gls{shadowfragment} shown in
+\autoref{fig:fix:eg:shadow}.  This fragment emulates the behaviour of
+the static \gls{cfg} starting from instruction A with the addition of
+synchronisation operations which ensure that the lock is held when
+necessary, and so replacing the program's original instruction A with
+a branch to this fragment will impose the desired additional
+synchronisation.
+
+These \glspl{cfg} can usefully be read as a kind of regular automata.
+The static and shadow \glspl{cfg} effectively generate streams of
+instructions, while the dynamic one recognises fragments of those
+streams.  This provides a convenient way of describing the correctness
+requirements for the \gls{shadowfragment}:
+\begin{enumerate}
+\item It must correctly emulate the static \gls{cfg}, in the sense of
+  generating the same sequences of instructions (ignoring the lock
+  acquire and release operations), starting from any instruction in
+  the patch strategy's $\mathit{Patch}$ set.  It must also correctly
+  maintain the ``sense'' of conditional branches i.e. which successor
+  corresponds to the true branch (shown as a solid line) and which the
+  false one (shown as a dashed one)\editorial{ugg}.
+\item It must correctly enforce the desired synchronisation, in the
+  sense that any subsequences which match the dynamic \gls{cfg} must
+  hold the lock for their entire duration.
+\item It must follow correct lock discipline, in the sense that it
+  must never generate any sequence which double-acquires the lock,
+  releases the lock without acquiring it, or terminates without
+  releasing the lock.
+\end{enumerate}
+The example in \autoref{fig:fix:eg} follows all three rules; the next
+section explains how to generate \glspl{shadowfragment} which do so in
+the general case.
+
+\section{Generating the \protect\gls{shadowfragment}}
+
+\begin{sanefig}
+  \newcommand{\lookaside}[1]{\multicolumn{5}{c}{\leavevmode\leaders\hbox{\vrule height .55ex depth -.45ex width 2pt \hspace{2pt}}\hfill\hspace{-3pt}\textit{#1\!}
+      {\leavevmode\xleaders\hbox{\vrule height .55ex depth -.45ex width 2pt \hspace{2pt}}\hfill \hspace{-2pt}}
+    } \vspace{-4pt}\\}
+  \newcommand{\sectsep}[2]{\multicolumn{5}{c}{\leavevmode\cleaders\vrule height .55ex depth -.45ex\hfill ~#1
+      {\leavevmode\leaders\vrule height .5ex depth -.45ex\hfill}
+    } \vspace{#2}\\}
+  \newcommand{\twolineNT}[2]{%
+    \raisebox{1.35ex}{%
+      \graphNT{%
+        \raisebox{-2.7ex}{%
+          \shortstack[c]{%
+            #1\\
+            #2
+          }}}}}
+  \renewcommand{\arraystretch}{1.2}
+  \begin{tabular}{ccc p{3.21cm} c}
+    \sectsep{\textbf{CheckForEntry} to \textbf{Lock}}{-4pt}
+    \twolineNT{$\mathrm{X}, \alpha, l$}{\textbf{CheckForEntry}} & $\Rightarrow$ & \twolineNT{$\mathrm{X}, \alpha \cup \mathit{startingAt}(x),$}{$l, \textbf{Lock}$} & & \circled{~1~~}\\
+
+    \sectsep{\textbf{Lock} to \textbf{Return}}{-4pt}
+    \graphNT{$\mathrm{X}, \alpha, \false, \textbf{Lock}$} & $\Rightarrow$ & \begin{tikzpicture}[baseline = (current bounding box.center)]
+      \node (r) {Acquire lock};
+      \node (s) [style=graphNT, below = .3 of r] {$\mathrm{X}, \alpha, \true, \textbf{Return}$};
+      \draw[->] (r) -- (s);
+    \end{tikzpicture} & $\alpha \not= \varnothing$ & \circled{$2_a$}\\
+    \graphNT{$\mathrm{X}, \alpha, l, \textbf{Lock}$} & $\Rightarrow$ & \graphNT{$\mathrm{X}, \alpha, l, \textbf{Return}$} & If $\neg$\circled{$2_a$} & \circled{$2_b$}\\
+
+    \sectsep{\textbf{Return} to \textbf{Emul}}{-4pt}
+    \graphNT{$\mathrm{X}, \varnothing, \false, \textbf{Return}$} & $\Rightarrow$ & \texttt{jmp} x & $\mathrm{x} \not\in \mathit{Cont}$ & \circled{$3_a$} \\
+    \graphNT{$\mathrm{X}, \alpha, l, \textbf{Return}$} & $\Rightarrow$ & \graphNT{$\mathrm{X}, \alpha, l, \textbf{Emul}$} & If $\neg$\circled{$3_a$} & \circled{$3_b$} \\
+
+    \sectsep{\textbf{Emul} to \textbf{Unlock}}{-8pt}
+    \lookaside{Indirect control flow instructions described in text}
+    \raisebox{2.5mm}{\graphNT{\raisebox{-2.5mm}{$\begin{tikzpicture}[baseline = (current bounding box.center)]
+        \node (r) {\texttt{jcc}};
+        \node (s) at (-.3,-.7) {X};
+        \node (t) at ( .3,-.7) {Y};
+        \draw[->,ifTrue] (r) -- (s);
+        \draw[->,ifFalse] (r) -- (t);
+      \end{tikzpicture}, \alpha, l, \textbf{Emul}$}}} & $\Rightarrow$ & 
+      \begin{tikzpicture}[baseline = (current bounding box.center)]
+        \node (r) at (.8,0) {\texttt{jcc}};
+        \node (s) at (-.7,-1.1) {\twolineNT{$\mathrm{X}, \mathit{adv}(\mathrm{x}, \alpha),$}{$l, \textbf{Unlock}$}};
+        \node (t) at ( 2.3,-1.1) {\twolineNT{$\mathrm{Y}, \mathit{adv}(\mathrm{y}, \alpha),$}{$l, \textbf{Unlock}$}};
+        \draw[->,ifTrue] (r) -- (s);
+        \draw[->,ifFalse] (r) -- (t);
+      \end{tikzpicture}
+      \renewcommand{\arraystretch}{1.5}
+    & & \circled{$4_a$}\\
+    \graphNT{\texttt{jmp} X, $\alpha$, $l$, \textbf{Emul}} & $\Rightarrow$ & \twolineNT{$\mathrm{X}, \mathit{adv}(\mathrm{x}, \alpha),$}{$l, \textbf{Unlock}$} & & \circled{$4_b$} \\
+    \raisebox{2.5mm}{\graphNT{\raisebox{-2.5mm}{$\begin{tikzpicture}[baseline = (current bounding box.center)]
+          \node (r) {\texttt{call} X};
+          \node (s) [below = .3 of r] {Y};
+          \draw[->] (r) -- (s);
+      \end{tikzpicture}, \alpha, l, \textbf{Emul}$}}} & $\Rightarrow$ &
+    \begin{tikzpicture}[baseline = (current bounding box.center)]
+      \node (r) {\texttt{push} y};
+      \node (s) [below = .3 of r] {\twolineNT{$\mathrm{X}, \mathit{adv}(\mathrm{x},\alpha),$}{$l, \textbf{Unlock}$}};
+      \draw[->] (r) -- (s);
+    \end{tikzpicture} & X not a library function & \circled{$4_c$} \\
+    \raisebox{2.5mm}{\graphNT{\raisebox{-2.5mm}{$\begin{tikzpicture}[baseline = (current bounding box.center)]
+          \node [minimum height=3ex, outer sep = -2pt] (r) {x};
+          \node (s) [below = .3 of r] {Y};
+          \draw[->] (r) -- (s);
+      \end{tikzpicture}, \alpha, l, \textbf{Emul}$}}} & $\Rightarrow$ &
+    \begin{tikzpicture}[baseline = (current bounding box.center)]
+      \node (r) {x};
+      \node (s) [below = .3 of r] {\twolineNT{$\mathrm{Y}, \mathit{adv}(\mathrm{y},\alpha),$}{$l, \textbf{Unlock}$}};
+      \draw[->] (r) -- (s);
+    \end{tikzpicture} & x some other instruction type & \circled{$4_d$} \\
+
+    \sectsep{\textbf{Unlock} to \textbf{CheckForEntry}}{-4pt}
+    \graphNT{$\mathrm{X}, \varnothing, \true, \textbf{Unlock}$} & $\Rightarrow$ & \begin{tikzpicture}[baseline = (current bounding box.center)]
+      \node (r) {Release lock};
+      \node (s) [below = .3 of r] {\twolineNT{$\mathrm{X}, \varnothing, \false,$}{\textbf{CheckForEntry}}};
+      \draw[->] (r) -- (s);
+    \end{tikzpicture} & & \circled{$5_a$}\\
+    \graphNT{$\mathrm{X}, \alpha, l, \textbf{Unlock}$} & $\Rightarrow$ & \twolineNT{$\mathrm{X}, \alpha, l,$}{\textbf{CheckForEntry}} & If $\neg$\circled{$5_a$} & \circled{$5_b$}\\
+  \end{tabular}
+
+  \caption{The patch generating algorithm as a graph grammar.  The
+    terminals of this grammar are instructions in a newly-generated
+    static \protect\gls{cfg} representing the shadow program.  The
+    non-terminal type, \textsc{Configuration}, is described in
+    \autoref{fig:fixing:nt_type}.  The ``If
+    $\neg$\protect\circled{$2_a$}'' annotation indicates that the
+    production is used only if \protect\circled{$2_a$} does not match.
+    \textrm{X} and \textrm{Y} match fragments of the static
+    \protect\gls{cfg}; \textrm{x} and \textrm{y} match individual
+    static instructions.  Where \textrm{X} matches a fragment of
+    static \protect\gls{cfg}, \textrm{x} is the first instruction in
+    that fragment, and similarly for \textrm{Y} and \textrm{y}.
+    $\alpha$ matches a (possibly empty) set of dynamic
+    \protect\gls{cfg} nodes.  $\mathit{startingAt}$ and $\mathit{adv}$
+    are defined in the text.  Instruction-pointer relative addressing
+    updated as appropriate when copying instructions.}
+  \label{fig:fix:graph_grammar}
+\end{sanefig}
+
+\begin{sanefig}
+  \hfill
+  \begin{tikzpicture}
+    \node (typename) {\textsc{Configuration}\!};
+    \node (eqsign) [right = 0 of typename] {\raisebox{-2.5mm}{=}\hspace{.8mm}~};
+    \node [graphNT, right = 0 of eqsign] {
+      \begin{tabular}{rl}
+        $\mathit{static}$: & \textsc{StaticCfgNode},\\
+        $\mathit{dynamic}$: & \textsc{Set}(\textsc{DynCfgNode}),\\
+        $\mathit{holdLock}$: & \textsc{Bool},\\
+        $\mathit{phase}$: & $\left\{\raisebox{-1.25ex}{\shortstack[l]{
+            $\mathbf{CheckForEntry}, \mathbf{Lock},$\\
+            $\mathbf{Emul}, \mathbf{Unlock}$}}\right\}$\\
+      \end{tabular}
+    };
+  \end{tikzpicture}
+  \hfill{}
+  \caption{The \textsc{Configuration} type, used as the non-terminal
+    type in the shadow generating algorithm in
+    \autoref{fig:fix:graph_grammar}.}
+  \label{fig:fix:configuration}
+\end{sanefig}
+
+\begin{sanefig}
+  {\hfill}
+  \begin{tikzpicture}
+    \node (a) {\raisebox{0.5mm}{$\mathit{initial}$}\!};
+    \node (eqsign) [right = 0 of a] {\raisebox{-2.5mm}{=}\!};
+    \node [right = 0 of eqsign] {
+      $\left\{
+      \graphNT{
+        \begin{tabular}{r@{=}l}
+          $\mathit{static}$ & $p$ \\
+          $\mathit{dynamic}$ & $\varnothing$ \\
+          $\mathit{holdLock}$ & \false \\
+          $\mathit{phase}$ & $\mathbf{CheckForEntry}$ \\
+        \end{tabular}
+      }\,
+      \middle|\,p \in Patch\right\}$};
+  \end{tikzpicture}
+  {\hfill}
+  \caption{The initial set of non-terminals for the graph grammar in
+    \autoref{fig:fix:graph_grammar}.  There is one initial
+    non-terminal for every entry in the $\mathit{Patch}$ set.}
+  \label{fig:fix:initial_configuration}
+\end{sanefig}
+
+\begin{sanefig}
+  \begin{tabbular}{| p{7.33cm} | p{7.33cm} |}
+    \hline
+    \Gls{shadowfragment} phase & LLI stage \\
+    \hline
+    \textbf{CheckForEntry} & \textit{None; the enforcer equivalent is only present in the HLI} \\
+    \textbf{Lock} & \textbf{RX} \\
+    \textbf{Emul} & \textbf{Emul} \\
+    \textbf{Unlock} & \textbf{TX} \\
+    \textit{None; equivalent computation performed in the $\mathit{adv}$ function} & \textbf{Succ} \\
+    \hline
+  \end{tabbular}
+  \caption{Correspondence between phases in the
+    \protect\gls{shadowfragment} algorithm and stages in the crash
+    enforcer's low-level interpreter (see
+    \autoref{sect:enforce:llis}).}
+  \label{fig:fix:state_correspondence}
+\end{sanefig}
+
+\noindent
+The algorithm used to generate the \gls{shadowfragment} is shown in
+\autoref{fig:fix:graph_grammar} as a graph generating grammar (see
+\autoref{sect:intro:graph_grammar}), using the non-terminal type
+\textsc{Configuration} defined in \autoref{fig:fix:configuration}.
+The set of initial \textsc{Configuration}s is given in
+\autoref{fig:fix:initial_configuration}.  A \textsc{Configuration}
+contains the parts of the interpreter state which are to be partially
+evaluated away:
 \begin{itemize}
-\item \textbf{CheckForEntry} The interpreter checks whether the
-  current instruction is the entry point of any protected \gls{cfg}
-  fragments.  If it is, the relevant \gls{cfg} node is added to the
-  current set of active \gls{cfg} nodes.
-
-\item \textbf{Lock} The interpreter now acquires the patch lock, with
-  a timeout, provided that it does not currently own it and the set of
-  active \gls{cfg} nodes is non-empty.  If the lock times out then the
-  interpreter gives up and proceeds without acquiring the lock; this
-  introduces a risk of the bug reproducing, but is necessary to avoid
-  any potential deadlocks with the program's own synchronisation
-  strategy.
-
-\item \textbf{Emul} The interpreter runs the instruction from the
-  original program, performing any necessary memory accesses or
-  register updates.  This is essentially the same as the phase of the
-  same name in the enforcer's LLI loop (see \autoref{sect:enforce:llis}).
-
-\item \textbf{Succ} The \textbf{Emul} phase will have computed the
-  instruction pointer of the next instruction to be executed.  This
-  can then be compared to the set of currently active \gls{cfg} nodes
-  and the protected \gls{cfg} fragments to calculate a new set of
-  active \gls{cfg} nodes.  Again, this is analogous to the phase of
-  the same name in the enforcer's LLI loop.
-
-\item \textbf{Unlock} Finally, the interpreter can now consider
-  releasing the patch lock.  It does so if it currently holds the lock
-  and the set of active \gls{cfg} nodes has become empty.  The instruction
-  cycle then restarts at \textbf{CheckForEntry}.
+\item $\mathit{static}$ gives the current position in the program's
+  static \gls{cfg}, interpreted as a regular automaton which generates
+  the stream of instructions executed by the current thread.
+\item $\mathit{dynamic}$ gives the set of possible states of the dynamic
+  \gls{cfg}, interpreted as a regular automaton which matches the
+  stream of instructions executed by the current thread.  This is
+  analogous to the set of low-level interpreters maintained by the
+  crash enforcement interpreter.
+\item $\mathit{holdLock}$ is a simple flag indicating whether the
+  current thread currently holds the global fix lock.
+\item $\mathit{phase}$ is used to track how much of the interpreter's
+  processing has been completed.
 \end{itemize}
-This scheme ensures that the lock is always held when instructions
-from the original program execute if there is any possibility that the
-thread is currently executing one of the \gls{cfg} fragments.  At the
-same time, it correctly ensures that the lock is never double-acquired
-or double-released.  It therefore correctly implements the desired
-fix, but at the expense of very high overhead due to running the
-entire program in an interpreter.
-
-\section{Running unprotected code without an interpreter}
-
-The common case is that the fix protects a very small fraction of the
-total instructions in the program, and so running the entire program
-in an interpreter is extremely inefficient.  Fortunately, it is also
-easy to fix, using the scheme described in
-\autoref{sect:enforce:gain_control}.  The patch strategy algorithm can
-arrange to jump to the interpreter whenever the program reaches any
-entry point of a protected \gls{cfg} fragment, starting in the
-\textbf{CheckForEntry} state with a $\mathit{active} = \varnothing$
-and $\mathit{holdLock} = \false$.  The only change needed to the
-interpreter itself is the addition of a \textbf{Return} state between
-\textbf{CheckForEntry} and \textbf{Lock} which branches back to the
-original program if $\mathit{active} = \varnothing$,
-$\mathit{holdLock} = \false$, and the current instruction is not in
-$\mathit{Cont}$.
-
-\section{Recompiling the protected code with additional synchronisation}
-
-This scheme allows the program to run at native speed when executing
-code which does not have to be protected, but still requires it to be
-interpreted when in the critical sections.  This can sometimes be an
-issue if the bug to be fixed is a rare one in code which is executed
-very frequently.  The remaining overhead can be (almost) eliminated
-by, in effect, converting the interpreter into a compiler, producing a
-new version of the program which has all of the desired
-synchronisation and which runs very nearly as fast as the original.
-
-The main complication in building such a compiler is that the compiled
-fix has no good way of storing its state: registers and the stack are
-unavailable, as they are used by the program to be protected; main
-memory does not work, because most of the state needs to be
-thread-local; and anything based on system calls is undesirable
-because the state needs to be accessed so frequently, sometimes
-multiple times per original program instruction.  The approach taken
-by {\implementation} is to encode the per-thread state into the
-program's instruction pointer, creating a duplicate of each program
-instruction for each \textsc{InterpreterState} which that program
-instruction might execute in.  This is practical because the number of
-\textsc{InterpreterState}s per program instruction is usually very
-small, often just one, and so the number of duplicates is manageable.
-
-One major advantage of this instruction duplication approach is that
-the compiler knows, when emitting an instruction, precisely what state
-the interpreter is in, and so even a quite simplistic implementation
-can still generate reasonably efficient machine code for the
-interpreter operations.  Further, most instructions in the original
-program can be copied across without modification, and so most
-compiler optimisations applied to the original program continue to be
-effective in the patched version.
-
-One way of thinking about this is to say that the program's
-instruction pointer is replaced with a more complicated structure
-containing both the original pointer and the \textsc{InterpreterState}
-structure.  The interpreter described above shows how the original
-program's \gls{cfg} can be combined with the fix plan to give a new
-\gls{cfg} expressed in terms of these extended instruction pointers,
-and the compiler then just needs to lower this extended \gls{cfg} back
-into ordinary machine code.  The lowering process itself is easiest to
-think about as a kind of partial evaluation\cite{Jones1993} or
-supercompilation\cite{Sorensen2008} of the interpreter, fixing the
-program machine code and the intended synchronisation while leaving
-the program's inputs unspecified\editorial{Alternative way of thinking
-  about this: We want to convert the interpreter into a JIT.  We copy
-  the key insight from PIN that automorphic compilers should use an
-  intermediate form which is similar to their output form and use an
-  intermediate form which is just the original instruction plus an
-  \textsc{InterpreterState}.  Given that, the JIT becomes sufficiently
-  simple that we can just do the entire thing offline before we start,
-  at which point we have a compiler.}.
+The grammar makes use of two utility functions:
 \begin{itemize}
-\item \textbf{Lock} phases partially evaluate to either the machine
-  code for a lock operation (if the lock is not currently held and the
-  set of active \gls{cfg} nodes is non-empty) or a no-op (otherwise).
-
-\item \textbf{Unlock} phases likewise evaluate to either the machine
-  code for an unlock operation or a no-op.
-\item \textbf{Return} partially evaluates to either a no-op (usually)
-  or a branch back to the original program (if the set of active
-  \gls{cfg} nodes is empty and the current instruction pointer is not
-  in the $\mathit{Cont}$ set).
-
-\item \textbf{CheckForEntry} evaluates to a fragment of machine code
-  which compares the current instruction pointer and stack to those
-  present in the entry points of the various \gls{cfg} fragments which
-  are to be protected, branching to an appropriate
-  \textsc{InterpreterState} if one matches.  In many cases the
-  information in the current \textsc{InterpreterState} will be
-  sufficient to determine where all of these branches will go, in
-  which case the resulting machine code fragment will be empty.
-
-\item \textbf{Emul} and \textbf{Succ} will usually partially evaluate
-  to the program's original instruction, which can be emitted
-  unchanged into the final patch.  The two exceptions are instruction
-  pointer-relative addressing modes, which must be re-encoded to still
-  refer to the same data after moving the instruction, and control
-  flow transfer instructions, which are discussed below.
+\item $\mathit{startingAt}(r)$, of type $\textsc{StaticCfgNode}
+  \rightarrow \textsc{Set}(\textsc{DynCfgNode})$, maps from a static
+  \gls{cfg} node $r$ to the set of dynamic \gls{cfg} nodes which match
+  $r$ and which start a new dynamic \gls{cfg} fragment.  In the
+  example of \autoref{fig:fix:eq}, $\mathit{startingAt}$ maps B to
+  $\{B_0\}$ and every other instruction to $\varnothing$.
+\item $\mathit{adv}(\mathrm{x}, \alpha)$, of type
+  $(\textsc{StaticCfgNode}, \textsc{Set}(\textsc{DynCfgNode}))
+  \rightarrow \textsc{Set}(\textsc{DynCfgNode})$, is defined by
+  \begin{displaymath}
+    \mathit{adv}(\mathrm{x}, \alpha) = \left\{r \middle| s \in \alpha \wedge r \in s.\mathit{next} \wedge r ~ \mathrm{x}\right\}
+  \end{displaymath}
+  $n.\mathit{next}$ is the set of \gls{cfg} nodes which can follow the
+  \gls{cfg} node $n$ and $n ~ \mathrm{x}$ is true precisely when $n$
+  matches $\mathrm{x}$.
 \end{itemize}
-The result of partially evaluating the nodes in the extended \gls{cfg}
-is a set of fragments of machine code which can be stitched together
-and combined with the \textsc{PatchStrategy} to form a complete fix.
+\autoref{fig:fix:eg:application} shows how to apply this grammar to
+the example.  Note that this figure shows both the output
+\gls{shadowfragment} (using unboxed nodes and single arrows) and the
+way in which it is generated (using boxed and double arrows).  For
+instance, the \graphNT{A, $\varnothing$, \false, \textbf{Emul}}
+non-terminal at the top-right of the figure is transformed by
+production \circled{$4_d$} into the terminal A followed by the
+non-terminal \graphNT{B, $\varnothing$, \false, \textbf{Unlock}}, and
+the new non-terminal is itself transformed by production
+\circled{$5_b$} into \graphNT{B, $\varnothing$, \false,
+  \textbf{CheckForEntry}}.  This process of transforming non-terminals
+continues until only terminals remain, at which point the resulting
+graph forms the \gls{shadowfragment} shown in
+\autoref{fig:fix:eg:shadow}.
 
-Control flow instructions require special handling in this model.
-Most program instructions can be copied verbatim into the generated
-fix as part of the \textbf{Emul} phase, but copying a control flow
-transfer would cause the patch to lose control of the program's
-execution, with undesirable results.
+Note that the entire loop, except for the first A instruction, will be
+run under the lock, and so the lock could be held for an arbitrarily
+large number of instructions even though the original dynamic
+\gls{cfg} only required it to be held for four instructions.  To
+understand why this is necessary, consider the infinite execution
+$A_0B_0C_0A_1B_1C_1{\ldots}A_nB_nC_n{\ldots}$.  This produces an
+infinite set of dynamic \gls{cfg} matches $\{B_iC_iA_{i+1}B_{i+1} | i
+\in \mathbb{Z}\}$, and, by the second correctness criterion given
+above, the \gls{shadowfragment} cannot release the lock whilst in any
+of these fragments.  The fragments overlap, as $B_j$ will be present
+in both the fragment for $i=j$ and that for $i=j-1$, and so, by
+induction, the \gls{shadowfragment} cannot release the lock once
+it has been acquired.
 
-Direct branch instructions, which set the instruction pointer to a
-constant value, are simple to handle.  In the interpreter, they are
-implemented by updating the $\mathit{active}$ set to reflect the
-thread's new potential locations in the dynamic \gls{cfg}, and, since
-the target of the branch is a constant, the same approach can be used
-in the compiler.  The only difference is that updating
-$\mathit{active}$ now means emitting a branch to an appropriate
-\textsc{InterpreterState}.
+This has unfortunate implications for the program's liveness, as it
+means that {\technique} fixes can introduce unbounded additional
+delays into the program's execution; in the worst case, they could
+even introduce a complete deadlock.  {\Technique} mitigates this
+problem using a timeout in the lock acquire operation.  If this
+timeout expires then the \gls{shadowfragment} returns the program to
+normal operation\footnote{Assuming, of course, that the instruction to
+  which the \protect\gls{shadowfragment} is to return is not a member
+  of $\mathit{Cont}$.  Otherwise, the \protect\gls{shadowfragment}
+  continues until the program exits $\mathit{Cont}$.}, abandoning its
+attempt to impose the desired synchronisation.  This risks
+re-introducing the original bug, but avoids introducing any additional
+deadlocks.
 
-Direct call instructions, which jump to a function at a constant
-address after pushing a return address, require only slightly more
-care.  In the common case, where the called function is part of the
-main program binary, these can be treated as a push followed by an
-ordinary direct branch, reducing the problem to the previous case.
-Calls to library functions, such as \texttt{malloc} or
-\texttt{printf}, are more problematic.  The fix generation process has
-two options for handling these, both bad:
+\begin{sanefig}
+  \newcommand{\graphLine}[3]{\draw [->,double] (#1) -- node [above = -.05] {\circled{#2}} (#3);}
+  \newcommand{\nextline}[3]{\draw [->,double] (#1.east) -- ++(.2,0) -- ++(0,-.5) -- node [above = -.05] {\circled{#2}} ++(-14.5,0) --  ++(0,-.8) -- (#3.west);}
+  \begin{tikzpicture}
+    \tikzstyle{graphNT}+=[minimum width=2.2cm];
+    \node at (0,0) (CFE) {\textbf{CheckForEntry}};
+    \node at (3,0) (Lock) {\textbf{Lock}};
+    \node at (6,0) (Return) {\textbf{Return}};
+    \node at (9,0) (Emul) {\textbf{Emul}};
+    \node at (11.8,0) (Unlock) {\textbf{Unlock}};
+
+    \node at (0,-1) (r0) {};
+    \node at (0,-2.3) (r1) {};
+
+    \node at (0,-3.6) (r2) {};
+    \node at (0,-4.95) (r3) {};
+    \node at (0,-6.25) (r4) {};
+
+    \node at (0,-7.55) (r5) {};
+
+    \path (r5) ++(0,-2.86) node (r9) {}
+               ++(0,-1) node (r10) {}
+               ++(0,-1.9) node (r11) {}
+               ++(0,-1) node (r12) {}
+               ++(0,-1.3) node (r13) {};
+
+    \node at (CFE |- r0) (AnfCFE) [graphNT] {A,$\varnothing$,\false};
+    \node at (Lock |- r0) (AnfL) [graphNT] {A,$\varnothing$,\false};
+    \node at (Return |- r0) (AnfR) [graphNT] {A,$\varnothing$,\false};
+    \node at (Emul |- r0) (AnfE) [graphNT] {A,$\varnothing$,\false};
+    \node at (Unlock |- r0) (A0) [CfgInstr] {A};
+    \node at (Unlock |- r1) (BnfU) [graphNT] {B,$\varnothing$,\false};
+    \graphLine{AnfCFE}{\one}{AnfL}
+    \graphLine{AnfL}{$2_b$}{AnfR}
+    \graphLine{AnfR}{$3_b$}{AnfE}
+    \graphLine{AnfE}{$4_d$}{A0}
+    \draw[->] (A0) -- (BnfU);
+
+    \node at (CFE |- r2) (BnfCFE) [graphNT] {B,$\varnothing$,\false};
+    \node at (Lock |- r2) (B0fL) [graphNT] {B,$B_0$,\false};
+    \node at (Return |- r2) (Acq) [CfgInstr, inner sep = 0, outer sep=-1pt] {Acquire lock};
+    \node at (Return |- r3) (B0tR) [graphNT] {B,$B_0$,\true};
+    \node at (Emul |- r3) (B0tE) [graphNT] {B,$B_0$,\true};
+    \node at (Unlock |- r3) (B0) [CfgInstr] {B};
+    \node at (Unlock |- r4) (C0tU) [graphNT] {C,$C_0$,\true};
+    \graphLine{BnfCFE}{\one}{B0fL}
+    \graphLine{B0fL}{$2_a$}{Acq}
+    \draw[->] (Acq) -- (B0tR);
+    \graphLine{B0tR}{$3_b$}{B0tE}
+    \graphLine{B0tE}{$4_d$}{B0}
+    \draw[->] (B0) -- (C0tU);
+
+    \nextline{BnfU}{$5_b$}{BnfCFE};
+
+    \node at (CFE |- r5) (C0tCFE) [graphNT] {C,$C_0$,\true};
+    \node at (Lock |- r5) (C0tL) [graphNT] {C,$C_0$,\true};
+    \node at (Return |- r5) (C0tR) [graphNT] {C,$C_0$,\true};
+    \node at (Emul |- r5) (C0tE) [graphNT] {C,$C_0$,\true};
+    \node at (Unlock |- r5) (C0) [CfgInstr] {C};
+    \path (C0.south) ++ (-.6,-1.4) node (DntU) [graphNT, minimum width = 0] {\shortstack[c]{D,$\varnothing$,\\\true}};
+    \path (C0.south) ++ (.6,-.8) node (A0tU) [graphNT, minimum width = 0] {\shortstack[c]{A,$A_0$,\\\true}};
+    \graphLine{C0tCFE}{\one}{C0tL}
+    \graphLine{C0tL}{$2_b$}{C0tR}
+    \graphLine{C0tR}{$3_b$}{C0tE}
+    \graphLine{C0tE}{$4_a$}{C0}
+    \draw[->,ifTrue] (C0.south) -- (DntU);
+    \draw[->,ifFalse] (C0.south) -- (A0tU);
+    \nextline{C0tU}{$5_b$}{C0tCFE};
+
+    \node at (CFE |- r9) (Rel) [CfgInstr, outer sep = -1pt] {\!Release lock\!};
+    \node at (CFE |- r10) (D0fCFE) [graphNT] {D,$\varnothing$,\false};
+    \node at (Lock |- r10) (D0fL) [graphNT] {D,$\varnothing$,\false};
+    \node at (Return |- r10) (D0fR) [graphNT] {D,$\varnothing$,\false};
+    \node at (Emul |- r10) (D) [CfgInstr] {\texttt{jmp} D};
+    \draw[->] (Rel) -- (D0fCFE);
+    \graphLine{D0fCFE}{\one}{D0fL}
+    \graphLine{D0fL}{$2_b$}{D0fR}
+    \graphLine{D0fR}{$3_a$}{D}
+    \draw [->,double] (DntU.east) -- ++(.2,0) -- ++(0,-.65) -- node [pos=.455, above = -.05] {\circled{$5_a$}} ++(-13.31,0) --  ++(0,-.5) -- (Rel.west);
+
+    \node at (CFE |- r11) (A0tCFE) [graphNT] {A,$A_0$,\true};
+    \node at (Lock |- r11) (A0tL) [graphNT] {A,$A_0$,\true};
+    \node at (Return |- r11) (A0tR) [graphNT] {A,$A_0$,\true};
+    \node at (Emul |- r11) (A0tE) [graphNT] {A,$A_0$,\true};
+    \node at (Unlock |- r11) (A1) [CfgInstr] {A};
+    \node at (Unlock |- r12) (B1tU) [graphNT] {B,$B_1$,\true};
+    \graphLine{A0tCFE}{\one}{A0tL}
+    \graphLine{A0tL}{$2_b$}{A0tR}
+    \graphLine{A0tR}{$3_b$}{A0tE}
+    \graphLine{A0tE}{$4_d$}{A1}
+    \draw[->] (A1) -- (B1tU);
+    \draw [->,double] (A0tU.east) -- ++(.2,0) -- ++(0,-3.9) -- node [pos=.505, above = -.05] {\circled{$5_b$}} ++(-14.58,0) --  ++(0,-.75) -- (A0tCFE.west);
+
+    \node at (CFE |- r13) (B1tCFE) [graphNT] {\shortstack[c]{B,$B_1$,\\\true}};
+    \node at (Lock |- r13) (B01tL) [graphNT] {\shortstack[c]{B,$\{B_0;B_1\}$,\\\true}};
+    \node at (Return |- r13) (B01tR) [graphNT] {\shortstack[c]{B,$\{B_0;B_1\}$,\\\true}};
+    \node at (Emul |- r13) (B01tE) [graphNT] {\shortstack[c]{B,$\{B_0;B_1\}$,\\\true}};
+    \node at (Unlock |- r13) (B1) [CfgInstr] {B};
+    \graphLine{B1tCFE}{\one}{B01tL}
+    \graphLine{B01tL}{$2_a$}{B01tR}
+    \graphLine{B01tR}{$3_b$}{B01tE}
+    \graphLine{B01tE}{$4_d$}{B1}
+    \draw[->] (B1.east) -- ++(1.4,0) -- ++(0,10.0) -| (C0tU.north);
+    \nextline{B1tU}{$5_b$}{B1tCFE}
+
+  \end{tikzpicture}
+  \caption{Application of the algorithm in
+    \autoref{fig:fix:graph_grammar} to the example in
+    \autoref{fig:fix:eg}.  In this figure, boxed nodes show
+    \textsc{Configuration}s and double arrows show the productions
+    used to transform between them, while unboxed nodes and single
+    arrows show the terminals and output edges.  The final
+    \protect\gls{shadowfragment}, \autoref{fig:fix:eg:shadow}, can be
+    recovered from this figure by removing all of the boxed nodes and
+    double arrows.  The $\mathit{phase}$ field of non-terminals is
+    shown in the headings above the graph, rather than in the
+    non-terminals themselves, for reasons of clarity and space.}
+  \label{fig:fix:eg:application}
+\end{sanefig}
+
+\section{Control flow}
+Control flow instructions require special care in the \textbf{Emul}
+phase, as they are the only ones which cannot be copied verbatim from
+the input static \gls{cfg} to the shadow fragment.
+
+Direct branches are simple to handle, as the target of the branch is
+available statically and can be easily represented in the graph
+structure of the shadow fragment.  This means that direct branch
+instructions become no-op instructions (production \circled{$4_b$}),
+while conditional branches can be handled by simply copying the
+conditional branch instruction into the output and updating its
+targets (production \circled{$4_a$}).
+
+\todo{Assuming that the lock is held at the start of the call...}
+Direct function calls are only moderately more difficult.  In the
+common case, the called function will be in the main program binary,
+and these can be treated as pushing the return address on to the stack
+and then branching to the start of the function, reducing the problem
+to the previous case (production \circled{$4_c$}).  Calls to library
+functions, such as \texttt{malloc} or \texttt{printf}, are more
+problematic.  The fix generation process has two options for handling
+these, both bad:
 \begin{itemize}
 \item It could call into the library function whilst holding the lock.
   This ensures that the desired atomic blocks behave atomically, but
@@ -432,42 +701,122 @@ two options for handling these, both bad:
   less likely to correctly eliminate the bug.
 \end{itemize}
 {\Implementation} always chooses to hold the lock when calling library
-functions from a patch and relies on the \textbf{Lock} timeout to
-mitigate the damage from deadlocks.  These timeouts might themselves
-lead to incomplete protection, but generally happen far less
-frequently than library calls, and so present a far less severe
-problem\footnote{Note that library calls are not the only possible
-  cause of deadlocks here, as the program might implement its own
-  synchronisation primitives\cite{Jannesari2010}, and so the timeout
-  would still be necessary even if the patch lock were dropped during
-  library calls.}.
+functions from a patch, by simply copying the \texttt{call}
+instruction into the shadow fragment (production \circled{$4_d$}), and
+relies on the \textbf{Lock} timeout to mitigate the damage from
+deadlocks.  These timeouts might themselves lead to incomplete
+protection, but generally happen far less frequently than library
+calls, and so present a far less severe problem.
 
 Indirect control flow transfers, which set the instruction pointer to
 a computed value, form the final class of instructions requiring
-special handling.  They are difficult to handle in the compiler as the
-target is not available at compile time, and the compiler must emit
-code to perform appropriate runtime checks, along with the code for
-all of the needed \textsc{InterpreterState}s.  I describe here how to
-handle simple indirect jumps; generalising to indirect calls and
-return instructions is straightforwards.
+special handling; these include computed branches, computed calls, and
+the \texttt{ret} instruction.  They are difficult to handle as the
+target of the branch is not available at compile time, and so cannot
+be represented in the shadow fragment's graph structure.  The grammar
+must instead emit terminals which perform appropriate actions at
+run-time; in particular, it must either select an appropriate
+non-terminal to branch to or return the program to normal operation,
+releasing the lock first if necessary.  There are three cases to
+consider:
+\begin{itemize}
+\item The indirect branch might select a successor instruction X such
+  that $\mathit{adv}(\textrm{X}, \alpha)$ is non-empty.  In that case,
+  the grammar must select the successor non-terminal \graphNT{X,
+    $\mathit{adv}(\textrm{X}, \alpha)$, $l$, \textbf{Unlock}}.  There
+  set of such possible successors is finite, known, and, usually,
+  small, and so the grammar can simply emit run-time tests to
+  recognise each and branch to an appropriate non-terminal.
+\item It might select an X such that $\mathit{adv}(\textrm{X},
+  \alpha)$ is empty but $\mathrm{X} \in \mathit{Cont}$.  In that case,
+  the grammar must drop the lock, but must continue expanding the
+  shadow fragment, as it is not safe to return control to the program
+  at any instruction in the $\mathit{Cont}$ set.  It can achieve this
+  by selecting the non-terminal \graphNT{X, $\varnothing$, $l$,
+    \textbf{Unlock}}.  Again, the set of possible X matching this case
+  is known and finite, and so the grammar can again emit tests for
+  each\editorial{These two first cases are kind of redundant, but I
+    think it's easier to understand if they're split out.}.
+\item The selected X might not fit into either of the other two cases,
+  and in that case the grammar must return control to the original
+  program, releasing the lock first if necessary.
+\end{itemize}
+\autoref{fig:fix:eg_indirect} shows how this works for indirect branch
+instructions using an example \textsc{Configuration} and
+$\mathit{Cont}$ set.  Indirect calls and \texttt{ret} instructions
+behave in a broadly similar way, except that they also need to include
+some updates to the stack.
 
-It is worthwhile considering again what the interpreter does when
-confronted with an indirect jump (generalising to indirect calls and
-return instructions is straightforward).  There are three cases to
-consider.  Most simply, there might be an edge in the \gls{cfg}
-matching the desired control flow transfer, in which case the
-interpreter just updates $\mathit{active}$ and continues.
-Alternatively, there might not be such an edge, in which case the
-interpreter will set $\mathit{active}$ to $\varnothing$ and release
-the lock.  It will then either continue interpreting, if the current
-instruction is in $\mathit{Cont}$, or return to the original program,
-otherwise.  Importantly, there are a finite (and usually small) number
-of possible targets of the branch which will cause the interpreter to
-continue interpreting, and so the compiler can just emit a conditional
-branch to an appropriate \textsc{InterpreterState} for each of them
-and a single indirect branch for the remaining case where the
-interpreter exits\footnote{There is a slight complication here that
-  the calculation of the target address might involve a load from
-  memory, and hence might suffer a race, and the compiler must be
-  careful not to drop the lock prematurely if that happens.
-  {\Implementation}'s patches correctly avoid this issue.}.
+\begin{sanefig}
+  \shortstack[c]{
+    \subfigure[][Inputs]{
+      \graphNT{
+        a: \texttt{jmp} $\mathit{exp}$,
+        \begin{math}
+          \left\{
+            \begin{tikzpicture}[node distance = .2 and .3,outer sep = -2pt, inner sep = 0pt, baseline = (C.north)]
+              \node (A) [CfgInstr] {$a_0$};
+              \node (B) [CfgInstr, below left = of A] {$B_0$};
+              \node (C) [CfgInstr, below = of A] {$C_0$};
+              \node (D) [CfgInstr, below right = of A] {$D_0$};
+              \draw[->] (A) -- (B);
+              \draw[->] (A) -- (C);
+              \draw[->] (A) -- (D);
+            \end{tikzpicture},
+            \begin{tikzpicture}[node distance = .2 and .3,outer sep = -2pt, inner sep = 0pt, baseline = (C.north)]
+              \node (A) [CfgInstr] {$a_1$};
+              \node (C) [CfgInstr, below = of A] {$C_1$};
+              \draw[->] (A) -- (C);
+            \end{tikzpicture},
+            \begin{tikzpicture}[node distance = .2 and -.1,outer sep = -2pt, inner sep = 0pt, baseline = (C.north)]
+              \node (A) [CfgInstr] {$a_2$};
+              \node (C) [CfgInstr, below left = of A] {$C_1$};
+              \node (D) [CfgInstr, below right = of A] {$D_1$};
+              \draw[->] (A) -- (C);
+              \draw[->] (A) -- (D);
+            \end{tikzpicture}
+          \right\}
+        \end{math},
+        $l$,
+        \textbf{Emul}
+      }
+      $\mathit{Cont} = \{\mathrm{E}\}$
+    }\\
+    \hspace{\textwidth}
+  }\\
+  \shortstack[c]{
+    \subfigure[][Output]{
+      \begin{tikzpicture}[node distance = 0.3 and 1]
+        \node (r) [CfgInstr] {\texttt{R0} $\leftarrow \mathit{exp}$};
+        \node (b) [below = of r, CfgInstr] {\texttt{if R0 = b}};
+        \node (b0) [right = of b, graphNT] {B, $B_0$, $l$, \textbf{Unlock}};
+        \node (c) [below = of b, CfgInstr] {\texttt{if R0 = c}};
+        \node (c0) [right = of c, graphNT] {B, $\{C_0; C_1\}$, $l$, \textbf{Unlock}};
+        \node (d) [below = of c, CfgInstr] {\texttt{if R0 = d}};
+        \node (d0) [right = of d, graphNT] {D, $\{D_0; D_1\}$, $l$, \textbf{Unlock}};
+        \node (e) [below = of d, CfgInstr] {\texttt{if R0 = e}};
+        \node (e0) [right = of e, graphNT] {E, $\varnothing$, $l$, \textbf{Unlock}};
+        \node (rel) [rectangle, dashed, draw, below = of e, CfgInstr] {Release lock};
+        \node (end) [below = of rel, CfgInstr] {\texttt{jmp R0}};
+        \draw[->] (r) -- (b);
+        \draw[->,ifTrue] (b) -- (b0);
+        \draw[->,ifTrue] (c) -- (c0);
+        \draw[->,ifTrue] (d) -- (d0);
+        \draw[->,ifTrue] (e) -- (e0);
+        \draw[->,ifFalse] (b) -- (c);
+        \draw[->,ifFalse] (c) -- (d);
+        \draw[->,ifFalse] (d) -- (e);
+        \draw[->,ifFalse] (e) -- (rel);
+        \draw[->] (rel) -- (end);
+      \end{tikzpicture}
+    }\\
+    \hspace{\textwidth}
+  }
+  \caption{An example indirect control-flow operation.  The release
+    lock operation is only present if $l=\true$.  Not shown: restoring
+    the previous value of register {\tt R0}.}
+  \label{fig:fix:eg_indirect}
+\end{sanefig}
+
+\section{Discussion}
+\todo{Some kind of discussion goes here}
