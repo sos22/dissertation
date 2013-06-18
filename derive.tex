@@ -712,7 +712,7 @@ fragments of {\StateMachine} which are substituted into the
 {\StateMachines} as it is being built.  In effect, the library
 function is treated as a special sort of instruction, and compiled in
 exactly the same way as any other instruction.  This is generally
-straightforwards and I do not give full details here.
+straightforward and I do not give full details here.
 
 \todo{Odd linkage?} Library function handling is particularly
 important when investigating double-free bugs, as the actual crash
@@ -2347,6 +2347,63 @@ is therefore not safe to ``upgrade'' a block from thread-private to
 thread-shared if there is any possibility of that block containing a
 thread-private pointer; upgrading blocks early and pessimistically
 means that it is never necessary to do so.
+
+\section{Removal of implementation limitations}
+\todo{Rewrite me.}
+
+{\Implementation} makes some additional simplifying assumptions beyond
+this:
+\begin{itemize}
+\item Most importantly, the analysis phases only directly model the
+  program itself, and not any of the libraries used by it.  Library
+  functions called from the program are either replaced by
+  manually-constructed model implementations or, if no such
+  implementation is available, simply ignored.  This is clearly
+  unsound, and will lead to {\implementation} producing incorrect
+  characterisations of bugs which depend on interactions with library
+  functions.
+
+\item {\Implementation} assumes that the program does not make use of
+  any unaligned memory accesses.  For many architectures this would be
+  a sound assumption, as most processors do not support such accesses.
+  Even where they are supported, they tend to be very slow, and so
+  most programs will avoid them as far as
+  possible\editorial{Evidence?}.  This is therefore a reasonable
+  approximation.  Removing this limitation would, again, be a matter
+  of implementation, although doing so would probably result in a
+  significant performance penalty even for programs which do not use
+  unaligned accesses.
+
+\item Similarly, it uses a very simple model of the program's address
+  space in which every address is either permanently fully accessible
+  or permanently completely inaccessible.  Read-only and no-execute
+  memory and operations which change the accessibility of memory are
+  not considered.  {\Implementation} will therefore not be able to
+  handle bugs whose behaviour depends on these features.  Note that
+  {\implementation} can still be used on \emph{programs} which depend
+  on complex memory accessibility options, provided the specific
+  \emph{bug} being investigated does not.
+
+\item The only type of concurrency considered is multi-threading.
+  {\Implementation} does not, for instance, consider the effects of
+  asynchronous signal handlers or other upcall mechanisms.  It will
+  therefore not be able to process bugs which depend on such unusual
+  concurrency mechanisms.
+
+\item It assumes that the only thing which could possibly modify
+  memory is the program itself and system calls invoked by the
+  program.  It does not consider, for instance, races which are
+  mediated through inter-process shared memory, or the effects of APIs
+  like \texttt{ptrace}.  This matches the structure of most concurrent
+  software, which generally avoids cross-process memory modification
+  when possible\needCite{}.
+\end{itemize}
+The first of these are simple implementation limitations; fixing them
+would require some engineering effort, but no deep conceptual changes.
+Removing the final assumption would require {\implementation} to be
+able to model the behaviour of several processes at once, which would
+require significant changes to the implementation but only modest ones
+to the {\technique} technique itself.
 
 \section{Discussion}
 
