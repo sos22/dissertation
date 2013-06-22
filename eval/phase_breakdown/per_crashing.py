@@ -204,7 +204,7 @@ main_fig.boxes.append(common.Box(main_fig.highest(),
 
 output.write("\\begin{tikzpicture}\n")
 
-common.draw_furniture(output, main_fig)
+common.draw_furniture(output, chart_keys, main_fig)
 common.draw_pdfs(output, chart_keys, charts, defect_samples, total_samples, replicates, chart_labels, main_fig)
 
 output.write("\\end{tikzpicture}\n")
