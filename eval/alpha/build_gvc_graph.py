@@ -17,6 +17,12 @@ max_count = 2000.0
 min_time = 0.0001
 max_time = 60
 
+def float_range(lower, upper, step):
+    i = float(lower)
+    while i < upper:
+        yield i
+        i += step
+        
 def count_to_y(cnt):
     return (cnt - min_count) / (max_count - min_count) * common.figheight
 def prop_to_y(cnt):
@@ -63,7 +69,7 @@ s.sort()
 
 print "  %% Number of VCs generated"
 print "  \\draw[->] (0,%f) -- (0,%f);" % (offset, offset + common.figheight)
-for t in xrange(0,max_count+1,400):
+for t in float_range(0,max_count+1,400):
     print "  \\node at (0, %f) [left] {%s};" % (offset + count_to_y(float(t)), t)
     print "  \\draw [color=black!10] (0,%f) -- (%f, %f);" % (offset + count_to_y(float(t)), common.figwidth, offset + count_to_y(float(t)))
 print "  \\node at (-30pt, %f) [rotate=90, anchor=south] {\\shortstack{Total number of\\\\\\glspl{verificationcondition}\\\\(solid)}};" % (offset + common.figheight / 2)
@@ -75,7 +81,7 @@ print "        ;"
 
 print "  %% Proportion generating VCs"
 print "  \\draw[->] (%f,%f) -- (%f,%f);" % (common.figwidth, offset, common.figwidth, offset + common.figheight)
-for t in xrange(0,101,20):
+for t in float_range(0,101,20):
     print "  \\node at (%f, %f) [right] {%d\\%%};" % (common.figwidth, prop_to_y(t/100.0), t)
 print "  \\node at (%f, %f) [rotate=-90, anchor=south] {\\shortstack{Proportion generating \\\\\\glspl{verificationcondition}\\\\(dashed)}};" % (common.figwidth + .8, offset + common.figheight / 2)
 print "  \\draw[dashed] (0, %f)" % (offset)
