@@ -19,8 +19,8 @@ cd complex_hb
 cd ..
 
 cd complex_alias
-# ./complex_alias.py easy < easy > complex_alias_easy.tex
-# ./complex_alias.py hard < hard > complex_alias_hard.tex
+# ./complex_alias.py easy < easy > easy.tex
+# ./complex_alias.py hard < hard > hard.tex
 cd ..
 
 cd alpha

@@ -3,7 +3,6 @@
 import sys
 import math
 import itertools
-import random
 
 figwidth = 6.1
 figheight = 6.0
@@ -11,12 +10,8 @@ sep = 1.5
 tick_width = 0.05
 timeout_time = 300
 oom_mem = 2353004544
-nr_replicates = 1000
-confidence_size = 0.9
 
 easy = sys.argv[1] == "easy"
-
-random.seed(0)
 
 if easy:
     step = 5
@@ -72,16 +67,20 @@ for l in sys.stdin.xreadlines():
             ooms[k] = ooms.get(k, 0) + 1
         else:
             timeouts[k] = timeouts.get(k, 0) + 1
-        mems[k].append(oom_mem * 2)
-        times[k].append(timeout_time * 2)
+        mems[k].append(oom_mem)# * 2)
+        times[k].append(timeout_time)# * 2)
     elif len(w) == 4:
         times[k].append(float(w[3]))
         mems[k].append(long(w[2]))
 
 for v in times.itervalues():
     v.sort()
+    del v[0]
+    del v[-1]
 for v in mems.itervalues():
     v.sort()
+    del v[0]
+    del v[-1]
 
 def rr(lower, upper, contours):
     if upper < lower:
@@ -94,101 +93,59 @@ def mean(data):
     return sum(data) / float(len(data))
 
 # Assume that Y is a linear function of X.  We have a bunch of samples
-# of Y at X=0 and X=1.  Use them to produce a confidence interval for
-# the value of X which gives Y=val.
-def intercept_confidence_interval(samples0, samples1, val, confidence):
+# of Y at X=0 and X=1.  Use them to produce the interval for the value
+# of X which gives Y=val.
+def intercept_interval(samples0, samples1, val):
     val = float(val) # For sanity
 
     def intercept(y0, y1):
-        return (val - y0) / (y1 - y0)
-    # Fuck it, this is too hard to do analytically.  Bootstrap it.
-    # Slightly tricky case: what do we do if the two samples are
-    # equal?  The intercept isn't well-defined in that case.  Easy
-    # answer: treat it as 0 for the lower bound, .5 for the median,
-    # and 1 for the upper bound, when the thing is in range, or
-    # -inf, nothing, or +inf otherwise.
-    def gen_replicate():
-        y0 = random.choice(samples0)
-        y1 = random.choice(samples1)
-        if abs(y0 - y1) < abs(0.000001 * y0):
-            # Avoid rounding error with a special case when they're very close together
-            if y0 <= val <= y1 or y1 <= val <= y0:
-                return "ir"
+        if y1 == y0:
+            if val == y0:
+                return .5
             else:
-                return "oor"
+                return -1.0
         else:
-            r = intercept(y0, y1)
-            assert not math.isnan(r)
-            return r
-    replicates = [gen_replicate() for _ in xrange(nr_replicates)]
-    replicates.sort()
-    def map_none(x, y, z):
-        if x == "ir":
-            return y
-        elif x == "oor":
-            return z
-        else:
-            return x
-    median_rep = [map_none(r, 0.5, None) for r in replicates if r != "oor"]
-    if median_rep == []:
-        return None
-    median_rep.sort()
-    median = quantile(median_rep, .5)
+            return (val - y0) / (y1 - y0)
+    intercepts = [intercept(y0, y1) for y0 in samples0 for y1 in samples1]
+    intercepts.sort()
 
-    lower_rep = [map_none(r, 0, float("-inf")) for r in replicates]
-    lower_rep.sort()
-    lower = quantile(lower_rep, (1 - confidence) / 2)
-
-    upper_rep = [map_none(r, 1, float("+inf")) for r in replicates]
-    upper_rep.sort()
-    upper = quantile(upper_rep, (1 + confidence) / 2)
-
-    r = (lower, median, upper)
-    assert (r[0] <= r[1] <= r[2]) or (r[2] <= r[1] <= r[0])
-    return r
+    return (intercepts[0], sum(intercepts, .5) / len(intercepts), intercepts[-1])
 
 def defect(where):
     return min(((where[0] - ref[0]) ** 2 + (where[1] - ref[1]) ** 2) for ref in [(0,0),(0,1),(1,0),(1,1)])
-# Try to massage things a bit so that it fits into a
-# valid sequence.
+
+# Try to massage things a bit so that it fits into a valid sequence.
+# This is essentially the Smith-Waterman algorithm applied in a
+# slightly odd way.  The SW operations of insert, delete, and matching
+# base pairs map to insert, deleting, or preserving events here.  We
+# have some rules which just affect cost (if you have to delete or
+# insert something, do it near a corner) and some which affect
+# correctness (number of C events must be even, must correctly follow
+# state machine).  Violation of the former results in an increase to
+# the cost; violation of the latter results in the cost becoming None.
 def build_massaged(end_state, c_cntr, state, old, idx, memo):
     def h(m):
         #sys.stderr.write("%*sbuild_massaged(%d, %d, %d, %s) -> %s\n" % (idx, "", end_state, c_cntr, state, old[idx:], m))
         pass
     if idx == len(old):
+        # Reached the end.  Assign final cost.
         if state == end_state and (c_cntr % 2 == 0):
             r = (0, [])
-        elif c_cntr % 2 != 0:
-            r = (1000, [])
         else:
-            # Ended in the wrong state.  Try to fix it up.
-            fixup = None
-            if end_state == -1:
-                if state == 0:
-                    fixup = "L-"
-            elif end_state == 0:
-                if state == -1:
-                    fixup = "L+"
-                elif state == 1:
-                    fixup = "U-"
-            elif end_state == 1:
-                if state == 0:
-                    fixup = "U+"
-            if fixup == None:
-                # Give up
-                r = (1000, [])
-            else:
-                r = (1, [(fixup, (0,1))])
+            # Ending here violates the state machine or the even-C
+            # constraint.
+            r = (None, [])
         h(str(r))
         return r
-    mem = memo.get((idx,c_cntr,state), None)
+    memkey = (idx, c_cntr, state)
+    mem = memo.get(memkey, None)
     if mem != None:
         h("%s (memo)" % str(mem))
         return mem
     e = old[idx]
     key = e[0]
     where = e[1]
-    if not 0 <= where[0] <= 1 and 0 <= where[1] <= 1:
+    if not (0 <= where[0] <= 1 and 0 <= where[1] <= 1):
         # Out of the box, no choice but to drop it.
         r = build_massaged(end_state, c_cntr, state, old, idx + 1, memo)
         h("%s (oob)" % str(r))
@@ -199,84 +156,75 @@ def build_massaged(end_state, c_cntr, state, old, idx, memo):
         # events as well.
 
         # What happens if we just take it?
-        (a, b) = build_massaged(end_state, c_cntr, state, old, idx + 1, memo)
+        options = [build_massaged(end_state, c_cntr, state, old, idx + 1, memo)]
         if state == -1:
             # What happens if we lob in an L+?
-            (a2, b2) = build_massaged(end_state, c_cntr, 0, old, idx + 1, memo)
-            if a2 + 1 < a:
-                b = [("L+", where)] + b2
-                a = a2 + 1
+            (a, b) = build_massaged(end_state, c_cntr, 0, old, idx + 1, memo)
+            if a != None:
+                options.append((a + 1, [("L+", where)] + b))
         elif state == 0:
             # Could encounter an L-, C, or U+ from here.
-            b3 = b
-            a3 = a
-            d = 0
             for (opt,ns,c) in [("L-", -1, 0), ("C", 0, 1), ("U+", 1, 0)]:
-                (a2, b2) = build_massaged(end_state, c_cntr+c, ns, old, idx + 1, memo)
-                if a2 + 1 < a3 + d:
-                    a3 = a2
-                    d = 1
-                    b3 = [(opt, where)] + b2
-            b = b3
-            a = a3 + d
+                (a, b) = build_massaged(end_state, c_cntr+c, ns, old, idx + 1, memo)
+                if a != None:
+                    options.append((a + 1, [(opt, where)] + b))
         else:
             assert state == 1
             # Try a U-
-            (a2, b2) = build_massaged(end_state, c_cntr, 0, old, idx + 1, memo)
-            if a2 + 1 < a:
-                a = a2 + 1
-                b = [("U-", where)] + b2
+            (a, b) = build_massaged(end_state, c_cntr, 0, old, idx + 1, memo)
+            if a != None:
+                options.append((a + 1, [("U-", where)] + b))
+        options.sort()
+        (a, b) = options[0]
         r = (a, [e] + b)
         h("%s (vertex)" % str(r))
+        memo[memkey] = r
         return r
 
     if key == "*" and state != 0:
-        if 0 <= where[0] <= 1 and 0 <= where[1] <= 1:
-            if state == -1:
-                (a, b) = build_massaged(end_state, c_cntr + 1, 1, old, idx + 1, memo)
-                r = (a, [("L+", where), ("C", where), ("U+", where)] + b)
-            else:
-                (a, b) = build_massaged(end_state, c_cntr + 1, -1, old, idx + 1, memo)
-                r = (a, [("U-", where), ("C", where), ("L-", where)] + b)
+        if state == -1:
+            (a, b) = build_massaged(end_state, c_cntr + 1, 1, old, idx + 1, memo)
+            r = (a, [("L+", where), ("C", where), ("U+", where)] + b)
         else:
-            r = build_massaged(end_state, c_cntr, state, old, idx + 1, memo)
+            (a, b) = build_massaged(end_state, c_cntr + 1, -1, old, idx + 1, memo)
+            r = (a, [("U-", where), ("C", where), ("L-", where)] + b)
         h("%s (*)" % str(r))
+        memo[memkey] = r
         return r
+
     # Is it valid to take this one?
     isValid = ((state == 0 and key in ["L-", "C", "U+"]) or (state == -1 and key == "L+") or (state == 1 and key == "U-"))
-    if key == "C" and isValid:
-        # Have to take it.
-        (take_defect, take_rest) = build_massaged(end_state, c_cntr + 1, state, old, idx + 1, memo)
-        res = (take_defect, [e] + take_rest)
-        memo[(idx, c_cntr, state)] = res
-        h("%s (forced take)" % str(res))
-        return res
 
+    # What happens if we decide to drop it?
     (skip_defect, skip_rest) = build_massaged(end_state, c_cntr, state, old, idx + 1, memo)
-    skip_defect += defect(where)
-    if not isValid:
-        # Have to skip it
-        res = (skip_defect, skip_rest)
-        memo[(idx, c_cntr, state)] = res
-        h("%s (forced skip)" % str(res))
-        return res
-    assert key != "C"
+    if skip_defect != None:
+        skip_defect += defect(where)
+        if not isValid:
+            # Have to skip it
+            res = (skip_defect, skip_rest)
+            memo[memkey] = res
+            h("%s (forced skip)" % str(res))
+            return res
+
     # Have a choice between skipping and taking.  Go with whichever
     # one minimises the total defect.
     next_state = state
-    new_key = key
     if key == "L-":
         next_state = -1
     elif key == "U+":
         next_state = 1
     elif key in ["L+", "U-"]:
         next_state = 0
-    (take_defect, take_rest) = build_massaged(end_state, c_cntr, next_state, old, idx + 1, memo)
-    if take_defect < skip_defect:
-        res = (take_defect, [(new_key, where)] + take_rest)
+    if key == "C":
+        nextCCntr = c_cntr + 1
+    else:
+        nextCCntr = c_cntr
+    (take_defect, take_rest) = build_massaged(end_state, nextCCntr, next_state, old, idx + 1, memo)
+    if take_defect != None and (skip_defect == None or take_defect < skip_defect):
+        res = (take_defect, [e] + take_rest)
     else:
         res = (skip_defect, skip_rest)
-    memo[(idx, c_cntr, state)] = res
+    memo[memkey] = res
     h("%s (choice)" % str(res))
     return res
 
@@ -417,8 +365,7 @@ def contour_map(extent, data, suppress, nr_contours, timeouts, ooms,
                     else:
                         events.append(("V", pt(1))) 
                     # Contour intersections
-                    alpha = intercept_confidence_interval(start_samples, end_samples,
-                                                          c, confidence_size)
+                    alpha = intercept_interval(start_samples, end_samples, c)
                     if alpha == None:
                         return # Cannot derive intercept, let later
                                # phases fix it up.
@@ -469,8 +416,8 @@ def contour_map(extent, data, suppress, nr_contours, timeouts, ooms,
                     if d < best_defect:
                         (best_start, best_defect, best_massaged) = (s, d, m)
                 if best_defect != 0:
-                    sys.stderr.write("Initial sequence %s\n" % str(events))
-                    sys.stderr.write("Massaged sequence %s, defect %f, start %d\n" % (str(best_massaged), best_defect, best_start))
+                    sys.stderr.write("(%d,%d): Initial sequence %s\n" % (x, y, str(events)))
+                    sys.stderr.write("(%d,%d):Massaged sequence %s, defect %f, start %d\n" % (x, y, str(best_massaged), best_defect, best_start))
                 sm_inputs[c] = (best_start, best_massaged)
             # Now render the confidence intervals.
             for (c, (start_state, events)) in sm_inputs.iteritems():
@@ -621,13 +568,16 @@ def suppress(x, y):
     else:
         return None
 contour_map( ((0,0),(figwidth,figheight)), times, suppress, 10, timeouts, ooms,
-             [1.0, 3.0, 10.0, 30.0, 100.0, 300.0],
+             [1.0
+              #, 3.0, 10.0, 30.0, 100.0, 200.0, 300.0
+              ],
              {1.0: ("", "", "1s"),
               3.0: ("color=blue", "", "3s"),
               10.0: ("color=brown", "", "10s"),
               30.0: ("color=green", "", "30s"),
               100.0: ("color=purple", "", "100s"),
-              300.0: ("", "", "300s")})
+              200.0: ("", "", "200s"),
+              })
 contour_map( ((figwidth+sep, 0), (figwidth * 2 + sep, figheight)), mems, suppress, 10, timeouts, ooms,
              [ 10000000, 30000000, 100000000, 300000000, 1000000000, 2000000000],
              {(10000000): ("", "", "10MB"),

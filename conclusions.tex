@@ -18,9 +18,10 @@ the algorithm to take as input either source code or an intermediate
 format such as LLVM bitcode\needCite{}.  These provide the analysis
 with far more information than raw machine code and so might
 reasonably be expected to expand the fragments of program which it can
-consider.  Alternatively, the \gls{programmodel} could be extended
-with more powerful decompilation-style analyses, which would achieve
-much the same effect.
+consider.  Alternatively, the initial static analysis which builds the
+\gls{programmodel} could be extended to include more
+decompilation-style analyses, which would achieve much the same
+effect.
 
 \subsection{Reproducing bugs}
 
@@ -51,12 +52,13 @@ I have described how {\technique} can fix bugs by introducing an
 additional global lock.  This is effective but inefficient.  In
 particular, it can eliminate large numbers of safe instruction
 interleavings, leading to an unnecessary loss of concurrency.  This is
-an irritating limitation, as the \glspl{verificationcondition} specify
-precisely which interleavings are safe.  The fix generation process
-described in \autoref{sect:fix_global_lock} completely discards this
-information.  It would be interesting to investigate alternative
-schemes which make better use of it.
-  
+an especially irritating limitation because the prior analyses
+characterise precisely which interleavings are safe and which
+dangerous, in the form of the \glspl{verificationcondition}, and the
+fix generation process simply ignores this information.  It would be
+interesting to investigate alternative schemes which make better use
+of it.
+
 \begin{wrapfigure}{o}{4cm}
   \vspace{-12pt}
   \begin{figgure}
@@ -81,7 +83,7 @@ schemes which make better use of it.
 \end{wrapfigure}
 One approach to doing so makes use of a kind of extended hazard
 pointer\cite{Michael2004}.  Consider, for example, the threads in
-Figure~\ref{fig:concl:hb_graph}.  This is intended to illustrate a
+\autoref{fig:concl:hb_graph}.  This is intended to illustrate a
 construction in which there is one thread which issues two loads and
 another which issues two stores, and the program will crash if both
 stores occur in between the two loads and the variable $\mathit{idx}$
@@ -94,27 +96,26 @@ with a matching $\mathit{idx}$, make sure to wait for the hazard to
 clear before running the second one.  This would fix the bug and allow
 the two threads to run in parallel for most of the critical section,
 or for all of it when the $\mathit{idx}$s differ.  The loss of
-concurrency associated with the fix would therefore usually be much
-lower.  On the other hand, managing the hazards would potentially be
-quite complex, which might itself lead to reduced performance in some
-cases.
+concurrency, and hence loss of performance, associated with the fix
+would therefore usually be much lower.
 
 \chapter{Conclusions}
 
 I have described {\technique}, a set of techniques for finding,
-reproducing, and fixing synchronisation bugs starting from a runnable
-copy of the program, without access to the program's source and with
-minimal manual user intervention.  I have also described my prototype
-implementation, {\implementation}, and discussed in detail its
-performance and effects on a variety of real and artificial test bugs
-and programs.  The result is that {\technique} is highly effective at
-all of its goals when used on the artificial test cases, and performs
-well enough to be useful for some more realistic tests taken from very
-large existing pieces of software.  I have also demonstrated some of
-the limitations of {\technique} in its current form; primarily, that
-it struggles to solve the aliasing problems necessary to handle more
-complicated bugs.  Finally, I have compared {\technique} to a variety
-of existing systems, highlighting similarities and differences.
+characterising, reproducing, and fixing atomicity violation bugs
+starting from a runnable copy of the program, without access to the
+program's source and with minimal manual user intervention.  I have
+also described my prototype implementation, {\implementation}, and
+discussed in detail its performance and effects on a variety of real
+and artificial test bugs and programs.  The result is that
+{\technique} is highly effective at all of its goals when used on the
+artificial test cases, and performs well enough to be useful for some
+more realistic tests taken from very large existing pieces of
+software.  I have also demonstrated some of the limitations of
+{\technique} in its current form; primarily, that it struggles to
+solve the aliasing problems necessary to handle more complicated bugs.
+Finally, I have compared {\technique} to a variety of existing
+systems, highlighting similarities and differences.
 
 The most important contribution of this work is the crash enforcement
 mechanism, which can take a description of a concurrency bug in a
