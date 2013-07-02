@@ -4,6 +4,12 @@ import sys
 import common
 import math
 import random
+import tarfile
+import re
+
+DESIRED_FNAMES = re.compile(r"interfering[0-9]*\.bubble")
+
+random.seed(0)
 
 nr_replicates = 1000
 
@@ -37,22 +43,23 @@ chart_labels = {"cicfg": "Build interfering \\gls{cfg}",
                 "cs": "Build cross-product {\\StateMachine}",
                 "ce": "Run cross-product {\\StateMachine}",
                 "sc": "Final satisfiability check"}
-def read_one_sequence(defects):
-    try:
-        (when, msg) = common.get_line()
-    except StopIteration:
+START_INTERFERING_RE = re.compile(r"start interfering CFG [0-9]*/[0-9]* for DynRip\[[0-9a-f]*\]")
+def read_one_sequence(defects, get_line, _pushback, fname):
+    t = get_line()
+    if t == None:
         return None
-    if msg != "start interfering CFG":
-        common.fail("Lost sequencing at %s" % msg)
+    (when, msg) = t
+    if not START_INTERFERING_RE.match(msg):
+        common.fail("Lost sequencing at %s in %s" % (msg, fname))
     start_time = when
     expected_start = when
     r = []
     key = None
     while True:
-        (when, msg) = common.get_line()
+        (when, msg) = get_line()
         if msg == "stop interfering CFG":
             end_time = when
-            (_, msg) = common.get_line()
+            (_, msg) = get_line()
             w = msg.split()
             if w[:2] != ["high", "water:"]:
                 common.fail("Lost sequencing 2 at %s" % msg)
@@ -70,7 +77,10 @@ def read_one_sequence(defects):
             defects[key] = 0
         defects[key] += start - expected_start
 
-        (when, msg) = common.get_line()
+        t = get_line()
+        if t == None:
+            return None
+        (when, msg) = t
         rr = {"key": key, "duration": when - start}
         if msg == "timeout":
             rr["failed"] = "timeout"
@@ -84,6 +94,10 @@ def read_one_sequence(defects):
         if rr["failed"]:
             end_time = when
             break
+    # Check for leftovers
+    t = get_line()
+    assert t == None
+
     if not defects.has_key("leftover"):
         defects["leftover"] = 0
     defects["leftover"] += end_time - expected_start
@@ -93,24 +107,34 @@ def read_one_sequence(defects):
 
 defects = {}
 sequences = []
+t = tarfile.open("bubbles.tar")
 while True:
-    try:
-        l = common.get_line()
-    except StopIteration:
+    ti = t.next()
+    if ti == None:
         break
-    (_, msg) = l
-    if len(msg.split()) != 3 or msg.split()[:2] != ["start", "crashing"]:
-        common.fail("Lost sequence 1 at %s" % msg)
-    while True:
-        l = next(common.stdin)
-        common.stdin.q.append(l)
-        lookahead = " ".join(l.split()[1:])
-        if lookahead.split() == ["stop", "crashing", msg.split()[-1]]:
-            break
-        r = read_one_sequence(defects)
+    if not ti.isfile() or not DESIRED_FNAMES.match(ti.name):
+        continue
+    content = t.extractfile(ti)
+    lines = common.pushback(iter(content))
+    def get_line():
+        try:
+            l = lines.next()
+        except StopIteration:
+            return None
+        w = l.split()
+        assert w[0][-1] == ":"
+        msg = " ".join(w[1:])
+        if msg in ["exit, status 0", "parent woke up"]:
+            return get_line()
+        return (float(w[0][:-1]), msg)
+    r = read_one_sequence(defects, get_line, lambda _: abort(), ti.name)
+    content.close()
+    if r != None:
         sequences.append(r)
-    (_, msg2) = common.get_line()
-    assert msg2.split() == ["stop", "crashing", msg.split()[-1]]
+
+t.close()
+
+print "Done parse input"
 
 def sequences_to_chartset(sequences):
     charts = {}
@@ -194,7 +218,7 @@ output = file(sys.argv[1], "w")
 
 output.write("\\begin{tikzpicture}\n")
 
-common.draw_furniture(output, main_fig)
+common.draw_furniture(output, chart_keys, main_fig)
 common.draw_pdfs(output, chart_keys, charts, defect_samples, total_samples, replicates, chart_labels, main_fig)
 
 output.write("\\end{tikzpicture}\n")

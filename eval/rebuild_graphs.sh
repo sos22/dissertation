@@ -40,9 +40,14 @@ cd ..
 cd ..
 
 cd bubble_charts
-./rebuild.sh
+#./rebuild.sh
 cd ..
 
 cd dyn_convergence
 # ./rebuild.sh
+cd ..
+
+cd phase_breakdown
+./per_crashing.py
+./per_interfering.py per_interfering
 cd ..

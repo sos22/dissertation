@@ -191,7 +191,7 @@ class Figure(object):
                  "y_min", "y_max", "x_scale", "boxes", "time_to_y",
                  "y_to_time", "kernel_box_height"]
     def __init__(self, time_to_y, y_to_time, boxes):
-        self.figwidth = 14.5
+        self.figwidth = 13.5
         self.maxtime = 500.0
         self.mintime = 0.000005
         self.nr_time_steps = 500.0
@@ -211,6 +211,13 @@ class Figure(object):
 def gini_coefficient(samples):
     n = len(samples)
     return 1 - (n - sum([(i * y) for (i,y) in enumerate(samples)]) / sum(samples)) * 2 / (n - 1)
+
+def display_number(number, sd):
+    n = decimal.Decimal(str(number))
+    digits = pow(10, (decimal.Decimal(str(sd)).log10() - decimal.Decimal("0.5")).to_integral())
+    n = (n / digits).quantize(decimal.Decimal("1")) * digits
+    print "display_number(%s, %s) = %s" % (repr(number), repr(sd), repr(n))
+    return n
 
 # Samples should be in time space.
 def plot_pdf(output, x, time_samples, replicated_samples, pdf_prob, settings, key):
@@ -328,7 +335,7 @@ def plot_pdf(output, x, time_samples, replicated_samples, pdf_prob, settings, ke
 
     # Kernel
     bw_y = y_min - settings.kernel_box_height / 2
-    output.write("  \\draw (%f, %f) rectangle (%f, %f);\n" % (x, bw_y - bw / 2, x + 1.0/bw * pdf_prob / len(samples), bw_y + bw / 2))
+    output.write("  \\draw [fill=white] (%f, %f) rectangle (%f, %f);\n" % (x, bw_y - bw / 2, x + 1.0/bw * pdf_prob / len(samples), bw_y + bw / 2))
 
     # Mean + sd of mean
     mean = sum(time_samples) / len(time_samples)
@@ -346,12 +353,6 @@ def plot_pdf(output, x, time_samples, replicated_samples, pdf_prob, settings, ke
                                                      x+.05, time_to_y(mean + sd)))
 
     # Numerical mean display
-    def display_number(number, sd):
-        n = decimal.Decimal(str(number))
-        digits = pow(10, decimal.Decimal(str(sd)).log10().to_integral() - 1)
-        n = (n / digits).quantize(decimal.Decimal("1")) * digits
-        print "Round %s +- %s -> %s" % (str(number), str(sd), str(n))
-        return n
     w = pdf(mean_y) * pdf_prob - 0.05
     # Bit of a hack: move the build strategy label a bit to avoid
     # overlapping
@@ -392,7 +393,7 @@ def draw_box(output, x, box, chart, replicates, r_project, nr_samples, x_scale):
     output.write("  \\fill [color=black!50] (%f, %f) rectangle (%f, %f);\n" % (x - width / 2, lower_div,
                                                                                x + width / 2, upper_div))
     # Now the main box
-    output.write("  \\draw (%f, %f) rectangle (%f, %f);\n" % (x - width / 2, box.lower, x + width / 2, box.upper))
+    output.write("  \\draw [fill=white] (%f, %f) rectangle (%f, %f);\n" % (x - width / 2, box.lower, x + width / 2, box.upper))
     # And the division line
     output.write("  \\draw (%f, %f) -- (%f, %f);\n" % (x - width / 2, div, x + width / 2, div))
     # Node count.

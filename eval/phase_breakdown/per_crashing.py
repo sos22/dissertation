@@ -5,6 +5,10 @@ import math
 import random
 import decimal
 import common
+import tarfile
+import re
+
+DESIRED_FNAMES = re.compile(r"crashing[0-9]*\.bubble")
 
 random.seed(0)
 
@@ -37,27 +41,27 @@ chart_labels = {"build_ccfg": "Build crashing \\gls{cfg}",
                 "derive_icfgs": "Derive interfering \\glspl{cfg}",
                 "derive_catomic": "Derive C-atomic",
                 "per_icfg": "Process interfering \\glspl{cfg}"}
-def read_one_sequence(defects):
-    try:
-        (when, msg) = common.get_line()
-    except StopIteration:
-        return None
-    if msg != "start crashing thread":
-        common.fail("Lost sequencing at %s" % msg)
+
+START_CRASHING_RE = re.compile(r"start crashing thread DynRip\[[0-9a-f]*\]")
+
+def read_one_sequence(defects, get_line, pushback, fname):
+    (when, msg) = get_line()
+    if not START_CRASHING_RE.match(msg):
+        common.fail("Lost sequencing at %s in %s" % (msg, fname))
     start_time = when
     expected_start = when
     nr_produced = 0
     r = []
     key = None
     while True:
-        (when, msg) = common.get_line()
+        (when, msg) = get_line()
         if msg == "finish crashing thread":
             end_time = when
             break
         if msg == plt:
             r.append(plt)
             continue
-        if msg in ["done PLT check", "parent woke up"]:
+        if msg == "done PLT check":
             continue
         w = msg.split()
         if w[0:2] == ["high", "water:"]:
@@ -73,7 +77,7 @@ def read_one_sequence(defects):
             defects[key] = 0
         defects[key] += start - expected_start
 
-        (when, msg) = common.get_line()
+        (when, msg) = get_line()
         rr = {"key": key, "duration": when - start}
         if msg == "timeout":
             rr["failed"] = "timeout"
@@ -84,19 +88,22 @@ def read_one_sequence(defects):
             if w[0] == "produced" and w[2] == "interfering" and w[3] == "CFGs":
                 assert nr_produced == 0
                 nr_produced = int(w[1])
-                (what, msg) = common.get_line()
+                (what, msg) = get_line()
                 rr["duration"] = when - start
             assert msg.split()[0] in ["stop", "finish"] and " ".join(msg.split()[1:]) == key
             rr["failed"] = None
         expected_start = when
         r.append(rr)
-        l = next(common.stdin)
-        lookahead = " ".join(l.split()[1:])
-        if lookahead in [no_interfering_stores, early_out]:
-            assert nr_produced == 0
-            r.append(lookahead)
-        else:
-            common.stdin.q.append(l)
+        l = get_line()
+        if l != None:
+            if l[1] in [no_interfering_stores, early_out]:
+                assert nr_produced == 0
+                r.append(l[1])
+            else:
+                pushback("%f: %s\n" % (l[0], l[1]))
+    # Check for leftovers
+    t = get_line()
+    assert t == None
     if not defects.has_key("leftover"):
         defects["leftover"] = 0
     defects["leftover"] += end_time - expected_start
@@ -107,14 +114,38 @@ def read_one_sequence(defects):
 defects = {}
 sequences = []
 nr_produced_series = []
+
+t = tarfile.open("bubbles.tar")
 while True:
-    r = read_one_sequence(defects)
-    if r == None:
+    ti = t.next()
+    if ti == None:
         break
-    (sequence, nr_produced) = r
+    if not ti.isfile() or not DESIRED_FNAMES.match(ti.name):
+        continue
+    content = t.extractfile(ti)
+    lines = common.pushback(iter(content))
+    def get_line():
+        try:
+            l = lines.next()
+        except StopIteration:
+            return None
+        w = l.split()
+        assert w[0][-1] == ":"
+        msg = " ".join(w[1:])
+        if msg in ["exit, status 0", "parent woke up"]:
+            return get_line()
+        return (float(w[0][:-1]), msg)
+    def pushback(l):
+        lines.q.append(l)
+    (sequence, nr_produced) = read_one_sequence(defects, get_line, pushback, ti.name)
+    content.close()
     nr_produced_series.append(nr_produced)
     sequences.append(sequence)
 nr_produced_series.sort()
+
+t.close()
+
+print "Done parse input"
 
 output = file("per_crashing.tex", "w")
 output.write("%% Defects by phase:\n")
@@ -209,78 +240,3 @@ common.draw_pdfs(output, chart_keys, charts, defect_samples, total_samples, repl
 
 output.write("\\end{tikzpicture}\n")
 output.close()
-
-n = float(len(nr_produced_series))
-nr_zero = float(len(filter(lambda x: x == 0, nr_produced_series)))
-base_prob = .6
-def count_to_x(count):
-    return count * main_fig.figwidth / max_cdfs
-def prob_to_y(prob):
-    prob -= base_prob
-    return prob * (main_fig.y_max - main_fig.y_min) + main_fig.y_min
-
-def draw_field(output, xscale, yscale, xmarks, ymarks):
-    maxx = max(map(xscale, xmarks))
-    minx = min(map(xscale, xmarks))
-    maxy = max(map(yscale, ymarks))
-    miny = min(map(yscale, ymarks))
-    # Axes and field.
-    for xlabel in xmarks:
-        output.write("  \\draw [color=black!10] (%f, %f) -- (%f, %f);\n" % (xscale(xlabel), miny,
-                                                                            xscale(xlabel), maxy))
-        output.write("  \\node at (%f, %f) [below] {%s};\n" % (xscale(xlabel), miny, xlabel))
-    for ylabel in ymarks:
-        if ylabel >= base_prob * 100:
-            output.write("  \\draw [color=black!10] (%f, %f) -- (%f, %f);\n" % (minx, yscale(ylabel), maxx, yscale(ylabel)))
-            output.write("  \\node at (%f, %f) [left] {%s};\n" % (minx, yscale(ylabel), ylabel))
-    output.write("  \\draw[->] (%f, %f) -- (%f, %f);\n" % (minx, miny, maxx, miny))
-    output.write("  \\draw[->] (%f, %f) -- (%f, %f);\n" % (minx, miny, minx, maxy))
-
-# Do a CDF of the number of interfering CFGs generated per instruction.
-output = file("nr_produced_cdf.tex", "w")
-output.write("\\begin{tikzpicture}\n")
-draw_field(output, lambda x: count_to_x(float(x)), lambda perc: prob_to_y(float(perc[:-2])/100.0), map(str, xrange(0,int(max_cdfs)+1,10)), ["%d\\%%" % x for x in xrange(int(100*base_prob),101,5)])
-
-# Data series
-dkw_bound = (-math.log(0.9/2) / (2 * n)) ** .5
-print "dkw_bound %f (%d samples)" % (dkw_bound, len(nr_produced_series))
-for level in xrange(1, int(max_cdfs)+1):
-    cum = float(len(filter(lambda x: x < level, nr_produced_series))) / len(nr_produced_series)
-    low = cum - dkw_bound
-    high = cum + dkw_bound
-    if high > 1:
-        high = 1
-    output.write("  \\fill [color=black!50] (%f, %f) rectangle (%f, %f);\n" % (count_to_x(level - .5), prob_to_y(low),
-                                                                               count_to_x(level + .5), prob_to_y(high)))
-    output.write("  \\draw (%f, %f) -- (%f, %f);\n" % (count_to_x(level - .5), prob_to_y(cum),
-                                                       count_to_x(level + .5), prob_to_y(cum)))
-
-output.write("\\end{tikzpicture}\n")
-output.close()
-
-# Now do a count table
-cums = []
-acc = 0
-for s in nr_produced_series:
-    acc += s
-    cums.append(s)
-cums.sort(reverse = True)
-def x_scale(nr_crashing):
-    return nr_crashing * main_fig.figwidth
-def y_scale(nr_interfering):
-    return nr_interfering * (main_fig.y_max - main_fig.y_min) + main_fig.y_min
-
-output = file("nr_produced_counts.tex", "w")
-output.write("\\begin{tikzpicture}\n")
-draw_field(output, lambda x: x_scale(float(x[:-2]) / 35.0), lambda y: y_scale(float(y[:-2]) / 100), ["%d\\%%" % x for x in xrange(0,36,5)], ["%d\\%%" %x for x in xrange(0,101,10)])
-output.write("  \\draw ")
-first = True
-for (nr_crashing, nr_interfering) in enumerate(cums):
-    if nr_crashing / float(len(cums)) > .35:
-        break
-    if not first:
-        output.write("        -- ")
-    first = False
-    output.write("(%f, %f)\n" % (x_scale(nr_crashing / float(len(cums))), y_scale(nr_interfering / float(cums[0]))))
-output.write("        ;\n")
-output.write("\\end{tikzpicture}\n")

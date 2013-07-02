@@ -63,13 +63,13 @@ while True:
     end = t
 
     samples.append({"name": name,
-                    "tot": end - start,
+                    "tot": (end - start) * 1000,
                     "nr_instrs": nr_instrs,
-                    "ics": ics,
-                    "bs": bs,
-                    "sc": sc,
-                    "r": r,
-                    "defect": end - start - ics - bs - sc - r,
+                    "ics": ics * 1000,
+                    "bs": bs * 1000,
+                    "sc": sc * 1000,
+                    "r": r * 1000,
+                    "defect": (end - start - ics - bs - sc - r) * 1000,
                     "np": nr_points,
                     "clobber": clobbered,
                     "relocs": relocs,
@@ -80,7 +80,7 @@ while True:
                     })
 
 for s in samples:
-#    print "%s %d %f %f %f %f %f %f %f %d %d %d" % (s["name"], s["nr_instrs"], s["tot"], s["ics"], s["bs"], s["sc"], s["r"], s["defect"], s["tot"] - s["sc"],
-#                                                   s["np"], s["clobber"], s["relocs"])
+    print "%s %d %f %f %f %f %f %f %f %d %d %d" % (s["name"], s["nr_instrs"], s["tot"], s["ics"], s["bs"], s["sc"], s["r"], s["defect"], s["tot"] - s["sc"],
+                                                   s["np"], s["clobber"], s["relocs"])
 #    print "%d %d %d %d %f" % (s["pi"], s["b"], s["l"], s["u"], s["tot"])
-    print "%d %s" % (s["pi"] - s["l"] * 6 - s["u"] * 6 - s["nr_instrs"] - s["clobber"], s["name"])
+    #print "%d %s" % (s["pi"] - s["l"] * 6 - s["u"] * 6 - s["nr_instrs"] - s["clobber"], s["name"])
