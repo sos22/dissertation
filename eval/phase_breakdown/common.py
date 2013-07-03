@@ -82,8 +82,8 @@ def guess_bandwidth(pts):
     iqr = quantile(pts, 0.75) - quantile(pts, 0.25)
     sd = iqr / 1.34
 
-    return 3.69 * sd / (len(pts) ** .2)
-    
+    return 3.69 * sd / (len(pts) ** .2) / 2
+
 def density_estimator(pts, kernel, bandwidth):
     if kernel == uniform_kernel:
         # The result is the number of pts between k - bandwidth / 2
@@ -140,7 +140,10 @@ def get_line():
     l = next(stdin)
     w = l.split()
     assert w[0][-1] == ":"
-    return (float(w[0][:-1]), " ".join(w[1:]))
+    k = " ".join(w[1:])
+    if k == "exit, status 0":
+        return get_line()
+    return (float(w[0][:-1]), k)
 
 def draw_line(output, base, pts):
     first = True
@@ -162,7 +165,7 @@ def draw_line(output, base, pts):
     output.write("        ;\n")
 
 def draw_furniture(output, chart_keys, settings):
-    for t_label in ["0.00001", "0.0001", "0.001", "0.01", "0.1", "1", "10", "100"]:
+    for t_label in ["0.00001", "0.00002", "0.00003", "0.0001", "0.001", "0.01", "0.1", "1", "10", "100"]:
         y = settings.time_to_y(float(t_label))
         output.write("\\draw [color=black!10] (%f, %f) -- (%f, %f);\n" % (-settings.x_scale, y, (len(chart_keys) + 1) * settings.figwidth / (len(chart_keys) + 2), y))
         output.write("\\node at (%f, %f) [left] {%s};\n" % (-settings.x_scale, y, t_label))
@@ -199,7 +202,7 @@ class Figure(object):
         self.y_max = 10.0
         self.x_scale = 0.5
         self.boxes = boxes
-        self.kernel_box_height = 0.8
+        self.kernel_box_height = 1.0
 
         self.time_to_y = time_to_y
         self.y_to_time = y_to_time

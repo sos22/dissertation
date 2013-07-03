@@ -15,13 +15,14 @@ Experiments still to run:
 \item Need to do the fix overhead experiments.
 \item Finish re-doing the alpha experiments.
 \item Need to re-do the no \gls{ic-atomic} tests.
+\item Need to re-do the phase breakdown experiments.
 \end{itemize}
 
 \begin{sanefig}
   \begin{tabular}{lp{12.7cm}}
     $x \pm^n_p y$ & The mean, $x$, and sample standard deviation, $y$, of $n$ samples of some distribution with appropriately low skew and kurtosis.\\
     & \\
-    $x \pm^n_\mu y$ & The mean, $x$, of some distribution and the standard deviation of the mean, $y$, calculated by applying the central limit theorem to $n$ samples of the distribution.\editorial{I'm at least half convinced that \emph{none} of the distributions here are well-behaved enough for the CLT to apply, at least not with the sample sizes I have, but it's pretty much a convention to just assume that it always does, so meh.}\\
+    $x \pm^n_\mu y$ & The mean, $x$, of some distribution and the standard deviation of the mean, $y$, calculated by applying the central limit theorem to $n$ samples of the distribution.\\
     & \\
     $x \pm_\mu y$ & The mean, $x$, of some distribution and the standard deviation of the mean, $y$, calculated from distributions derived elsewhere rather than directly from sampled data.\\
     & \\
@@ -260,14 +261,15 @@ analyse a bug; realistic ones would, of course, take much longer.
   \biggraph{eval/artificial_bugs/cdf1.tex}
   \caption{CDF of time taken to reproduce the bugs in the artificial
     test programs, with and without \glspl{bugenforcer}, and some
-    summary statistics.  Note log scale.  All times in seconds.  Means
-    calculated ignoring timeouts.  Grey region gives a 90\% confidence
-    interval, computed using the Dvoretsky-Kiefer-Wolfowitz-Massart
-    (DKWM) inequality\cite{Massart1990}.  Note that DKWM confidence
-    intervals are curve-wise rather than point-wise i.e. there is a
-    90\% confidence that the entire curve is within the shaded region,
-    rather than that any given point is. \todo{Need more abscissae.
-      Experimental protocol?}}
+    summary statistics.  All configurations tested 110 times, in
+    random order, with the first ten results discarded.  Note log
+    scale.  All times in seconds.  Means calculated ignoring timeouts.
+    Grey region gives a 90\% confidence interval, computed using the
+    Dvoretsky-Kiefer-Wolfowitz-Massart (DKWM)
+    inequality\cite{Massart1990}.  Note that DKWM confidence intervals
+    are curve-wise rather than point-wise i.e. there is a 90\%
+    confidence that the entire curve is within the shaded region,
+    rather than that any given point is. \todo{Need more abscissae.}}
   \label{fig:eval:artificial_bugs:cdf1}
 \end{sanefig}
 
@@ -434,15 +436,16 @@ ones considered earlier, but the time to generate the
 \begin{sanetab}
   \begin{tabbular}{|p{2.72cm}|p{5.8cm}|p{5.8cm}|}
     \hline
-    Test bug                  & \Gls{programmodel} & \Glspl{verificationcondition} \\
+    Test bug                  & \Gls{programmodel}  & \Glspl{verificationcondition} \\
     \hline
-    \bugname{thunderbird}     & $1240 \pm^{10}_p 10$s              & $0.39 \pm^{10}_p 0.01$s \\
-    \bugname{mysql}           & $1088 \pm^{10}_p 7$s               & $1.13 \pm^{10}_p 0.02$s\\
+    \bugname{thunderbird}     & $1240 \pm^{10}_p 10$s & $0.39 \pm^{10}_p 0.01$s \\
+    \bugname{mysql}           & $1088 \pm^{10}_p 7$s  & $1.13 \pm^{10}_p 0.02$s\\
     \hline
   \end{tabbular}
   \caption{Time taken to build the \gls{programmodel} and
     \glspl{verificationcondition} for the bugs taken from real
-    programs.  \todo{Experimental protocol?}}
+    programs.  All tests were run eleven times with the result of the
+    first run discarded.}
   \label{tab:eval:real_bugs:analysis_time}
 \end{sanetab}
 
@@ -720,12 +723,12 @@ I consider each phase in turn\editorial{Orphan}.
 
 \subsection{Per-\gls{crashingthread} analysis}
 
+\todo{RERUN}
+
 \begin{sanefig}
   \biggraph{eval/phase_breakdown/per_crashing.tex}
   \caption{Distributions of time taken by the per-crashing instruction
-    steps of the analysis.  \todo{Explain the bulbs.  Make a gap
-      between derive interfering \protect\glspl{cfg} skip box and
-      kernel.}}
+    steps of the analysis.}
   \label{fig:eval:how:per_crashing_times}
 \end{sanefig}
 
@@ -768,22 +771,14 @@ information:
   the measured steps.  As can be seen, it is small relative to the
   other quantities measured, which is necessary for the other
   measurements to be meaningful.
-\item \todo{Blurg} The boxes above and below the PDFs give the number of
+\item The boxes above and below the PDFs give the number of
   potentially-crashing instructions which failed to complete that step
   and the number which did not start it at all, respectively, sized
   such that a constant area represents a constant probability across
   the figure.  Instructions skip a step if either a previous step
   failed or if a previous step was able to show that no bug is
-  possible.  For instance, instructions which access a fixed location
-  which is mapped by the program's ELF metadata are eliminated before
-  building the crashing \gls{cfg} and those for which the
-  \gls{programmodel} cannot find any racing instructions are
-  eliminated after deriving the interfering \glspl{cfg}.  As can be
-  seen, the majority of steps are skipped for the majority of
-  instructions, which is helpful when speculatively analysing a large
-  number of instructions.
-  \autoref{tab:eval:how:failures_per_crashing} gives more details of
-  the failures encountered during this phase.
+  possible.  \autoref{tab:eval:how:failures_per_crashing} gives more
+  details of the failures encountered during this phase.
   \begin{sanetab}
     \begin{tabbular}{|p{5.3cm}|p{2.9cm}|p{2.9cm}|p{2.9cm}|}
       \hline
@@ -791,7 +786,7 @@ information:
       \hline
       \RaggedRight Compile crashing {\StateMachine} & 8031 & 1 & 0 \\
       \RaggedRight Simplifying crashing {\StateMachine} & 8030 & 2 & 0 \\
-      Derive C-atomic & 3678 & 1 & 4 \\
+      \RaggedRight Derive C-atomic & 3678 & 1 & 4 \\
       \hline
     \end{tabbular}
     \caption{Causes of failures during per-crashing instruction
@@ -809,12 +804,49 @@ This reflects the fact that many of the algorithms have worst-case
 running time far worse than their common case.  Instructions which
 happen to hit one of the slow cases take a very long time to complete,
 while those which avoid the slow cases complete very quickly.  The
-time spent deriving C-atomic, for instance, has a median of a little
-over 1ms and a mean of 120ms, while the total time taken has a median
-of 30ms and a mean of 1500ms\editorial{No it doesn't!}.
+time spent deriving C-atomic, for instance, has a median of 1.3ms and
+a mean of 170ms, while the total time taken has a median of 11ms and a
+mean of seven seconds.
+
+Aside from those gross features, the distributions also exhibit some
+multi-modal behaviour, visible on the chart as a number of ``bulbs''
+in the CDFs.  These are accounted for by various special cases within
+{\implementation}:
+\begin{itemize}
+\item The first phase, ``Build crashing \gls{cfg}'', has a small mode
+  at around 20$\mu$s.  The potentially-crashing instructions in this
+  bulb are all part of the program's ELF PLT stubs.  {\Implementation}
+  assumes that these will never crash, allowing it to skip further
+  processing with very little work.
+\item The same phase also has a mode at about 2ms, which consists of
+  instructions which access either the stack or a statically constant
+  addresses.  There is no possibility of these instructions crashing
+  due to a race, so {\implementation} skips most of the analysis when
+  it detects one.
+\item The next phase, ``Compile crashing {\StateMachine}'', has a mode
+  at about 4ms.  This dereferences of pointers which the static
+  analysis component of the \gls{programmodel} can show to be valid,
+  either because they are fixed offsets from the stack pointer or
+  because they must have been dereferenced in the same thread before
+  reaching this instruction.  The {\StateMachine} is replaced with the
+  single state {\stSurvive}.
+\item Finally, the fourth phase, ``Derive interfering \glspl{cfg}'',
+  has a very large mode at about 2ms.  This consists of instructions
+  where none of the memory-accessing instructions remaining after
+  simplification could possibly race with another thread according to
+  the dynamic component of the \gls{programmodel}.  Such instructions
+  will never generate any interfering \glspl{cfg}, allowing
+  {\technique} to skip the rest of the analysis.
+\end{itemize}
+The overall effect of these special cases is that most
+potentially-crashing program instructions are able to skip most steps
+of the analysis.  This is a useful property when analysing a large
+number of instructions speculatively.
 
 \subsection{Per-\gls{interferingthread} analysis}
 \label{sect:eval:how:per_interfering}
+
+\todo{RERUN}
 
 The per-crashing instruction analysis generates a large number of
 pairs of crashing {\StateMachine} and interfering \gls{cfg} which are
@@ -901,15 +933,15 @@ cost of this phase of the analysis.
 
 \subsection{Costs of building \gls{bugenforcer}}
 
-\todo{REDO THIS SECTION WITH NEW DATA}
+\todo{RERUN}
 
 \begin{sanefig}
   \biggraph{eval/phase_breakdown/build_enforcer}
-  \caption{Time taken to convert the 3501
+  \caption{Time taken to convert the 4355
     \glspl{verificationcondition} generated by the experiments in
     \autoref{sect:eval:how:per_interfering} into \glspl{bugenforcer}.
     \autoref{fig:eval:how:build_enforcer_failures} gives more details
-    of the failures encountered. \todo{REDO} }
+    of the failures encountered. }
   \label{fig:eval:how:build_enforcer}
 \end{sanefig}
 
@@ -918,14 +950,14 @@ cost of this phase of the analysis.
     \hline
     Step & \Glspl{verificationcondition} starting step & Out of time & Out of memory \\
     \hline
-    Extract happens-before graph & 3501 & 28 & 20 \\
-    Place side conditions & 3453 & 0 & 2 \\
+    Extract happens-before graph & 4355 & 31 & 27 \\
+    Place side conditions        & 4297 & 0  & 3 \\
+    Compile                      & 4294 & 0  & 4 \\
     \hline
   \end{tabbular}
   \caption{Causes of failures converting \glspl{verificationcondition}
     to \glspl{bugenforcer}.  Note that the timeout runs from the start
-    of processing, rather than being restarted for each
-    step. \todo{REDO WITH NEW NUMBERS}}
+    of processing, rather than being restarted for each step.}
   \label{fig:eval:how:build_enforcer_failures}
 \end{sanetab}
 
@@ -936,8 +968,8 @@ figure divides the time taken into five steps:
 \begin{itemize}
 \item Extracting the happens-before graph, as discussed in
   \autoref{sect:enforce:slice_hb_graph}.  This step is generally
-  reasonably quick, with a median time of 16ms, but occasionally takes
-  a very long time, reaching the five minute timeout in 28 of the 3501
+  reasonably quick, with a median time of 20ms, but occasionally takes
+  a very long time, reaching the five minute timeout in 31 of the 4355
   runs.  This reflects the nature of the algorithm used: BDD
   reordering has a good common-case cost but a very poor worst-case
   one.  The \glspl{verificationcondition} which avoid the worst-case
@@ -954,13 +986,16 @@ figure divides the time taken into five steps:
   one is implemented using BDD reordering operations, and so is
   generally fast with a long tail of slow operations.  The small bulb
   of \glspl{verificationcondition} which complete in around 20$\mu$s
-  consists of the \glspl{verificationcondition} which had only the
-  trivial side condition \true, indicating that the happens-before
-  graph is sufficient to trigger the bug regardless of the program's
-  other state.
+  consists of the \glspl{verificationcondition} which depend only on
+  inputs which are available at the start of the \gls{crashingthread},
+  for which the placement problem is trivial.
 \item Building the patch strategy, expressed as the $\mathit{Cont}$
   and $\mathit{Patch}$ sets, as discussed in
-  \autoref{sect:enforce:gain_control}.  \todo{Explain shape a little?}
+  \autoref{sect:enforce:gain_control}.  The secondary mode at around
+  2ms consists of \glspl{bugenforcer} which only need to patch
+  instructions which are large enough to accommodate a branch
+  instruction.  Patching these will never corrupt any other
+  instructions, and so building the patch strategy is trivial.
 \item Compiling the resulting enforcer into an ELF shared object.
   {\Implementation} performs this step by generating a C source file
   and passing it off to the system compiler and linker, with the bulk
@@ -970,6 +1005,7 @@ figure divides the time taken into five steps:
 \end{itemize}
 
 \noindent
+\todo{check}
 This phase suffered a total of fifty failures, giving a failure rate
 of 1.4\%.  The per-\gls{crashingthread} and
 per-\gls{interferingthread} suffered failure rates of 0.1\% and 0.4\%,
@@ -981,13 +1017,15 @@ is unlikely to be a crippling limitation.
 
 \subsection{Costs of building fixes}
 
+\todo{RERUN}
+
 \Glspl{verificationcondition} can also be converted into fixes.
 \autoref{tab:eval:gen_fix_perf} shows how long that takes, using the
-4355 \glspl{verificationcondition} generated in the previous
-experiments.  As can be seen, the time taken is completely dominated
-by the system compiler.  This makes it difficult to explain why the
-process takes as long as it does in any meaningful way.  Nevertheless,
-these results confirm that building fixes from
+same one thousand \glspl{verificationcondition} as used in the
+previous experiment.  As can be seen, the time taken is completely
+dominated by the system compiler.  This makes it difficult to explain
+why the process takes as long as it does in any meaningful way.
+Nevertheless, these results confirm that building fixes from
 \glspl{verificationcondition} is itself a very fast operation,
 compared to building the \glspl{verificationcondition} themselves, and
 so this step is unlikely to be the most important barrier to practical
@@ -1008,7 +1046,7 @@ use of {\technique}.
     Total & $131.6 \pm^{4355}_\mu 0.5$ & $[95.8,97.4]$ & $[130.0,131.2]$ & $[168.3,174.1]$  \\
     \hline
   \end{tabbular}
-  \caption{Time taken to convert 4355 \glspl{verificationcondition}
+  \caption{Time taken to convert 1000 \glspl{verificationcondition}
     generated from MySQL to fixes.  All times in milliseconds.
     Distribution percentiles are given as 90\% confidence intervals,
     derived using a bootstrap with 1000 replicates.}
@@ -1098,35 +1136,6 @@ level and given some details of its operation.  This section aims to
 expand on that by providing some explanations for the properties
 observed and showing how they follow from the {\technique} design.
 
-%% Several experiments in this section include comparisons to
-%% {\randsched}, a random schedule exploration tool based on
-%% DataCollider\cite{Erickson2010} which I implemented for the purposes
-%% of this evaluation.  The tool works by setting instruction breakpoints
-%% on a selection of the program's memory-accessing instructions and
-%% then, when a thread reaches one of those instructions, setting memory
-%% watchpoints on the accessed locations and waiting for some other
-%% thread to trigger the watchpoint.  When that happens, it selects one
-%% of the threads at random to go first.  This causes the program to
-%% explore its possible schedules more quickly than it would if run
-%% normally, without needing {\technique}'s expensive initial analysis
-%% phase.
-
-%% The effectiveness of this kind of tool depends on two parameters: the
-%% placement of breakpoints, and how long the tool waits for another
-%% thread to arrive when one of the watchpoints is triggered.  For this
-%% evaluation, I configured {\randsched} to place breakpoints on half of
-%% the program's memory-accessing instructions, excluding instructions
-%% which access the stack, selecting a new set of instructions every
-%% 100ms, and to wait 100$\mu$s after a watchpoint is triggered.  These
-%% parameters minimised the median reproduction time for the
-%% \bugname{toctou} test with \texttt{NR\_PTRS} set to 100.
-
-%% Note that the 100$\mu$s timeout is much shorter than the 100-200ms
-%% timeout used by {\technique} \glspl{bugenforcer}, and so {\randsched}
-%% will make smaller modifications to the program's behaviour, but that
-%% setting a breakpoint on every other instruction means that it will
-%% make those modifications far more frequently.
-
 \subsection{Importance of side-condition checking}
 
 The most distinctive feature of {\technique}'s \gls{bugenforcer}
@@ -1147,15 +1156,15 @@ case, the happens-before graph is quite simple but the side-condition
 has a low probability of succeeding, and increasing the likelihood of
 reproducing the happens-before graph is insufficient to outweigh the
 reduced number of chances to satisfy the
-side-condition\editorial{Blah.  I have some maths which makes this a
-  bit more formal, but doesn't add enough clarity to justify the space
-  it'd take up.}.
+side-condition.
 
 \begin{sanefig}
   \biggraph{eval/artificial_bugs/special/indexed_toctou_no_scs.tex}
   \caption{Effect of side-condition checking on the time taken to
-    reproduce the indexed\_toctou bug. \todo{Meaning of grey bits?
-      Protocol?}}
+    reproduce the indexed\_toctou bug.  Each configuration was run 110 times
+    and the first 10 results discarded; the chart shows a CDF of the time taken
+    to reproduce in the remaining 100 runs.  The grey region gives a 90\%
+    DKWM confidence interval.}
   \label{fig:eval:indexed_toctou:no_scs}
 \end{sanefig}
 
@@ -1601,8 +1610,6 @@ simplification step is able to make quite dramatic simplifications to
 the structure of the {\StateMachines}, and so there is no need to ever
 consider all $2^N$ interleavings of the memory accesses.
 
-\todo{Do the same thing for memory usage.}
-
 \todo{Also put in some numbers on how effective the enforcers are.
   The answer is that they're very effective, and how effective they
   are is basically independent of $N$, but I should probably say that.}
@@ -1666,59 +1673,54 @@ consider all $2^N$ interleavings of the memory accesses.
   }
   {\hfill}
   \caption{The \bugname{complex\_alias}$_{L,S}$ test.
-    \texttt{NR\_PTRS} is the constant 100.  \todo{Kind of ugly.}}
+    \texttt{NR\_PTRS} is the constant 100.}
   \label{fig:eval:why:complex_aliasing}
 \end{sanefig}
 
 \begin{sanefig}
-  \todo{Why is 2GB contour special?}
   \biggraph{eval/complex_alias/hard}
   \caption{Memory and time used to analyse the
-    \bugname{complex\_alias}$_{L,S}$ test.  Configurations which timed
-    out are shown with a cross; those which ran out of memory are
-    shown with a circle.  Configurations which timed out on some
-    repeats and ran out of memory on others are shown with both.  For
-    the purposes of drawing the contours, experiments which failed
-    were treated as if they had completed precisely at the timeout and
-    used precisely the maximum memory; cells in which I made that
-    assumption are shown in red.}
+    \bugname{complex\_alias}$_{L,S}$ test.  Each configuration was run
+    eleven times, in random order, with the first, highest, and lowest
+    values discarded.  Lines show contours of the average of the
+    remaining eight values; grey regions show the range.
+    Configurations which timed out are shown with a cross; those which
+    ran out of memory are shown with a circle.  Configurations which
+    timed out on some repeats and ran out of memory on others are
+    shown with both.  For the purposes of drawing the contours,
+    experiments which failed were treated as if they had completed
+    precisely at the timeout and used precisely the maximum memory;
+    cells in which I made that assumption are shown in red.  Note that
+    the {\implementation} was configured to only run if the heap size
+    exceeded 2GB.}
   \label{fig:eval:why:complex_aliasing:result1}
 \end{sanefig}
 
 \noindent
 The previous section showed that {\technique} scales well to
-complicated happens-before graphs\editorial{null}; this one
-investigates how well it scales to complicated memory access patterns.
-This first test program used is shown in
-\autoref{fig:eval:why:complex_aliasing}.  The \gls{crashingthread}
-\gls{analysiswindow} consists of $S$ stores and $L$ loads, with all of
-the addresses unpredictable, followed by a final test on the sum of
-the loaded values.  This test always fails, and so the program never
-crashes, but {\technique} is unable to prove that without considering
-every possible way of evaluating the condition.
+complicated happens-before graphs; this one investigates how well it
+scales to complicated memory access patterns.  This first test program
+used is shown in \autoref{fig:eval:why:complex_aliasing}.  The
+\gls{crashingthread} \gls{analysiswindow} consists of $S$ stores and
+$L$ loads, with all of the addresses unpredictable, followed by a
+final test on the sum of the loaded values.  This test always fails,
+and so the program never crashes, but {\technique} is unable to prove
+that without considering every possible way of evaluating the
+condition.
 
-\todo{Word salad}
-
-\autoref{fig:eval:why:complex_aliasing:result1}\footnote{This
-  experiment was structured as eleven rounds with each pair of values
-  of $L$ and $S$ tested once in each round.  I discarded all results
-  from the first round and, in addition, the highest and lowest values
-  obtained for each pair.  The lines on the chart show contours of the
-  averages of the remaining eight samples and the grey regions show
-  the ranges observed.} shows the cost of analysing this program, in
-terms of time taken and memory consumed, as functions of $L$ and $S$.
-Both functions clearly increase rapidly with both $L$ and $S$, with a
-much stronger response to $L$ than to $S$.  In order to analyse this
-program, {\technique} must consider every possible value of each of
-the $L$ loads.  There are $S+1$ such values, corresponding to the $S$
-stores and the initial contents of memory, so {\technique} must
-consider $(S+1)^L$ possible aliasing patterns.  This is a rapidly
-growing function of both $L$ and $S$, and, for most relevant values of
-its inputs, grows more rapidly with $L$ than $S$, conveniently
-explaining the graph's most obvious qualitative features\footnote{This
-  model is, however, a poor quantitative fit for the data, as the cost
-  of analysing each aliasing pattern is also a function of $L$ and
-  $S$.}\!\!.
+\autoref{fig:eval:why:complex_aliasing:result1} shows the cost of
+analysing this program, in terms of time taken and memory consumed, as
+functions of $L$ and $S$.  Both functions clearly increase rapidly
+with both $L$ and $S$, with a much stronger response to $L$ than to
+$S$.  This reflects the fact that {\technique} effectively solves this
+aliasing problem by brute force, considering each combination of $S+1$
+values of the $L$ loads for a total of $(S+1)^L$ aliasing patterns.
+This is a rapidly growing function of both $L$ and $S$, and, for the
+relevant values of its inputs, grows more rapidly with $L$ than $S$,
+conveniently explaining the graph's most obvious qualitative
+features\footnote{This model is, however, a poor quantitative fit for
+  the data, as the cost of analysing each aliasing pattern is also a
+  function of $L$ and $S$.}\!\!.
 
 \begin{sanefig}
   {\hfill}
@@ -1784,17 +1786,8 @@ explaining the graph's most obvious qualitative features\footnote{This
 \begin{sanefig}
   \biggraph{eval/complex_alias/easy}
   \caption{Memory and time used to analyse the
-    \bugname{complex\_alias\_easy}$_{L,S}$ test.  Configurations which
-    timed out are shown with a cross; those which ran out of memory
-    are shown with a circle.  Configurations which timed out on some
-    repeats and ran out of memory on others are shown with both.  When
-    drawing the contours, I assumed that failed tests would have
-    completed after double the timeout time using double the available
-    memory.  Cells in which I made that assumption are shown in red.
-    Note that {\technique}'s garbage collector was configured to only
-    run when the heap size exceeded 2GB, and so the behaviour is
-    likely to be different on either side of the 2GB
-    contour. \todo{Repeats previous caption.}}
+    \bugname{complex\_alias\_easy}$_{L,S}$ test, in the same style as
+    \autoref{fig:eval:why:complex_aliasing:result1}.}
   \label{fig:eval:why:complex_aliasing:result2}
 \end{sanefig}
 

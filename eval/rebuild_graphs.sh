@@ -15,12 +15,12 @@ cd artificial_bugs
 cd ..
 
 cd complex_hb
-#./complex_hb_build_summaries.py
+./complex_hb_build_summaries.py
 cd ..
 
 cd complex_alias
-# ./complex_alias.py easy < easy > easy.tex
-# ./complex_alias.py hard < hard > hard.tex
+./complex_alias.py easy < easy > easy.tex
+./complex_alias.py hard < hard > hard.tex
 cd ..
 
 cd alpha
@@ -39,12 +39,8 @@ cd opt
 cd ..
 cd ..
 
-cd bubble_charts
-#./rebuild.sh
-cd ..
-
 cd dyn_convergence
-# ./rebuild.sh
+./rebuild.sh
 cd ..
 
 cd phase_breakdown

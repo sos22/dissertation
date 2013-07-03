@@ -18,7 +18,7 @@ nr_replicates = 1000
 no_interfering_stores = "no interfering stores"
 early_out = "early out"
 plt = "Dismiss early, PLT"
-bubble_keys = set(["early out", "early-out check", "build crashing CFG", "compile crashing machine", "simplify crashing machine", "derive c-atomic", "derive interfering CFGs", "process interfering CFGs", "GC", "misc1", "misc2", "misc3", "IO"])
+bubble_keys = set(["early out", "early-out check", "build crashing CFG", "compile crashing machine", "ssa crashing machine", "simplify crashing machine", "derive c-atomic", "derive interfering CFGs", "process interfering CFGs", "GC", "misc1", "misc2", "misc3", "IO"])
 
 chart_keys = ["build_ccfg", "compile_csm", "simplify_csm",
               "derive_icfgs", "derive_catomic", "per_icfg" ]
@@ -26,6 +26,7 @@ bubble_key_to_chart_key = {"early out": "build_ccfg",
                            "early-out check": "build_ccfg",
                            "build crashing CFG": "build_ccfg",
                            "compile crashing machine": "compile_csm",
+                           "ssa crashing machine": "compile_csm",
                            "simplify crashing machine": "simplify_csm",
                            "derive c-atomic": "derive_catomic",
                            "derive interfering CFGs": "derive_icfgs",
@@ -35,8 +36,10 @@ bubble_key_to_chart_key = {"early out": "build_ccfg",
                            "misc2": "derive_icfgs",
                            "misc3": "derive_icfgs",
                            "IO": "build_ccfg"}
-chart_labels = {"build_ccfg": "Build crashing \\gls{cfg}",
+chart_labels = {"early_out": "Early out",
+                "build_ccfg": "Build crashing \\gls{cfg}",
                 "compile_csm": "Compile crashing {\\StateMachine}",
+                "ssa_csm": "SSA crashing {\\StateMachine}",
                 "simplify_csm": "Simplify crashing {\\StateMachine}",
                 "derive_icfgs": "Derive interfering \\glspl{cfg}",
                 "derive_catomic": "Derive C-atomic",
@@ -53,6 +56,7 @@ def read_one_sequence(defects, get_line, pushback, fname):
     nr_produced = 0
     r = []
     key = None
+    have_compile = False
     while True:
         (when, msg) = get_line()
         if msg == "finish crashing thread":
@@ -71,6 +75,13 @@ def read_one_sequence(defects, get_line, pushback, fname):
         assert w[0] == "start"
         start = when
         key = " ".join(w[1:])
+        if key == "compile crashing machine":
+            if have_compile:
+                key = "ssa crashing machine"
+                have_compile = None
+            else:
+                assert have_compile == False
+                have_compile = True
         assert key in bubble_keys
 
         if not defects.has_key(key):
@@ -90,7 +101,7 @@ def read_one_sequence(defects, get_line, pushback, fname):
                 nr_produced = int(w[1])
                 (what, msg) = get_line()
                 rr["duration"] = when - start
-            assert msg.split()[0] in ["stop", "finish"] and " ".join(msg.split()[1:]) == key
+            #assert msg.split()[0] in ["stop", "finish"] and " ".join(msg.split()[1:]) == key
             rr["failed"] = None
         expected_start = when
         r.append(rr)
@@ -173,8 +184,9 @@ def sequences_to_chartset(sequences):
                 charts["derive_catomic"].pre_dismissed += 1
                 continue
             if event in [early_out, plt]:
-                for v in charts.itervalues():
-                    v.pre_dismissed += 1
+                for (k, v) in charts.iteritems():
+                    if k != "build_ccfg":
+                        v.pre_dismissed += 1
                 continue
             f = event["failed"]
             k = bubble_key_to_chart_key[event["key"]]
