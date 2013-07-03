@@ -165,7 +165,7 @@ def draw_line(output, base, pts):
     output.write("        ;\n")
 
 def draw_furniture(output, chart_keys, settings):
-    for t_label in ["0.00001", "0.00002", "0.00003", "0.0001", "0.001", "0.01", "0.1", "1", "10", "100"]:
+    for t_label in ["0.00001", "0.0001", "0.001", "0.01", "0.1", "1", "10", "100"]:
         y = settings.time_to_y(float(t_label))
         output.write("\\draw [color=black!10] (%f, %f) -- (%f, %f);\n" % (-settings.x_scale, y, (len(chart_keys) + 1) * settings.figwidth / (len(chart_keys) + 2), y))
         output.write("\\node at (%f, %f) [left] {%s};\n" % (-settings.x_scale, y, t_label))
@@ -342,27 +342,32 @@ def plot_pdf(output, x, time_samples, replicated_samples, pdf_prob, settings, ke
 
     # Mean + sd of mean
     mean = sum(time_samples) / len(time_samples)
-    sd = (sum([(t - mean) ** 2 for t in time_samples])/(len(time_samples) * (len(time_samples) - 1))) ** .5
+    means = [sum(r) / len(r) for r in replicated_samples]
+    means.sort()
+    low_mean = quantile(means, 0.05)
+    high_mean = quantile(means, 0.95)
     mean_y = time_to_y(mean)
+    low_mean_y = time_to_y(low_mean)
+    high_mean_y = time_to_y(high_mean)
     output.write("  \\draw (%f,%f) -- (%f,%f);\n" % (x - .05, mean_y - .05,
                                                      x + .05, mean_y + .05))
     output.write("  \\draw (%f,%f) -- (%f,%f);\n" % (x + .05, mean_y - .05,
                                                      x - .05, mean_y + .05))
-    output.write("  \\draw (%f,%f) -- (%f,%f);\n" % (x, time_to_y(mean - sd),
-                                                     x, time_to_y(mean + sd)))
-    output.write("  \\draw (%f,%f) -- (%f,%f);\n" % (x-.05, time_to_y(mean - sd),
-                                                     x+.05, time_to_y(mean - sd)))
-    output.write("  \\draw (%f,%f) -- (%f,%f);\n" % (x-.05, time_to_y(mean + sd),
-                                                     x+.05, time_to_y(mean + sd)))
+    output.write("  \\draw (%f,%f) -- (%f,%f);\n" % (x, low_mean_y,
+                                                     x, high_mean_y))
+    output.write("  \\draw (%f,%f) -- (%f,%f);\n" % (x-.05, low_mean_y,
+                                                     x+.05, low_mean_y))
+    output.write("  \\draw (%f,%f) -- (%f,%f);\n" % (x-.05, high_mean_y,
+                                                     x+.05, high_mean_y))
 
     # Numerical mean display
     w = pdf(mean_y) * pdf_prob - 0.05
     # Bit of a hack: move the build strategy label a bit to avoid
     # overlapping
     if key == "build strategy":
-        output.write("  \\node at (%f, %f) [left] {%s};\n" % (x - w, mean_y, display_number(mean, sd)))
+        output.write("  \\node at (%f, %f) [left] {%s};\n" % (x - w, mean_y, display_number(mean, high_mean - low_mean)))
     else:
-        output.write("  \\node at (%f, %f) [right] {%s};\n" % (x + w, mean_y, display_number(mean, sd)))
+        output.write("  \\node at (%f, %f) [right] {%s};\n" % (x + w, mean_y, display_number(mean, high_mean - low_mean)))
 
 def draw_box(output, x, box, chart, replicates, r_project, nr_samples, x_scale):
     if box.select1(chart) + box.select2(chart) == 0:
