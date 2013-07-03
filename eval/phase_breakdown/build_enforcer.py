@@ -12,7 +12,7 @@ import common
 random.seed(0)
 
 max_cdfs = 50.0
-nr_replicates = 5
+nr_replicates = 1000
 
 bubble_keys = set(["canonicalise", "prepare summary", "slice by hb", "determine input availability",
                    "happensBeforeMapT() constructor", "place side conditions", "simplify plan",
