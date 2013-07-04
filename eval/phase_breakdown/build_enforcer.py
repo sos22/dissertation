@@ -12,7 +12,7 @@ import common
 random.seed(0)
 
 max_cdfs = 50.0
-nr_replicates = 1000
+nr_replicates = 10
 
 bubble_keys = set(["canonicalise", "prepare summary", "slice by hb", "determine input availability",
                    "happensBeforeMapT() constructor", "place side conditions", "simplify plan",
@@ -143,7 +143,11 @@ def sequences_to_chartset(sequences):
             if chart_key != None:
                 defect -= sample
                 if not chart_key in failed_at:
-                    charts[chart_key].samples.append(sample)
+                    if chart_key == "build strategy" and sample < 0.0001:
+                        charts["build strategy"].pre_dismissed += 1
+                        charts["compile"].pre_dismissed += 1
+                    else:
+                        charts[chart_key].samples.append(sample)
         if len(failed_at) != 0:
             assert len(failed_at) == 1
             chart_key = next(iter(failed_at))
