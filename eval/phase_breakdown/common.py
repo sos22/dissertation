@@ -346,6 +346,9 @@ def plot_pdf(output, x, time_samples, replicated_samples, pdf_prob, settings, ke
     means.sort()
     low_mean = quantile(means, 0.05)
     high_mean = quantile(means, 0.95)
+    output.write("  %% mean = $%f \\in [%f, %f]_{%d}^{%d}$\n" % (mean, low_mean, high_mean,
+                                                                 len(replicated_samples),
+                                                                 len(time_samples)))
     mean_y = time_to_y(mean)
     low_mean_y = time_to_y(low_mean)
     high_mean_y = time_to_y(high_mean)

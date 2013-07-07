@@ -10,12 +10,9 @@ Experiments still to run:
 \begin{itemize}
 \item Run the mysql enforcers on ise, count the reproes.
 \item Measure the effectiveness of the complex\_hb enforcers.
-\item Need to re-do the no-simplifiers experiments.
-\item Need to re-run the I isolation experiments.
 \item Need to do the fix overhead experiments.
+\item Finish running the various config knob experiments.
 \item Finish re-doing the alpha experiments.
-\item Need to re-do the no \gls{ic-atomic} tests.
-\item Need to re-do the phase breakdown experiments.
 \end{itemize}
 
 \begin{sanefig}
@@ -723,8 +720,6 @@ I consider each phase in turn\editorial{Orphan}.
 
 \subsection{Per-\gls{crashingthread} analysis}
 
-\todo{RERUN}
-
 \begin{sanefig}
   \biggraph{eval/phase_breakdown/per_crashing.tex}
   \caption{Distributions of time taken by the per-crashing instruction
@@ -769,30 +764,36 @@ information:
   the measured steps.  As can be seen, it is small relative to the
   other quantities measured, which is necessary for the other
   measurements to be meaningful.
-\item The boxes above and below the PDFs give the number of
-  potentially-crashing instructions which failed to complete that step
-  and the number which did not start it at all, respectively, sized
-  such that a constant area represents a constant probability across
-  the figure.  Instructions skip a step if either a previous step
-  failed or if a previous step was able to show that no bug is
-  possible.  \autoref{tab:eval:how:failures_per_crashing} gives more
-  details of the failures encountered during this phase.
+\item The boxes above the PDFs give the number of potentially-crashing
+  instructions which failed to complete each part of the analysis,
+  sized such that a constant area represents a constant number of
+  instructions across the figure.  The reasons for these failures are
+  given in \autoref{tab:eval:how:failures_per_crashing}.
   \begin{sanetab}
     \begin{tabbular}{|p{5.3cm}|p{2.9cm}|p{2.9cm}|p{2.9cm}|}
       \hline
-      Step & Instructions starting step& Out of time & Out of memory \\
+      Step & Instructions starting step                 & Out of time & Out of memory \\
       \hline
-      \RaggedRight Compile crashing {\StateMachine} & 8031 & 1 & 0 \\
+      \RaggedRight Compile crashing {\StateMachine}     & 8031 & 1 & 0 \\
       \RaggedRight Simplifying crashing {\StateMachine} & 8030 & 2 & 0 \\
-      \RaggedRight Derive C-atomic & 3678 & 1 & 4 \\
+      \RaggedRight Derive C-atomic                      & 3678 & 1 & 2 \\
+      \RaggedRight Process interfering \glspl{cfg}      & 3675 & 0 & 1 \\
       \hline
     \end{tabbular}
     \caption{Causes of failures during per-crashing instruction
       processing.  Note that the timeout runs from the start of the
       per-crashing instruction phase, rather than being restarted for
-      each step. \todo{Error bars?}}
+      each step. \todo{Error bars? Maybe express as ratios?}}
     \label{tab:eval:how:failures_per_crashing}
   \end{sanetab}
+\item The boxes below the PDFs give the number of potentially-crashing
+  instructions which were not processed in each part of the analysis.
+  Some of these skips are caused by failures in other parts of the
+  analysis, but the majority are caused by one of the early analysis
+  phases being sufficient to prove that a particular instruction
+  cannot possibly crash due to an atomicity violation bug, allowing
+  {\implementation} to skip the remaining phases.  These are discussed
+  in more detail below.
 \end{itemize}
 The most important observation to draw from this figure, aside from
 the gross summary of how long each step takes, is that most of the
@@ -804,11 +805,11 @@ happen to hit one of the slow cases take a very long time to complete,
 while those which avoid the slow cases complete very quickly.  The
 time spent deriving C-atomic, for instance, has a median of 1.3ms and
 a mean of 170ms, while the total time taken has a median of 11ms and a
-mean of seven seconds.
+mean of eight seconds.
 
 Aside from those gross features, the distributions also exhibit some
 multi-modal behaviour, visible on the chart as a number of ``bulbs''
-in the CDFs.  These are accounted for by various special cases within
+in the PDFs.  These are accounted for by various special cases within
 {\implementation}:
 \begin{itemize}
 \item The first phase, ``Build crashing \gls{cfg}'', has a small mode
@@ -844,8 +845,6 @@ number of instructions speculatively.
 \subsection{Per-\gls{interferingthread} analysis}
 \label{sect:eval:how:per_interfering}
 
-\todo{RERUN}
-
 The per-crashing instruction analysis generates a large number of
 pairs of crashing {\StateMachine} and interfering \gls{cfg} which are
 analysed in the per-\gls{interferingthread} analysis phase.  The time
@@ -871,21 +870,22 @@ during this phase are detailed in
 \begin{sanetab}
   \begin{tabbular}{|p{5.3cm}|p{2.9cm}|p{2.9cm}|p{2.9cm}|}
     \hline
-    Step & Instructions starting step& Out of time & Out of memory \\
+    Step                                & \Glspl{cfg} starting step & Out of time & Out of memory \\
     \hline
-    Build interfering {\StateMachine} & 27535 & 21 & 1 \\
-    Rederive crashing {\StateMachine} & 23513 &  24 &  1 \\
-    Run \gls{ic-atomic} {\StateMachine} & 13055 & 47 & 35 \\
-    Build cross-product {\StateMachine} & 12935 & 1 & 0 \\
-    Run cross-product {\StateMachine} & 12934 & 47 & 0 \\
+    Build interfering {\StateMachine}   & 27535                     & 21          & 1 \\
+    Rederive crashing {\StateMachine}   & 23513                     & 44          & 0 \\
+    Run \gls{ic-atomic} {\StateMachine} & 13055                     & 47          & 35 \\
+    Build cross-product {\StateMachine} & 12935                     & 1           & 0 \\
+    Run cross-product {\StateMachine}   & 12934                     & 47          & 0 \\
     \hdashline
-    Total & & 140 & 37\\
+    Total                               & 27535                     & 160         & 36 \\
     \hline
   \end{tabbular}
   \caption{Causes of failures during per-\gls{interferingthread}
     processing.  Note that the timeout runs from the start of the
     per-\gls{interferingthread} phase, rather than being restarted for
-    each step.}
+    each step. \todo{Maybe re-express as ratios so that I can add some
+      error bars?}}
   \label{tab:eval:how:failures_per_interfering}
 \end{sanetab}
 As with \autoref{fig:eval:how:per_crashing_times}, this figure shows
@@ -916,46 +916,46 @@ execution can only assume the weaker C-atomic constraint.
   \label{fig:eval:how:per_interfering:no_ic_atomic}
 \end{sanefig}
 
-\todo{REDO WITH NEW NUMBERS} This is further illustrated in
+\todo{Should use a 1000 replicate bootstrap for this, really, not a
+  100 replicate one.} This is further illustrated in
 \autoref{fig:eval:how:per_interfering:no_ic_atomic}, which shows how
 long the various steps take when {\technique} assumes \gls{ic-atomic}
 is the constant \true, rather than attempting to derive it.  This
 eliminates the steps involved in deriving \gls{ic-atomic}, which take
-300ms, but increases the cost of the later steps so that the total
-reduction in time taken is only 17ms\editorial{Check numbers}.
-\editorial{odd linkage} It also increased the number of
-\glspl{verificationcondition} generated, from 3501 to 5998.  All of
-the extra conditions are false positives which would have needed to be
-investigated by run-time enforcers, easily outweighing the reduced
-cost of this phase of the analysis.
+500ms, but increases the cost of the later steps so that the total
+time taken was unchanged\footnote{In fact, the average time taken
+  actually \emph{increased} slightly, from $0.52 \in [0.46,
+    0.60]_{100}^{27338}$ to $0.59 \in [0.50, 0.68]_{100}^{27432}$, but
+  that was not statistically significant.}.  Disabling \gls{ic-atomic}
+processing also increased the number of \glspl{verificationcondition}
+generated, from 3870 to 6613.  These extra conditions are all, by
+construction, false positives, and all would require run-time
+verification.  \todo{Not sure how much that added, really.}
 
 \subsection{Costs of building \gls{bugenforcer}}
 
-\todo{RERUN}
-
 \begin{sanefig}
   \biggraph{eval/phase_breakdown/build_enforcer}
-  \caption{Time taken to convert the 4355
+  \caption{Time taken to convert the 3870
     \glspl{verificationcondition} generated by the experiments in
     \autoref{sect:eval:how:per_interfering} into \glspl{bugenforcer}.
-    \autoref{fig:eval:how:build_enforcer_failures} gives more details
-    of the failures encountered. }
+    All of the failures were caused by running out of memory; there
+    were no timeouts during this experiment.}
   \label{fig:eval:how:build_enforcer}
 \end{sanefig}
 
 \begin{sanetab}
-  \begin{tabbular}{|p{5.6cm}|p{2.8cm}|p{2.8cm}|p{2.8cm}|}
+  \begin{tabbular}{|p{5.6cm}|p{2.8cm}|p{5.6cm}|}
     \hline
-    Step & \Glspl{verificationcondition} starting step & Out of time & Out of memory \\
+    Step & \Glspl{verificationcondition} starting step & Out of memory \\
     \hline
-    Extract happens-before graph & 4355 & 31 & 27 \\
-    Place side conditions        & 4297 & 0  & 3 \\
-    Compile                      & 4294 & 0  & 4 \\
+    Extract happens-before graph & 3870 & 27 \\
+    Place side conditions        & 3843 & 3 \\
+    Compile                      & 3834 & 2 \\
     \hline
   \end{tabbular}
   \caption{Causes of failures converting \glspl{verificationcondition}
-    to \glspl{bugenforcer}.  Note that the timeout runs from the start
-    of processing, rather than being restarted for each step.}
+    to \glspl{bugenforcer}.  There were no timeouts in this test.}
   \label{fig:eval:how:build_enforcer_failures}
 \end{sanetab}
 
@@ -966,13 +966,12 @@ figure divides the time taken into five steps:
 \begin{itemize}
 \item Extracting the happens-before graph, as discussed in
   \autoref{sect:enforce:slice_hb_graph}.  This step is generally
-  reasonably quick, with a median time of 20ms, but occasionally takes
-  a very long time, reaching the five minute timeout in 31 of the 4355
-  runs.  This reflects the nature of the algorithm used: BDD
-  reordering has a good common-case cost but a very poor worst-case
-  one.  The \glspl{verificationcondition} which avoid the worst-case
-  performance complete very quickly and those which do not form the
-  long tail.
+  reasonably quick, with a median time of 20ms, but has a long tail of
+  slow and memory-hungry operations.  This reflects the nature of the
+  algorithm used: BDD reordering has a good common-case cost but a
+  very poor worst-case one.  The \glspl{verificationcondition} which
+  avoid the worst-case performance complete very quickly and those
+  which do not form the long tail.
 \item Determining when the verification condition's input expressions
   become available, as discussed in \autoref{sect:enforce:place_vcs}.
   This is, unsurprisingly, a very quick step, with relatively few
@@ -1001,17 +1000,28 @@ figure divides the time taken into five steps:
   difficult to provide any useful analysis on why this step takes as
   long as it does.
 \end{itemize}
+Somewhat surprisingly, {\technique} was able to eliminate six
+\glspl{verificationcondition} whilst placing side conditions.  This
+was due to the incompleteness of {\technique}'s SMT solver.  The
+solver makes use of a number of heuristics based on the BDD structure
+of the \gls{verificationcondition} and these heuristics produce
+slightly different results as the side condition algorithm manipulates
+that structure.  In those six \glspl{verificationcondition}, the
+solver was unable to show that the original condition was
+unsatisfiable, but was able to show that one of the rearranged forms
+was, and hence that the bug could never be reproduced.  There was
+therefore no need to generate \glspl{bugenforcer} for any of them and
+{\technique} skipped the remaining steps involved in building one.
 
-\noindent
-\todo{check}
-This phase suffered a total of fifty failures, giving a failure rate
-of 1.4\%.  The per-\gls{crashingthread} and
-per-\gls{interferingthread} suffered failure rates of 0.1\% and 0.4\%,
-respectively; collectively, these suggest that {\technique}, with
-these settings, will be unable to generate \glspl{bugenforcer} for
-roughly 2\% of potential bugs of the targeted form.  While obviously
-worse than a 0\% failure rate, a 2\% one is still reasonably low, and
-is unlikely to be a crippling limitation.
+Ignoring those six unsatisfiable \glspl{verificationcondition}, this
+phase suffered a total of thirty-two failures, giving a failure rate
+of 0.8\%.  The per-\gls{crashingthread} and
+per-\gls{interferingthread} both suffered failure rates of 0.7\%;
+collectively, these suggest that {\technique}, with these settings,
+will be unable to generate \glspl{bugenforcer} for roughly 2.2\% of
+potential bugs of the targeted form.  While obviously worse than a 0\%
+failure rate, a 2.2\% one is still reasonably low, and is unlikely to
+be a crippling limitation.
 
 \subsection{Costs of building fixes}
 
@@ -1371,13 +1381,66 @@ positives\footnote{To confirm this, I converted them all into
   \label{tab:eval:why:w_isolation}
 \end{sanetab}
 
-\subsection{Effect of the dynamic \glsentrytext{programmodel} analysis}
+\subsection{Effect of the \glsentrytext{programmodel}}
 
-\todo{What goes here?}
+\todo{Not happy with the writing here.  Also, it's not all that clear
+  what I'm changing in the different experiments.}
 
-\subsection{Effect of the static \glsentrytext{programmodel} analysis}
+\noindent
+{\Technique} uses an \gls{programmodel} to capture certain interesting
+parts of the program's behaviour beyond the \gls{analysiswindow} and
+incorporate them into the {\StateMachine} analysis.  Some uses of the
+model are necessary for {\technique} to function at all (without the
+dynamic aliasing model, {\technique} cannot derive $\beta$ and $c2i$,
+so cannot build the interfering {\StateMachines}; without the static
+analysis, it cannot find instruction predecessors, and so cannot build
+the crashing \gls{cfg}), but others are used merely to improve
+performance (the dynamic analysis provides hints to the alias
+analysis, for instance, and the static analysis can identify points in
+the program where particular registers are guaranteed to have
+particular values).  To evaluate the effectiveness of these analyses,
+I re-analysed the 10,000 instructions selected in
+\autoref{sect:eval:how_does_it_work} with these optional components
+disabled.  The results are shown in
+\autoref{tab:eval:why:program_model}.
 
-\todo{What goes here?}
+\begin{sanetab}
+  \begin{tabbular}{|l|l|l|l|}
+    \hline
+    & Full model & No dynamic analysis & No static analysis \\
+    \hline
+    Time to process crashing instruction & $x \pm_\mu^n y$ \\
+    Interfering \glspl{cfg} per crashing instruction* & $x \in [a,b]^n_{1000}$ \\
+    Interfering \glspl{cfg} generating \glspl{verificationcondition}$\dagger$ & $x \in [a,b]^n_\infty$\% \\
+    Errors in per-crashing instruction phase & $x \in [a,b]^n_\infty$\% \\
+    Errors in per-\gls{interferingthread} phase & $x \in [a,b]^n_{1000}$\% \\
+    \hline
+  \end{tabbular}
+  \caption{Effect the \gls{programmodel} assumption on analysis
+    effectiveness. *: Excluding failures in the per-crashing
+    instruction phase. $\dagger$: Excluding failures in either phase.
+    \todo{Need data}}
+  \label{tab:eval:why:program_model}
+\end{sanetab}
+
+These results suggest that the hints from the static analysis are
+useful but not critical, giving modest reductions in analysis time, in
+the failure rate, and in the number of \glspl{verificationcondition}
+generated.  {\Technique} remains useful, albeit slower and less
+effective, when the non-essentially information collected by the
+static analysis is ignored.
+
+The results when disabling hints from the dynamic analysis are far
+more dramatic.  The analysis time and failure rate rise to the point
+where {\technique} is effectively useless.  The number of
+\glspl{verificationcondition} generated falls, though, due to a
+survivor effect: only the very simplest {\StateMachines} can be
+symbolically executed without aliasing information from the dynamic
+analysis, and these are generally the least likely to generate
+\glspl{verificationcondition}.  All of the additional
+\glspl{verificationcondition} generated when the dynamic analysis is
+enabled correspond to cases where the analysis simply fails when it is
+disabled.
 
 \subsection{Sources of fix overhead}
 \label{sect:eval:why:fix_overhead}
@@ -1564,20 +1627,20 @@ program crashes if it alternates accesses between the two threads.
 The happens-before graph for this bug therefore contains $2N$ edges.
 
 \begin{sanefig}
-  \todo{Regenerate with more replicates.  Also, what sort of
-    exponential did I fit?}
+  \todo{Regenerate with more replicates.}
   \biggraph{eval/complex_hb/complex_hb_build_summaries}
   \caption{Time taken to analyse the \bugname{complex\_hb}$_N$ test,
     for varying values of $N$.  Note log scale.  Each abscissae was
     sampled eleven times, discarding the first, in random order.
     Crosses and bars give the mean and 90\% confidence interval of the
     mean, calculated using the central limit theorem.  The solid line
-    shows a least-squares exponential regression over $7 \leq N \leq
-    20$ extrapolated to the full range of $N$; the dashed one shows a
-    quartic regression over the same data.  Grey regions give 90\%
-    confidence intervals for the regression lines, computed using a
-    1,000 replicate bootstrap.  Note that the regressions minimise the
-    sum of squares loss, but are plotted on a logarithmic scale.}
+    shows a regression onto ${\alpha}e^{{\beta}N} + \gamma$ over $7
+    \leq N \leq 20$ extrapolated to the full range of $N$; the dashed
+    one shows a quartic regression over the same data.  Grey regions
+    give 90\% confidence intervals for the regression lines, computed
+    using a 1,000 replicate bootstrap.  Note that the regressions
+    minimise the sum of squares loss, but are plotted on a logarithmic
+    scale.}
   \label{fig:eval:complex_hb:analysis_time}
 \end{sanefig}
 
@@ -1777,7 +1840,7 @@ features\footnote{This model is, however, a poor quantitative fit for
   }
   {\hfill}
   \caption{The \bugname{complex\_alias\_easy}$_{L,S}$ test.
-    \texttt{NR\_PTRS} is the constant 100.  \todo{Kind of ugly.}}
+    \texttt{NR\_PTRS} is the constant 100.}
   \label{fig:eval:why:complex_aliasing:easy}
 \end{sanefig}
 

@@ -107,7 +107,7 @@ def read_one_sequence(defects, get_line, _pushback, fname):
 
 defects = {}
 sequences = []
-t = tarfile.open("bubbles.tar")
+t = tarfile.open(sys.argv[1])
 while True:
     ti = t.next()
     if ti == None:
@@ -214,7 +214,7 @@ main_fig.boxes.append(common.Box(main_fig.highest(),
                                  lambda x: x.ooms,
                                  "Failed"))
 
-output = file(sys.argv[1], "w")
+output = file(sys.argv[2], "w")
 
 output.write("\\begin{tikzpicture}\n")
 
