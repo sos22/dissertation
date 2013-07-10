@@ -11,7 +11,7 @@ sep = 0.7
 chartwidth = (figwidth - 2 * sep) / 3
 mintime = 0.1
 maxtime = 180
-nr_replicates = 10000
+nr_replicates = 1000
 
 def time_to_x(time, chart_idx):
     return chart_idx * (chartwidth + sep) + math.log(time/mintime) / math.log(maxtime/mintime) * chartwidth
@@ -24,7 +24,7 @@ bug_names = {"indexed_toctou": "\\bugname{toctou}",
 print "\\centerline{"
 print "\\begin{tikzpicture}"
 
-x_labels = ["0.1", "1", "10", "180"]
+x_labels = ["0.1", "0.3", "1", "3", "10", "30", "180"]
 y_labels = map(str, xrange(0, 101, 20))
 
 print "  %% Grid"
@@ -43,7 +43,7 @@ for i in [0,1,2]:
         x = time_to_x(float(x_labels[idx]), i)
         where = "below"
         print "  \\node at (%f, %f) [%s] {%s};" % (x, 0, where, x_labels[idx])
-print "  \\node at (%f, -18pt) [below] {Time to reproduce};" % (figwidth / 2)
+print "  \\node at (%f, -18pt) [below] {Time to reproduce, seconds};" % (figwidth / 2)
 
 print "  %% Y axis"
 print "  \\draw[->] (%f, %f) -- (%f, %f);" % (0, 0, 0, figheight)
@@ -159,9 +159,13 @@ def bootstrap_quantile(data, q):
     replicate_stats.sort()
     lower = get_quantile(replicate_stats, 0.05)
     upper = get_quantile(replicate_stats, 0.95)
-    nd = nr_digits(upper - lower)
-    lower2 = sane_round(lower, nd)
-    upper2 = sane_round(upper, nd)
+    def round(amt):
+        n = nr_digits(amt) - 1
+        if n < -3:
+            n = -3
+        return sane_round(amt, n)
+    lower2 = round(lower)
+    upper2 = round(upper)
     return "$[%s,%s]_{%d}^{%d}$" % (lower2, upper2,
                                     nr_replicates,
                                     len(data))

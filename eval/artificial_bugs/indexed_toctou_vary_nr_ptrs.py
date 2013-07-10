@@ -8,9 +8,9 @@ fig_width = 13.0
 fig_height = 8.0
 b_width = 0.1
 c_width = 0.05
-nr_replicates = 10000
+nr_replicates = 1000
 mintime = 0.01
-maxtime = 2000.0
+maxtime = 10000.0
 min_np = 1.
 max_np = 320000.
 
@@ -19,7 +19,8 @@ yticks = [(0.01, "0.01"), (0.03, "0.03"),
           (1, "1.0"), (3.0, "3"),
           (10, "10"), (30.0, "30"),
           (100.0, "100"), (300.0, "300"),
-          (1000.0, "1000"), (2000.0, "2000")]
+          (1000.0, "1000"), (3000.0, "3000"),
+          (10000.0, "10000")]
 
 if sys.argv[1] == "enforcer":
     enforcer = True
@@ -54,31 +55,28 @@ def calc_stats(data):
             "p75": quantile(data, 0.75),
             }
 
-if enforcer:
-    data = {}
-    with open("special/indexed_toctou_vary_nr_ptrs_enforcer.results") as f:
-        for l in f.xreadlines():
-            w = l.split()
-            key = int(w[0])
-            time = float(w[1])
-            if not data.has_key(key):
-                data[key] = []
-            data[key].append(time)
-    d = {}
-    for (k, v) in data.iteritems():
-        x = v[10:]
-        x.sort()
-        d[k] = bootstrap_stats(x, calc_stats)
-    data = d
-    del d
-else:
-    data_dir = "special/indexed_toctou_vary_nr_ptrs_%s" % sys.argv[1]
-    data = {}
-    for a in [10,20,30,40,50,60,70,80,90,100,150,200,250,300,350,400,450,500,750,1000,2000,3000]:
-        with open("%s/nr_ptrs=%d" % (data_dir, a)) as f:
-            series = map(lambda x: float(x.strip()), f.xreadlines())
-        series.sort()
-        data[a] = bootstrap_stats(series, calc_stats)
+data = {}
+with open("special/indexed_toctou_vary_nr_ptrs.results") as f:
+    for l in f.xreadlines():
+        w = l.split()
+        if not w[0] in ["with", "without"]:
+            sys.stderr.write("Unexpected keyword %s in input\n" % w[0])
+            sys.exit(1)
+        if (w[0] == "with") != enforcer:
+            continue
+        key = int(w[1])
+        time = float(w[2])
+        if not data.has_key(key):
+            data[key] = []
+        data[key].append(time)
+d = {}
+for (k, v) in data.iteritems():
+    x = v[10:]
+    x.sort()
+    d[k] = bootstrap_stats(x, calc_stats)
+data = d
+del d
+
 abscissae = data.keys()
 abscissae.sort()
 

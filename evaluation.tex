@@ -9,10 +9,9 @@ Experiments still to run:
 
 \begin{itemize}
 \item Run the mysql enforcers on ise, count the reproes.
-\item Measure the effectiveness of the complex\_hb enforcers.
-\item Need to do the fix overhead experiments.
+\item Measure the effectiveness of the complex\_hb enforcers on ise.
+\item Re-run the fix overhead experiments on ise
 \item Finish running the various config knob experiments.
-\item Finish re-doing the alpha experiments.
 \end{itemize}
 
 \begin{sanefig}
@@ -195,7 +194,6 @@ I first consider {\technique}'s behaviour when applied to bugs in
 three artificial test programs, shown in
 \autoref{fig:eval:artificial_bugs:programs}.  These programs
 illustrate several important features of {\technique}:
-
 \begin{itemize}
   \item The \bugname{toctou} test,
     figures~\ref{fig:eval:artificial_bugs:programs:toctou:crashing}
@@ -207,7 +205,7 @@ illustrate several important features of {\technique}:
     figures~\ref{fig:eval:artificial_bugs:programs:multi_variable:crashing}
     and~\ref{fig:eval:artificial_bugs:programs:multi_variable:interfering},
     shows a multi-variable atomicity violation.  Some previous
-    approaches, such as Kivati\needCite{}, were not able to handle
+    approaches, such as Kivati\cite{Chew2010}, were not able to handle
     this kind of bug.
   \item The final test, \bugname{double\_free}, demonstrates
     {\technique}'s ability to handle double free-type bugs.  It
@@ -221,12 +219,13 @@ illustrate several important features of {\technique}:
     and the environmental thread will not be represented by a
     {\StateMachine} at all.
 \end{itemize}
-
-\todo{Some kind of linkage text goes here.}
+These experiments clearly do not cover every possible form of program
+behaviour, or even a particularly representative subset of possible
+behaviours, but they suffice to demonstrate {\technique}'s basic
+functionality.
 
 \subsubsection{Computational costs of building \glsentrytext{verificationcondition}s, \glsentrytext{bugenforcer}s, and fixes}
 
-\noindent
 \autoref{tab:eval:artificial_bugs:analysis_time} shows the time taken
 to analyse these bugs and build either \glspl{bugenforcer} or fixes
 for them.  As might be expected, these very simple bugs are processed
@@ -266,7 +265,7 @@ analyse a bug; realistic ones would, of course, take much longer.
     inequality\cite{Massart1990}.  Note that DKWM confidence intervals
     are curve-wise rather than point-wise i.e. there is a 90\%
     confidence that the entire curve is within the shaded region,
-    rather than that any given point is. \todo{Need more abscissae.}}
+    rather than that any given point is.}
   \label{fig:eval:artificial_bugs:cdf1}
 \end{sanefig}
 
@@ -355,8 +354,8 @@ repeats the experiments using two bugs taken from real programs:
   \gls{interferingthread} in between the two accesses in the crashing
   one then the program will crash.
 \item The second, \bugname{mysql}, is MySQL bug number
-  56324\needCite{}.  A simplified version of the buggy code is shown
-  in figures~\ref{fig:eval:real_bugs:programs:mysql:crashing}
+  56324\cite{Correia2010}.  A simplified version of the buggy code is
+  shown in figures~\ref{fig:eval:real_bugs:programs:mysql:crashing}
   and~\ref{fig:eval:real_bugs:programs:mysql:interfering}.  The
   program will crash if the interfering thread sets
   \texttt{PSI\_server} to \texttt{NULL} in between the two accesses to
@@ -916,8 +915,7 @@ execution can only assume the weaker C-atomic constraint.
   \label{fig:eval:how:per_interfering:no_ic_atomic}
 \end{sanefig}
 
-\todo{Should use a 1000 replicate bootstrap for this, really, not a
-  100 replicate one.} This is further illustrated in
+This is further illustrated in
 \autoref{fig:eval:how:per_interfering:no_ic_atomic}, which shows how
 long the various steps take when {\technique} assumes \gls{ic-atomic}
 is the constant \true, rather than attempting to derive it.  This
@@ -925,12 +923,14 @@ eliminates the steps involved in deriving \gls{ic-atomic}, which take
 500ms, but increases the cost of the later steps so that the total
 time taken was unchanged\footnote{In fact, the average time taken
   actually \emph{increased} slightly, from $0.52 \in [0.46,
-    0.60]_{100}^{27338}$ to $0.59 \in [0.50, 0.68]_{100}^{27432}$, but
-  that was not statistically significant.}.  Disabling \gls{ic-atomic}
-processing also increased the number of \glspl{verificationcondition}
-generated, from 3870 to 6613.  These extra conditions are all, by
-construction, false positives, and all would require run-time
-verification.  \todo{Not sure how much that added, really.}
+    0.59]_{1000}^{27338}$ to $0.59 \in [0.51, 0.67]_{1000}^{27432}$,
+  but that was not statistically significant, and was in any case
+  partly influenced by changes in the behaviour of failing runs.}.
+Disabling \gls{ic-atomic} processing also increased the number of
+\glspl{verificationcondition} generated, from 3870 to 6613.  These
+extra conditions are all, by construction, false positives, and all
+would require run-time verification.  \todo{Not sure how much that
+  added, really.}
 
 \subsection{Costs of building \gls{bugenforcer}}
 
@@ -1134,7 +1134,6 @@ suggesting that most of the overhead of the dynamic analysis tool
 comes simply from the fact that it is implemented as a Valgrind skin.
 Re-implementing it in a faster analysis framework, such as
 PIN\cite{Luk2005}, might therefore provide a useful speed-up.
-\todo{What happens with other test programs?}
 
 \section{Why does it work?}
 \label{sect:eval:why_does_it_work}
@@ -1193,7 +1192,6 @@ illustrated in the second chart easier to understand than that in the
 first.
 
 \begin{sanefig}
-  \todo{Regenerate, pull up by a page.}
   \subfigure[][Without enforcer]{ \biggraph{eval/artificial_bugs/special/indexed_toctou_vary_nr_ptrs_no_enforcer.tex} }
   \subfigure[][With enforcer]{ \biggraph{eval/artificial_bugs/special/indexed_toctou_vary_nr_ptrs_enforcer.tex} }
   \caption{Reproduction times with and without an enforcer loaded, for
@@ -1325,17 +1323,23 @@ disabled.
     \cline{2-3}
     & Enabled & Disabled \\
     \hline
-    Time to process crashing instruction & $x \pm_\mu^n y$ \\
-    Interfering \glspl{cfg} per crashing instruction* & $x \in [a,b]^n_{1000}$ \\
-    Interfering \glspl{cfg} generating \glspl{verificationcondition}$\dagger$ & $x \in [a,b]^n_\infty$\% \\
-    Errors in per-crashing instruction phase & $x \in [a,b]^n_\infty$\% \\
-    Errors in per-\gls{interferingthread} phase & $x \in [a,b]^n_{1000}$\% \\
+    Mean time to process crashing instruction                            & $[5.5, 10]_{1000}^{10000}$     & \\
+    {\ldots} excluding per-\gls{interferingthread} work*                 & $[0.83, 1.02]_{1000}^{9993}$   & \\
+    \Glspl{verificationcondition} per crashing instruction*              & $[0.38, 0.40]_{1000}^{9993}$   & \\
+    Interfering \glspl{cfg} per crashing instruction                     & $[2.75, 2.76]_{1000}^{9993}$   & \\
+    Failures per crashing instruction (\%)                               & $[0.04, 0.12]_{\infty}^{10000}$ & \\
+    Mean time to process interfering \gls{cfg}$\dagger$                  & $[0.46, 0.60]_{1000}^{27339}$  & \\
+    \Glspl{verificationcondition} per interfering \gls{cfg}(\%)$\dagger$ & $[13.8, 14.5]_{\infty}^{27339}$ & \\
+    Failures per interfering \gls{cfg} (\%) *                            & $[0.63, 0.79]_{\infty}^{27535}$ & \\
     \hline
   \end{tabbular}
   \caption{Effect of {\StateMachine} simplification on analysis
-    effectiveness. *: Excluding failures in the per-crashing
-    instruction phase. $\dagger$: Excluding failures in either phase.
-    \todo{Need data}}
+    effectiveness. All times in seconds. *: Excluding failures in the
+    per-crashing instruction phase. $\dagger$: Excluding failures in
+    either phase.  Note that the data for the simplification-enabled
+    case was taken from the experiments reported in
+    \autoref{sect:eval:how_does_it_work}, rather than being
+    re-collected for this table. \todo{Need more data} }
   \label{tab:eval:why:effects_of_simplification}
 \end{sanetab}
 
@@ -1367,68 +1371,74 @@ positives\footnote{To confirm this, I converted them all into
     \cline{2-3}
     & Enabled & Disabled \\
     \hline
-    Time to process crashing instruction & $x \pm_\mu^n y$ \\
-    Interfering \glspl{cfg} per crashing instruction* & $x \in [a,b]^n_{1000}$ \\
-    Interfering \glspl{cfg} generating \glspl{verificationcondition}$\dagger$ & $x \in [a,b]^n_\infty$\% \\
-    Errors in per-crashing instruction phase & $x \in [a,b]^n_\infty$\% \\
-    Errors in per-\gls{interferingthread} phase & $x \in [a,b]^n_{1000}$\% \\
+    Mean time to process crashing instruction                            & $[5.5, 10]_{1000}^{10000}$      & $[9.2, 15]_{1000}^{10000}$ \\
+    {\ldots} excluding per-\gls{interferingthread} work*                 & $[0.83, 1.02]_{1000}^{9993}$    & $[1.1, 1.4]_{1000}^{9994}$\\
+    \Glspl{verificationcondition} per crashing instruction*              & $[0.38, 0.40]_{1000}^{9993}$    & $[0.40, 0.42]_{1000}^{9994}$\\
+    Interfering \glspl{cfg} per crashing instruction                     & $[2.75, 2.76]_{1000}^{9993}$  & $[3.26,3.26]_{1000}^{9994}$ \\
+    Failures per crashing instruction (\%)                               & $[0.04, 0.12]_{\infty}^{10000}$  & $[0.03, 0.10]_{\infty}^{1000}$\\
+    Mean time to process interfering \gls{cfg}$\dagger$                  & $[0.46, 0.60]_{1000}^{27339}$   & $[0.76, 0.91]_{1000}^{32275}$\\
+    \Glspl{verificationcondition} per interfering \gls{cfg}(\%)$\dagger$ & $[13.8, 14.5]_{\infty}^{27339}$  & $[12.3,12.9]_{\infty}^{32275}$\\
+    Failures per interfering \gls{cfg} (\%) *                            & $[0.63, 0.79]_{\infty}^{27535}$  & $[0.82,0.99]_{\infty}^{32569}$\\
     \hline
   \end{tabbular}
   \caption{Effect the \gls{w-isolation} assumption on analysis
-    effectiveness. *: Excluding failures in the per-crashing
-    instruction phase. $\dagger$: Excluding failures in either phase.
-    \todo{Need data}}
+    effectiveness. All times in seconds.  *: Excluding failures in the
+    per-crashing instruction phase. $\dagger$: Excluding failures in
+    either phase.}
   \label{tab:eval:why:w_isolation}
 \end{sanetab}
 
 \subsection{Effect of the \glsentrytext{programmodel}}
 
-\todo{Not happy with the writing here.  Also, it's not all that clear
-  what I'm changing in the different experiments.}
-
-\noindent
 {\Technique} uses an \gls{programmodel} to capture certain interesting
-parts of the program's behaviour beyond the \gls{analysiswindow} and
-incorporate them into the {\StateMachine} analysis.  Some uses of the
-model are necessary for {\technique} to function at all (without the
-dynamic aliasing model, {\technique} cannot derive $\beta$ and $c2i$,
-so cannot build the interfering {\StateMachines}; without the static
-analysis, it cannot find instruction predecessors, and so cannot build
-the crashing \gls{cfg}), but others are used merely to improve
-performance (the dynamic analysis provides hints to the alias
-analysis, for instance, and the static analysis can identify points in
-the program where particular registers are guaranteed to have
-particular values).  To evaluate the effectiveness of these analyses,
-I re-analysed the 10,000 instructions selected in
-\autoref{sect:eval:how_does_it_work} with these optional components
-disabled.  The results are shown in
+parts of the program's behaviour beyond the \gls{analysiswindow}, and
+this information is used in a number of places throughout the
+analysis.  Some of these uses, such as the use of the dynamic aliasing
+model to derive $\beta$ and $c2i$ when building the interfering
+\glspl{cfg}, are essential to the approach, and without them no
+progress can be made at all; others, such as the use of hints from the
+aliasing model during symbolic execution, are optional, and can be
+disabled to produce an analysis which is less effective but still
+produces some results.  To quantify these effects, I re-analysed the
+instructions chosen in \autoref{sect:eval:how_does_it_work} with
+{\implementation} configured to make minimal use of either the static
+or dynamic parts of the \gls{programmodel}.  The results are shown in
 \autoref{tab:eval:why:program_model}.
 
 \begin{sanetab}
-  \begin{tabbular}{|l|l|l|l|}
+  \newcommand{\HangingRaggedRight}{\RaggedRight \leftskip 2em \parindent -2.2em }
+  \begin{tabbular}{|>{\HangingRaggedRight} p{6.2cm}| >{\RaggedRight \hspace{-1mm}}p{2.55cm}| >{\RaggedRight}p{2.6cm} | >{\RaggedRight}p{2.6cm}|}
     \hline
-    & Full model & No dynamic analysis & No static analysis \\
+    & Full model & Dynamic disabled & Static disabled \\
     \hline
-    Time to process crashing instruction & $x \pm_\mu^n y$ \\
-    Interfering \glspl{cfg} per crashing instruction* & $x \in [a,b]^n_{1000}$ \\
-    Interfering \glspl{cfg} generating \glspl{verificationcondition}$\dagger$ & $x \in [a,b]^n_\infty$\% \\
-    Errors in per-crashing instruction phase & $x \in [a,b]^n_\infty$\% \\
-    Errors in per-\gls{interferingthread} phase & $x \in [a,b]^n_{1000}$\% \\
+    Mean time to process crashing instruction                            & $[5.5, 10]_{1000}^{10000}$     & & \\
+    {\ldots} excluding per-\gls{interferingthread} work*                 & $[0.83, 1.02]_{1000}^{9993}$   & & \\
+    \Glspl{verificationcondition} per crashing instruction*              & $[0.38, 0.40]_{1000}^{9993}$   & & \\
+    Mean interfering \glspl{cfg} per crashing instruction                & $[2.75, 2.76]_{1000}^{9993}$   & & \\
+    Failures per crashing instruction(\%)                                & $[0.04, 0.12]_{\infty}^{10000}$ & & \\
+    Mean time to process interfering \gls{cfg}$\dagger$                  & $[0.46, 0.60]_{1000}^{27339}$  & & \\
+    \Glspl{verificationcondition} per interfering \gls{cfg}(\%)$\dagger$ & $[13.8, 14.5]_{\infty}^{27339}$ & & \\
+    Failures per interfering \gls{cfg} (\%)*                             & $[0.63, 0.79]_{\infty}^{27535}$ & & \\
     \hline
   \end{tabbular}
   \caption{Effect the \gls{programmodel} assumption on analysis
-    effectiveness. *: Excluding failures in the per-crashing
-    instruction phase. $\dagger$: Excluding failures in either phase.
-    \todo{Need data}}
+    effectiveness. For the dynamic disabled column, {\implementation}
+    was configured to only use information from the dynamic alias
+    analysis when deriving $\beta$ and $i2c$; for the static disabled
+    one, it was configured to only use information from the static
+    analysis when deriving the static crashing \gls{cfg}.  *:
+    Excluding failures in the per-crashing instruction
+    phase. $\dagger$: Excluding failures in either phase.  \todo{Need
+      data}}
   \label{tab:eval:why:program_model}
 \end{sanetab}
 
 These results suggest that the hints from the static analysis are
-useful but not critical, giving modest reductions in analysis time, in
-the failure rate, and in the number of \glspl{verificationcondition}
-generated.  {\Technique} remains useful, albeit slower and less
-effective, when the non-essentially information collected by the
-static analysis is ignored.
+useful but not critical, giving modest reductions in the analysis
+time, in the failure rate, and in the number of
+\glspl{verificationcondition} generated.  {\Technique} remains useful,
+albeit slower and less effective, when the non-essential information
+collected by the static analysis is ignored.
 
 The results when disabling hints from the dynamic analysis are far
 more dramatic.  The analysis time and failure rate rise to the point
@@ -1569,6 +1579,7 @@ constraints on the situations in which {\technique} is likely to
 behave well.
 
 \subsection{Scalability to complex happens-before graphs}
+\label{sect:eval:complex_hb}
 
 \begin{sanefig}
   {\hfill}
@@ -1968,9 +1979,9 @@ software given only the program binary and some minimal information on
 its memory allocation pattern, and that the generated fixes are
 themselves reasonably efficient.  This represents a useful advance
 over the state of the art; previous systems either required far more
-information about the program (such as AutoPag\needCite{} and
-ConTest\needCite{}), or had very high overhead without exotic hardware
-(such as Atom-Aid\needCite{} or AVIO\needCite{}), or targeted a more
-restricted class of bugs (such as Kivati\needCite{} or
-Tolerace\needCite{}).  I expand on these comparisons in the next
-chapter.
+information about the program (such as AutoPag\cite{Lin2007} and
+ConTest\cite{Krena2007}), or had very high overhead without exotic
+hardware (such as Atom-Aid\cite{Lucia2009} or AVIO\cite{Lu}), or
+targeted a more restricted class of bugs (such as
+Kivati\cite{Chew2010} or ToleRace\cite{Kirovski2007}).  I expand on
+these comparisons in the next chapter.
