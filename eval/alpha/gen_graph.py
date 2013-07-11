@@ -10,7 +10,7 @@ figheight = 3.8
 timeout = 300.0
 bar_width = 0.05 / figwidth
 
-y_res = 0.002
+y_res = 0.003
 
 mintime = 0.00001
 maxtime = timeout
