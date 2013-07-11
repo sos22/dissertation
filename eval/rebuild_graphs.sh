@@ -23,22 +23,6 @@ cd complex_alias
 ./complex_alias.py hard < hard > hard.tex
 cd ..
 
-cd alpha
-cd unopt
-#../build_bpm_graph.py > bpm.tex
-#../build_gsc_graph.py > gsc.tex
-#../build_gvc_graph.py > gvc.tex
-#../build_crashing_size_graph.py > crashing_size.tex
-cd ..
-
-cd opt
-# ../build_bpm_graph.py > bpm.tex
-# ../build_gsc_graph.py opt > gsc.tex
-# ../build_gvc_graph.py > gvc.tex
-# ../build_crashing_size_graph.py > crashing_size.tex
-cd ..
-cd ..
-
 cd dyn_convergence
 ./rebuild.sh
 cd ..

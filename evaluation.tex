@@ -1,5 +1,5 @@
-%\newcommand{\biggraph}[1]{\input{#1}}
-\newcommand{\biggraph}[1]{}
+\newcommand{\biggraph}[1]{\input{#1}}
+%\newcommand{\biggraph}[1]{}
 %\draftonly{\renewcommand{\biggraph}[1]{}}
 
 \chapter{Evaluation}
@@ -12,6 +12,7 @@ Experiments still to run:
 \item Measure the effectiveness of the complex\_hb enforcers on ise.
 \item Re-run the fix overhead experiments on ise
 \item Finish running the various config knob experiments.
+\item Need to re-do the cost of building fixes experiments.
 \end{itemize}
 
 \begin{sanefig}
@@ -715,7 +716,7 @@ roughly divided into four phases:
   \gls{verificationcondition} is processed in isolation to produce a
   single fix.
 \end{itemize}
-I consider each phase in turn\editorial{Orphan}.
+I consider each phase in turn.
 
 \subsection{Per-\gls{crashingthread} analysis}
 
@@ -1323,14 +1324,14 @@ disabled.
     \cline{2-3}
     & Enabled & Disabled \\
     \hline
-    Mean time to process crashing instruction                            & $[5.5, 10]_{1000}^{10000}$     & \\
-    {\ldots} excluding per-\gls{interferingthread} work*                 & $[0.83, 1.02]_{1000}^{9993}$   & \\
-    \Glspl{verificationcondition} per crashing instruction*              & $[0.38, 0.40]_{1000}^{9993}$   & \\
-    Interfering \glspl{cfg} per crashing instruction                     & $[2.75, 2.76]_{1000}^{9993}$   & \\
-    Failures per crashing instruction (\%)                               & $[0.04, 0.12]_{\infty}^{10000}$ & \\
-    Mean time to process interfering \gls{cfg}$\dagger$                  & $[0.46, 0.60]_{1000}^{27339}$  & \\
-    \Glspl{verificationcondition} per interfering \gls{cfg}(\%)$\dagger$ & $[13.8, 14.5]_{\infty}^{27339}$ & \\
-    Failures per interfering \gls{cfg} (\%) *                            & $[0.63, 0.79]_{\infty}^{27535}$ & \\
+    Mean time to process crashing instruction                            & $[5.5, 10]_{1000}^{10000}$     & $[26, 38]_{1000}^{1000}$\\
+    {\ldots} excluding per-\gls{interferingthread} work*                 & $[0.83, 1.02]_{1000}^{9993}$   & $[2.4, 2.9]_{1000}^{9963}$\\
+    \Glspl{verificationcondition} per crashing instruction*              & $[0.38, 0.40]_{1000}^{9993}$   & $[0.25, 0.28]_{1000}^{9963}$\\
+    Interfering \glspl{cfg} per crashing instruction                     & $[2.75, 2.76]_{1000}^{9993}$   & $[5.25, 5.27]_{1000}^{9963}$\\
+    Failures per crashing instruction (\%)                               & $[0.04, 0.12]_{\infty}^{10000}$ & $[0.28, 0.47]_{\infty}^{10000}$\\
+    Mean time to process interfering \gls{cfg}$\dagger$                  & $[0.46, 0.60]_{1000}^{27339}$  & $[1.80, 1.99]_{1000}^{51694}$\\
+    \Glspl{verificationcondition} per interfering \gls{cfg}(\%)$\dagger$ & $[13.8, 14.5]_{\infty}^{27339}$ & $[4.96,5.28]_{\infty}^{51694}$\\
+    Failures per interfering \gls{cfg} (\%) *                            & $[0.63, 0.79]_{\infty}^{27535}$ & $[1.3,1.5]_{\infty}^{52422}$\\
     \hline
   \end{tabbular}
   \caption{Effect of {\StateMachine} simplification on analysis
@@ -1339,7 +1340,7 @@ disabled.
     either phase.  Note that the data for the simplification-enabled
     case was taken from the experiments reported in
     \autoref{sect:eval:how_does_it_work}, rather than being
-    re-collected for this table. \todo{Need more data} }
+    re-collected for this table. }
   \label{tab:eval:why:effects_of_simplification}
 \end{sanetab}
 
@@ -1889,29 +1890,9 @@ The cost of doing so is shown in
 
 \subsection{Scalability with respect to \gls{alpha}}
 
-\todo{This section is a mess.}
+\todo{Not brilliantly written, it has to be said.}
 
-\begin{sanefig}
-  \todo{Regenerate, killing off the pre-dismissed field, using the
-    right kernel, in style of previous figures.}
-  \biggraph{eval/alpha/unopt/bpm.tex}
-  \caption{Effect of the \gls{alpha} parameter on the time taken to
-    perform per-\gls{crashingthread} analysis.  A censoring correction
-    was applied to the kernel density estimator near the 300 second
-    timeout.}
-  \label{fig:perf:alpha:bpm:unopt}
-\end{sanefig}
-
-\begin{sanefig}
-  \todo{Kill second graph, merge first one with previous figure.
-    Explain meaning of dashed boxes.}
-  \biggraph{eval/alpha/unopt/gsc.tex}
-  \caption{Effect of the $\alpha$ parameter on the time taken to
-    perform per-\gls{interferingthread} analysis. A censoring
-    correction was applied to the kernel density estimator near the
-    300 second timeout.}
-  \label{fig:perf:alpha:gsc:unopt}
-\end{sanefig}
+\biggraph{eval/alpha/alpha.ttex}
 
 \noindent
 Previous sections have investigated scalability with respect to some
@@ -1921,12 +1902,49 @@ respect to the raw size of the \gls{analysiswindow} using real
 programs.  To do so, I selected 1000 instructions at random from MySQL
 and analysed each at varying values of \gls{alpha}, recording the time
 taken by the various analysis phases.  The results are shown in
-figures \ref{fig:perf:alpha:bpm:unopt},
-\ref{fig:eval:time_breakdown:crashing_size}, and
-\ref{fig:perf:alpha:gsc:unopt}, in the same style as
-\autoref{fig:eval:how:per_crashing_times}.
+\autoref{fig:eval:alpha}.
 
-\todo{Analysis?}
+The first chart, \autoref{fig:eval:alpha:time_per_crashing}, shows how
+long each potentially-crashing instruction spends in the initial,
+per-crashing instruction, phase of the analysis, excluding failures,
+and how that varies with \gls{alpha}.  The probability density
+functions were estimated in the same way as those shown in
+\autoref{fig:eval:how:per_crashing_times}, except that a censoring
+correction was applied near the 300 second timeout, and, as usual, the
+grey region gives a 90\% confidence interval computed with a 1000
+replicate bootstrap.  The chart also shows the proportion of
+instructions which failed in this stage.  The second chart,
+\autoref{fig:eval:alpha:time_per_interfering}, shows the time which
+each interfering \gls{cfg} requires in the per-interfering \gls{cfg}
+phase in the same style.
+
+The overall pattern in these charts is broadly as expected: the time
+taken increases rapidly with \gls{alpha}, leading to an unpleasant
+increase in the failure rate.  These results suggest that values of
+\gls{alpha} above about 50 are unlikely to be practical with this
+combination of hardware and program to be analysed.
+
+The third chart, \autoref{fig:eval:alpha:interfering_per_crashing},
+shows the number of interfering \glspl{cfg} generated for each
+potentially-crashing instruction.  As can be see, this rises rapidly
+with increasing values of \gls{alpha} until \gls{alpha} reaches 30, at
+which point it begins to fall again.  The initial rise is easily
+explained, and simply reflects the fact that with more instructions
+there is more scope for the \gls{crashingthread} to race.  The fall at
+higher values of \gls{alpha} is a survivor effect caused by failures
+in the per-crashing instruction phase of the analysis.  The more
+memory accesses a crashing {\StateMachine} has, the more interfering
+\glspl{cfg} it will generate, but the more likely it is to fail, and
+beyond $\gls{alpha}=30$ the increased failure rate outweighs the
+increased number of interfering \glspl{cfg}.
+
+The final chart, \autoref{fig:eval:alpha:vcs_per_interfering}, shows
+the proportion of interfering \glspl{cfg} which generate
+\glspl{verificationcondition} requiring run-time validation.  It shows
+a similar pattern to the number of interfering \glspl{cfg} per
+crashing instruction: an initial rise, reflecting an increase in the
+complexity of the {\StateMachines}, followed by a fall for higher
+values of \gls{alpha} as survivor effects begin to dominate.
 
 The configuration used for this experiment was slightly different from
 that used for most of the other experiments:
@@ -1939,9 +1957,7 @@ that used for most of the other experiments:
   an out-of-memory error when run in parallel were re-run in series
   after the experiment completed; an operation was only treated as
   running out of memory if it failed on this final run.  Timed-out
-  phases of the analysis were not re-run.  The distributions obtained
-  without performing any re-runs are shown on the chart with dashed
-  grey lines.
+  phases of the analysis were not re-run.
 \end{itemize}
 The results of this experiment are therefore not directly comparable
 with the results of the other experiments.
