@@ -152,7 +152,7 @@ At a high level, the algorithm used has the following phases:
 \item
   Decide on a strategy for gaining control of the program at
   appropriate points.  The mechanism which {\technique} uses to do so
-  is described in \autoref{sect:enforce:gain_control}.
+  is described in \autoref{sect:enforce:gain_control}\editorial{Order?}.
 \item
   Combine the results of the previous phases with the plan
   interpreter, discussed in \autoref{sect:enforce:interpreting}, and
@@ -170,8 +170,8 @@ first gain control of it.  {\Implementation} does so by patching the
 program's binary and replacing certain critical instructions with
 branch to enforcer-provided stubs.  This is highly efficient, when
 compared to other techniques such as dynamic binary
-rewriting\cite{Nethercote2007,Luk2005} or processor breakpoint
-registers\cite[Chapter 16.2: Debug Registers]{Intel2009}, and avoids
+rewriting~\cite{Nethercote2007,Luk2005} or processor breakpoint
+registers~\cite[Chapter 16.2: Debug Registers]{Intel2009}, and avoids
 unnecessarily disturbing the program's state, but requires care to be
 implemented safely.  In particular, the branch operation might be
 larger than the instruction it is replacing\footnote{The AMD64 jump
@@ -353,8 +353,7 @@ which minimises the cost of patch\footnote{The result is only usually
   |\mathit{gainControl}|$ and $n/k$ is the cost of the current
   algorithm.  In practice, the algorithm given here rarely needs to
   add more than one or two instructions to the $\mathit{Cont}$ set
-  anyway (see \autoref{sect:eval:genfix}), and so this would not be a
-  good trade-off.}.
+  anyway, and so this would not be a good trade-off.}.
 
 \section{Extracting the happens-before graph}
 \label{sect:enforce:slice_hb_graph}
@@ -456,7 +455,7 @@ side conditions of \false and are immediately discarded.  The
       \draw[BddTrue] (n02) -- (true);
       \draw[BddFalse] (n02) -- (false);
       \draw[BddTrue] (n21) -- (n22);
-      \draw[BddFalse] (n21) to [bend left=30] (false);
+      \draw[BddFalse] (n21.east) .. controls +(.3,0) and +(0,.3) .. ++(.5,-.5) -- ++(0,-2.3) ..controls +(0,-.3) and +(.3,0) .. ++(-.5,-.5) -- (false.east);
       \draw[BddTrue] (n22) -- (true);
       \draw[BddFalse] (n22) -- (false);
     \end{tikzpicture}
@@ -464,7 +463,7 @@ side conditions of \false and are immediately discarded.  The
   \caption{\protect\Gls{bdd} representation of the
     \protect\gls{verificationcondition}.  Solid lines show the path
     taken through the \protect\gls{bdd} when the node conditions are
-    true and dotted lines the path when the conditions are false. \todo{Curved line?}}
+    true and dotted lines the path when the conditions are false.}
   \label{fig:reproducing:slice_eg:bdd}
 \end{sanefig}
 
@@ -804,7 +803,7 @@ defer the unevaluable component to later in the
 \gls{cfg}\footnote{This is in essence a predicate abstraction problem,
   and {\technique}'s algorithm for doing so can be regarded as a
   modest generalisation of Cavada's \protect\Gls{bdd} Modulo Theory
-  algorithm\cite{cavada2007}, applied in a slightly unusual context.}.
+  algorithm~\cite{cavada2007}, applied in a slightly unusual context.}.
 
 To understand why this is a correct factorisation of the condition,
 consider the paths through the \protect\gls{bdd}.  Any which test only
@@ -1338,24 +1337,21 @@ happens-before graphs, each with a potentially unbounded set of
 mappings on to the static \gls{cfg}.  The enforcer must track its
 progress through all of these potential plans.
 
-\todo{Little bit too dense.  Could maybe make this distinction
-  earlier?} It is useful at this point to draw a distinction between
-static plans, which are built before the program's execution starts
-and reflect static properties of the program and the bug to be
-enforced, and dynamic plans, which are created and destroyed as the
-program runs and reflect dynamic properties of a particular
-execution's interactions with one of the static plans.  Each enforcer
-will have a single set of static plans, built before the program
-starts, which it attempts to enforce, and will maintain one set of
-dynamic plans for program thread, and these dynamic plan sets will
-vary over time.  Dynamic plans are added to the dynamic plan set
-whenever a thread reaches the start instruction of one of the static
-plans.  They then cycle through the stages of the single-plan
-interpreter, starting from \textbf{Sample}, and the single-plan
-interpreter would exit, at which point the dynamic plan is removed
-from the dynamic plan set.  If the dynamic plan set ever becomes empty
-then the enforcement interpreter exits and the program is returned to
-normal operation.
+It is useful at this point to draw a distinction between static plans,
+which are built before the program's execution starts and reflect
+static properties of the program and the bug to be enforced, and
+dynamic plans, which are created and destroyed as the program runs and
+reflect dynamic properties of a particular execution's interactions
+with one of the static plans.  Each enforcer will have a single,
+fixed, set of static plans, but will maintain one set of dynamic plans
+for each program thread, and these dynamic plan sets will vary over
+time.  Dynamic plans are added to the dynamic plan set whenever a
+thread reaches the start instruction of one of the static plans.  They
+then cycle through the stages of the single-plan interpreter, starting
+from \textbf{Sample}, until the single-plan interpreter would exit, at
+which point the dynamic plan is removed from the dynamic plan set.  If
+the dynamic plan set ever becomes empty then the enforcement
+interpreter exits and the program is returned to normal operation.
 
 I now explain how to implement the \textbf{Succ} stage in this model.
 In the single-plan interpreter, this stage is responsible for
@@ -1574,8 +1570,8 @@ possible time; in other words, the non-deterministic part of the
 desired behaviour is correctly implemented, but the non-causal part is
 not.  This can sometimes lead to threads delaying for longer than
 necessary.  If it were necessary, the ``correct'' behaviour could be
-achieved using a deterministic replay system\cite{Choi1998} and
-techniques similar to a time-travelling debugger\cite{Xu2003}, but at
+achieved using a deterministic replay system~\cite{Choi1998} and
+techniques similar to a time-travelling debugger~\cite{Xu2003}, but at
 the probable expense of further impairing performance.  I have not
 investigated this at all.
 

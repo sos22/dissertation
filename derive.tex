@@ -428,7 +428,7 @@ and~\ref{fig:state_machine_exprs}\footnote{The actual implementation
 \hdashline
  & \state{Assert}               & \state{expr} & Boolean expression & Note that a given condition is true at a particular point in the {\StateMachine}'s execution. \\
 \hdashline
- & $\Phi$                       &              &                 & Implement an SSA $\Phi$ node\cite{cytron1991}. \\
+ & $\Phi$                       &              &                 & Implement an SSA $\Phi$ node~\cite{cytron1991}. \\
 \hdashline
  & {\stStartAtomic}          &              &                 & \multirow{3}{6.05cm}{Delimit atomic blocks, used to constrain the set of schedules which must be considered; see \autoref{sect:using:build_cross_product}.} \\
  & {\stEndAtomic}            \\
@@ -464,7 +464,7 @@ language's most important features:
 \item {\STateMachines} have access to an infinite set of
   {\StateMachine} variables, each of which contains a single integer
   value.  The {\StateMachine} is maintained in single static
-  assignment form\cite{cytron1991} with respect to these variables.
+  assignment form~\cite{cytron1991} with respect to these variables.
 \item In addition to the variables, {\StateMachines} also have access
   to a mutable mapping from integers to integers called the
   \emph{speicher} which is initialised to the contents of program
@@ -637,7 +637,7 @@ $\smReg{r}{t}$ & The initial value of register \textsc{r} in thread $t$.\\
 
 The {\StateMachine} analysis language is powerful enough to make
 translating individual instructions in isolation completely
-straightforward\footnote{{\Implementation} uses LibVEX\cite[Chapter
+straightforward\footnote{{\Implementation} uses LibVEX~\cite[Chapter
     2]{Seward2012} to decode AMD64 machine code before performing this
   translation.}, but connecting the instructions together is not
 always completely trivial.  There are three cases which require
@@ -913,7 +913,7 @@ expensive.  The main techniques used to do so are:
 \item \emph{Dead code elimination}, which is used to eliminate
   redundant updates to {\StateMachine} temporaries.
 \item \emph{Copy propagation}, based on the algorithm from the
-  dcc\cite{Cifuentes1994} decompiler, is used to shorten long chains
+  dcc~\cite{Cifuentes1994} decompiler, is used to shorten long chains
   of assignments.  One minor extension present in {\technique} but not
   dcc is that {\technique} can make use of \state{Assert} side-effects
   during this transformation, so that, for instance, if $x$ is
@@ -990,6 +990,7 @@ set of all possible values, and so discarding $a$ can never lead to
 any possible bugs being omitted.  It is therefore always safe to do
 so.
 
+\todo{Not sure how much this adds, especially since I don't eval it.}
 While safe, it is not always desirable to discard $a$ if the
 restricted set of initial values would have been easier to analyse.
 For instance, if the bug to be investigated is a bad pointer
@@ -1001,12 +1002,14 @@ definitely be a valid pointer, is often useful.  The approach taken by
 extend the \glspl{cfg} backwards to include a small amount of
 additional context provided that doing so does not increase the number
 of paths through the \gls{cfg} or cause the length of any path to
-exceed \gls{alpha}.  In other words\editorial{ugg}, a \gls{cfg} rooted
-at instruction A will be extended to include its predecessor
-instruction B provided that B is A's only predecessor and the longest
-path starting at A is at most $\alpha - 1$ instructions long.
-\todo{So what?}
-
+exceed \gls{alpha}.  In other words, a \gls{cfg} rooted at instruction
+A will be extended to include its predecessor instruction B provided
+that B is A's only predecessor and the longest path starting at A is
+at most $\alpha - 1$ instructions long.  Because the number of paths
+through the \gls{cfg} does not increase, this leads to only a modest
+increase in the eventual cost of symbolically executing the resulting
+{\StateMachine}, and this extra context can often provide useful hints
+to the analysis.
 
 \subsection[Building the \glsentrytext{interferingthread} \glsentrytext{cfg}s]{Building the \gls{interferingthread} \glspl{cfg}}
 
@@ -1024,7 +1027,7 @@ forwards through the \gls{cfg}, whereas the \gls{crashingthread} ones
 worked backwards, and the \gls{interferingthread} algorithms can
 produce multiple disjoint {\StateMachines} where the
 \gls{crashingthread} ones only ever produced a single {\StateMachine}.
-I now describe these differences in more detail\editorial{gah}.
+I now describe these differences in more detail.
 
 Building the static \glspl{cfg} is straightforward.  Starting from
 each member of $\beta$, {\technique} explores forwards for \gls{alpha}
@@ -1455,7 +1458,7 @@ to determine, for each pair, whether running the two {\StateMachines}
 in parallel might suffer an atomicity violation bug, and if so under
 what circumstances.
 
-The core of the approach is to use symbolic execution\cite{King1976}
+The core of the approach is to use symbolic execution~\cite{King1976}
 to convert the {\StateMachines} into two predicates over the
 {\StateMachine} execution environment: the
 \gls{verificationcondition}, which is true when interleaving the two
@@ -1484,7 +1487,7 @@ most important features here:
   {\StateMachine} at a time, even when investigating the parallel
   behaviour of two threads.  Rather than investigating thread
   interleavings in the symbolic execution engine, as is done in, for
-  instance, ESD\cite{Zamfir2010}, {\technique} instead encodes them
+  instance, ESD~\cite{Zamfir2010}, {\technique} instead encodes them
   into special cross-product {\StateMachines}, described in
   \autoref{sect:using:build_cross_product}.
 
@@ -1518,14 +1521,14 @@ most important features here:
   loaded data when that data is needed.  This is often faster then
   resolving these queries eagerly\footnote{Note that this is not quite
     the same as the lazy abstraction algorithm used in, for instance,
-    BLAST\cite{Henzinger2002}, which adjusts which aspects of program
+    BLAST~\cite{Henzinger2002}, which adjusts which aspects of program
     state are represented in the abstract state.  {\Implementation}
     uses a fixed abstraction; the laziness here lies in the \emph{way}
     the abstract state is represented, not in \emph{what} is
     represented.}.
 
 \item The engine does not use any kind of incremental abstraction
-  technique such as CEGAR\cite{Clarke2000}.  This is primarily because
+  technique such as CEGAR~\cite{Clarke2000}.  This is primarily because
   of the use of a flat memory representation: the speicher is a single
   object so it makes little sense to talk about modelling one part of
   it accurately and another part inaccurately, and without that CEGAR
@@ -1551,7 +1554,7 @@ The resulting engine is generally adequate but rarely impressive, and
 it is likely that using a more powerful one could usefully improve
 {\implementation}'s performance.  Nevertheless, even this relatively
 simple system is sufficient to generate some results in a useful
-selection of cases\editorial{blurg}.
+selection of cases.
 
 \subsection{Deriving the inferred assumption}
 \label{sect:derive:inferred_assumption}
@@ -1814,9 +1817,9 @@ over this basic one:
 
   Note that this refinement excludes executions in which the
   {\StateMachines} run in series, rather than those in which they run
-  linearizably\editorial{Cite Herlihy 1990}.  The latter would perhaps
-  be more useful, as it could potentially eliminate more paths, but is
-  far more difficult to calculate; since this is purely a performance
+  linearizably~\cite{Herlihy1990}.  The latter would perhaps be more
+  useful, as it could potentially eliminate more paths, but is far
+  more difficult to calculate; since this is purely a performance
   enhancement, the simpler implementation is more appropriate.
 \item The basic grammar fails to take account of partial order
   redundancies caused by {\StateMachine}-local side effects such as
@@ -1828,12 +1831,9 @@ over this basic one:
   for instance, will be non-local if it could alias with any of the
   crashing {\StateMachine}'s possible future \state{Store}s, and so
   might switch from being non-local to being local when the crashing
-  {\StateMachine} performs a \state{Store}.  Checking whether a side
-  effect in one {\StateMachine} is local requires {\technique} to look
-  ahead through the other {\StateMachine}, comparing the current side
-  effect to every remote one.  A {\stStartAtomic} side effect is
-  considered non-local if any of the side effects in the atomic block
-  which it starts are non-local\editorial{ugg}.
+  {\StateMachine} performs a \state{Store}.  A {\stStartAtomic} side
+  effect is considered non-local if any of the side effects in the
+  atomic block which it starts are non-local.
 \item This grammar can sometimes duplicate side effect states, which
   might break static single assignment form.  {\Technique} uses a
   separate post-pass to restore the SSA invariant.
@@ -2054,13 +2054,12 @@ directly:
   variant of production \production{2'}, not shown in the figure,
   which races the {\stStartAtomic} side-effect against an appropriate
   non-local side effect in the other {\StateMachine} using a
-  $\happensBeforeEdge$ test and either starts the atomic block in the
-  same way as production \production{6'} or runs the other side
-  effect\editorial{God that's an ugly sentence.}
+  $\happensBeforeEdge$ test and, depending on the result of that test,
+  either starts the atomic block, in the same way as production
+  \production{6'}, or runs the other side effect.
 \end{itemize}
 \begin{sanefig}
   \newcommand{\boxLabel}[2]{\small \raisebox{-1.5pt}{\production{#1'}} #2}
-  % \labelBox{x0}{y0}{width}{height}{ruleId}{state}
   \newcommand{\labelBox}[6]{
     \fill [color=blue!20] (#1, #2) rectangle (#1 + #3, #2 + #4);
     \node at (#1, #2 + #4 + .1) [below right] {\boxLabel{#5}{#6}};
@@ -2362,7 +2361,7 @@ users of the library, and the remainder generally use only a very
 small number of custom allocators.  MySQL, for instance, had only two
 functions which needed to be annotated, and Thunderbird and pbzip2 had
 none.  It might be possible to identify such allocators using a
-variant of the techniques described by Cozzie et al.\cite{Cozzie2008},
+variant of the techniques described by Cozzie et al.~\cite{Cozzie2008},
 but I have not investigated that at this time.
 
 \subsection{Escape analysis}
@@ -2391,10 +2390,6 @@ thread-private pointer; upgrading blocks early and pessimistically
 means that it is never necessary to do so.
 
 \section{Implementation infelicities, and their removal}
-\todo{This is a bit of a hodge podge.  Also, it's written in my normal
-  voice, rather than trying to force everything into academic-ese.}
-
-\noindent
 {\Implementation} makes several important simplifying assumptions,
 some of which can impact the correctness of the analysis.  I now
 briefly discuss these assumptions and their effects, and possible ways
@@ -2403,7 +2398,7 @@ of removing them.
 \subsection{Incomplete library models}
 As has already been discussed, {\implementation} relies on
 hand-written {\StateMachine} implementations of system library
-functions; worse, if no such implementation is available then
+functions.  If no such implementation is available then
 {\implementation} uses a stub implementation which simply sets the
 return address register to a new free variable.  While this approach
 does have some advantages, most notably in being able to incorporate
@@ -2430,12 +2425,12 @@ resolution algorithm does not support unaligned memory accesses, and
 will produce incorrect results if the program makes use of them in the
 \gls{analysiswindow}.  Such accesses are unusual in most programs, as
 they have very poor performance on most modern
-processors\footnote{Indeed, many ARM-based processors do not support
-  unaligned accesses at all and require them to be emulated in the
-  operating system, leading to performance which is better described
-  as abysmal than as poor.}, and removing this limitation would
-complicate alias analysis even for programs which never make unaligned
-accesses.  Alias analysis is already one of the main factors limiting
+processors\footnote{Indeed, many processors do not support unaligned
+  accesses at all and require them to be emulated in the operating
+  system, leading to performance which is better described as abysmal
+  than as poor.}, and removing this limitation would complicate alias
+analysis even for programs which never make unaligned accesses.  Alias
+analysis is already one of the main factors limiting
 {\implementation}'s scalability and so this would be a poor trade-off.
 
 Second, {\implementation} assumes that every address in the program's
@@ -2498,9 +2493,10 @@ concurrency model.  The only form of concurrency supported by
 {\implementation} is simple multi-thread concurrency within a single
 program.  It does not, for instance, consider races with signal
 handlers, or inter-process races mediated via shared memory regions or
-\texttt{ptrace}-like APIs; while these mechanisms are much less common
-than thread-style concurrency, they do still occur in some real
-programs.  Signal handlers, and other up-call style concurrency, could
+\texttt{ptrace}-like APIs.  While these mechanisms are much less
+common than thread-style concurrency, they do still occur in some real
+programs, and so it would potentially be useful to have some support
+for them.  Signal handlers, and other up-call style concurrency, could
 be added relatively easily by treating each signal handling function
 as a special kind of \gls{interferingthread}, although the dynamic
 analysis might need some modest extensions to determine when it is

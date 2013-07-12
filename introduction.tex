@@ -70,17 +70,21 @@ binary patches which eliminate the bug
 An important decision which must be made when designing this kind of
 tool is how much higher-level semantic information to use, and in
 particular whether to operate at the level of machine code or source
-code\editorial{Ugg}.  Working with machine code gives a tool the most
-precise description of the program's behaviour, as concurrency bugs
-often depend on the precise details of compiler optimisations; on the
-other hand, source code provides far more useful information, and so
-is usually far easier to analyse.  {\Technique} takes the extreme
+code.  Working with machine code gives a tool the most precise
+description of the program's behaviour, as concurrency bugs often
+depend on the precise details of compiler optimisations; on the other
+hand, source code provides far more useful information, and so is
+usually far easier to analyse.  {\Technique} takes the extreme
 position of operating on machine code as far as possible, only relying
 on access to source code when absolutely necessary.  For some
 non-trivial programs, including Thunderbird and pbzip2, the technique
 can produce useful results without any access to source code at all,
 and for most others very little information is needed (MySQL, for
-instance, required just two functions to be manually annotated).
+instance, required higher-level information for just two functions).
+{\Technique} explores a particularly difficult version of the program
+analysis problem, and hence provides a form of lower bound on what can
+be achieved in an environment which is particularly ill-suited to this
+kind of technique.
 
 \section{Contributions}
 
@@ -229,7 +233,7 @@ At the same time, there is only any possibility of one bug hiding
 another if both fit in {\technique}'s \gls{analysiswindow}, which, in
 practice, cannot exceed a couple of hundred instructions.  As such, it
 is quite unlikely that real programs would be able to trigger this
-behaviour\editorial{Could do with some evidence for that.}.
+behaviour.
 
 \subsection{Execution model}
 
@@ -237,11 +241,11 @@ In addition to restricting the class of bugs, {\technique} also
 restricts the execution environment by assuming a strongly-ordered
 memory model, so that memory accesses are seen by all processors in
 the order in which they appear in the program.  This is a reasonable
-approximation for the widely-used x86 architecture\cite[Section
+approximation for the widely-used x86 architecture~\cite[Section
   8.2]{Intel2013}, as that platform rarely reorders memory accesses
 issued by a single processor.  Architectures with a weaker memory
-ordering, such as Alpha\cite[Section 5.6]{Compaq2002} or
-ARM\cite[Section 5.3.4]{ARM2007}, would require more involved
+ordering, such as Alpha~\cite[Section 5.6]{Compaq2002} or
+ARM~\cite[Section 5.3.4]{ARM2007}, would require more involved
 processing to correctly capture the more complicated concurrency
 semantics.
 

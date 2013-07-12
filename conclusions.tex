@@ -9,14 +9,14 @@ performance, or generalising to more types of bugs.  Others involve
 more fundamental changes to {\technique} itself.  I describe some
 possible ideas below.
 
-\subsection{Finding and characterising bugs}
+\section{Finding and characterising bugs}
 
 The initial analysis which builds \glspl{verificationcondition} is
 probably the weakest part of {\technique}, as it is only capable of
 considering instruction interleavings over fairly small windows of
 instructions.  The obvious way of improving that would be to re-cast
 the algorithm to take as input either source code or an intermediate
-format such as LLVM bitcode\cite{Lattner2013}.  These provide the
+format such as LLVM bitcode~\cite{Lattner2013}.  These provide the
 analysis with far more information than raw machine code and so might
 reasonably be expected to expand the fragments of program which it can
 consider.  Alternatively, the initial static analysis which builds the
@@ -36,7 +36,7 @@ pursuing this idea is the limited size of {\technique}'s
 \gls{analysiswindow}, as ordering violation bugs generally involve
 larger fragments of code than atomicity violation ones.
 
-\subsection{Reproducing bugs}
+\section{Reproducing bugs}
 
 As described in \autoref{sect:reproduce:unenforcable}, {\technique}
 cannot enforce every possible happens-before graph.  The fundamental
@@ -59,9 +59,7 @@ for the receiving one, and hence no risk of introducing cycles in the
 happens-before graph.  The main disadvantage of this scheme would be
 the greater implementation complexity in the enforcer itself.
 
-\subsection{Fixing bugs}
-
-\todo{Need to check this one over a little.}
+\section{Fixing bugs}
 
 I have described how {\technique} can fix bugs by introducing an
 additional global lock.  This is effective but inefficient.  In
@@ -97,22 +95,22 @@ of it.
   \vspace{-12pt}
 \end{wrapfigure}
 One approach to doing so makes use of a kind of extended hazard
-pointer\cite{Michael2004}.  Consider, for example, the threads in
+pointer~\cite{Michael2004}.  Consider, for example, the threads in
 \autoref{fig:concl:hb_graph}.  This is intended to illustrate a
 construction in which there is one thread which issues two loads and
 another which issues two stores, and the program will crash if both
-stores occur in between the two loads and the variable $\mathit{idx}$
-has the same value in both threads.  One way of preventing this bug
-would be to have the first thread publish a ``hazard'', containing the
-value of its $\mathit{idx}$ variable, before running the first load
-and clear it after the second one.  The second thread could then check
-for such hazards before running the first store and, if it finds one
-with a matching $\mathit{idx}$, make sure to wait for the hazard to
-clear before running the second one.  This would fix the bug and allow
-the two threads to run in parallel for most of the critical section,
-or for all of it when the $\mathit{idx}$s differ.  The loss of
-concurrency, and hence loss of performance, associated with the fix
-would therefore usually be much lower.
+stores occur in between the two loads and the variable $i$ has the
+same value in both threads.  One way of preventing this bug would be
+to have the first thread publish a ``hazard'', containing the value of
+its $i$ variable, before running the first load and clear it after the
+second one.  The second thread could then check for such hazards
+before running the first store and, if it finds one with a matching
+$i$, make sure to wait for the hazard to clear before running the
+second one.  This would fix the bug and allow the two threads to run
+in parallel for most of the critical section, or for all of it when
+the $i$s differ.  The loss of concurrency, and hence loss of
+performance, associated with the fix would therefore usually be much
+lower.
 
 \chapter{Conclusions}
 \label{sect:concl}
