@@ -16,8 +16,8 @@ The basic algorithm proceeds as follows:
   crashing instruction is identified in advance, and
   \autoref{sect:derive:unknown_bugs}, in the case where that must be
   identified as well.
-\item Decompile the \gls{crashingthread}'s \gls{cfg} into a
-  {\StateMachine}, converting the program's machine code into a form
+\item Decompile the \gls{crashingthread}'s \gls{cfg} into
+  {\AStateMachine}, converting the program's machine code into a form
   which is more amenable to later analysis.  The {\StateMachine}
   abstraction is described in \autoref{sect:derive:state_machines} and
   the decompilation process in \autoref{sect:derive:compile_cfg}.
@@ -388,8 +388,8 @@ The dynamic \gls{cfg} represents all of the instructions in the
 principle contains all of the information needed to analyse the bug.
 It is, however, very close to machine code, and is therefore difficult
 to work with, and so the next step in the algorithm is to decompile it
-into a more amenable form.  For {\technique}, this is a
-{\StateMachine}.  {\STateMachines} are, in effect, programs in a
+into a more amenable form.  For {\technique}, this is
+{\AStateMachine}.  {\STateMachines} are, in effect, programs in a
 simple language which model the relevant behaviour of the program
 under investigation.  Programs in this language consist of a directed
 acyclic graph of states, and these are defined in
@@ -416,15 +416,15 @@ and~\ref{fig:state_machine_exprs}\footnote{The actual implementation
  & {\stUnreached}            &              &             & A contradiction has been reached. \\
 \hline
 \multicolumn{2}{l}{Side-effect states}\\
- & \state{Load}                 & \state{addr} & Integer expression & \multirow{3}{6.05cm}{Load from the speicher at address \state{addr} and store the result in {\StateMachine} variable \state{var}.} \\
+ & \state{Load}                 & \state{addr} & Integer expression & \multirow{3}{6.05cm}{Load from the speicher at address \state{addr} and store the result in {\AStateMachine} variable.} \\
  &                              & \state{var}  & {\STateMachine} variable \\
 \\
 \hdashline
  & \state{Store}                & \state{addr} & Integer expression & \multirow{2}{6.05cm}{Store the value of \state{data} to the speicher at address \state{addr}.}\\
  &                              & \state{data} & Integer expression \\
 \hdashline
- & \state{Copy}                 & \state{data} & Integer expression & \multirow{2}{6.05cm}{Evaluate an expression and store the result in a {\StateMachine} variable.} \\
- &                              & \state{var}  & {\STateMachine} temporary \\
+ & \state{Copy}                 & \state{data} & Integer expression & \multirow{2}{6.05cm}{Evaluate an expression and store the result in {\AStateMachine} variable.} \\
+ &                              & \state{var}  & {\STateMachine} variable \\
 \hdashline
  & \state{Assert}               & \state{expr} & Boolean expression & Note that a given condition is true at a particular point in the {\StateMachine}'s execution. \\
 \hdashline
@@ -632,7 +632,7 @@ $\smReg{r}{t}$ & The initial value of register \textsc{r} in thread $t$.\\
   \label{fig:derive:sm_semantics}
 \end{sanefig}
 
-\section[Decompiling the dynamic \glsentrytext{cfg} to a \StateMachine]{Decompiling the dynamic \gls{cfg} to a \StateMachine}
+\section[Decompiling the dynamic \glsentrytext{cfg} to \AStateMachine]{Decompiling the dynamic \gls{cfg} to \AStateMachine}
 \label{sect:derive:compile_cfg}
 
 The {\StateMachine} analysis language is powerful enough to make
@@ -681,8 +681,8 @@ shown in \autoref{fig:derive:example_dissassembly1}.  The
 \texttt{JMP\_NE} instruction \texttt{C} loads from the memory at
 \texttt{rcx+8}, jumping to \texttt{B} if it is non-zero and proceeding
 to \texttt{D} otherwise.  This will produce a dynamic \gls{cfg} as in
-\autoref{fig:unrolled_cyclic_cfg}, as already discussed, and a
-\StateMachine{} as shown in
+\autoref{fig:unrolled_cyclic_cfg}, as already discussed, and
+\AStateMachine{} as shown in
 \autoref{fig:state_machine_for_cyclic_cfg}.
 
 \parshape 1 9.3cm 6.2cm \vspace{-4.35cm}{\parbox{6.2cm}{
@@ -924,7 +924,7 @@ expensive.  The main techniques used to do so are:
 \item \emph{{\stPhi} elimination}, which is used to turn SSA {\stPhi}
   side effect states into \state{Copy} ones.  This reifies the
   {\stPhi} states' implicit dependence on {\StateMachine} control flow
-  into the explicit structure of a {\StateMachine} expression, making
+  into the explicit structure of {\AStateMachine} expression, making
   it easier for the other simplification steps to manipulate and use
   it.
 \item \emph{Alias analysis}, which determines how \state{Store} and
@@ -935,11 +935,10 @@ expensive.  The main techniques used to do so are:
   atomic regions or combining long chains of related \state{If}
   operations.
 \end{itemize}
-The effect of these simplification passes is to take a {\StateMachine}
+The effect of these simplification passes is to take {\AStateMachine}
 which represents all of the program's behaviour in the
 \gls{analysiswindow} and transform it to one which represents only the
-behaviour which is most relevant to the bug under
-investigation.
+behaviour which is most relevant to the bug under investigation.
 
 \section{Building the interfering thread's \StateMachines}
 \label{sect:derive:write_side}
@@ -1018,7 +1017,7 @@ The procedure for building the \gls{interferingthread}
 \gls{crashingthread} one: determine some starting point instructions,
 build a static \gls{cfg} of the ``nearby'' instructions, unroll that
 static \gls{cfg} to a dynamic one, and decompile the dynamic \gls{cfg}
-into a {\StateMachine}.  The nature of the starting point is, however,
+into {\AStateMachine}.  The nature of the starting point is, however,
 quite different (for a crashing {\StateMachine}, the single crashing
 instruction; for an interfering one, the $i2c$ and $c2i$ sets), and
 this leads to quite different algorithms and quite different results.
@@ -1515,7 +1514,7 @@ most important features here:
   engine must execute a \state{Load} operation and cannot immediately
   determine which \state{Store} operation to use it does not cause an
   immediate fork of its state, but instead causes the \state{Load} to
-  return a {\StateMachine} expression which describes the aliasing
+  return {\AStateMachine} expression which describes the aliasing
   query and selects an appropriate result.  {\Implementation} only
   determines which precise \state{Store} operation should provide the
   loaded data when that data is needed.  This is often faster then
@@ -1539,7 +1538,7 @@ most important features here:
 \item Unlike most symbolic execution engines, the one used by
   {\implementation} does not attempt to detect when it revisits a
   previously-visited configuration.  This is safe because
-  {\StateMachines} are acyclic: any path through a {\StateMachine} can
+  {\StateMachines} are acyclic: any path through {\AStateMachine} can
   visit a given state at most once so there is no possibility of a
   single revisiting a configuration and entering an infinite loop.  It
   is also, surprisingly, reasonably performant, because it is
