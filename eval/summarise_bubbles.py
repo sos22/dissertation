@@ -49,61 +49,62 @@ def tarfile_files(tf):
 def load_bubblelog(filename):
     crashing = []
     interfering = []
-    with tarfile.open(filename) as t:
-        for (tf, content) in tarfile_files(t):
-            if CRASHING_FNAME.match(tf.name):
-                lines = iter(content)
+    t = tarfile.open(filename)
+    for (tf, content) in tarfile_files(t):
+        if CRASHING_FNAME.match(tf.name):
+            lines = iter(content)
+            fl = next(lines)
+            m = START_CRASHING.match(fl.strip())
+            end_time = start_time  = float(m.group(1))
+            key = m.group(2)
+            failed = False
+            switch_mode = None
+            percrashing = None
+            for l in lines:
+                m = ORDINARY_LINE.match(l.strip())
+                end_time = float(m.group(1))
+                if m.group(2) == "timeout":
+                    print "Timeout"
+                    failed = True
+                elif m.group(2) == "out of memory":
+                    print "OOM"
+                    failed = True
+                elif m.group(2) == "start process interfering CFGs":
+                    percrashing = end_time - start_time
+            crashing.append({"failed": failed,
+                             "tot_time": end_time - start_time,
+                             "percrashing": percrashing or end_time - start_time})
+        else:
+            lines = iter(content)
+            try:
                 fl = next(lines)
-                m = START_CRASHING.match(fl.strip())
-                end_time = start_time  = float(m.group(1))
-                key = m.group(2)
-                failed = False
-                switch_mode = None
-                percrashing = None
-                for l in lines:
-                    m = ORDINARY_LINE.match(l.strip())
-                    end_time = float(m.group(1))
-                    if m.group(2) == "timeout":
-                        print "Timeout"
-                        failed = True
-                    elif m.group(2) == "out of memory":
-                        print "OOM"
-                        failed = True
-                    elif m.group(2) == "start process interfering CFGs":
-                        percrashing = end_time - start_time
-                crashing.append({"failed": failed,
-                                 "tot_time": end_time - start_time,
-                                 "percrashing": percrashing or end_time - start_time})
-            else:
-                lines = iter(content)
-                try:
-                    fl = next(lines)
-                except StopIteration:
-                    continue
-                m = START_INTERFERING.match(fl.strip())
-                end_time = start_time = float(m.group(1))
-                idx = int(m.group(2))
-                max_idx = int(m.group(3))
-                assert idx < max_idx
-                key = m.group(4)
-                failed = False
-                sat = None
-                for l in lines:
-                    m = ORDINARY_LINE.match(l.strip())
-                    end_time = float(m.group(1))
-                    if m.group(2) == "timeout":
-                        failed = True
-                    elif m.group(2) == "out of memory":
-                        failed = True
-                    elif m.group(2) == "satisfiable":
-                        sat = True
-                    elif m.group(2) in ["unsatisfiable", "early out", "ic-atomic is false"]:
-                        sat = False
-                if sat == None and failed == False:
-                    print "BADGERS %s" % tf.name
-                interfering.append({"failed": failed,
-                                    "time": end_time - start_time,
-                                    "sat": sat})
+            except StopIteration:
+                continue
+            m = START_INTERFERING.match(fl.strip())
+            end_time = start_time = float(m.group(1))
+            idx = int(m.group(2))
+            max_idx = int(m.group(3))
+            assert idx < max_idx
+            key = m.group(4)
+            failed = False
+            sat = None
+            for l in lines:
+                m = ORDINARY_LINE.match(l.strip())
+                end_time = float(m.group(1))
+                if m.group(2) == "timeout":
+                    failed = True
+                elif m.group(2) == "out of memory":
+                    failed = True
+                elif m.group(2) == "satisfiable":
+                    sat = True
+                elif m.group(2) in ["unsatisfiable", "early out", "ic-atomic is false"]:
+                    sat = False
+            if sat == None and failed == False:
+                print "BADGERS %s" % tf.name
+            interfering.append({"failed": failed,
+                                "time": end_time - start_time,
+                                "sat": sat})
+    t.close()
     return (crashing, interfering)
 
 try:
