@@ -1,5 +1,5 @@
-\newcommand{\biggraph}[1]{\input{#1}}
-%\newcommand{\biggraph}[1]{}
+%\newcommand{\biggraph}[1]{\input{#1}}
+\newcommand{\biggraph}[1]{}
 %\draftonly{\renewcommand{\biggraph}[1]{}}
 
 \chapter{Evaluation}
@@ -8,10 +8,7 @@
 Experiments still to run:
 
 \begin{itemize}
-\item Run the mysql enforcers on ise, count the reproes.
 \item Measure the effectiveness of the complex\_hb enforcers on ise.
-\item Re-run the fix overhead experiments on ise
-\item Finish running the various config knob experiments.
 \item Need to re-do the cost of building fixes experiments.
 \end{itemize}
 
@@ -484,16 +481,16 @@ not lead to a crash.
     \hline
                               & \multicolumn{4}{c|}{Enforcer} \\
     \cline{2-5}
-    Bug                       & None & True positive & False positive & Combined \\
+    Bug                       & None   & True positive & False positive & Combined \\
     \hline
-    \bugname{thunderbird}     & 0/10 &    &   &    \\
-    \hspace{1em}100--200ms timeout &   & 0/10  & 0/10 & 0/10  \\
-    \hspace{1em}5s timeout    &   & 10/10 & 0/10 & 10/10 \\
-    \bugname{mysql}           &   &    &   &    \\
+    \bugname{thunderbird}     & 0/10   &         &        &    \\
+    \hspace{1em}100--200ms timeout &   & 0/10    & 0/10   & 0/10  \\
+    \hspace{1em}5s timeout    &        & 10/10   & 0/10   & 10/10 \\
+    \bugname{mysql}           & 0/100  & 100/100 & 0/100  & 100/100   \\
     \hline
   \end{tabbular}
   \caption{Reproduction counts for the different bugs and
-    configurations.  \todo{Need more data.}}
+    configurations.}
   \label{tab:eval:real_bugs:repro_effectiveness}
 \end{sanetab}
 
@@ -1411,14 +1408,14 @@ or dynamic parts of the \gls{programmodel}.  The results are shown in
     \hline
     & Full model & Dynamic disabled & Static disabled \\
     \hline
-    Mean time to process crashing instruction                            & $[5.3, 11]_{1000}^{10000}$     & & $[10, 15]_{1000}^{10000}$ \\
-    {\ldots} excluding per-\gls{interferingthread} work*                 & $[0.82, 1.03]_{1000}^{9993}$   & & $[0.95, 1.13]_{1000}^{9966}$\\
-    Mean \glspl{verificationcondition} per crashing instruction*         & $[0.37, 0.40]_{1000}^{9993}$   & & $[0.40, 0.42]_{1000}^{9966}$\\
-    Mean interfering \glspl{cfg} per crashing instruction*               & $[2.75, 2.76]_{1000}^{9993}$   & & $[2.76, 2.78]_{1000}^{9966}$\\
-    Failures per crashing instruction(\%)                                & $[0.04, 0.11]_{\infty}^{10000}$ & & $[0.26, 0.44]_{\infty}^{10000}$\\
-    Mean time to process interfering \gls{cfg}$\dagger$                  & $[0.46, 0.60]_{1000}^{27339}$  & & $[1.14, 1.35]_{1000}^{27260}$ \\
-    \Glspl{verificationcondition} per interfering \gls{cfg}(\%)$\dagger$ & $[13.8, 14.6]_{\infty}^{27339}$ & & $[14.6,15.4]_{\infty}^{27260}$\\
-    Failures per interfering \gls{cfg} (\%)*                             & $[0.63, 0.80]_{\infty}^{27535}$ & & $[1.0,1.3]_{\infty}^{27587}$ \\
+    Mean time to process crashing instruction                            & $[5.3, 11]_{1000}^{10000}$     & $[170, 260]_{1000}^{1000}$   & $[10, 15]_{1000}^{10000}$ \\
+    {\ldots} excluding per-\gls{interferingthread} work*                 & $[0.82, 1.03]_{1000}^{9993}$   & $[1.8, 3.4]_{1000}^{966}$   & $[0.95, 1.13]_{1000}^{9966}$\\
+    Mean \glspl{verificationcondition} per crashing instruction*         & $[0.37, 0.40]_{1000}^{9993}$   & $[1.64, 1.76]_{1000}^{966}$ & $[0.40, 0.42]_{1000}^{9966}$\\
+    Mean interfering \glspl{cfg} per crashing instruction*               & $[2.75, 2.76]_{1000}^{9993}$   & $[3.26, 3.34]_{1000}^{966}$ & $[2.76, 2.78]_{1000}^{9966}$\\
+    Failures per crashing instruction(\%)                                & $[0.04, 0.11]_{\infty}^{10000}$ & $[2.6, 4.4]_{\infty}^{1000}$ & $[0.26, 0.44]_{\infty}^{10000}$\\
+    Mean time to process interfering \gls{cfg}$\dagger$                  & $[0.46, 0.60]_{1000}^{27339}$  & $[12, 15]_{1000}^{2183}$& $[1.14, 1.35]_{1000}^{27260}$ \\
+    \Glspl{verificationcondition} per interfering \gls{cfg}(\%)$\dagger$ & $[13.8, 14.6]_{\infty}^{27339}$ & $[73.7,76.8]_{\infty}^{2183}$& $[14.6,15.4]_{\infty}^{27260}$\\
+    Failures per interfering \gls{cfg} (\%)*                             & $[0.63, 0.80]_{\infty}^{27535}$ & $[30,33]_{\infty}^{3187}$ & $[1.0,1.3]_{\infty}^{27587}$ \\
     \hline
   \end{tabbular}
   \caption{Effect the \gls{programmodel} assumption on analysis
@@ -1428,8 +1425,10 @@ or dynamic parts of the \gls{programmodel}.  The results are shown in
     one, it was configured to only use information from the static
     analysis when deriving the static crashing \gls{cfg}.  *:
     Excluding failures in the per-crashing instruction
-    phase. $\dagger$: Excluding failures in either phase.  \todo{Need
-      data}}
+    phase. $\dagger$: Excluding failures in either phase.  Note that
+    the dynamic disabled configuration was tested with only 1,000
+    potentially crashing instructions, whereas the other two
+    configurations were each tested with 10,000.}
   \label{tab:eval:why:program_model}
 \end{sanetab}
 
@@ -1455,20 +1454,18 @@ disabled.
 \subsection{Sources of fix overhead}
 \label{sect:eval:why:fix_overhead}
 
-\todo{Ugly writing.} As previously discussed, {\technique}-generated
-fixes generally have low overheads, usually on the order of a few
-microseconds per critical section.  This section gives a more detailed
-break-down of the sources of that overhead by applying a variety of
-fixes and partial fixes to a simple test program and comparing their
-performance.  The test program, \bugname{nobug}, is shown in
-\autoref{fig:eval:why:nobug}.  {\Technique} correctly identifies that
-the program might suffer an atomicity violation crash if
-\texttt{global} is ever 2, but, lacking a global model of the
-program's structure, is unable to show that that is impossible, and so
-generates a \gls{verificationcondition} and ``fix'' for this program.
-Since this bug is a false positive, the fix has no effect on the
-program's behaviour, beyond introducing a modest amount of additional
-overhead.  
+As previously discussed, {\technique}-generated fixes generally have
+low overheads, usually on the order of a few microseconds per critical
+section.  This section gives a more detailed break-down of the sources
+of that overhead.  All experiments described in this section were
+conducted using the test program \bugname{nobug}, shown in
+\autoref{fig:eval:why:nobug}.  {\Technique} generates a single
+\gls{verificationcondition} for this test program, and can thence
+generate a fix for it, but, since the purported bug is a false
+positive, the fix has no effect beyond degrading the program's
+performance.  \autoref{tab:eval:why:nobugperf} quantifies this
+degradation, for several variants of the fix:
+
 
 \begin{sanefig}
   {\hfill}
@@ -1505,30 +1502,37 @@ overhead.
 \end{sanefig}
 
 \begin{sanetab}
+  \centerline{%
+    \setlength{\tabcolsep}{2pt}%
   \begin{tabbular}{|l|l|l|l|l|}
     \hline
-                                       & \multicolumn{2}{c|}{Thread iteration time} & \multicolumn{2}{c|}{Thread overhead} \\
+                                  & \multicolumn{2}{c|}{Thread iteration time, ns} & \multicolumn{2}{c|}{Overhead, ns} \\
     \cline{2-5}
-    Type of fix                        & Crashing & Interfering & Crashing & Interfering \\
+    Type of fix                   & Crashing & Interfering & Crashing & Interfering \\
     \hline
-    \textit{None}                      & & & & \\
-    \textit{Gain control only}         & & & & \\
-    \textit{No synchronisation}        & & & & \\
-    \textit{Synchronise only crashing} & & & & \\
-    \textit{Normal}                    & & & & \\
+    \textit{None}                 & $[156,158]_{1000}^{100}$ & $[116,118]_{1000}^{100}$ & $[-0.6,0.5]_{1000}$ & $[-0.7,0.7]_{1000}$\\
+    \textit{Gain control only}    & $[157,160]_{1000}^{100}$ & $[116,118]_{1000}^{100}$ & $[-0.1,2.2]_{1000}$ & $[-1.2,0.6]_{1000}$ \\
+    \textit{No synchronisation}   & $[157,161]_{1000}^{100}$ & $[115,118]_{1000}^{100}$ & $[0.4,3.4]_{1000}$ & $[-2.2,0.2]_{1000}$ \\
+    \textit{Synchronise crashing} & $[329,331]_{1000}^{100}$ & $[57,59]_{1000}^{100}$   & $[171,174]_{1000}$ & $[-60,-58]_{1000}$ \\
+    \textit{Normal}               & $[1130,1230]_{1000}^{100}$ & $[1360,1420]_{1000}^{100}$ & $[972,1080]_{1000}$ & $[1240,1300]_{1000}$ \\
     \hdashline
-    \textit{Debug registers}           & & & & \\
+    \textit{Debug registers}      & $[3430,3490]_{1000}^{100}$ & $[3430,3490]_{1000}^{100}$ & $[3280,3330]_{1000}$ & $[3320,3370]_{1000}$ \\
     \hline
   \end{tabbular}
-  \caption{Number of loop iterations completed by {\!\rm
-      \bugname{nobug}\!} per second with a selection of different
-    partial fixes applied.  See text for descriptions of the type of
-    fix. \todo{Need data} }
+  }
+  \caption{Time taken by the {\!\rm \bugname{nobug}\!} test to
+    complete each loop iteration with a selection of partial fixes
+    applied.  I measured the time taken to complete an iteration of
+    the loop by running the test program for ten seconds, counting the
+    number of times the loop completed in that time, $n$, and then
+    computing the iteration time as $\frac{10s}{n}$.  I repeated this
+    procedure 110 times for each configuration, in random order,
+    discarding the first ten results, and present 90\% confidence
+    intervals for the mean of the remaining 100 samples.  See text for
+    descriptions of the types of fix used. }
   \label{tab:eval:why:nobugperf}
 \end{sanetab}
 
-\autoref{tab:eval:why:nobugperf} evaluates these overheads, for
-several variants of the fix:
 \begin{itemize}
 \item \textit{None} --- No fix is applied at all.
 \item \textit{Gain control only} --- The fix is generated by the usual
@@ -1542,16 +1546,21 @@ several variants of the fix:
 \item \textit{No synchronisation} --- The fix is generated by the
   usual algorithm, except that the ``Acquire lock'' and ``Release
   lock'' sequences in \autoref{fig:fix:graph_grammar} are replaced
-  with no-ops.  The resulting patch will gain control of the program
-  in the usual way, and will retain control for as long as a full
-  patch will, but will never perform any synchronisation operations.
-  This configuration measures the overheads introduced by duplicating
-  and rearranging the program code in the critical sections.
-\item \textit{Synchronise only crashing} --- This fix omits the
+  with empty ones.  The resulting patch will gain control of the
+  program in the usual way, and will retain control for as long as a
+  full patch would, but will never perform any synchronisation
+  operations.  This configuration measures the overheads introduced by
+  duplicating and rearranging the program code in the critical
+  sections.
+\item \textit{Synchronise crashing} --- This fix omits the
   \gls{interferingthread} synchronisation operations from the patch
   but retains the \gls{crashingthread} ones, and so makes it possible
   to evaluate the overhead of synchronisation operations in the
-  absence of any contention.
+  absence of any contention.  Note that the \gls{interferingthread}
+  actually runs much \emph{faster} in this configuration than it does
+  in the baseline case; this is because slowing down the
+  \gls{crashingthread} reduces contention for the \texttt{global}
+  variable.
 \item \textit{Normal} --- A complete fix is generated, using the
   complete algorithms from \autoref{sect:enforce:gain_control} and
   \autoref{fig:fix:graph_grammar}.
@@ -1560,13 +1569,33 @@ several variants of the fix:
   in \autoref{sect:enforce:gain_control}, it gains control using the
   processor's debug registers.
 \end{itemize}
-\todo{Need more once I have data.} These results show that the
-synchronisation operations themselves are the most expensive part of
-the generated fixes.  This is reassuring, and suggests that the
-patching mechanism used by {\technique} is close to the optimal way of
-introducing these synchronisation operations into this program.  As
-expected, the fix which used debug registers was far slower than the
-one which used the patch strategy mechanism.
+These results show quite clearly that, at least for this test program,
+gaining and maintaining control of a program thread using
+{\technique}'s patch strategy mechanism is very cheap, almost
+unmeasurably so in this experiment.  The synchronisation operations
+are comparatively expensive: even an uncontended lock acquire and
+release adds 172ns to the loop iteration time, already a greater than
+100\% overhead, and the full fix, which requires lock contention, adds
+1$\mu$s to each crashing iteration and 1.3$\mu$s to each interfering
+one.  These results suggest that most of the overhead of
+{\technique}'s fixes comes about simply because they use locks to
+impose mutual exclusion, and not because of any inefficiencies in
+realising that scheme.  Further improvements to performance will
+almost certainly involve applying a different type of synchronisation,
+and not simply making the current scheme more efficient.
+
+The final line in the table, \textit{Debug registers}, shows the
+performance achieved by a complete fix which gains control using
+processor breakpoint registers rather than via the patch strategy
+mechanism.  The overhead is in this case roughly 3$\mu$s in both the
+crashing and interfering loops, a factor of three higher than that
+observed with the normal {\technique} fix and a factor of twenty
+higher than that observed with the \gls{crashingthread}-only
+{\technique} fix.  Such high overheads could potentially limit a debug
+register-based solution's applicability to bugs in frequently executed
+code (and debug register-based systems are in any case less
+generically applicable than {\technique} fixes due to the limited
+number of such registers available in most processors).
 
 \section{When does it work?}
 \label{sect:eval:does_it_scale}

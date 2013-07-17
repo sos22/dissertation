@@ -1,18 +1,17 @@
 \chapter{Introduction}
 
-\section{Motivation and overview}
 \label{sect:intro:overview}
 
 Commodity hardware is becoming increasingly concurrent, whether due to
 more packages per machine, more cores per package, or more threads per
 core, and this change brings the promise of greatly increased
 performance.  Unfortunately, it also promises greatly reduced
-reliability.  Highly-concurrent software is infamously prone to
-complex, unpredictable, and hard-to-reproduce bugs, and as it becomes
-more widespread, especially amongst less able developers, we should
-expect to see the frequency of serious bugs in important software
-increase.  This dissertation presents automated techniques to help
-developers discover,
+reliability\poorstyle.  Highly-concurrent software is infamously prone
+to complex, unpredictable, and hard-to-reproduce bugs, and as it
+becomes more widespread, especially amongst less able developers, we\editorial{who?}
+should expect to see the frequency of serious bugs in important
+software increase.  This dissertation presents automated techniques to
+help developers discover,
 \begin{wrapfigure}{r}{5.4cm}
   \vspace{-14pt}
   \begin{figgure}
@@ -47,40 +46,42 @@ developers discover,
 \end{wrapfigure}
 characterise, reproduce, and fix a certain class of concurrency bug.
 
-The basic approach is shown in \autoref{fig:basic_pipeline}.  The
-process starts by building an \gls{programmodel}, showing how the
-program accesses memory when it is operating normally, using primarily
-dynamic analysis (\autoref{sect:program_model}).  The
-\gls{programmodel} is then used to locate potentially relevant
-fragments of the program and to build {\StateMachines} which model
-their behaviour (\autoref{sect:derive}).  These {\StateMachines} can
-in turn be symbolically executed to determine whether they might
-exhibit some hypothesised bug, and, if so, under what circumstances,
-with the results summarised as a set of \glspl{verificationcondition}.
-This set usually contains a large number of false positives, and so
-the next step is to prune it back down using \glspl{bugenforcer}:
-co-programs which, when loaded into a program, adjust its scheduling
-so as to make it far more likely that the bug will reproduce quickly
-(\autoref{sect:reproducing_bugs}).  Bugs which fail to reproduce when
-the program is run under one of these enforcers are discarded and the
-remainder passed to a final fix generation phase which generates
-binary patches which eliminate the bug
-(\autoref{sect:fix_global_lock}).
+\todo{This seems too early for this, and is redundant with the outline
+  section anyway.} The basic approach is shown in
+\autoref{fig:basic_pipeline}.  The process starts by building an
+\gls{programmodel}, showing how the program accesses memory when it is
+operating normally, using primarily dynamic analysis
+(\autoref{sect:program_model}).  The \gls{programmodel} is then used
+to locate potentially relevant fragments of the program and to build
+{\StateMachines} which model their behaviour (\autoref{sect:derive}).
+These {\StateMachines} can in turn be symbolically executed to
+determine whether they might exhibit some hypothesised bug, and, if
+so, under what circumstances, with the results summarised as a set of
+\glspl{verificationcondition}.  This set usually contains a large
+number of false positives, and so the next step is to prune it back
+down using \glspl{bugenforcer}: co-programs which, when loaded into a
+program, adjust its scheduling so as to make it far more likely that
+the bug will reproduce quickly (\autoref{sect:reproducing_bugs}).
+Bugs which fail to reproduce when the program is run under one of
+these enforcers are discarded and the remainder passed to a final fix
+generation phase which generates binary patches which eliminate the
+bug (\autoref{sect:fix_global_lock}).
 
-An important decision which must be made when designing this kind of
-tool is how much higher-level semantic information to use, and in
-particular whether to operate at the level of machine code or source
-code.  Working with machine code gives a tool the most precise
-description of the program's behaviour, as concurrency bugs often
-depend on the precise details of compiler optimisations; on the other
-hand, source code provides far more useful information, and so is
-usually far easier to analyse.  {\Technique} takes the extreme
-position of operating on machine code as far as possible, only relying
-on access to source code when absolutely necessary.  For some
-non-trivial programs, including Thunderbird and pbzip2, the technique
-can produce useful results without any access to source code at all,
-and for most others very little information is needed (MySQL, for
-instance, required higher-level information for just two functions).
+\todo{Poor linkage} An important decision which must be made when
+designing this kind of tool is how much higher-level semantic
+information to use, and in particular whether to operate at the level
+of machine code or source code.  Working with machine code gives a
+tool the most precise description of the program's behaviour,
+as\editorial{non sequitur} concurrency bugs often depend on the
+precise details of compiler optimisations; on the other hand, source
+code provides far more useful information, and so is usually far
+easier to analyse.  {\Technique} takes the extreme position of
+operating on machine code as far as possible, only relying on access
+to source code when absolutely necessary.  For some non-trivial
+programs, including Thunderbird and pbzip2, the technique can produce
+useful results without any access to source code at all, and for most
+others very little information is needed (MySQL, for instance,
+required higher-level information for just two functions).
 {\Technique} explores a particularly difficult version of the program
 analysis problem, and hence provides a form of lower bound on what can
 be achieved in an environment which is particularly ill-suited to this
@@ -119,7 +120,7 @@ one thread, referred to as the ``\gls{crashingthread}'', is reading
 from a shared data structure while another thread, the
 ``\gls{interferingthread}'', simultaneously modifies it, and these
 concurrent updates cause the crashing thread to crash quickly.  In a
-little more detail:
+little more detail\editorial{Not a sentence}:
 \begin{itemize}
 \item The threads must be operating on a data structure located
   somewhere in shared memory.  This structure does not need to be in
@@ -133,7 +134,7 @@ little more detail:
   memory or dividing by zero, but more complex types of fault could
   also be supported, if a suitable detector can be implemented.
   {\Implementation} includes detectors for hardware-detected faults,
-  assertion-failure type errors, and some types of double-free error.
+  assertion failures, and some types of double-free error.
 \item The crash must be caused by the concurrent updates.  There must
   be some regions of the crashing and interfering threads such that
   running those regions in parallel can crash but running them
@@ -141,8 +142,8 @@ little more detail:
 \item The crashing thread must crash ``quickly''.  {\Technique} uses a
   finite \gls{analysiswindow} \gls{alpha} and will only consider
   reordering concurrent operations which occur at most \gls{alpha}
-  instructions before the crash, and bugs which require knowledge of
-  the program behaviour beyond that window cannot be analysed.
+  instructions before the crash.  Bugs which require knowledge of the
+  program behaviour beyond that window cannot be analysed.
   \gls{alpha} can, in principle, be arbitrarily large, but
   computational constraints mean that in practice it will be limited
   to a few dozen to a few hundred instructions, depending on the
@@ -152,7 +153,8 @@ little more detail:
 This clearly does not include every possible type of concurrent bug
 (it does not, for instance, include any but the most trivial deadlock
 bugs, and complicated memory corruption bugs are difficult to handle),
-but does include some interesting ones.
+but does include some interesting ones.  \todo{More.  Should possibly
+  give a name to the type of bug?}
 
 \subsection{Order-violation bugs}
 
@@ -204,36 +206,36 @@ violation bug, in that the thread on the left will crash if it gets
 from statement 2 to statement 3 before the thread on the right
 executes.  Running the left-hand thread in isolation always leads to a
 crash and so, within the definition used by {\technique}, this program
-does not have a concurrency bug and no bug will be reported.
+does not have a concurrency bug and no bug will be
+reported\editorial{Not quite the right word: it's not just that
+  they're not reported, they're also not reproduced or fixed.}.
 
 Suppose now that the ordering violation bug is fixed as shown in
 \autoref{fig:mandatory_concurrency2}.  This program is ``more
 correct'' than the previous one, in the sense that any instruction
-interleaving which causes the new program to crash would also have
-crashed the old one and some which crashed the old one will not crash
-the new one, but {\technique} \emph{will} report a potential bug in
-the new program.  Running the two new threads atomically, in either
-order, will now avoid the crash, but interleaving them might not
-(consider, for instance, the order 1, 2, 6, 7, 3, 4, 5).  The ordering
-violation bug effectively hid an atomicity violation one, preventing
-{\technique} from finding either.
+interleaving which causes the new program to crash will also crash the
+old one and some which crash the old will not crash the new, but
+{\technique} \emph{will} report a potential bug in the new program.
+Running the two new threads atomically, in either order, will never
+crash, but interleaving them might (consider, for instance, the order
+1, 2, 6, 7, 3, 4, 5).  The ordering violation bug effectively hid an
+atomicity violation one, preventing {\technique} from finding either.
 
 This non-monotonicity is an undesirable property for {\technique} to
-have, but is unlikely to be a serious problem in practice.  Most
-concurrency bugs in real programs tend to be at least moderately
-difficult to reproduce, as otherwise the developers of the software
-will fix them quickly, and for order violation bugs that means that
-the complicated local computation between must take long enough that
-the interfering thread is almost certain to intercede and prevent the
-crash.  At a minimum, the local computation must take a long time
-relative to the system's scheduling jitter, which is usually on the
-order of a few tens of microseconds to a few milliseconds; sufficient
-time to execute thousands to hundreds of thousands of instructions.
-At the same time, there is only any possibility of one bug hiding
-another if both fit in {\technique}'s \gls{analysiswindow}, which, in
-practice, cannot exceed a couple of hundred instructions.  As such, it
-is quite unlikely that real programs would be able to trigger this
-behaviour.
+have.  In practice, though, it is unlikely to be a serious problem.
+Concurrency bugs in real programs tend to be at least moderately
+difficult to reproduce, as easily reproduced bugs are generally fixed
+quickly.  For this kind of bug, that implies that the local
+computation must take time at least on the same order as operating
+system scheduling effects, which usually ranges from a few tens of
+microseconds to a few milliseconds.  On a modern process, that is
+sufficient time to execute thousands to hundreds of thousands of
+instructions, vastly exceeding {\technique}'s \gls{analysiswindow},
+and {\technique} is highly unlikely to capture an ordering violation
+bug in the same window as an atomicity violation one.  If two bugs are
+analysed in different windows then neither can hide the other, and so
+there is little risk of an ordering violation disguising an atomicity
+violation\editorial{Burble}.
 
 \subsection{Execution model}
 
@@ -241,10 +243,10 @@ In addition to restricting the class of bugs, {\technique} also
 restricts the execution environment by assuming a strongly-ordered
 memory model, so that memory accesses are seen by all processors in
 the order in which they appear in the program.  This is a reasonable
-approximation for the widely-used x86 architecture~\cite[Section
-  8.2]{Intel2013}, as that platform rarely reorders memory accesses
-issued by a single processor.  Architectures with a weaker memory
-ordering, such as Alpha~\cite[Section 5.6]{Compaq2002} or
+approximation for the widely-used x86 architecture, as that platform
+rarely reorders memory accesses issued by a single
+processor~\cite[Section 8.2]{Intel2013}.  Architectures with a weaker
+memory ordering, such as Alpha~\cite[Section 5.6]{Compaq2002} or
 ARM~\cite[Section 5.3.4]{ARM2007}, would require more involved
 processing to correctly capture the more complicated concurrency
 semantics.
@@ -262,24 +264,24 @@ particular processor can interleave memory accesses, and to report its
 results by either exiting normally or crashing with an unhandled page
 fault.  There is no general way for an automated tool to distinguish
 such a program from one which is intended to always exit normally but
-occasionally crashes due to an unintended race condition.  Any fix for
+occasionally crashes due to an accidental race condition.  Any fix for
 the latter would break the former.
 
-This issue is most easily understood by recasting the problem from
-changing the behaviour of the program to changing the behaviour of the
-system on which it is running.  A program will usually be designed to
-work with a broad class of computers, rather than with one particular
-physical system, and so if it exhibits behaviour A on one system and
-behaviour B on another then forcing it to exhibit behaviour B on both
-systems is unlikely to introduce a bug into a correct program.  This
-gives a reasonable definition of what it means to soundly modify a
-program without a specification: a modification is safe if it is
-equivalent to moving the program from one computer system to another
-similar one.  For {\technique}, two systems are similar if they differ
-only in the time taken to run instructions, and so modifications which
-amount to simply delaying a particular operation are safe.  This makes
-{\technique} safe for use on any systems which do not have real-time
-constraints.
+\todo{Needs editing.} This issue is most easily understood by
+recasting the problem from changing the behaviour of the program to
+changing the behaviour of the system on which it is running.  A
+program will usually be designed to work with a broad class of
+computers, rather than with one particular physical system, and so if
+it exhibits behaviour A on one system and behaviour B on another then
+forcing it to exhibit behaviour B on both systems is unlikely to
+introduce a bug into a correct program.  This gives a reasonable
+definition of what it means to soundly modify a program without a
+specification: a modification is safe if it is equivalent to moving
+the program from one computer system to another similar one.  For
+{\technique}, two systems are similar if they differ only in the time
+taken to run instructions, and so modifications which amount to simply
+delaying a particular operation are safe.  This makes {\technique}
+safe for use on any systems which do not have real-time constraints.
 
 \section{Graph generating grammars}
 \label{sect:intro:graph_grammar}
@@ -487,21 +489,23 @@ constraints.
     arrows show which production was used at each step.}
   \label{fig:intro:graph_grammar:expansion}
 \end{sanefig}
+
 \noindent
 Several of the algorithms in this dissertation are described in terms
 of graph generating node-replacement grammars, and so I now give a
-brief overview of this formalism, with reference to the example in
-\autoref{fig:intro:graph_grammar}.  This shows a simple grammar which
-produces directed graphs of (terminal) capital letters starting from a
-single (non-terminal) integer.  The grammar works by matching a
+brief overview of this formalism with reference to the example in
+\autoref{fig:intro:graph_grammar}.  This figure shows a simple grammar
+which produces directed graphs of (terminal) capital letters starting
+from a single (non-terminal) integer.  The grammar works by matching a
 pattern (on the left of the $\Rightarrow$) against some non-terminal
 in the graph, possibly defining some match variables (in the example,
-$n$ and $m$), generating a new fragment of graph (on the right of the
-$\Rightarrow$), and replacing the original non-terminal with the
-fragment.  This repeats until there are no more non-terminals in the
-graph.  A non-terminal can only be generated at most once; if a
-non-terminal is generated multiple times then it is only added the
-first time and subsequent instances re-use the first one.
+$n$ and $m$) in the process, generating a new fragment of graph (on
+the right of the $\Rightarrow$), and replacing the original
+non-terminal with the fragment.  This repeats until there are no more
+non-terminals in the graph.  A non-terminal can only be generated at
+most once; if a non-terminal is generated multiple times then it is
+only added the first time and subsequent instances re-use the first
+one.
 
 \autoref{fig:intro:graph_grammar:expansion} shows how to apply this
 grammar to the initial non-terminal \graphNT{3}.  The only production

@@ -11,7 +11,7 @@
 \usepackage{lscape}
 \usepackage{longtable}
 \usepackage[bookmarks=true,colorlinks=true]{hyperref}
-\usepackage{glossaries}
+\usepackage[nonumberlist]{glossaries}
 \usepackage{wrapfig}
 \usepackage[font={small,it}]{caption}
 \usepackage{arydshln}
@@ -39,6 +39,7 @@
 \renewcommand\sectionautorefname{Section}
 \renewcommand\subsectionautorefname{Section}
 \renewcommand\subsubsectionautorefname{Section}  
+\renewcommand*{\glspostdescription}{}
 
 \newbox\subfigbox             % Create a box to hold the subfigure.
 \makeatletter
@@ -167,16 +168,22 @@
   description = {The CI-atomic condition is the condition necessary
     for the concatenation of the \glslink{crashingthread}{crashing}
     and \glslink{interferingthread}{interfering} {\StateMachines} to
-    not crash when run atomically.  See also \gls{ic-atomic}.}
+    not crash when run atomically.  See also \gls{ic-atomic} and \gls{c-atomic}.}
 }
 \newglossaryentry{ic-atomic}{
   name = {IC-atomic},
   description = {The IC-atomic condition is the condition necessary
     for the concatenation of the \glslink{interferingthread}{interfering}
     and \glslink{crashingthread}{crashing} {\StateMachines} to
-    not crash when run atomically.  See also \gls{ci-atomic}.}
+    not crash when run atomically.  See also \gls{ci-atomic} and \gls{c-atomic}.}
 }
-
+\newglossaryentry{c-atomic}{
+  name = {C-atomic},
+  description = {The C-atomic condition is the condition necessary
+    for the \glslink{crashingthread}{crashing} {\StateMachine} to
+    not crash when in isolation.  See also \gls{ci-atomic} and
+    \gls{ic-atomic}.}
+}
 \newglossaryentry{crossproduct}{
   name = {cross product},
   description = {The cross-product of two {\StateMachines} is a {\StateMachine}
@@ -205,6 +212,48 @@
     loops were unrolled to remove cycles.
   }
 }
+
+\newglossaryentry{dynamic cfg}
+{
+  name = {dynamic \gls{cfg}},
+  description = {A \gls{cfg} whose nodes represent dynamic rather than
+    static instructions.  These are inherently acyclic, and can be thought
+    of as a kind of unrolling of the \gls{static cfg}.}
+}
+\newglossaryentry{static cfg}
+{
+  name = {static \gls{cfg}},
+  description = {A \gls{cfg} whose nodes represent static instructions
+    present in the program's original binary.  Contrast \gls{dynamic cfg}.}
+}
+
+\newglossaryentry{simple atomicity violation}
+{
+  name = {simple atomicity violation},
+  description = {A bug which causes the program to crash if two fragments of
+    code containing at most \gls{alpha} dynamic instructions are interleaved where
+    it would not crash if the fragments are run atomically, in either order.
+    This is the only kind of bug considered by {\technique}.}
+}
+
+\newglossaryentry{crashing instruction}
+{
+  name = {crashing instruction},
+  description = {The instruction in the program which is hypothesised to crash
+    due to the \gls{simple atomicity violation} currently under investigation by
+    {\technique}.}
+}
+
+\newglossaryentry{speicher} { name = {speicher}, description = {Part
+    of the {\StateMachine} state.  A mapping from integers to integers
+    used to model program memory.} }
+
+\newglossaryentry{environment} { name = {environment}, description =
+  {An immutable structure containing information about the program
+    which can be accessed by the {\StateMachine}.  Includes the
+    initial values of registers and memory, the order in which memory
+    accesses happen, and information about the accessibility of
+    different program addresses. }}
 
 \newacronym{bdd}{BDD}{Binary Decision Diagram}
 \newglossaryentry{binarydecisiondiagram}

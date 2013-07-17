@@ -32,3 +32,11 @@ cd phase_breakdown
 ./per_interfering.py bubbles.tar per_interfering.tex
 ./per_interfering.py bubbles_no_w_atomic.tar per_interfering_no_w_atomic.tex
 cd ..
+
+cd alpha
+for x in 10 20 30 40 50 75 100
+do
+    ./parse_tarball ${x}.tar ${x}.pl
+done
+./gen_graph.py
+cd ..
