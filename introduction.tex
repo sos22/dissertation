@@ -6,12 +6,12 @@ Commodity hardware is becoming increasingly concurrent, whether due to
 more packages per machine, more cores per package, or more threads per
 core, and this change brings the promise of greatly increased
 performance.  Unfortunately, it also promises greatly reduced
-reliability\poorstyle.  Highly-concurrent software is infamously prone
-to complex, unpredictable, and hard-to-reproduce bugs, and as it
-becomes more widespread, especially amongst less able developers, we\editorial{who?}
-should expect to see the frequency of serious bugs in important
-software increase.  This dissertation presents automated techniques to
-help developers discover,
+reliability.  Highly-concurrent software is infamously prone to
+complex, unpredictable, and hard-to-reproduce bugs, and as it becomes
+more widespread, especially amongst less able developers, we should
+expect to see the frequency of serious bugs in important software
+increase.  This dissertation presents automated techniques to help
+developers discover,
 \begin{wrapfigure}{r}{5.4cm}
   \vspace{-14pt}
   \begin{figgure}
@@ -46,46 +46,44 @@ help developers discover,
 \end{wrapfigure}
 characterise, reproduce, and fix a certain class of concurrency bug.
 
-\todo{This seems too early for this, and is redundant with the outline
-  section anyway.} The basic approach is shown in
-\autoref{fig:basic_pipeline}.  The process starts by building an
-\gls{programmodel}, showing how the program accesses memory when it is
-operating normally, using primarily dynamic analysis
-(\autoref{sect:program_model}).  The \gls{programmodel} is then used
-to locate potentially relevant fragments of the program and to build
-{\StateMachines} which model their behaviour (\autoref{sect:derive}).
-These {\StateMachines} can in turn be symbolically executed to
-determine whether they might exhibit some hypothesised bug, and, if
-so, under what circumstances, with the results summarised as a set of
-\glspl{verificationcondition}.  This set usually contains a large
-number of false positives, and so the next step is to prune it back
-down using \glspl{bugenforcer}: co-programs which, when loaded into a
-program, adjust its scheduling so as to make it far more likely that
-the bug will reproduce quickly (\autoref{sect:reproducing_bugs}).
-Bugs which fail to reproduce when the program is run under one of
-these enforcers are discarded and the remainder passed to a final fix
-generation phase which generates binary patches which eliminate the
-bug (\autoref{sect:fix_global_lock}).
+The basic approach is shown in \autoref{fig:basic_pipeline}.  The
+process starts by building an \gls{programmodel}, showing how the
+program accesses memory when it is operating normally, using primarily
+dynamic analysis (\autoref{sect:program_model}).  The
+\gls{programmodel} is then used to locate potentially relevant
+fragments of the program and to build {\StateMachines} which model
+their behaviour (\autoref{sect:derive}).  These {\StateMachines} can
+in turn be symbolically executed to determine whether they might
+exhibit some hypothesised bug, and, if so, under what circumstances,
+with the results summarised as a set of \glspl{verificationcondition}.
+This set usually contains a large number of false positives, and so
+the next step is to prune it back down using \glspl{bugenforcer}:
+co-programs which, when loaded into a program, adjust its scheduling
+so as to make it far more likely that the bug will reproduce quickly
+(\autoref{sect:reproducing_bugs}).  Bugs which fail to reproduce when
+the program is run under one of these enforcers are discarded and the
+remainder passed to a final fix generation phase which generates
+binary patches which eliminate the bug
+(\autoref{sect:fix_global_lock}).
 
-\todo{Poor linkage} An important decision which must be made when
-designing this kind of tool is how much higher-level semantic
-information to use, and in particular whether to operate at the level
-of machine code or source code.  Working with machine code gives a
-tool the most precise description of the program's behaviour,
-as\editorial{non sequitur} concurrency bugs often depend on the
-precise details of compiler optimisations; on the other hand, source
-code provides far more useful information, and so is usually far
-easier to analyse.  {\Technique} takes the extreme position of
-operating on machine code as far as possible, only relying on access
-to source code when absolutely necessary.  For some non-trivial
-programs, including Thunderbird and pbzip2, the technique can produce
-useful results without any access to source code at all, and for most
-others very little information is needed (MySQL, for instance,
-required higher-level information for just two functions).
-{\Technique} explores a particularly difficult version of the program
-analysis problem, and hence provides a form of lower bound on what can
-be achieved in an environment which is particularly ill-suited to this
-kind of technique.
+An important decision which must be made when designing this kind of
+tool is how much higher-level semantic information to use, and in
+particular whether to operate at the level of machine code or source
+code.  Working with machine code gives a tool the most precise
+description of the program's behaviour, as\editorial{non sequitur}
+concurrency bugs often depend on the precise details of compiler
+optimisations; on the other hand, source code provides far more useful
+information, and so is usually far easier to analyse.  {\Technique}
+takes the extreme position of operating on machine code as far as
+possible, only relying on access to source code when absolutely
+necessary.  For some non-trivial programs, including Thunderbird and
+pbzip2, the technique can produce useful results without any access to
+source code at all, and for most others very little information is
+needed (MySQL, for instance, required higher-level information for
+just two functions).  {\Technique} explores a particularly difficult
+version of the program analysis problem, and hence provides a form of
+lower bound on what can be achieved in an environment which is
+particularly ill-suited to this kind of technique.
 
 \section{Contributions}
 
@@ -206,9 +204,8 @@ violation bug, in that the thread on the left will crash if it gets
 from statement 2 to statement 3 before the thread on the right
 executes.  Running the left-hand thread in isolation always leads to a
 crash and so, within the definition used by {\technique}, this program
-does not have a concurrency bug and no bug will be
-reported\editorial{Not quite the right word: it's not just that
-  they're not reported, they're also not reproduced or fixed.}.
+does not have a concurrency bug and no bug will be discovered,
+reproduced, or fixed.
 
 Suppose now that the ordering violation bug is fixed as shown in
 \autoref{fig:mandatory_concurrency2}.  This program is ``more
@@ -235,7 +232,7 @@ and {\technique} is highly unlikely to capture an ordering violation
 bug in the same window as an atomicity violation one.  If two bugs are
 analysed in different windows then neither can hide the other, and so
 there is little risk of an ordering violation disguising an atomicity
-violation\editorial{Burble}.
+violation.
 
 \subsection{Execution model}
 
