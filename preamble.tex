@@ -14,7 +14,6 @@
 \usepackage[nonumberlist]{glossaries}
 \usepackage{wrapfig}
 \usepackage[font={small,it}]{caption}
-\usepackage{arydshln}
 \usepackage{array}
 \usepackage{enumitem}
 \usepackage{mdframed}
@@ -23,6 +22,9 @@
 \usepackage{makecell}
 \usepackage{bussproofs}
 \usepackage{ifthen}
+\usepackage{colortbl}
+\usepackage{arydshln}
+
 \definecolor{boxcolor}{RGB}{255,255,248}
 %\definecolor{boxcolor}{RGB}{255,0,0}
 \newcommand{\inlinebox}[1]{\fcolorbox{black}{boxcolor}{#1}}
@@ -111,7 +113,7 @@
 \newglossaryentry{bugenforcer}{
   name = bug enforcer,
   description = {A set of modifications to a program which alters
-    the way in which it is scheduled, making a particular
+    the way in which it is scheduled so as to make a particular
     concurrency-related bug more likely to reproduce.}
 }
 
@@ -138,22 +140,19 @@
   name = analysis window,
   description = {The set of instructions in a given
     thread over which {\technique} will consider alternative instruction
-    schedules.  This will contain \gls{alpha} instructions.}
+    schedules.}
 }
 
 
-\newglossaryentry{alpha}{
-  name = {\ensuremath{\alpha}},
-  description = {The size of the analysis window.  This is the
-    maximum number of instructions which will ever be
-    collected into a single {\StateMachine}.}
-}
+\newglossaryentry{alpha}{ name = {\ensuremath{\alpha}}, description =
+  {The size of the analysis window.  This is the maximum length of an
+    instruction trace which can be represented in a single
+    {\StateMachine}.}  }
 
 \newglossaryentry{verificationcondition}{
   name = {verification condition},
   description = {An expression over the program state and happens-before
-    graph which evaluates to true when a particular bug might
-    actually happen.}
+    graph which evaluates to true when a particular bug will reproduce.}
 }
 
 \newglossaryentry{inferredassumption}{
@@ -272,7 +271,21 @@
     fixes work by modifying the program to branch to shadow fragments
     when appropriate.}
 }
-    
+
+\newglossaryentry{plan interpreter}{
+  name = {plan interpreter},
+  description = {An interpreter for crash enforcement plans.  Loaded
+    into a program as part of a \gls{bugenforcer}.}
+}
+
+\newglossaryentry{side condition}{
+  name = {side condition},
+  description = {The part of the \gls{verificationcondition} which
+    does not directly constrain the happens-before graph necessary for
+    a bug to reproduce.}
+}
+
+
 \makeglossaries
 
 \author{Steven Smith}
