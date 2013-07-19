@@ -1,0 +1,280 @@
+The algorithm used to perform this factorisation is reasonably simple.
+The core idea is to use BDD re-ordering to find the individual
+factors.  For instance, the side-condition in the example might be
+represented by either of the BDDs shown in
+Figure~\ref{fig:place_conditions_example:bdd1}.  The representations
+are equivalent, and will always evaluate to the same result, but the
+order can affect how much of the BDD can be evaluated when only some
+variables are available.  In particular, the BDD on the left cannot be
+evaluated at all at A, because the first thing it tests involves
+RBX:2, which is unavailable, whereas in the BDD on the right the first
+test in the sequence can be evaluated, as it only tests RAX:1, which
+is available.  The BDD can then be factorised into the two components
+shown in Figure~\ref{fig:place_conditions_example:bdd2}.  The first
+components shows the part of the side-condition which can be evaluated
+at A and the second shows the part which cannot be.  The first
+component is attached to instruction A, and will be checked there at
+run time, and the algorithm then tries to enforce the second component
+at A's successor B.  This will repeat until either the side-condition
+has been completely placed.
+
+\begin{figure}
+  \hfill%
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (x) [BddNode] {$\mathrm{RBX:2} = 72$};
+      \node (y) [BddNode, below = of x] {$\mathrm{RAX:1} = 93$};
+      \node (z) [BddNode, below = of y] {$\mathrm{RCX:1} = \mathrm{RCX:2}$};
+      \node (true) [BddLeaf, below = of z] {true};
+      \node (false) [BddLeaf, right = 2cm of true] {false};
+      
+      \draw [BddTrue] (x) -- (y);
+      \draw [BddFalse] (x.east) to [bend left=45] (false);
+      \draw [BddTrue] (y) -- (z);
+      \draw [BddFalse] (y.east) to [bend left=45] (false);
+      \draw [BddTrue] (z) -- (true);
+      \draw [BddFalse] (z.east) to [bend left=45] (false);
+    \end{tikzpicture}
+  \end{subfloat}%
+  \hfill%
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (x) [BddNode] {$\mathrm{RAX:1} = 72$};
+      \node (y) [BddNode, below = of x] {$\mathrm{RBX:2} = 93$};
+      \node (z) [BddNode, below = of y] {$\mathrm{RCX:1} = \mathrm{RCX:2}$};
+      \node (true) [BddLeaf, below = of z] {true};
+      \node (false) [BddLeaf, right = 2cm of true] {false};
+      
+      \draw [BddTrue] (x) -- (y);
+      \draw [BddFalse] (x.east) to [bend left=45] (false);
+      \draw [BddTrue] (y) -- (z);
+      \draw [BddFalse] (y.east) to [bend left=45] (false);
+      \draw [BddTrue] (z) -- (true);
+      \draw [BddFalse] (z.east) to [bend left=45] (false);
+    \end{tikzpicture}
+  \end{subfloat}
+  \hfill%
+  \caption{BDD representations of $\mathrm{RAX:1} = 93 \wedge
+    \mathrm{RBX:2} = 72 \wedge \mathrm{RCX:1} = \mathrm{RCX:2}$.}
+  \label{fig:place_conditions_example:bdd1}
+\end{figure}
+
+\begin{figure}
+  \hfill%
+  \begin{tikzpicture}
+    \node (x) [BddNode] {$\mathrm{RAX:1} = 72$};
+    \node (true) [BddLeaf, below = of x] {true};
+    \node (false) [BddLeaf, below right = of x] {false};
+    \draw [BddTrue] (x) -- (true);
+    \draw [BddFalse] (x) -- (false);
+  \end{tikzpicture}{\hfill}\raisebox{17mm}{$\bigwedge$}{\hfill}%
+  \begin{tikzpicture}
+    \node (y) [BddNode] {$\mathrm{RBX:2} = 93$};
+    \node (z) [BddNode, below = of y] {$\mathrm{RCX:1} = \mathrm{RCX:2}$};
+    \node (true) [BddLeaf, below = of z] {true};
+    \node (false) [BddLeaf, right = of true] {false};
+      
+    \draw [BddTrue] (y) -- (z);
+    \draw [BddFalse] (y.east) to [bend left=45] (false);
+    \draw [BddTrue] (z) -- (true);
+    \draw [BddFalse] (z.east) to [bend left=45] (false);
+  \end{tikzpicture}
+  {\hfill}
+  \caption{Factorisation of the BDD on the right of
+    Figure~\ref{fig:place_conditions_example:bdd1}.}
+  \label{fig:place_conditions_example:bdd2}
+\end{figure}
+
+
+\begin{figure}
+  {\hfill}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (a) [BddNode, blue] {a};
+      \node (d0) [BddNode, below left = of a] {d};
+      \node (d1) [BddNode, below right = of a] {d};
+      \node (b0) [BddNode, below = of d0, blue] {b};
+      \node (b1) [BddNode, below = of d1, blue] {b};
+      \node (c0) [BddNode, below = of b0, blue] {c};
+      \node (c1) [BddNode, below = of b1, blue] {c};
+      \node (true) [BddLeaf, below = of c0] {true};
+      \node (false) [BddLeaf, below = of c1] {false};
+      \draw [BddTrue] (a) -- (d0);
+      \draw [BddTrue] (d0) -- (b0);
+      \draw [BddTrue] (d1) to [bend left=45] (false);
+      \draw [BddTrue] (b0) to [bend right=45] (true);
+      \draw [BddTrue] (b1) to [bend left=45] (false);
+      \draw [BddTrue] (c0) -- (true);
+      \draw [BddTrue] (c1) -- (false);
+      \draw [BddFalse] (a) -- (d1);
+      \draw [BddFalse] (d0) -- (b1);
+      \draw [BddFalse] (d1) -- (c0);
+      \draw [BddFalse] (b0) -- (c1);
+      \draw [BddFalse] (b1) -- (c0);
+      \draw [BddFalse] (c0) -- (false);
+      \draw [BddFalse] (c1) -- (true);
+    \end{tikzpicture}
+    \caption{Before reordering}
+  \end{subfloat}{\hfill}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (a) [BddNode, blue] {a};
+      \node (b) [BddNode, below left = of a, blue] {b};
+      \node (dummy) [below right = of a] {};
+      \node (c0) [BddNode, below = of b, blue] {c};
+      \node (c1) [BddNode, below = of dummy, blue] {c};
+      \node (d0) [BddNode, below = of c0] {d};
+      \node (d1) [BddNode, below = of c1] {d};
+      \node (true) [BddLeaf, below = of d0] {true};
+      \node (false) [BddLeaf, below = of d1] {false};
+
+      \draw [BddTrue] (a) -- (b);
+      \draw [BddTrue] (b) to [bend right=45] (d0);
+      \draw [BddTrue] (c0) -- (d1);
+      \draw [BddTrue] (c1) -- (d1);
+      \draw [BddTrue] (d0) -- (true);
+      \draw [BddTrue] (d1) -- (false);
+
+      \draw [BddFalse] (a) -- (c1);
+      \draw [BddFalse] (b) -- (c0);
+      \draw [BddFalse] (c0) -- (d0);
+      \draw [BddFalse] (c1) to [bend left=45] (false);
+      \draw [BddFalse] (d0) -- (false);
+      \draw [BddFalse] (d1) -- (true);
+    \end{tikzpicture}
+    \caption{After reordering}
+  \end{subfloat}
+  {\hfill}
+  \caption{A more complex example of BDD reordering.}
+  \label{fig:place_conditions_example2:bdd1}
+\end{figure}
+
+This example is perhaps too simple to make the factorisation algorithm
+clear.  Consider, then, the example in
+Figure~\ref{fig:place_conditions_example2:bdd1}.  a, b, c, and d are
+the input expressions.  Assume that at the current node in the
+control-flow graph, a, b, and c are available but that d is not; this
+is indicated by colouring available variables blue in the figure.  It
+is now possible to construct the evaluatable sub-condition by
+replacing all of the unevaluatable variables with a true leaf and the
+applying the usual BDD reduction rules; the results are shown in
+Figure~\ref{fig:place_conditions_example2:evalable}.  This condition
+can then be evaluated at the current node.  Similarly, the
+unevaluatable component can be generated by removing all of the edges
+from an evaluatable variable to false and reducing; this is
+illustrated in Figure~\ref{fig:place_conditions_example2:unevalable}.
+This condition will need to be evaluated later in the control-flow
+graph.
+
+\todo{Do I need a proof of correctness for this?  Proving that it's
+  correct in the sense of being a proper conjunction is easy, but
+  showing that it's optimal, in any sense, is going to be a pain.}
+
+\begin{figure}
+  {\hfill}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (a) [BddNode, blue] {a};
+      \node (b) [BddNode, below left = of a, blue] {b};
+      \node (dummy) [below right = of a] {};
+      \node (c0) [BddNode, below = of b, blue] {c};
+      \node (c1) [BddNode, below = of dummy, blue] {c};
+      \node (true) [BddLeaf, below = of d0] {true};
+      \node (false) [BddLeaf, below = of d1] {false};
+
+      \draw [BddTrue] (a) -- (b);
+      \draw [BddTrue] (b) to [bend right=45] (d0);
+      \draw [BddTrue] (c0) -- (true);
+      \draw [BddTrue] (c1) -- (true);
+      \draw [BddTrue] (d0) -- (true);
+      \draw [BddTrue] (d1) -- (false);
+
+      \draw [BddFalse] (a) -- (c1);
+      \draw [BddFalse] (b) -- (c0);
+      \draw [BddFalse] (c0) -- (true);
+      \draw [BddFalse] (c1) to [bend left=45] (false);
+    \end{tikzpicture}
+    \caption{Before reduction}
+  \end{subfloat}
+  {\hfill}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (a) [BddNode, blue] {a};
+      \node (dummy) [below = of a] {};
+      \node (c) [BddNode, blue, below right = of a] {c};
+      \node (true) [BddNode, below = of dummy] {true};
+      \node (false) [BddNode, below = of c] {false};
+      \draw [BddTrue] (a) -- (true);
+      \draw [BddTrue] (c) -- (true);
+      \draw [BddFalse] (c) -- (false);
+      \draw [BddFalse] (a) -- (c);
+    \end{tikzpicture}
+    \caption{After reduction}
+  \end{subfloat}
+  {\hfill}
+  \caption{The evaluatable portion of the BDD in
+    Figure~\ref{fig:place_conditions_example2:bdd1}.}
+  \label{fig:place_conditions_example2:evalable}
+\end{figure}
+
+\begin{figure}
+  {\hfill}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (a) [BddNode, blue] {a};
+      \node (b) [BddNode, below left = of a, blue] {b};
+      \node (dummy) [below right = of a] {};
+      \node (c0) [BddNode, below = of b, blue] {c};
+      \node (c1) [BddNode, below = of dummy, blue] {c};
+      \node (d0) [BddNode, below = of c0] {d};
+      \node (d1) [BddNode, below = of c1] {d};
+      \node (true) [BddLeaf, below = of d0] {true};
+      \node (false) [BddLeaf, below = of d1] {false};
+
+      \draw [BddTrue] (a) -- (b);
+      \draw [BddTrue] (b) to [bend right=45] (d0);
+      \draw [BddTrue] (c0) -- (d1);
+      \draw [BddTrue] (c1) -- (d1);
+      \draw [BddTrue] (d0) -- (true);
+      \draw [BddTrue] (d1) -- (false);
+
+      \draw [BddFalse] (a) -- (c1);
+      \draw [BddFalse] (b) -- (c0);
+      \draw [BddFalse] (c0) -- (d0);
+      \draw [BddFalse] (c1) to [bend left=45] (d1);
+      \draw [BddFalse] (d0) -- (false);
+      \draw [BddFalse] (d1) -- (true);
+    \end{tikzpicture}
+    \caption{Before reduction}
+  \end{subfloat}
+  {\hfill}
+  \begin{subfloat}
+    \begin{tikzpicture}
+      \node (a) [BddNode, blue] {a};
+      \node (b) [BddNode, below left = of a, blue] {b};
+      \node (dummy) [below right = of a] {};
+      \node (c0) [BddNode, below = of b, blue] {c};
+      \node (d0) [BddNode, below = of c0] {d};
+      \node (d1) [BddNode, below = of c1] {d};
+      \node (true) [BddLeaf, below = of d0] {true};
+      \node (false) [BddLeaf, below = of d1] {false};
+
+      \draw [BddTrue] (a) -- (b);
+      \draw [BddTrue] (b) to [bend right=45] (d0);
+      \draw [BddTrue] (c0) -- (d1);
+      \draw [BddTrue] (d0) -- (true);
+      \draw [BddTrue] (d1) -- (false);
+
+      \draw [BddFalse] (a) -- (d1);
+      \draw [BddFalse] (b) -- (c0);
+      \draw [BddFalse] (c0) -- (d0);
+      \draw [BddFalse] (d0) -- (false);
+      \draw [BddFalse] (d1) -- (true);
+    \end{tikzpicture}
+    \caption{After reduction}
+  \end{subfloat}
+  {\hfill}
+  \caption{Unevaluatable component of the BDD in
+    Figure~\ref{fig:place_conditions_example2:bdd1}.}
+  \label{fig:place_conditions_example2:unevalable}
+\end{figure}
