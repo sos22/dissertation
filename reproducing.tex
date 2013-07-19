@@ -98,11 +98,11 @@ analysis.
     \draw[->,happensBeforeEdge] (l9) -- (l5);
   \end{tikzpicture}
   {\hfill}
-  \caption{The \protect\gls{verificationcondition} generated from the
-    program in \autoref{fig:enforce:example_threads}, showing the
-    dynamic \protect\gls{cfg} (as solid and dotted lines), the
-    happens-before graph (as dashed lines) and the \gls{side condition}
-    ($\texttt{idx1} = \texttt{idx2}$).}
+  \caption{The \gls{verificationcondition} generated from the program
+    in \autoref{fig:enforce:example_threads}, showing the \gls{dynamic
+      cfg} (as solid and dotted lines), the happens-before graph (as
+    dashed lines) and the \gls{side condition} ($\texttt{idx1} =
+    \texttt{idx2}$).}
   \label{fig:using:example_hb_graph}
 \end{sanefig}
 
@@ -1167,7 +1167,7 @@ it difficult to determine a thread's position within a plan.
 and having one fork follow each possible outcome of the ambiguous
 choice.  Instruction $C_0$ in
 \autoref{fig:place_conditions_example:result} provides an example: in
-the dynamic \gls{cfg}, $C_0$ can be followed by either $D_0$ or $D_1$,
+the \gls{dynamic cfg}, $C_0$ can be followed by either $D_0$ or $D_1$,
 and the plan must perform different actions depending on which is
 chosen, but the enforcer simply observes that static instruction C is
 followed by static instruction D and cannot tell which to use.  It
@@ -1307,7 +1307,7 @@ mapping between the dynamic and static \glspl{cfg}, but this is not
 the common case: a single program can generate many
 \glspl{bugenforcer}, each of which can generate multiple
 happens-before graphs, each with potentially many mappings on to the
-static \gls{cfg}.  The enforcer must track its progress through all of
+\gls{static cfg}.  The enforcer must track its progress through all of
 these potential plans.
 
 It is useful at this point to draw a distinction between static plans,
@@ -1327,14 +1327,13 @@ from the dynamic plan set.  If the dynamic plan set ever becomes empty
 then the enforcement interpreter exits and the program is returned to
 normal operation.
 
-I now explain how to implement the \textbf{Succ} stage in this
-model\editorial{ugg}.  In the single-plan interpreter, this stage is
-responsible for determining which dynamic \gls{cfg} node a given
-dynamic plan must execute next.  The \textbf{Emul} stage will
-determine which static \gls{cfg} node the program thread will move to
-next, but, as previously noted, this can map to several dynamic ones,
-and the multi-plan interpreter must somehow resolve this ambiguity.
-It does so by transforming the set of dynamic plans:
+The simplest phase to implement in this model is \textbf{Succ}, which
+is responsible for determining which \glspl{dynamic cfg} node each
+dynamic plan might execute next.  The \textbf{Emul} stage will
+determine which \gls{static cfg} node the program thread will move to
+next, but, as already noted, this can map to several dynamic ones, and
+the multi-plan interpreter must somehow resolve this ambiguity.  It
+does so by transforming the set of dynamic plans:
 \begin{displaymath}
 \mathit{newPlans} = \{p[n = n'] | p \in \mathit{plans}, n' \in p.n.\mathit{succ}, n'\!.\mathit{static} = \mathbf{Emul}.\mathit{next} \}
 \end{displaymath}
@@ -1366,10 +1365,10 @@ dynamic plans in the input set.  There are three interesting cases:
   nodes is unambiguous and so precisely one of the current dynamic
   node's successors will match the next instruction address produced
   by \textbf{Emul}.  In effect, all that happens is that the dynamic
-  plan moves from its current node in the dynamic \gls{cfg} to that
+  plan moves from its current node in the \gls{dynamic cfg} to that
   one successor node.
 
-\item Alternatively, the dynamic \gls{cfg} node might not have any
+\item Alternatively, the \gls{dynamic cfg} node might not have any
   successors which match the desired static node.  This might be
   because the dynamic plan has reached the end of the static plan, in
   which case this thread's part of the plan has succeeded, or it might
@@ -1388,53 +1387,16 @@ dynamic plans in the input set.  There are three interesting cases:
 \subsection{Message operations in the multi-plan interpreter}
 \label{sect:enforce:hli_messages}
 
-\todo{Really not happy with this section.}  As mentioned previously,
-the first step in an unbound message operation is to select a dynamic
-plan with which to communicate.  {\Technique}'s approach to doing so
-is simple: wait for some short interval, gathering up all of the
-remote dynamic plans which reach an appropriate unbound message
-operation during that time, and then fork the local and remote dynamic
-plans as many times as necessary to represent every possible pattern
-of communication.  The decision as to which precise plan communicates
-with which is thus made lazily, in the same way that the successor
-\gls{dynamic cfg} node is decided lazily in the \textbf{Succ} phase.
-
-{\Implementation} uses the following algorithm to implement the peer
-selection part of the \textbf{TX} algorithm; the \textbf{RX} algorithm
-is symmetric:
-\begin{enumerate}
-\item Iterate over the global \texttt{rx\_plan} table, which contains
-  dynamic plans which are currently performing an unbound \textbf{RX}.
-  Compare the message which this dynamic plans wants to transmit to
-  the message which the other one wants to receive.  If they match,
-  and if any side-condition on the message passes, the local plan
-  completes both message operations.  This means that it forks both
-  plans, binds them together, copies any necessary state between them,
-  advances them past the message operation, and adds them to the
-  appropriate dynamic plan sets.
-\item Register the current dynamic plan in the global
-  \texttt{tx\_plan} table.
-\item Sleep for the interval.
-\item De-register the current dynamic plan from the \texttt{tx\_plan}
-  table.
-\item Exit.
-\end{enumerate}
-When a new \textbf{TX} operation starts, it first looks for any
-existing \textbf{RX} operations which are waiting for it.  If it finds
-any, it completes both operations, creating new plans on both the
-receive and transmit side to store its results.  It then goes to sleep
-waiting for any further \textbf{RX} operations.  If any \textbf{RX}
-operations arrive during this window then they will complete both the
-\textbf{TX} and \textbf{RX} operations, forking the current dynamic
-plan in the process.  Once the sleep finishes, the original dynamic
-plan represents the case where no \textbf{RX} operation arrives during
-the interval, so its message operation fails and it
-exits\footnote{{\Implementation} actually includes an optimisation to
-  avoid creating and destroying plans unnecessarily in the common case
-  where precisely one peer operation is available, but this does not
-  fundamentally alter the algorithm and is not shown here.  Likewise,
-  this discussion omits the enforcer-internal synchronisation
-  necessary to implement this algorithm in a race-free way.}\!\!\!\!.
+As mentioned previously, the first step in an unbound message
+operation is to select a dynamic plan with which to communicate.
+{\Technique}'s approach to doing so is simple: wait for some short
+interval, gathering up all of the dynamic plans which reach an
+appropriate unbound message operation during that time, and then fork
+the local and remote dynamic plans as many times as necessary to
+represent every possible pattern of communication.  The decision as to
+which precise plan communicates with which is thus made lazily, in the
+same way that the successor \gls{dynamic cfg} node is decided lazily
+in the \textbf{Succ} phase.
 
 \subsection{Plan interference}
 \label{sect:enforce:plan_interference}
@@ -1450,7 +1412,7 @@ requires them to occur between C and D.  {\Technique} will encounter a
 deadlock while attempting to reproduce these bugs.  Suppose that the
 crashing thread arrives first and that the enforcer gains control at
 instruction F.  It will then create two dynamic plans $p_0$ and $p_1$,
-at dynamic \gls{cfg} nodes $F_0$ and $F_1$ respectively, to represent
+at \gls{dynamic cfg} nodes $F_0$ and $F_1$ respectively, to represent
 its progress through the two enforcement plans.  Both plans start with
 a message receive operation, with $p_0$ receiving $\alpha_0$ and $p_1$
 $\alpha_1$, and so the enforcer will put the thread to sleep waiting
@@ -1472,7 +1434,7 @@ alone.
 
 \begin{sanefig}
   {\hfill}%
-  \subfigure[][Program \protect\gls{cfg}]{
+  \subfigure[][\Gls{static cfg}]{
     \begin{tikzpicture}
       \node at (0,0) {\shortstack{Crashing\\thread}};
       \node at (0,-2.5) (F) [CfgInstr] {F};

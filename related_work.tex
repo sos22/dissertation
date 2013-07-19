@@ -21,38 +21,30 @@ the section describes them in more detail.
     \hline
     Locksets                   & Locking protocol violations                  & Static          & RacerX~\cite{Engler2003},RELAY~\cite{Voung2007} \\
                                &                                              & Dynamic         & Eraser~\cite{Savage1997} \\
-    \hdashline
+    \hgreyline
     Happens-before             & Memory races                                 & Dynamic         & RaceTrack~\cite{Yu2005}, FastTrack~\cite{Flanagan2009}, Netzer~\cite{Netzer1991} \\
-    \hdashline
+    \hgreyline
     Concurrent aliasing        & Memory races                                 & Static          & Chord~\cite{Naik2006} \\
-    \hdashline
+    \hgreyline
     Schedule perturbation      & Timing dependencies                          & Dynamic         & DataCollider~\cite{Erickson2010}, AtomRace~\cite{Letko2008}, CTrigger~\cite{Zhou} \\
                                &                                              & Hybrid          & Chess~\cite{Musuvathi2008} \\
-    \hdashline
+    \hgreyline
     Stereotyping               & Anomalous behaviour                          & Dynamic         & Anomaly-based IDSes~\cite{Forrest1996a}, Pu and Wei~\cite{Pu2006}, HeapMD~\cite{Chilimbi2006}, DIDUCE~\cite{Hangal2002}, MUVI~\cite{Lu2007} \\
                                &                                              & Static          & Bugs as deviant behaviours~\cite{Engler2001}\\
-    \hdashline
+    \hgreyline
     Extended assertions        & \multirow{2}{*}{\parbox{5.5cm}{Violations of programmer-identified properties}} & Dynamic        & TESLA~\cite{Locielski2011,Watson2013}\editorial{Need a better cite}, Uppuluri et al.~\cite{Uppuluri2005} \\
                                &                                              & Static          & Meta-compilation~\cite{Engler2000a}\\
-    \hdashline
+    \hgreyline
     Typestate systems~\cite{Strom1986a}& \multirow{2}{*}{\parbox{5.5cm}{Object access protocol sequencing violations}} & Dynamic & Gradual typestates~\cite{Wolff2011}, 2ndStrike~\cite{Gao2011} \\
                                &                                                                             & Static  & Plaid~\cite{Sunshine2011}\\
                                &                                                                             & Hybrid  & Clara~\cite{Bodden2010}\\
-    \hdashline
+    \hgreyline
     Symbolic execution         & Most forms of bugs                           & Static          & SLAM~\cite{Ball2011}, KLEE~\cite{Cadar}, JPF~\cite{Havelund2000} \\
                                & Most forms of bugs                           & Hybrid          & S2E~\cite{Chipounov2011} \\
                                & Memory management errors                     & Static          & SLAyer~\cite{Berdine2011} \\
                                & Infinite loops                               & Static          & Terminator~\cite{Cook2006a} \\
-    \hline
-    Bug characterisation       & Value replacement                            & Dynamic online  & Value replacement~\cite{Jeffrey2009} \\
-                               & Delta debugging                              & Dynamic offline & Delta Debugging~\cite{Cleve2005,Choi2002} \\
-                               & Static program slicing                       & Static          & Weiser~\cite{Weiser1981} \\
-                               & Dynamic program slicing                      & Dynamic         & Dynamic program slicing~\cite{Agrawal1990a} \\
-                               & Assisted debugging                           & Interactive     & Model Inference System~\cite{Shapiro1982} \\
   \end{tabular}
-  \caption{Summary of some existing bug detection and characterisation
-    techniques. \todo{Not convinced I really want to jam these into
-      the same table.}}
+  \caption{Summary of some existing bug detection techniques.}
   \label{fig:rw:find_char}
   \end{figgure}
 \end{sidewaysfigure}
@@ -123,35 +115,36 @@ because it is a static analysis, it considers all possible program
 behaviour, rather than just behaviour exhibited in one particular run,
 making it easier to be confident in its results.
 
-\todo{Linkage?} The chief approximation made by RacerX's static
-analysis is the use of a very simple aliasing model which assumes that
-there is precisely one instance of every data type.  This greatly
-simplifies scaling the analysis to very large programs, but at the
-expense of reducing its soundness.  RELAY~\cite{Voung2007} was one
-attempt to alleviate this limitation.  The key technique used was to
-summarise the program's procedures~\cite{Qadeer2004} using symbolic
-execution, recording what locks each acquired and released and which
-structure fields it accessed, allowing the tool to perform
-cross-function race analysis without needing to consider the full body
-of each function every time.  This provided useful improvements in
-both scalability and soundness.
+In order to scale its static analysis to very large software systems,
+RacerX was forced to make several approximations.  The most important
+is the use of a very simple aliasing model which assumes that there is
+precisely one instance of every data type.  This greatly simplified
+scaling the analysis to very large programs, but at the expense of
+reducing its soundness.  RELAY~\cite{Voung2007} was one attempt to
+alleviate this limitation.  The key technique used was to summarise
+the program's procedures~\cite{Qadeer2004} using symbolic execution,
+recording what locks each acquired and released and which structure
+fields it accessed, allowing the tool to perform cross-function race
+analysis without needing to consider the full body of each function
+every time.  This provided useful improvements in both scalability and
+soundness.
 
-\todo{Possibly a bit too informal.} These techniques could be used to
-refine {\technique} in two main ways of ways.  Most obviously,
-including a lockset table in the \gls{programmodel} could potentially
-allow many of the false positive \glspl{verificationcondition} to be
-eliminated far more easily, simultaneously reducing both the cost of
-the analysis and the number of bugs which must be checked at run time.
-This would need to be done with some care if the lockset table were
-derived dynamically (if the end result is that {\technique} detects a
-bug only when Eraser does then there would be little point in having
-both tools), but would be relatively easy with the (more conservative)
-static tables built by RacerX and RELAY.  Apart from that, there might
-also be some scope for integrating RELAY-style procedure summaries
-into the {\technique} analysis, both to automate the generation of
-library stubs (\autoref{sect:derive:library_functions}) and, more
-interestingly, to summarise frequently-used procedures within the
-program itself so as to aid analysis of functions which call them.
+These techniques could be used to refine {\technique} in two main ways
+of ways.  Most obviously, including a lockset table in the
+\gls{programmodel} could potentially allow many of the false positive
+\glspl{verificationcondition} to be eliminated far more easily,
+simultaneously reducing both the cost of the analysis and the number
+of bugs which must be checked at run time.  This would need to be done
+with some care if the lockset table were derived dynamically (if the
+end result is that {\technique} detects a bug only when Eraser does
+then there would be little point in having both tools), but would be
+relatively easy with the (more conservative) static tables built by
+RacerX and RELAY.  Beyond that, there might also be some scope for
+integrating RELAY-style procedure summaries into the {\technique}
+analysis, both to automate the generation of library stubs
+(\autoref{sect:derive:library_functions}) and, more interestingly, to
+summarise frequently-used procedures within the program itself so as
+to aid analysis of functions which call them.
 
 \subsection{Happens-before}
 
@@ -189,7 +182,7 @@ bugs, but the only edges introduced to the partial order will be
 between lock operations.  A tool which reported all of the lock edges
 would have a very high false positive rate for lock-based concurrent
 software, but one which does not cannot distinguish $P$ and $P'$ and
-so must have false negatives.  \todo{Bit of an odd para ending.}
+so must have false negatives.
 
 Ordering-based schemes can also be applied statically as in, for
 instance, the Chord static race detector~\cite{Naik2006}.  At a high
@@ -469,8 +462,24 @@ SLAM~\cite{Ball2011}, and the many systems based on it, such as
 SLAyer~\cite{Berdine2011} and Terminator~\cite{Cook2006a}, is another
 important example.  Unlike KLEE, it operates primarily at the level of
 source code.  Most SLAM-based analyses are primarily thread-local,
-considering only the sequential execution case; ~\cite{Cook2007} is one
-important exception.  \todo{Say more.}
+considering only the sequential execution case, and so are not
+directly relevant here.~~\cite{Cook2007} is one important exception.
+In that work, the authors investigated ways of extending SLAM to
+perform termination checking on multi-threaded programs.  The heart of
+their approach is to reduce their equivalent of the
+\glspl{interferingthread} to what they term an agreement, specifying
+precisely what changes it can make to shared variables and hence how
+it can interfere with the \gls{crashingthread}.  Their cross product
+is between the \gls{crashingthread} and this agreement, rather than
+directly between the two threads, dramatically reducing the total size
+of the search space.  At a high level, {\technique}'s simplifiers and
+the distinction between local and non-local side effects in the cross
+product algorithm, but, judging from their paper, are somewhat less
+effective than their mechanism.  On the other hand, their mechanism
+relies on more complete aliasing information than the {\technique}
+ones, and, as noted in the evaluation, {\technique} is far more
+limited by alias analysis than it is by an explosion of interleavings,
+making it difficult to apply their technique in this context.
 
 There have been many refinements proposed to the basic symbolic
 execution method, such as counter-example guided abstraction
@@ -494,15 +503,16 @@ a useful reduction in analysis times.
 \label{sect:rw:auto_characterise}
 
 As part of its operation, {\technique} derives characterisations of
-bugs in the form of \glspl{verificationcondition}.  The Delta
-Debugging~\cite{Cleve2005} project investigated the same problem.  In
-their approach, a tool compares execution traces taken from a program
-when it was working correctly to ones taken while it was exhibiting a
-bug so as to find parts of the traces which most effectively predict
-whether the program will suffer the bug being investigated.  These
-predictors can then be used to locate the root cause of the bug.  The
-approach was later extended to include actively modifying a program's
-state as it runs and observing the effects~\cite{Jeffrey2009}.
+bugs in the form of \glspl{verificationcondition}.  This problem had
+previously been tackled by the Delta Debugging~\cite{Cleve2005}
+project.  In that approach, a tool compares execution traces taken
+from a program when it was working correctly to ones taken while it
+was exhibiting a bug so as to find parts of the traces which most
+effectively predict whether the program will suffer the bug being
+investigated.  These predictors can then be used to locate the root
+cause of the bug.  The approach was later extended to include actively
+modifying a program's state as it runs and observing the
+effects~\cite{Jeffrey2009}.
 
 Delta Debugging was originally developed in the context of
 single-threaded programs, but was subsequently extended to include
@@ -973,7 +983,7 @@ they will be fixed quickly, or will never reproduce at all, in which
 case they do not matter.
 
 The most direct way of ensuring determinism, recommended by
-Determinator, is to make the API presented to programmers
+Determinator, is to make the API presented to programmers manifestly
 deterministic, so that there is simply no way for applications to do
 anything which even appears to be non-deterministic.  In the case of
 Determinator, this means that the main form of parallelism supported
@@ -1005,7 +1015,21 @@ transition between epochs allows these systems to ensure that
 executions are always completely deterministic, and hence that bugs
 either reproduce every time or never reproduce at all.
 
-\todo{So what?}
+These approaches might appear to obviate the need for
+{\technique}-like techniques.  This is not entirely true.  First,
+deterministic threading techniques impose some performance overheads
+and, while this overhead is far less than that of {\atechnique}
+\gls{bugenforcer}, it is an overhead which must be suffered whenever
+the program runs, whereas \glspl{bugenforcer} only impose any overhead
+at all when investigating a particular bug.  Second, and more subtly,
+deterministic threading can be argued to merely hide bugs rather than
+completely removing.  The behaviour of programs written for systems
+such as dOS is, in practice, highly dependent on the precise placement
+of epoch boundaries, which is itself dependent on complex, global
+properties of the program's structure.  This makes it difficult to
+reason locally about the impact of a given modification, potentially
+leading to unfortunate program maintenance issues.  Techniques such as
+{\technique} remain useful for understanding these latent bugs.
 
 \section{Decompilation and other analysis of machine code}
 

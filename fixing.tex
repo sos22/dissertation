@@ -121,7 +121,7 @@ produced appear to broadly reasonable in most circumstances.
 \section{Structure of fixes}
 
 \noindent
-Once {\technique} has identified the fragments of dynamic \gls{cfg}
+Once {\technique} has identified the fragments of \gls{dynamic cfg}
 which are to be made atomic, it must build a fix which does so.  These
 fixes consist of two parts: the \gls{shadowfragment}, a fragment of
 machine code which emulates the relevant part of the original program
@@ -147,7 +147,7 @@ algorithms.
 
 \begin{sanefig}
   {\hfill}
-  \subfigure[][Static \protect\gls{cfg}]{
+  \subfigure[][\Gls{static cfg}]{
     \begin{tikzpicture}
       \node (root) {};
       \node (A) [below = of root, CfgInstr] {A};
@@ -169,7 +169,7 @@ algorithms.
     \label{fig:fix:eg:static}
   }
   {\hfill}
-  \subfigure[][Dynamic \protect\gls{cfg}]{
+  \subfigure[][\Gls{dynamic cfg}]{
     \begin{tikzpicture}
       \node (root) {};
       \node (B0) [below = of root, CfgInstr] {$B_0$};
@@ -236,7 +236,7 @@ algorithms.
 
 \autoref{fig:fix:eg} shows an example \gls{shadowfragment} generated
 for one of the critical sections involved in a simple bug.  The
-dynamic \gls{cfg} indicates that the critical section must run from
+\gls{dynamic cfg} indicates that the critical section must run from
 the start of instruction B in one iteration of the loop to the end of
 instruction B in the next iteration.  Ideally, the
 \gls{shadowfragment} would therefore gain control at instruction B,
@@ -292,12 +292,12 @@ recognises fragments of those streams.  This provides a convenient way
 of describing the correctness requirements for the
 \gls{shadowfragment}:
 \begin{enumerate}
-\item It must correctly emulate the static \gls{cfg}, in the sense of
+\item It must correctly emulate the \gls{static cfg}, in the sense of
   generating the same sequences of instructions (ignoring lock acquire
   and release operations), starting from any instruction in the patch
   strategy's $\mathit{Patch}$ set.
 \item It must correctly enforce the desired synchronisation, in the
-  sense that any subsequences which match the dynamic \gls{cfg} must
+  sense that any subsequences which match the \gls{dynamic cfg} must
   hold the lock for their entire duration.
 \item It must follow correct lock discipline, in the sense that any
   instruction sequences generated must match the automaton in
@@ -392,7 +392,7 @@ the general case.
 
   \caption{The patch generating algorithm as a graph grammar.  The
     terminals of this grammar are instructions in a newly-generated
-    static \protect\gls{cfg} representing the \gls{shadowfragment}.
+    \gls{static cfg} representing the \gls{shadowfragment}.
     The ``If $\neg$\protect\production{2_a}'' annotation indicates
     that the production is used only if \protect\production{2_a} does
     not match.  \textrm{X} and \textrm{Y} match fragments of the
@@ -460,10 +460,10 @@ starting from the non-terminal set $\mathit{initial}$, given in
 type is used to represent the program's positions in the various
 regular automata:
 \begin{itemize}
-\item $\mathit{static}$ gives the position in the program's static
-  \gls{cfg}.
+\item $\mathit{static}$ gives the position in the program's
+  \gls{static cfg}.
 \item $\mathit{dynamic}$ gives the set of possible positions in the
-  dynamic \gls{cfg}.
+  \gls{dynamic cfg}.
 \item $\mathit{lock}$ gives the position in the lock discipline
   automaton (either $\mathit{held}$ for the lock held state or
   $\mathit{unheld}$ for the lock unheld one).
@@ -483,8 +483,8 @@ The grammar makes use of two utility functions:
   \begin{displaymath}
     \mathit{adv}(\mathrm{x}, \alpha) = \left\{r \middle| s \in \alpha \wedge r \in s.\mathit{next} \wedge r.\mathit{static} = \mathrm{x}\right\}
   \end{displaymath}
-  $n.\mathit{next}$ is the set of \gls{cfg} nodes which can follow the
-  $n$ and $n.\mathit{static}$ is the static \gls{cfg} node
+  $n.\mathit{next}$ is the set of \gls{dynamic cfg} nodes which can
+  follow the $n$ and $n.\mathit{static}$ is the \gls{static cfg} node
   corresponding to $n$.
 \end{itemize}
 
@@ -683,8 +683,8 @@ shown in \autoref{fig:fix:eg:shadow}.
   {\hfill}
   \caption{The effect of running the loop in
     \autoref{fig:fix:eg:static} three times.  Because static
-    instruction {\rm B} could be either $B_0$ or $B_1$ the dynamic
-    \protect\gls{cfg} in \autoref{fig:fix:eg:dynamic} matches this
+    instruction {\rm B} could be either $B_0$ or $B_1$ the
+    \gls{dynamic cfg} in \autoref{fig:fix:eg:dynamic} matches this
     sequence in two, overlapping, places, resulting in two,
     overlapping, critical sections.  The enforcer is unable to release
     the lock between loop iterations and must hold it for the loop's
@@ -699,7 +699,7 @@ for an arbitrarily large number of instructions, even though the
 desired critical section contained only four.  The fundamental problem
 here is the ambiguous mapping between the static and dynamic
 \glspl{cfg}, and in particular the fact that the static B instruction
-occurs twice in the dynamic \gls{cfg} as $B_0$ and $B_1$.  The
+occurs twice in the \gls{dynamic cfg} as $B_0$ and $B_1$.  The
 enforcer cannot tell, when it observes the program running instruction
 B, whether it should treat that instruction as $B_0$, which starts a
 critical section, or $B_1$, which ends one, and conservatively treats
