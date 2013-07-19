@@ -1090,8 +1090,7 @@ burden to place on the user.
   \vspace{-12pt}
   \caption{Dynamic aliasing coverage against time for MySQL, using
     some tests out of the test suite.  Dashed vertical lines show
-    where the program was restarted.  \todo{No error bars on this one.
-      I'm not sure how you'd go about adding any, either.}}
+    where the program was restarted.}
   \label{fig:eval:dyn_convergence:mysqld}
 \end{sanefig}
 
@@ -1191,7 +1190,7 @@ most useful.
     range and median with 90\% confidence interval for quantiles in
     grey.  Cross and bars give arithmetic mean and 90\% confidence
     interval for mean.  Confidence intervals computed by a bootstrap
-    with 1000 replicates. \todo{Fill in boxes with white.}}
+    with 1000 replicates.}
   \label{fig:eval:indexed_toctou:nr_ptrs}
 \end{sanefig}
 
@@ -1580,8 +1579,7 @@ higher than that observed with the \gls{crashingthread}-only
 register-based solution's applicability to bugs in frequently executed
 code (and debug register-based systems are in any case less
 generically applicable than {\technique} fixes due to the limited
-number of such registers available in most processors).  \todo{Might
-  want a bit more here.}
+number of such registers available in most processors).
 
 \section{When does it work?}
 \label{sect:eval:does_it_scale}
@@ -1696,9 +1694,29 @@ simplification step is able to make quite dramatic simplifications to
 the structure of the {\StateMachines}, and so there is no need to ever
 consider all $2^N$ interleavings of the memory accesses.
 
-\todo{Also put in some numbers on how effective the enforcers are.
-  The answer is that they're very effective, and how effective they
-  are is basically independent of $N$, but I should probably say that.}
+\begin{sanefig}
+  \biggraph{eval/complex_hb/repro_times.tex}
+  \caption{Time taken to reproduce the \bugname{complex\_hb}$_N$ test
+    when using a \gls{bugenforcer}, for varying values of $N$ Each
+    abscissae sampled 110 times, in random order, with the first ten
+    results discarded.  Cross and bars show mean and 90\% confidence
+    interval, derived using a 1000 replicate bootstrap.  Without an
+    enforcer, the average reproduction time was $13.5 \in
+    [10.7,16.5]_{1000}^{100}$ seconds when $N=2$; at $N=3$ and $N=4$,
+    there were no reproductions in under ten minutes in 100 runs of
+    the experiment.}
+  \label{fig:eval:why:complex_hb_repro}
+\end{sanefig}
+
+\autoref{fig:eval:why:complex_hb_repro} shows how long the
+\glspl{bugenforcer} take to reproduce these bugs.  As can be seen,
+this is very quick, taking just $0.337 \in [0.333,0.344]_{1000}^{100}$
+seconds to reproduce, on average, to reproduce a happens-before graph
+with 80 edges, and this time appears to be roughly linear in the
+number of edges.  Without an enforcer, the bug takes at least ten
+minutes to reproduce for all values of $N$ greater than 2.  This
+suggests that the \glspl{bugenforcer} will be able to reproduce any
+happens-before graph which {\technique} is able to generate.
 
 \subsection{Scalability with respect to memory access complexity}
 

@@ -16,6 +16,7 @@ cd ..
 
 cd complex_hb
 ./complex_hb_build_summaries.py
+./repro_times.py
 cd ..
 
 cd complex_alias

@@ -14,7 +14,7 @@ c_width = 0.005
 mintime = 0.15
 maxtime = 0.35
 
-abscissae = range(0,81,5)
+abscissae = range(0,81,5)[1:]
 time_grads = ["0.%d" % x for x in xrange(150, 360, 25)]
 
 def count_to_x(count):
@@ -84,8 +84,6 @@ def bootstrap_stats(data, stat):
 
 def calc_stats(data):
     return {"mean": sum(data) / float(len(data)),
-            "p50": quantile(data, 0.50),
-            "p95": quantile(data, 0.95),
             }
 
 d = {}
@@ -114,9 +112,6 @@ for (k, v) in d.iteritems():
     l = x-b_width/2
     r = x+b_width/2
     
-    draw_box(output, l, r, v["p50"])
-    draw_box(output, l, r, v["p95"])
-
     l = x - c_width/2
     r = x + c_width/2
     output.write("\\draw (%f,%f) -- (%f,%f);\n" % (x, time_to_y(mean[0]),
