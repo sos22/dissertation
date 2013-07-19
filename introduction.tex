@@ -70,9 +70,9 @@ An important decision which must be made when designing this kind of
 tool is how much higher-level semantic information to use, and in
 particular whether to operate at the level of machine code or source
 code.  Working with machine code gives a tool the most precise
-description of the program's behaviour, as\editorial{non sequitur}
-concurrency bugs often depend on the precise details of compiler
-optimisations; on the other hand, source code provides far more useful
+description of the program's behaviour, as the effects of compiler
+optimisations are often important when investigating concurrency
+errors, but, on the other hand, source code provides far more useful
 information, and so is usually far easier to analyse.  {\Technique}
 takes the extreme position of operating on machine code as far as
 possible, only relying on access to source code when absolutely
@@ -114,11 +114,11 @@ typically have sufficiently low overhead to be useful in practice.
 \label{sect:types_of_bugs}
 
 {\Technique} considers only a subset of concurrency bugs: those where
-one thread, referred to as the ``\gls{crashingthread}'', is reading
-from a shared data structure while another thread, the
-``\gls{interferingthread}'', simultaneously modifies it, and these
+one thread, referred to as the \gls{crashingthread}, is reading from a
+shared data structure while another thread, the
+\gls{interferingthread}, simultaneously modifies it, and these
 concurrent updates cause the crashing thread to crash quickly.  In a
-little more detail\editorial{Not a sentence}:
+little more detail:
 \begin{itemize}
 \item The threads must be operating on a data structure located
   somewhere in shared memory.  This structure does not need to be in
@@ -148,11 +148,11 @@ little more detail\editorial{Not a sentence}:
   program to be analysed and how much information about the bug is
   available before analysis starts.
 \end{itemize}
-This clearly does not include every possible type of concurrent bug
-(it does not, for instance, include any but the most trivial deadlock
-bugs, and complicated memory corruption bugs are difficult to handle),
-but does include some interesting ones.  \todo{More.  Should possibly
-  give a name to the type of bug?}
+I refer to bugs which satisfy these constraints as \glspl{simple
+  atomicity violation}.  This clearly does not include every possible
+type of concurrent bug (it does not, for instance, include any but the
+most trivial deadlock bugs, and complicated memory corruption bugs are
+difficult to handle), but does include some interesting ones.
 
 \subsection{Order-violation bugs}
 
@@ -264,21 +264,18 @@ such a program from one which is intended to always exit normally but
 occasionally crashes due to an accidental race condition.  Any fix for
 the latter would break the former.
 
-\todo{Needs editing.} This issue is most easily understood by
-recasting the problem from changing the behaviour of the program to
-changing the behaviour of the system on which it is running.  A
-program will usually be designed to work with a broad class of
-computers, rather than with one particular physical system, and so if
-it exhibits behaviour A on one system and behaviour B on another then
-forcing it to exhibit behaviour B on both systems is unlikely to
-introduce a bug into a correct program.  This gives a reasonable
-definition of what it means to soundly modify a program without a
-specification: a modification is safe if it is equivalent to moving
-the program from one computer system to another similar one.  For
-{\technique}, two systems are similar if they differ only in the time
-taken to run instructions, and so modifications which amount to simply
-delaying a particular operation are safe.  This makes {\technique}
-safe for use on any systems which do not have real-time constraints.
+{\Technique} defines a safe modification to a program to be one which
+is equivalent to running it on a computer where some operations run
+more slowly.  Equivalently, it will only ever introduce new bugs into
+programs which depend on the relative timing of some operations.  This
+is a reasonably conservative definition, in the sense that it allows
+{\technique} to be applied to a reasonably broad variety of software,
+but it is not quite universal.  In particular, {\technique} fixes and
+\glspl{bugenforcer} can sometimes cause real-time programs to miss
+their deadlines.  This is an inevitable risk when modifying a
+program's scheduling without a precise specification of its deadline
+structure, and, since {\technique} lacks such a specification, this is
+the strongest safety property which can be hoped for.
 
 \section{Graph generating grammars}
 \label{sect:intro:graph_grammar}

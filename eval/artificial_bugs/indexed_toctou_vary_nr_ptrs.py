@@ -127,6 +127,12 @@ for a in abscissae:
     print "\\fill [color=black!50] (%f,%f) rectangle (%f,%f);" % (l, time_to_y(p75[0]),
                                                                   r, time_to_y(p75[2]))
     
+    print "\\begin{pgfonlayer}{bg}"
+    print "\\fill [color=white] (%f,%f) rectangle (%f,%f);" % (l,
+                                                               time_to_y(p25[1]),
+                                                               r,
+                                                               time_to_y(p75[1]))
+    print "\\end{pgfonlayer}"
     print "\\draw (%f,%f) rectangle (%f,%f);" % (l,
                                                  time_to_y(p25[1]),
                                                  r,

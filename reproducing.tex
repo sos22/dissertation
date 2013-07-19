@@ -766,38 +766,38 @@ first gain control of it.  {\Implementation} does so by patching the
 program's binary and replacing certain critical instructions with
 branches to the \gls{plan interpreter}.  This is highly efficient,
 when compared to other techniques such as dynamic binary
-rewriting~\cite{Nethercote2007,Luk2005} or processor breakpoint
+rewriting~\cite{Luk2005,Nethercote2007} or processor breakpoint
 registers~\cite[Chapter 16.2: Debug Registers]{Intel2009}, and avoids
 unnecessarily disturbing the program's state, but requires care to be
 implemented safely.  In particular, the branch operation might be
-larger than the instruction it is replacing\footnote{The AMD64 jump
-  instruction is five bytes long, and some preliminary experiments
-  showed that 56\% of instructions in a small selection of programs
-  were four bytes or smaller.  The precise ratio will vary depending
-  on the program examined; the important point is that these small
-  instructions are far too common to ignore.} and so the replacement
-risks corrupting the instructions immediately after the one which is
-to be replaced.  The patching mechanism must ensure that the program
-never executes one of these corrupted instructions.  {\Implementation}
-does so by introducing further patches which ensure that it has
-control whenever the program attempts to branch to one of these
-corrupted instructions.
+larger than the instruction it is replacing\footnote{The normal AMD64
+  jump instruction is five bytes long, and some preliminary
+  experiments showed that 56\% of instructions in a small selection of
+  programs were four bytes or smaller.  The precise ratio will vary
+  depending on the program examined; the important point is that these
+  small instructions are far too common to ignore.} and so the
+replacement risks corrupting the instructions immediately after the
+one which is to be replaced.  The patching mechanism must ensure that
+the program never executes one of these corrupted instructions.
+{\Implementation} does so by introducing further patches which ensure
+that it has control whenever the program attempts to branch to one of
+these corrupted instructions.
 
 \begin{sanefig}
   \begin{displaymath}
-    \textsc{PatchStrategy} = \left\{\begin{array}{rl}
+    \textsc{Strategy} = \left\{\begin{array}{rl}
     \mathit{Patch}: & \{\textsc{Instruction}\} \\
     \mathit{Cont}: & \{\textsc{Instruction}\} \\
     \mathit{Pending}: & \{\textsc{Instruction}\}
     \end{array}\right\}
   \end{displaymath}
   \vspace{-12pt}
-  \caption{The \textsc{PatchStrategy} type}
+  \caption{The \textsc{Strategy} type}
   \label{fig:patch_strategy_type}
 \end{sanefig}
 
 {\Implementation} represents solutions and partial solutions to the
-patch problem using the \textsc{PatchStrategy} type, illustrated in
+patch problem using the \textsc{Strategy} type, illustrated in
 \autoref{fig:patch_strategy_type}:
 \begin{itemize}
 \item $\mathit{Patch}$ is the set of instructions in the original
@@ -813,7 +813,7 @@ patch problem using the \textsc{PatchStrategy} type, illustrated in
   {\implementation} must have control of the program's execution but
   which are not controlled by the current strategy.
 \end{itemize}
-A \textsc{PatchStrategy} is said to be \emph{valid} if it gaining
+A \textsc{Strategy} is said to be \emph{valid} if it gaining
 control at all $\mathit{Pending}$ and $\mathit{Patch}$ instructions,
 and refusing to relinquish it at $\mathit{Cont}$ ones, would ensure
 that the program never executes a corrupted instruction; it is
@@ -828,7 +828,7 @@ must be emulated.  The algorithm used to do so is shown in
 
 The \textsc{patch} and \textsc{prefix} helper functions perhaps
 require additional explanation.  These transform a
-\textsc{PatchStrategy} into a set of new strategies by considering
+\textsc{Strategy} into a set of new strategies by considering
 each $\mathit{Pending}$ instruction $i$ in turn and either replacing
 $i$ with a branch (\textsc{patch}) or arranging to gain control before
 the program can run $i$ (\textsc{prefix}).  Both functions correctly
@@ -852,12 +852,12 @@ gains control at $i$, but they have different costs and constraints:
   $i.\mathit{pred}$ to $\mathit{Pending}$.
 \end{itemize}
 The algorithm starts with the (valid, complete, insufficient) empty
-\textsc{PatchStrategy} (line 2) and then \textsc{extend}s it with one
+\textsc{Strategy} (line 2) and then \textsc{extend}s it with one
 needed instruction at a time (line 4).  \textsc{extend}ing a
-\textsc{PatchStrategy} renders it incomplete, and so the main loop of
+\textsc{Strategy} renders it incomplete, and so the main loop of
 the algorithm restores completeness using the \textsc{patch} and
 \textsc{prefix} functions (lines 5 to 13)\footnote{Equivalently,
-  \textsc{buildPatchStrategy} implements a search over the space of
+  \textsc{buildStrategy} implements a search over the space of
   \textsc{Strategy}s using the \textsc{prefix} and \textsc{patch}
   operators with a cut point between every instruction at which the
   enforcer must gain control.}.  Once every instruction has been added
@@ -921,18 +921,18 @@ correct solution to the patching problem.
 \end{sanefig}
 
 This algorithm, as stated, leaves the order in which
-\textsc{PatchStrategy}s are removed from the queue ambiguous.  This
-can sometimes have a large effect on the number of instructions which
-must be executed in the interpreter, and hence on the performance
-overheads of the patch.  It is hard to predict precisely how large an
-impact a given strategy will have on performance without a detailed
-model of the program's behaviour, but it can reasonably be
-approximated to be proportional to the number of static instructions
-affected, $|\mathit{Cont} \cup \mathit{Patch}|$.  {\Implementation}
-will therefore always choose to expand the strategy where that
-quantity is smallest, which usually causes it to find the strategy
-which minimises the cost of the patch\footnote{The result is only
-  usually minimal, rather than guaranteed to be minimal, because the
+\textsc{Strategy}s are removed from the queue ambiguous.  This can
+sometimes have a large effect on the number of instructions which must
+be executed in the interpreter, and hence on the performance overheads
+of the patch.  It is hard to predict precisely how large an impact a
+given strategy will have on performance without a detailed model of
+the program's behaviour, but it can reasonably be approximated to be
+proportional to the number of static instructions affected,
+$|\mathit{Cont} \cup \mathit{Patch}|$.  {\Implementation} will
+therefore always choose to expand the strategy where that quantity is
+smallest, which usually causes it to find the strategy which minimises
+the cost of the patch\footnote{The result is only usually minimal,
+  rather than guaranteed to be minimal, because the
   $\mathit{gainControl}$ set is processed incrementally, with no
   backtracking from one instruction to an earlier one, and so it might
   be that the first instruction processed produces a strategy which is

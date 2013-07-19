@@ -73,11 +73,11 @@ inferring this lock discipline and then flagging an error whenever the
 program violates it.
 
 Eraser~\cite{Savage1997} was the earliest tool of this form.  It is a
-dynamic analysis which observes the running program's lock operations
-and memory accesses so as to build a mapping from memory locations to
-sets of locks which might conceivably protect them.  A location's lock
-set initially contains every lock in the program and is intersected
-with the set of currently-held locks whenever a thread accesses the
+dynamic analysis which observes the running program's lock and memory
+operations so as to build a mapping from memory locations to the set
+of locks which might conceivably protect them.  A location's lock set
+initially contains every lock in the program and is intersected with
+the set of currently-held locks whenever a thread accesses the
 location.  If the set ever becomes empty then there is no locking
 discipline which is compatible with the program's behaviour, and so
 the tool flags a potential concurrency error\footnote{There is an
@@ -86,7 +86,7 @@ the tool flags a potential concurrency error\footnote{There is an
   their analysis with reference to the fields of high-level language
   structures but must perform the actual analysis on memory locations,
   and hence the two techniques make similar assumptions about memory
-  type stability.}.\poorstyle
+  type stability.}.
 
 Eraser is both sound and complete, in the sense that if it reports a
 lock discipline violation there has definitely been such a violation,
@@ -333,7 +333,11 @@ with {\technique} so as to expand its \gls{programmodel}, potentially
 giving useful improvements in both analysis performance and precision.
 HeapMD~\cite{Chilimbi2006}, which uses this kind of method to build up
 a model of the heap, would be particularly interesting to investigate
-in this respect.
+in this respect.  More simply, it might be possible to use techniques
+similar to those deployed in Laika~\cite{Cozzie2008} to automatically
+identify parts of the program which behave like memory allocators,
+removing the one place in which {\technique} currently relies on
+manual assistance.
 
 These techniques can also be applied statically, as in, for example,
 Engler's ``Bugs as deviant behaviour'' system~\cite{Engler2001}.  The
@@ -1030,17 +1034,16 @@ these techniques might produce interesting results.
 
 Decompilation is not the only kind of analysis which has been applied
 to machine code.  BAP, the Binary Analysis
-Platform~\cite{Brumley2011}, is one of the more recent
-examples\poorstyle.  It was a set of tools used to convert machine
-code into an intermediate language suitable for other forms of
-analysis.  As such, it is very similar to {\technique}'s
-{\StateMachine} building process.  The chief difference is that BAP
-does not consider multi-threaded programs at all, whereas that is the
-primary purpose of {\technique}.  Along the same lines, the
-BitBlaze~\cite{Song2008} project designed a number of analyses on
-machine code intended to uncover security problems given only a binary
-program.  \todo{Not quite sure what that paragraph was trying to
-  achieve.}
+Platform~\cite{Brumley2011}, is one of the more recent examples.  It
+was a set of tools used to convert machine code into an intermediate
+language suitable for other forms of analysis.  As such, it is very
+similar to {\technique}'s {\StateMachine} building process.  The chief
+difference is that BAP does not consider multi-threaded programs at
+all, whereas that is the primary purpose of {\technique}.  Along the
+same lines, the BitBlaze~\cite{Song2008} project designed a number of
+analyses on machine code intended to uncover security problems given
+only a binary program.  \todo{Not quite sure what that paragraph was
+  trying to achieve.}
 
 \section{Theorem proving and SAT solving techniques}
 
