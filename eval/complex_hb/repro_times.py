@@ -4,18 +4,18 @@ import sys
 import math
 import random
 
-figwidth = 12
-figheight = 10
+figwidth = 12.8
+figheight = 7
 
 nr_replicates = 1000
 b_width = 0.01
 c_width = 0.005
 
-mintime = 0.15
+mintime = 0.175
 maxtime = 0.35
 
 abscissae = range(0,81,5)[1:]
-time_grads = ["0.%d" % x for x in xrange(150, 360, 25)]
+time_grads = ["0.%d" % x for x in xrange(175, 360, 25)]
 
 def count_to_x(count):
     return count / 80.0
@@ -55,10 +55,10 @@ output.write("\\draw[->] (0,0) -- (1,0);\n")
 output.write("\\draw[->] (0,0) -- (0,1);\n")
 for abs in abscissae:
     output.write("\\node at (%f,0) [below] {%d};\n" % (count_to_x(abs), abs))
-output.write("\\node at (0.5,-.2) [below] {Number of edges, $2N$};\n")
+output.write("\\node at (0.5,-.1) [below] {Number of edges, $2N$};\n")
 for t in time_grads:
     output.write("\\node at (0,%f) [left] {%s};\n" % (time_to_y(float(t)), t))
-output.write("\\node at (-.2,.5) [below,rotate=90] {Time to reproduce, seconds};\n")
+output.write("\\node at (-.15,.5) [below,rotate=90] {Time to reproduce, seconds};\n")
 output.write("\\end{pgfonlayer}\n")
 
 def quantile(data, q):

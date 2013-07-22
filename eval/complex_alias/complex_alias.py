@@ -568,8 +568,7 @@ def suppress(x, y):
     else:
         return None
 contour_map( ((0,0),(figwidth,figheight)), times, suppress, 10, timeouts, ooms,
-             [1.0
-              #, 3.0, 10.0, 30.0, 100.0, 200.0, 300.0
+             [1.0, 3.0, 10.0, 30.0, 100.0, 200.0, 300.0
               ],
              {1.0: ("", "", "1s"),
               3.0: ("color=blue", "", "3s"),
