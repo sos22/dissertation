@@ -407,8 +407,8 @@ def draw_box(output, x, box, chart, replicates, r_project, nr_samples, x_scale):
     output.write("  \\draw [fill=white] (%f, %f) rectangle (%f, %f);\n" % (x - width / 2, box.lower, x + width / 2, box.upper))
     # And the division line
     output.write("  \\draw (%f, %f) -- (%f, %f);\n" % (x - width / 2, div, x + width / 2, div))
-    # Node count.
-    output.write("  \\node at (%f, %f) {%d};\n" % (x-.1, (box.upper + box.lower) / 2.0, box.select1(chart) + box.select2(chart)))
+    # Count
+    output.write("  \\node at (%f, %f) {%.2f\\%%};\n" % (x, (box.upper + box.lower) / 2.0, (box.select1(chart) + box.select2(chart)) * 100.0/nr_samples))
 
 def draw_pdfs(output, chart_keys, charts, defect_samples, total_samples, replicates, chart_labels, settings):
     lowest = settings.lowest()

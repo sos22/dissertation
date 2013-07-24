@@ -443,13 +443,11 @@ correctly identified that interleaving that store with the
 \gls{crashingthread} might lead to a crash, but failed to notice that
 an existing lock prevented the interleaving from happening.  The
 \bugname{mysql} false positive, by contrast, was caused by an
-incomplete model of the program's data structure\editorial{Looks like
-  a typo; isn't; is actually an important distinction.  Think harder
-  about how to make that clear.}.  {\Technique} located another
-instruction which could set \texttt{PSI\_server} and which could
-potentially race with the \gls{crashingthread}, but in that case the
-value stored was always a valid pointer and so the interleaving could
-not lead to a crash.
+incomplete model of the program's dataflow structure.  {\Technique}
+located another instruction which could set \texttt{PSI\_server} and
+which could potentially race with the \gls{crashingthread}, but in
+that case the value stored was always a valid pointer and so the
+interleaving could not lead to a crash.
 
 \subsubsection{Reproducing the bugs}
 
@@ -588,6 +586,8 @@ it means to fix a bug.
 \subsubsection{Finding unknown bugs}
 \label{sect:how:finding_unknown}
 
+\todo{If I get time, I'm going to re-run this with \gls{alpha} = 40.}
+
 \begin{sanetab}
   \begin{tabbular}{|l|p{4.35cm}|p{4.35cm}|}
     \hline
@@ -663,6 +663,80 @@ Other    & 0/101700                      & $0.014 \in [0.010,0.018]^{101700}_{\i
 \label{tab:eval:does:finding_unknown}
 \end{sanetab}
 
+\subsection{Dynamic aliasing analysis}
+
+{\Technique} relies on an initial dynamic analysis
+(\autoref{sect:program_model}) to build a model of the program's
+aliasing behaviour, and if this is incomplete then it will not be able
+to find all bugs in the program.
+Figures~\ref{fig:eval:dyn_convergence:mysqld},
+\ref{fig:eval:dyn_convergence:thunderbird},
+and~\ref{fig:eval:dyn_convergence:pbzip2} show the number of edges in
+the aliasing table, expressed as a proportion of the edges in the
+final table, as a function of time, for a variety of test programs and
+workloads.  These figures show that the aliasing table had in all
+cases effectively converged on its final value within a few minutes,
+suggesting that, for these workloads, it would only be necessary to
+run the program to be analysed under the dynamic analysis for a few
+minutes to achieve adequate coverage.  This is not an unreasonable
+burden to place on the user.
+
+\begin{sanefig}
+  \begin{tabular}{cc}
+    \subfigure[][rpl\_change\_master]{
+      \biggraph{eval/dyn_convergence/rpl_change_master.tex}
+    } &
+    \subfigure[][innodb\_multi\_update]{
+      \biggraph{eval/dyn_convergence/innodb_multi_update.tex}
+    } \\
+    \subfigure[][binlog\_stm\_drop\_tbl]{
+      \biggraph{eval/dyn_convergence/binlog_stm_drop_tbl.tex}
+    } &
+    \subfigure[][timestamp\_basic]{
+      \biggraph{eval/dyn_convergence/timestamp_basic.tex}
+    }
+  \end{tabular}
+  \vspace{-12pt}
+  \caption{Dynamic aliasing coverage against time for MySQL, using
+    some tests out of the test suite.  Dashed vertical lines show
+    where the program was restarted.}
+  \label{fig:eval:dyn_convergence:mysqld}
+\end{sanefig}
+
+\begin{sanefig}
+  \biggraph{eval/dyn_convergence/thunderbird}
+  \vspace{-24pt}
+  \caption{Dynamic aliasing coverage against time for Thunderbird
+    during normal usage.  Dashed vertical lines show where the program was
+    restarted.}
+  \label{fig:eval:dyn_convergence:thunderbird}
+\end{sanefig}
+
+\begin{sanefig}
+  \biggraph{eval/dyn_convergence/pbzip2}
+  \vspace{-24pt}
+  \caption{Dynamic aliasing coverage against time for pbzip2 version
+    1.1.6 while compressing three randomly-generated 10MiB files.
+    Dashed vertical lines show where the program was restarted.}
+  \label{fig:eval:dyn_convergence:pbzip2}
+\end{sanefig}
+
+I also briefly investigated the performance of the analysis tool
+itself, using pbzip2 as a test program.  For these experiments, I
+compressed ten randomly-generated 100MiB files with and without the
+dynamic analysis.  Without the dynamic analysis, compressing one file
+took $7.8 \pm_\mu^{10} 0.1$ seconds; with the dynamic analysis, this
+increased to $274 \pm_\mu^{10} 2$ seconds, a factor of roughly
+thirty-five.  This is a rather large overhead, and would be infeasible
+in a production environment, but is tolerable for something which
+needs to run for a few tens of minutes in a development one.  For
+comparison, a null Valgrind skin completed this test in $226.6
+\pm_\mu^{10} 0.5$ seconds, an overhead of a factor of twenty-nine,
+suggesting that most of the overhead of the dynamic analysis tool
+comes simply from the fact that it is implemented as a Valgrind skin.
+Re-implementing it in a faster analysis framework, such as
+PIN~\cite{Luk2005}, might therefore provide a useful speed-up.
+
 \section{How does it work?}
 \label{sect:eval:how_does_it_work}
 
@@ -703,9 +777,7 @@ I consider each phase in turn.
 \begin{sanefig}
   \biggraph{eval/phase_breakdown/per_crashing.tex}
   \caption{Distributions of time taken by the per-crashing instruction
-    steps of the analysis. \todo{No confidence indicator on failure or
-      skip rates.  Also, they're not normalised against the experiment
-      size.}}
+    steps of the analysis.}
   \label{fig:eval:how:per_crashing_times}
 \end{sanefig}
 
@@ -836,7 +908,11 @@ taken to do so is illustrated in
 \autoref{fig:eval:how:per_interfering}, in the same style as
 \autoref{fig:eval:how:per_crashing_times}.  Failures encountered
 during this phase are detailed in
-\autoref{tab:eval:how:failures_per_interfering}.
+\autoref{tab:eval:how:failures_per_interfering}.  The secondary mode
+at about 100$\mu$s in the final, ``Run cross-product
+{\StateMachine}'', contains all of the {\StateMachine} pairs where the
+{\StateMachine} simplifiers were able to reduce the cross-product
+{\StateMachine} to the trivial {\StateMachine} which always survives.
 
 \begin{sanefig}
   \biggraph{eval/phase_breakdown/per_interfering}
@@ -848,9 +924,7 @@ during this phase are detailed in
     crashing {\StateMachine}'', performs various additional
     simplifications to the crashing {\StateMachine} which become
     possible once {\technique} has identified the interfering
-    {\StateMachine}. \todo{Secondary mode running cross product is all
-      the ones where the simplifiers could reduce it to a trivial
-      {\StateMachine} which always survives; say that in text.}.}
+    {\StateMachine}.}
   \label{fig:eval:how:per_interfering}
 \end{sanefig}
 
@@ -1047,82 +1121,6 @@ to be the most important barrier to practical use of {\technique}.
   \label{tab:eval:gen_fix_perf}
 \end{sanetab}
 
-\subsection{Dynamic aliasing analysis}
-
-\todo{Not entirely convinced this is the right place for this.}
-
-{\Technique} relies on an initial dynamic analysis
-(\autoref{sect:program_model}) to build a model of the program's
-aliasing behaviour, and if this is incomplete then it will not be able
-to find all bugs in the program.
-Figures~\ref{fig:eval:dyn_convergence:mysqld},
-\ref{fig:eval:dyn_convergence:thunderbird},
-and~\ref{fig:eval:dyn_convergence:pbzip2} show the number of edges in
-the aliasing table, expressed as a proportion of the edges in the
-final table, as a function of time, for a variety of test programs and
-workloads.  These figures show that the aliasing table had in all
-cases effectively converged on its final value within a few minutes,
-suggesting that, for these workloads, it would only be necessary to
-run the program to be analysed under the dynamic analysis for a few
-minutes to achieve adequate coverage.  This is not an unreasonable
-burden to place on the user.
-
-\begin{sanefig}
-  \begin{tabular}{cc}
-    \subfigure[][rpl\_change\_master]{
-      \biggraph{eval/dyn_convergence/rpl_change_master.tex}
-    } &
-    \subfigure[][innodb\_multi\_update]{
-      \biggraph{eval/dyn_convergence/innodb_multi_update.tex}
-    } \\
-    \subfigure[][binlog\_stm\_drop\_tbl]{
-      \biggraph{eval/dyn_convergence/binlog_stm_drop_tbl.tex}
-    } &
-    \subfigure[][timestamp\_basic]{
-      \biggraph{eval/dyn_convergence/timestamp_basic.tex}
-    }
-  \end{tabular}
-  \vspace{-12pt}
-  \caption{Dynamic aliasing coverage against time for MySQL, using
-    some tests out of the test suite.  Dashed vertical lines show
-    where the program was restarted.}
-  \label{fig:eval:dyn_convergence:mysqld}
-\end{sanefig}
-
-\begin{sanefig}
-  \biggraph{eval/dyn_convergence/thunderbird}
-  \vspace{-24pt}
-  \caption{Dynamic aliasing coverage against time for Thunderbird
-    during normal usage.  Dashed vertical lines show where the program was
-    restarted.}
-  \label{fig:eval:dyn_convergence:thunderbird}
-\end{sanefig}
-
-\begin{sanefig}
-  \biggraph{eval/dyn_convergence/pbzip2}
-  \vspace{-24pt}
-  \caption{Dynamic aliasing coverage against time for pbzip2 version
-    1.1.6 while compressing three randomly-generated 10MiB files.
-    Dashed vertical lines show where the program was restarted.}
-  \label{fig:eval:dyn_convergence:pbzip2}
-\end{sanefig}
-
-I also briefly investigated the performance of the analysis tool
-itself, using pbzip2 as a test program.  For these experiments, I
-compressed ten randomly-generated 100MiB files with and without the
-dynamic analysis.  Without the dynamic analysis, compressing one file
-took $7.8 \pm_\mu^{10} 0.1$ seconds; with the dynamic analysis, this
-increased to $274 \pm_\mu^{10} 2$ seconds, a factor of roughly
-thirty-five.  This is a rather large overhead, and would be infeasible
-in a production environment, but is tolerable for something which
-needs to run for a few tens of minutes in a development one.  For
-comparison, a null Valgrind skin completed this test in $226.6
-\pm_\mu^{10} 0.5$ seconds, an overhead of a factor of twenty-nine,
-suggesting that most of the overhead of the dynamic analysis tool
-comes simply from the fact that it is implemented as a Valgrind skin.
-Re-implementing it in a faster analysis framework, such as
-PIN~\cite{Luk2005}, might therefore provide a useful speed-up.
-
 \section{Why does it work?}
 \label{sect:eval:why_does_it_work}
 
@@ -1156,10 +1154,10 @@ side-condition.
 \begin{sanefig}
   \biggraph{eval/artificial_bugs/special/indexed_toctou_no_scs.tex}
   \caption{Effect of side-condition checking on the time taken to
-    reproduce the indexed\_toctou bug.  Each configuration was run 110 times
-    and the first 10 results discarded; the chart shows a CDF of the time taken
-    to reproduce in the remaining 100 runs.  The grey region gives a 90\%
-    DKWM confidence interval.}
+    reproduce the indexed\_toctou bug.  Each configuration was run 110
+    times and the first 10 results discarded; the chart shows a CDF of
+    the time taken to reproduce in the remaining 100 runs.  The grey
+    regions give 90\% DKWM confidence intervals.}
   \label{fig:eval:indexed_toctou:no_scs}
 \end{sanefig}
 
@@ -1188,94 +1186,6 @@ most useful.
     with 1000 replicates.}
   \label{fig:eval:indexed_toctou:nr_ptrs}
 \end{sanefig}
-
-\subsection{Interaction with the program's existing synchronisation}
-
-\todo{Not convinced this belongs here.}
-
-\begin{sanefig}
-  \subfigure[][\RaggedRight Crashing thread with {\technique}-visible\\synchronisation]{
-    \begin{minipage}{5.1cm}
-      \begin{literalC}
-        while (1) \clbrace
-          analysis\_window \clbrace
-            lock(); \\
-            if (ptr != 0) \clbrace
-              *ptr = 5;
-            \crbrace \\
-            unlock();
-          \crbrace
-        \crbrace
-      \end{literalC}
-    \end{minipage}
-    \label{fig:eval:existing_sync:visible}
-  }
-  \subfigure[][\RaggedRight Crashing thread with {\technique}-invisible\\synchronisation]{
-    \begin{minipage}{5.1cm}
-      \begin{literalC}
-        while (1) \clbrace
-          lock();\\
-          analysis\_window \clbrace
-            if (ptr != 0) \clbrace
-              *ptr = 5;
-            \crbrace
-          \crbrace \\
-          unlock();
-        \crbrace
-      \end{literalC}
-    \end{minipage}
-    \label{fig:eval:existing_sync:invisible}
-  }
-  \subfigure[][Interfering thread]{
-    \begin{minipage}{3cm}
-      \begin{literalC}
-        while (1) \clbrace
-          ptr = \&t;\\
-          analysis\_window \clbrace
-            lock();\\
-            ptr = 0;\\
-            unlock();
-          \crbrace
-        \crbrace
-        \\
-      \end{literalC}
-    \end{minipage}
-    \label{fig:eval:existing_sync:interfering}
-  }
-  \vspace{-12pt}
-  \caption{A correctly synchronised program.  \texttt{lock()} and
-    \texttt{unlock()} acquire and release a global lock,
-    respectively.}
-  \label{fig:eval:existing_sync}
-\end{sanefig}
-
-\noindent
-This section briefly explores the effects of any existing
-synchronisation on {\technique}'s behaviour, using the test program
-shown in \autoref{fig:eval:existing_sync}.  In this (correctly
-synchronised) program, the interfering thread modifies a global
-variable while the two crashing threads simultaneously make use of it.
-The crashing threads differ only in the placement of the
-synchronisation operations: the first, in
-\autoref{fig:eval:existing_sync:visible}, places the synchronisation
-within the \gls{analysiswindow}, making it visible to the {\technique}
-analysis, whereas the second, in
-\autoref{fig:eval:existing_sync:invisible}, moves it outside of the
-window, so {\technique} will be unaware of it.
-
-As expected, {\technique} produces a \gls{verificationcondition}, and
-hence a \gls{bugenforcer}, for the second thread but not for the
-first.  When loaded into the program, this enforcer attempts to
-enforce a happens-before graph which contradicts the program's
-existing synchronisation and therefore deadlocks.  This causes the
-enforcer's message operations to time out, and so the enforcer exits
-and allows the program to run normally (beyond suffering reduced
-performance).
-
-The \gls{verificationcondition} can also be converted to a ``fix''.
-This fix does not fix any actual bugs, as there are none, but does not
-otherwise harm the program's execution, beyond a slight loss of
-performance.
 
 \subsection{Effect of {\StateMachine} simplification}
 
@@ -1428,6 +1338,92 @@ collected by the static analysis is ignored.  The results when
 disabling hints from the dynamic analysis are far more dramatic.  The
 analysis time and failure rate rise to the point where {\technique} is
 effectively useless.  
+
+\subsection{Interaction with the program's existing synchronisation}
+
+\begin{sanefig}
+  \subfigure[][\RaggedRight Crashing thread with {\technique}-visible\\synchronisation]{
+    \begin{minipage}{5.1cm}
+      \begin{literalC}
+        while (1) \clbrace
+          analysis\_window \clbrace
+            lock(); \\
+            if (ptr != 0) \clbrace
+              *ptr = 5;
+            \crbrace \\
+            unlock();
+          \crbrace
+        \crbrace
+      \end{literalC}
+    \end{minipage}
+    \label{fig:eval:existing_sync:visible}
+  }
+  \subfigure[][\RaggedRight Crashing thread with {\technique}-invisible\\synchronisation]{
+    \begin{minipage}{5.1cm}
+      \begin{literalC}
+        while (1) \clbrace
+          lock();\\
+          analysis\_window \clbrace
+            if (ptr != 0) \clbrace
+              *ptr = 5;
+            \crbrace
+          \crbrace \\
+          unlock();
+        \crbrace
+      \end{literalC}
+    \end{minipage}
+    \label{fig:eval:existing_sync:invisible}
+  }
+  \subfigure[][Interfering thread]{
+    \begin{minipage}{3cm}
+      \begin{literalC}
+        while (1) \clbrace
+          ptr = \&t;\\
+          analysis\_window \clbrace
+            lock();\\
+            ptr = 0;\\
+            unlock();
+          \crbrace
+        \crbrace
+        \\
+      \end{literalC}
+    \end{minipage}
+    \label{fig:eval:existing_sync:interfering}
+  }
+  \vspace{-12pt}
+  \caption{A correctly synchronised program.  \texttt{lock()} and
+    \texttt{unlock()} acquire and release a global lock,
+    respectively.}
+  \label{fig:eval:existing_sync}
+\end{sanefig}
+
+\noindent
+This section briefly explores the effects of any existing
+synchronisation on {\technique}'s behaviour, using the test program
+shown in \autoref{fig:eval:existing_sync}.  In this (correctly
+synchronised) program, the interfering thread modifies a global
+variable while the two crashing threads simultaneously make use of it.
+The crashing threads differ only in the placement of the
+synchronisation operations: the first, in
+\autoref{fig:eval:existing_sync:visible}, places the synchronisation
+within the \gls{analysiswindow}, making it visible to the {\technique}
+analysis, whereas the second, in
+\autoref{fig:eval:existing_sync:invisible}, moves it outside of the
+window, so {\technique} will be unaware of it.
+
+As expected, {\technique} produces a \gls{verificationcondition}, and
+hence a \gls{bugenforcer}, for the second thread but not for the
+first.  When loaded into the program, this enforcer attempts to
+enforce a happens-before graph which contradicts the program's
+existing synchronisation and therefore deadlocks.  This causes the
+enforcer's message operations to time out, and so the enforcer exits
+and allows the program to run normally (beyond suffering reduced
+performance).
+
+The \gls{verificationcondition} can also be converted to a ``fix''.
+This fix does not fix any actual bugs, as there are none, but does not
+otherwise harm the program's execution, beyond a slight loss of
+performance.
 
 \subsection{Sources of fix overhead}
 \label{sect:eval:why:fix_overhead}
@@ -1675,19 +1671,19 @@ most bugs in real programs require only two or three edges to be
 enforced~\cite{Musuvathi2008}, and {\technique} was able to analyse a
 79-edge one in under ten minutes.
 
-\todo{Not sure this adds all that much.} It is perhaps interesting to
-note that, although very rapid, the rate of increase is less than
-exponential.  The solid line in the figure shows the least-squares
-exponential regression on the data for $7 \leq N \leq 20$\footnote{The
-  results reported appear to be robust to small changes in the
-  boundaries of this region.}\!\hspace{-.1ex}\!, extrapolated over the complete range of
-$N$.  It significantly over-estimates the rate at which the time taken
-increases.  A quartic regression over the same data, shown as a dotted
-line in the figure, gives a much closer fit in the extrapolated
-region.  This is because, in this particular test, the {\StateMachine}
-simplification step is able to make quite dramatic simplifications to
-the structure of the {\StateMachines}, and so there is no need to ever
-consider all $2^N$ interleavings of the memory accesses.
+It is perhaps interesting to note that, although very rapid, the rate
+of increase is less than exponential.  The solid line in the figure
+shows the least-squares exponential regression on the data for $7 \leq
+N \leq 20$\footnote{The results reported appear to be robust to small
+  changes in the boundaries of this region.}\!\hspace{-.1ex}\!,
+extrapolated over the complete range of $N$.  It significantly
+over-estimates the rate at which the time taken increases.  A quartic
+regression over the same data, shown as a dotted line in the figure,
+gives a much closer fit in the extrapolated region.  This is because,
+in this particular test, the {\StateMachine} simplification step is
+able to make quite dramatic simplifications to the structure of the
+{\StateMachines}, and so there is no need to ever consider all $2^N$
+interleavings of the memory accesses.
 
 \begin{sanefig}
   \biggraph{eval/complex_hb/repro_times.tex}
@@ -1989,7 +1985,7 @@ complexity of the {\StateMachines}, followed by a fall for higher
 values of \gls{alpha} as survivor effects begin to dominate.  The
 total number of \glspl{verificationcondition} was maximised for
 $\gls{alpha}=40$, suggesting that this might be a promising value to
-use for finding unknown bugs.  \todo{So why didn't I do that?}
+use for finding unknown bugs.
 
 \section{Discussion}
 
