@@ -11,7 +11,12 @@ complex, unpredictable, and hard-to-reproduce bugs, and as it becomes
 more widespread, especially amongst less able developers, we should
 expect to see the frequency of serious bugs in important software
 increase.  This dissertation presents automated techniques to help
-developers discover,
+developers discover, characterise, reproduce, and fix a certain class
+of concurrency bug.
+
+The basic approach is shown in \autoref{fig:basic_pipeline}.  The
+process starts by building an \gls{programmodel}, showing how the
+program accesses memory when it is operating normally, using
 \begin{wrapfigure}{r}{5.4cm}
   \vspace{-14pt}
   \begin{figgure}
@@ -44,12 +49,7 @@ developers discover,
   \end{figgure}
   \vspace{-24pt}
 \end{wrapfigure}
-characterise, reproduce, and fix a certain class of concurrency bug.
-
-The basic approach is shown in \autoref{fig:basic_pipeline}.  The
-process starts by building an \gls{programmodel}, showing how the
-program accesses memory when it is operating normally, using primarily
-dynamic analysis (\autoref{sect:program_model}).  The
+primarily dynamic analysis (\autoref{sect:program_model}).  The
 \gls{programmodel} is then used to locate potentially relevant
 fragments of the program and to build {\StateMachines} which model
 their behaviour (\autoref{sect:derive}).  These {\StateMachines} can
@@ -154,8 +154,6 @@ type of concurrent bug (it does not, for instance, include any but the
 most trivial deadlock bugs, and complicated memory corruption bugs are
 difficult to handle), but does include some interesting ones.
 
-\subsection{Order-violation bugs}
-
 \begin{sanefig}
 {\hfill}
 \begin{tabular}{p{8cm}l}
@@ -194,7 +192,7 @@ Crashing thread:          & Interfering thread: \\
 \label{fig:mandatory_concurrency2}
 \end{sanefig}
 
-\noindent
+\subsection{Order-violation bugs}
 The class of bugs described above does not include order violation
 bugs, and so {\technique} will never report any.  Order violation bugs
 in the program can, however, still sometimes affect the results.
