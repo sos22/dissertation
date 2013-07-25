@@ -28,6 +28,7 @@ cd phase_breakdown
 ./per_crashing.py
 ./per_interfering.py bubbles.tar per_interfering.tex
 ./per_interfering.py bubbles_no_w_atomic.tar per_interfering_no_w_atomic.tex
+./build_enforcer.py < enf_bubble.log
 cd ..
 
 cd alpha
