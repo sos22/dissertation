@@ -7,7 +7,7 @@ import random
 
 figwidth = 11.5
 figheight = 3.8
-timeout = 300.0
+timeout = 600.0
 bar_width = 0.05 / figwidth
 
 y_res = 0.003
@@ -24,7 +24,7 @@ time_abscissae = [(0.00001, "0.00001", ""),
                   (1.0, "1", ""),
                   (10.0, "10", ""),
                   (100.0, "100", ""),
-                  (300.0, "300", "[dashed]")]
+                  (600.0, "600", "[dashed]")]
 
 alphas = [10,20,30,40,50,75,100]
 
@@ -421,12 +421,12 @@ with block(output, "tikzpicture"):
         with block(output, "pgfonlayer", "{bg}"):
             output.writeln("\\fill [color=white] (0,0) rectangle (1,1);")
         def cnt_to_y(cnt):
-            return cnt / 6.0
+            return cnt / 7.0
         def y_to_cnt(y):
-            return y * 6.0
+            return y * 7.0
         draw_alpha_field(output, 0)
         draw_time_field(output,
-                        [(a, str(a), "") for a in xrange(7)],
+                        [(a, str(a), "") for a in xrange(8)],
                         cnt_to_y,
                         "",
                         False,
@@ -457,14 +457,14 @@ with block(output, "tikzpicture"):
         output.writeln("\\useasboundingbox (-.15,-.2) rectangle (1.05,1.05);")
         with block(output, "pgfonlayer", "{bg}"):
             output.writeln("\\fill [color=white] (0,0) rectangle (1,1);")
-        maxfrac = .35
+        maxfrac = .30
         def frac_to_y(frac):
             return frac / maxfrac
         def y_to_frac(y):
             return y * maxfrac
         draw_alpha_field(output, 0)
         draw_time_field(output,
-                        [(0.01 * x, "%d\\%%" % x, "") for x in xrange(0,36,5)],
+                        [(0.01 * x, "%d\\%%" % x, "") for x in xrange(0,31,5)],
                         frac_to_y,
                         "",
                         False,
@@ -478,6 +478,7 @@ with block(output, "tikzpicture"):
                 ar += map(after_rerun2, arr.itervalues())
             nr_pass = len([r for r in ar if r != None and r[1] == "satisfiable"])
             (estimated_prob, lower, upper) = _binom_confidence_interval(nr_pass, len(ar), 0.9)
+            print "Frac generating VCs = %d -> %f" % (alpha, estimated_prob)
             draw_mean_bars(output,
                            alpha_to_x(alpha),
                            frac_to_y(lower),
