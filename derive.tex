@@ -352,11 +352,11 @@ model machine code but which is better suited to the needed analyses
 and transformations.  Programs in this language consist of a directed
 acyclic graph of {\StateMachine} states, defined in
 figures~\ref{fig:state_machine_states}
-and~\ref{fig:state_machine_exprs}\footnote{The actual implementation
-  used by {\implementation} include several features, such as sub-word
+and~\ref{fig:state_machine_exprs}\fnote{The actual implementation used
+  by {\implementation} include several features, such as sub-word
   memory accesses and bounded-range integers, not given in these
   figures, but these are not essential to the {\technique} technique
-  and I do not give details here.}\!\!.  These {\StateMachine} programs
+  and I do not give details here.}.  These {\StateMachine} programs
 examine the state of the program and, based on that, produce a
 prediction about the program's ultimate behaviour, which is either
 \textsc{Crash}, \textsc{Survive}, or \textsc{Unreached}.
@@ -596,10 +596,10 @@ $\smReg{r}{t}$ & The initial value of register \textsc{r} in thread $t$.\\
 
 The {\StateMachine} analysis language is powerful enough to make
 translating individual instructions in isolation completely
-straightforward\footnote{{\Implementation} uses LibVEX~\cite[Chapter
+straightforward\fnote{{\Implementation} uses LibVEX~\cite[Chapter
     2]{FFFSeward2012} to decode AMD64 machine code before performing
-  this translation.}\!\!, but connecting the instructions together is
-not always completely trivial.  There are three cases which require
+  this translation.}, but connecting the instructions together is not
+always completely trivial.  There are three cases which require
 special care:
 \begin{itemize}
 \item
@@ -750,12 +750,12 @@ properly investigate bugs which depend on interactions with library
 functions (a race which can only be triggered following an IO error,
 for instance, will not be detected), but are sufficient when library
 calls incidentally happen near to the buggy code without meaningfully
-influencing its behaviour\footnote{Even with a more complete
+influencing its behaviour\fnote{Even with a more complete
   {\StateMachine} library implementation, {\technique} would still be
   a poor choice for investigating environmentally-dependent bugs.
   \protect\Glspl{bugenforcer} only influence the program's scheduling
   and so are unlikely to be effective for bugs which depend on more
-  complicated interactions with the environment.}\!\!\!.
+  complicated interactions with the environment.}.
 
 Some library functions are more directly relevant to {\technique} and
 deserve more complete implementations.  \texttt{pthread\_mutex\_lock}
@@ -816,8 +816,8 @@ particularly important when investigating double-free bugs.
 {\Technique} uses two implementations of \texttt{free}: the crashing
 \texttt{free}, for the call which is being investigated as a potential
 crash site, and the non-crashing \texttt{free}, for every other
-call\footnote{Note that this includes other calls to \texttt{free} in
-  the \gls{crashingthread}.}\!\!.  Both are shown in
+call\fnote{Note that this includes other calls to \texttt{free} in the
+  \gls{crashingthread}.}.  Both are shown in
 \autoref{fig:library_free}.  Non-crashing \texttt{free}s set the
 special $\mathit{last\_free}$ address to the pointer which was
 released and the crashing \texttt{free} asserts that the pointer which
@@ -1052,7 +1052,7 @@ $\beta$ but to any duplicate of a member of $i2c$, is perhaps
 surprising.  The key observation is that every path which starts at a
 duplicated member of $\beta$ will have a matching path which starts at
 the original member, and so the ones which start at the duplicate
-instruction are redundant\footnote{The symmetrical statement is also
+instruction are redundant\fnote{The symmetrical statement is also
   true: every path which ends in a member of $i2c^\sharp$ has a
   matching path which ends at a member of $i2c$.  It would therefore
   also be correct to discard paths which end at a duplicate member of
@@ -1464,7 +1464,7 @@ most important features here:
   query and selects an appropriate result.  {\Implementation} only
   determines which precise \state{Store} operation should provide the
   loaded data when that data is needed.  This is often faster then
-  resolving these queries eagerly\footnote{Note that this is not quite
+  resolving these queries eagerly\fnote{Note that this is not quite
     the same as the lazy abstraction algorithm used in, for instance,
     BLAST~\cite{Henzinger2002}, which adjusts which aspects of program
     state are represented in the abstract state.  {\Implementation}
@@ -1531,7 +1531,7 @@ composition of two {\StateMachines}.  {\Technique} therefore builds a
 new {\StateMachine}, the \emph{cross-product {\StateMachine}} which
 emulates this parallel composition.  The chief complication here is
 that it is not possible to express an arbitrary cross-product
-operation in the {\StateMachine} language\footnote{In particular, the
+operation in the {\StateMachine} language\fnote{In particular, the
   number of steps which such a cross-product emulating {\StateMachine}
   could take would be statically bounded, and so the number of states
   of the input {\StateMachines} which it could consider would also be
@@ -2091,18 +2091,17 @@ shared if the same non-terminal is generated multiple times.  This
 reduces the worst-case number of states in the cross-product
 {\StateMachine} from $O(\binom{c+i}{c})$ to $O(ci)$, where $c$ is the
 number of states in the crashing {\StateMachine} and $i$ the number in
-the interfering one\footnote{There is a loose but perhaps helpful
-  analogy between {\technique}'s cross product {\StateMachines} and
-  the state reachability graphs maintained by some symbolic execution
-  engines.  Both act to structure the symbolic execution engine's
-  search of the program's state space, and both represent regions
-  where results can potentially be reused between paths as joins in
-  the graph.  In this view, the most important feature of
-  cross-product {\StateMachines} is that they are themselves programs
-  expressed in the same language as the one which is to be
-  symbolically executed, whereas state reachability graphs do not
-  usually have a convenient interpretation as a runnable
-  program.}\!\hspace{-.1em}\!.
+the interfering one\fnote{There is a loose but perhaps helpful analogy
+  between {\technique}'s cross product {\StateMachines} and the state
+  reachability graphs maintained by some symbolic execution engines.
+  Both act to structure the symbolic execution engine's search of the
+  program's state space, and both represent regions where results can
+  potentially be reused between paths as joins in the graph.  In this
+  view, the most important feature of cross-product {\StateMachines}
+  is that they are themselves programs expressed in the same language
+  as the one which is to be symbolically executed, whereas state
+  reachability graphs do not usually have a convenient interpretation
+  as a runnable program.}.
 
 Importantly, the cross-product {\StateMachine} can itself be
 simplified using the usual {\StateMachine} simplification passes.
@@ -2378,12 +2377,12 @@ resolution algorithm does not support unaligned memory accesses, and
 will produce incorrect results if the program makes use of them in the
 \gls{analysiswindow}.  Such accesses are unusual in most programs, as
 they have very poor performance on most modern
-processors\footnote{Indeed, many processors do not support unaligned
+processors\fnote{Indeed, many processors do not support unaligned
   accesses at all and require them to be emulated in the operating
   system, leading to performance which is better described as abysmal
-  than as poor.}\!\!\!\!\!,~ and removing this limitation would complicate alias
-analysis even for programs which never make unaligned accesses.  Alias
-analysis is already one of the main factors limiting
+  than as poor.},~ and removing this limitation would
+complicate alias analysis even for programs which never make unaligned
+accesses.  Alias analysis is already one of the main factors limiting
 {\implementation}'s scalability and so this would be a poor trade-off.
 
 Second, {\implementation} assumes that every address in the program's
@@ -2417,15 +2416,15 @@ and {\StateMachines} are generated from the program binary's
 \gls{static cfg}, and this will not accurately reflect the program's
 actual instructions if those instructions can change while the program
 is running.  Solving this problem is impossible in the general
-case\footnote{Consider a program P in a model of computation C which
-  does not permit run-time code generation.  Construct a new P' in a
-  model of computation C' which is identical to C except for allowing
+case\fnote{Consider a program P in a model of computation C which does
+  not permit run-time code generation.  Construct a new P' in a model
+  of computation C' which is identical to C except for allowing
   run-time code generation such that P' runs P and then uses some
   run-time generated code.  P' then uses run-time generated code if
   and only if P terminates.  An algorithm to check for run-time code
   generation in C' would therefore solve the halting problem in C,
   and, since there are Turing-powerful models of computation which do
-  not support run-time code generation, that is impossible.}, but it
+  not support run-time code generation, that is impossible.},~ but it
 might be possible to handle some simple cases by having the dynamic
 analysis identify and log such code.  The later analyses could then
 generate the \glspl{cfg} and {\StateMachines} from these logs.  Such

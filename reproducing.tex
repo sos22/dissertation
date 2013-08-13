@@ -290,7 +290,7 @@ all $2^n$ possible paths, and the worst case is avoided.  As I show in
 the evaluation, it can do so for slightly over 99\% of
 \glspl{verificationcondition} generated from real programs, and so
 this algorithm is quite usable in spite of its unfortunate theoretical
-worst case\footnote{There is another, less optimistic, reason why this
+worst case\fnote{There is another, less optimistic, reason why this
   usually works: {\implementation} makes extensive use of
   \protect\glspl{bdd} during symbolic execution, and so if the
   \protect\gls{verificationcondition} were one which is hard to
@@ -598,12 +598,12 @@ component, \autoref{fig:place_conditions:example:instr_a:residual},
 can be derived by removing every edge from an evaluable expression to
 {\false} and then renormalising.  The \gls{bugenforcer} will evaluate
 the evaluable component, $\textsc{rax}_1 = 93$, at $A_0$, and will
-defer the unevaluable component to later in the
-\gls{cfg}\footnote{This is in essence a predicate abstraction problem,
-  and {\technique}'s algorithm for doing so can be regarded as a
-  modest generalisation of Cavada's \protect\Gls{bdd} Modulo Theory
+defer the unevaluable component to later in the \gls{cfg}\fnote{This
+  is in essence a predicate abstraction problem, and {\technique}'s
+  algorithm for doing so can be regarded as a modest generalisation of
+  Cavada's \protect\Gls{bdd} Modulo Theory
   algorithm~\cite{cavada2007}, applied in a slightly unusual
-  context.}\!\hspace{-.1ex}\!.
+  context.}.
 
 To understand why this is a correct factorisation of the condition,
 consider the paths through the \gls{bdd}.  Any which test only
@@ -854,9 +854,9 @@ gains control at $i$, but they have different costs and constraints:
 The algorithm starts with the (valid, complete, insufficient) empty
 \textsc{Strategy} (line 2) and then \textsc{extend}s it with one
 needed instruction at a time (line 4).  \textsc{extend}ing a
-\textsc{Strategy} renders it incomplete, and so the main loop of
-the algorithm restores completeness using the \textsc{patch} and
-\textsc{prefix} functions (lines 5 to 13)\footnote{Equivalently,
+\textsc{Strategy} renders it incomplete, and so the main loop of the
+algorithm restores completeness using the \textsc{patch} and
+\textsc{prefix} functions (lines 5 to 13)\fnote{Equivalently,
   \textsc{buildStrategy} implements a search over the space of
   \textsc{Strategy}s using the \textsc{prefix} and \textsc{patch}
   operators with a cut point between every instruction at which the
@@ -931,25 +931,24 @@ proportional to the number of static instructions affected,
 $|\mathit{Cont} \cup \mathit{Patch}|$.  {\Implementation} will
 therefore always choose to expand the strategy where that quantity is
 smallest, which usually causes it to find the strategy which minimises
-the cost of the patch\footnote{The result is only usually minimal,
-  rather than guaranteed to be minimal, because the
-  $\mathit{gainControl}$ set is processed incrementally, with no
-  backtracking from one instruction to an earlier one, and so it might
-  be that the first instruction processed produces a strategy which is
-  incompatible with the optimal strategy for the second instruction.
-  There is an alternative non-incremental version of the algorithm
-  which starts by setting $\mathit{Pending}$ to
-  $\mathit{gainControl}$, rather than adding one instruction at a
-  time, and that alternative version would be guaranteed to find the
-  optimal solution.  On the other hand, the search process itself
-  would be far more expensive, as it would attempt to explore from
-  every $\mathit{gainControl}$ instruction simultaneously.  This would
-  raise the cost from $O(nk)$ to $O(n^k)$, where $k =
-  |\mathit{gainControl}|$ and $n/k$ is the cost of the current
-  algorithm.  In practice, the algorithm given here rarely needs to
-  add more than one or two instructions to the $\mathit{Cont}$ set
-  anyway, and so this would not be a good
-  trade-off.}\!\hspace{-.1em}\!.
+the cost of the patch\fnote{The result is only usually minimal, rather
+  than guaranteed to be minimal, because the $\mathit{gainControl}$
+  set is processed incrementally, with no backtracking from one
+  instruction to an earlier one, and so it might be that the first
+  instruction processed produces a strategy which is incompatible with
+  the optimal strategy for the second instruction.  There is an
+  alternative non-incremental version of the algorithm which starts by
+  setting $\mathit{Pending}$ to $\mathit{gainControl}$, rather than
+  adding one instruction at a time, and that alternative version would
+  be guaranteed to find the optimal solution.  On the other hand, the
+  search process itself would be far more expensive, as it would
+  attempt to explore from every $\mathit{gainControl}$ instruction
+  simultaneously.  This would raise the cost from $O(nk)$ to $O(n^k)$,
+  where $k = |\mathit{gainControl}|$ and $n/k$ is the cost of the
+  current algorithm.  In practice, the algorithm given here rarely
+  needs to add more than one or two instructions to the
+  $\mathit{Cont}$ set anyway, and so this would not be a good
+  trade-off.}.
 
 \section{Enforcing the plan}
 \label{sect:enforce:interpreting}
@@ -1012,11 +1011,11 @@ emulated \texttt{c}, and so \texttt{y} is now set to \texttt{7}.  The
 side condition imposed at the start of the plan will have ensured that
 \texttt{x} is not \texttt{7}, and so the \gls{crashingthread}'s
 assertion will fail and the bug will be correctly
-reproduced\footnote{Note that the \protect\gls{bugenforcer} finishes
+reproduced\fnote{Note that the \protect\gls{bugenforcer} finishes
   before the bug reproduces and that the fatal \texttt{assert} is run
   without direct interference from {\technique}.  This simplifies the
   integration of {\technique} with existing debugging tools which
-  might be confused by the interposition of an unknown interpreter.}\!\hspace{-.1ex}\!.
+  might be confused by the interposition of an unknown interpreter.}.
 The complete procedure is shown in
 \autoref{fig:enforcement:example_bug:replacements}.
 
@@ -1158,14 +1157,13 @@ This set construct also provides a convenient way of handling
 ambiguities caused by the \gls{cfg} unrolling algorithm (see
 \autoref{sect:derive:build_crashing_cfg}).  The plan is defined in
 terms of the \gls{dynamic cfg}, but only the \gls{static cfg} can be
-directly observed at run time\footnote{More precisely, the enforcer
-  can observe a thread's position in the \gls{static cfg}, as that is
+directly observed at run time\fnote{More precisely, the enforcer can
+  observe a thread's position in the \gls{static cfg}, as that is
   given by its instruction pointer, but not its position in the
-  \gls{dynamic cfg}.}\!\hspace{-.1ex}\!, and this can sometimes make
-it difficult to determine a thread's position within a plan.
-{\Technique} deals with these ambiguities by forking the plan state
-and having one fork follow each possible outcome of the ambiguous
-choice.  Instruction $C_0$ in
+  \gls{dynamic cfg}.}, and this can sometimes make it difficult to
+determine a thread's position within a plan.  {\Technique} deals with
+these ambiguities by forking the plan state and having one fork follow
+each possible outcome of the ambiguous choice.  Instruction $C_0$ in
 \autoref{fig:place_conditions_example:result} provides an example: in
 the \gls{dynamic cfg}, $C_0$ can be followed by either $D_0$ or $D_1$,
 and the plan must perform different actions depending on which is
@@ -1173,17 +1171,16 @@ chosen, but the enforcer simply observes that static instruction C is
 followed by static instruction D and cannot tell which to use.  It
 avoids the issue by pretending that there were two copies of the plan
 in its initial plan set and having one go to $D_0$ and the other to
-$D_1$\footnote{There is a potentially useful analogy here with the
-  power set construction used to convert a non-deterministic finite
-  state automaton into a deterministic one.  In that model, a
-  deterministic FSA emulates a non-deterministic one by tracking the
-  set of states which the non-deterministic automaton might possibly
-  occupy, allowing it to defer non-deterministic choices until it has
-  enough information to resolve them unambiguously.  In the same way,
+$D_1$\fnote{There is a potentially useful analogy here with the power
+  set construction used to convert a non-deterministic finite state
+  automaton into a deterministic one.  In that model, a deterministic
+  FSA emulates a non-deterministic one by tracking the set of states
+  which the non-deterministic automaton might possibly occupy,
+  allowing it to defer non-deterministic choices until it has enough
+  information to resolve them unambiguously.  In the same way,
   {\technique}s set of plans allows it to defer an ambiguous choice
   until one or other of the possible options leads to a failed plan,
-  at which point it can arrange to have chosen the other
-  one.}\!\hspace{-.1ex}\!.
+  at which point it can arrange to have chosen the other one.}.
 
 I now give more details of how the plan enforcement interpreter works,
 starting with a more complete description of the single-plan version
