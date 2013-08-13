@@ -101,22 +101,23 @@ the same crashing thread as the previous example but an interfering
 thread in which the pointer is assigned to twice, as shown in
 \autoref{fig:fix_bug:complex_local2}.  The fix generating process must
 now decide whether to release the lock between \texttt{8a} and
-\texttt{8b}, or, equivalently, whether to use two critical sections,
-each covering a single instruction, or a single section which covers
-both.  Either approach will correctly eliminate the bug, but with
-different performance characteristics: dropping and reacquiring the
-lock reduces the duration of the critical sections, and so will
-improve the program's liveness properties, but increases the number of
-lock operations, and so will degrade the program's single-threaded
-performance.  It is impossible to determine which is better without a
-detailed description of the program's desired behaviour, which
-{\technique} lacks, and so {\technique} instead relies on a simple
-heuristic: if the operations are within \gls{alpha} instructions then
-it uses a single critical section, holding the lock throughout;
-otherwise it uses two, releasing the lock between them.  This rule was
-chosen largely for ease of implementation, as it matches that used for
-clustering instructions when building the \glspl{cfg}, but the results
-produced appear to broadly reasonable in most circumstances.
+\texttt{8b}; or, equivalently, it must decide whether to use two
+critical sections, each covering a single instruction, or a single
+section which covers both.  Either approach will correctly eliminate
+the bug, but with different performance characteristics: dropping and
+reacquiring the lock reduces the duration of the critical sections,
+and so will improve the program's liveness properties, but increases
+the number of lock operations, and so will degrade the program's
+single-threaded performance.  It is impossible to determine which is
+better without a detailed description of the program's desired
+behaviour, which {\technique} lacks, and so {\technique} instead
+relies on a simple heuristic: if the operations are within \gls{alpha}
+instructions then it uses a single critical section, holding the lock
+throughout; otherwise it uses two, releasing the lock between them.
+This rule was chosen largely for ease of implementation, as it matches
+that used for clustering instructions when building the \glspl{cfg},
+but the results produced appear to broadly reasonable in most
+circumstances.
 
 \section{Structure of fixes}
 
@@ -133,11 +134,11 @@ necessary.  The patch strategy has already been discussed in
 many respects analogous to the crash enforcement interpreter
 (\autoref{sect:enforce:interpreting}): both gain and relinquish
 control of program threads as they run; both are semantically
-equivalent to some fragment of the original program; and both are
-responsible for introducing additional synchronisation to the
-program's execution.  The differences lie in the type of
-synchronisation added (the enforcement interpreter uses message
-operations to encourage program threads to interleave their
+equivalent to some fragment of the original program, up to changes in
+operation timing; and both are responsible for introducing additional
+synchronisation to the program's execution.  The differences lie in
+the type of synchronisation added (the enforcement interpreter uses
+message operations to encourage program threads to interleave their
 operations, whereas the \gls{shadowfragment} uses locks to prevent
 them from doing so) and in the way they emulate the program (the
 enforcement interpreter interprets the program's instructions, whereas
@@ -229,8 +230,8 @@ algorithms.
     \label{fig:fix:eg:shadow}
   }
   {\hfill}
-  \caption{Example of the \protect\gls{shadowfragment} algorithm; see
-    text for full explanation.}
+  \caption{Example \protect\gls{shadowfragment}; see text for full
+    explanation.}
   \label{fig:fix:eg}
 \end{sanefig}
 
@@ -249,9 +250,10 @@ should finish.  At that point, the \gls{shadowfragment} releases the
 lock and returns the program to its normal operation by branching to
 the original instruction B.
 
-The \glspl{cfg} involved in building a fix can usefully be read as a
-kind of regular automata.  The static and shadow \glspl{cfg}
-effectively generate streams of instructions, while
+The \glspl{cfg} involved in building a fix can usefully be read as
+regular automata.  The static and shadow \glspl{cfg} effectively
+generate streams of instructions, and
+the dynamic one
 \begin{wrapfigure}{o}{4.4cm}
   \vspace{-12pt}
   \begin{figgure}
@@ -287,7 +289,6 @@ effectively generate streams of instructions, while
   \end{figgure}
   \vspace{-12pt}
 \end{wrapfigure}
-the dynamic one
 recognises fragments of those streams.  This provides a convenient way
 of describing the correctness requirements for the
 \gls{shadowfragment}:
@@ -310,11 +311,12 @@ the general case.
 \section{Generating the \protect\gls{shadowfragment}}
 
 \begin{sanefig}
-  \newcommand{\lookaside}[1]{\multicolumn{5}{c}{\leavevmode\leaders\hbox{\vrule height .55ex depth -.45ex width 2pt \hspace{2pt}}\hfill\hspace{-3pt}\textit{#1\!}
-      {\leavevmode\xleaders\hbox{\vrule height .55ex depth -.45ex width 2pt \hspace{2pt}}\hfill \hspace{-2pt}}
+  \def\myhfill{\hskip0pt plus100fill}
+  \newcommand{\lookaside}[1]{\multicolumn{5}{l}{\leavevmode\leaders\hbox{\vrule height .55ex depth -.45ex width 2pt \hspace{2pt}}\myhfill\hspace{-3pt}\textit{#1}%
+      {\leavevmode\xleaders\hbox{\vrule height .55ex depth -.45ex width 2pt \hspace{2pt}}\myhfill \hspace{-2pt}}%
     } \vspace{-4pt}\\}
-  \newcommand{\sectsep}[2]{\multicolumn{5}{c}{\leavevmode\cleaders\vrule height .55ex depth -.45ex\hfill ~#1
-      {\leavevmode\leaders\vrule height .5ex depth -.45ex\hfill}
+  \newcommand{\sectsep}[2]{\multicolumn{5}{l}{\leavevmode\cleaders\vrule height .55ex depth -.45ex\myhfill ~#1%
+      {\leavevmode\leaders\vrule height .5ex depth -.45ex\myhfill}
     } \vspace{#2}\\}
   \newcommand{\twolineNT}[2]{%
     \raisebox{1.35ex}{%
@@ -338,7 +340,7 @@ the general case.
     \graphNT{$\mathrm{X}, \alpha, l, \textbf{Lock}$} & $\Rightarrow$ & \graphNT{$\mathrm{X}, \alpha, l, \textbf{Return}$} & If $\neg$\production{2_a} & \production{2_b}\\
 
     \sectsep{\textbf{Return} to \textbf{Emul}}{-4pt}
-    \twolineNT{$\mathrm{X}, \varnothing, \mathit{unheld},$}{\textbf{Return}} & $\Rightarrow$ & \texttt{jmp} X & $\mathrm{x} \not\in \mathit{Cont}$ & \production{3_a} \\
+    \twolineNT{$\mathrm{X}, \varnothing, \mathit{unheld},$}{\textbf{Return}} & $\Rightarrow$ & \texttt{jmp} X & $\mathrm{X} \not\in \mathit{Cont}$ & \production{3_a} \\
     \graphNT{$\mathrm{X}, \alpha, l, \textbf{Return}$} & $\Rightarrow$ & \graphNT{$\mathrm{X}, \alpha, l, \textbf{Emul}$} & If $\neg$\production{3_a} & \production{3_b} \\
 
     \sectsep{\textbf{Emul} to \textbf{Unlock}}{-8pt}
@@ -366,7 +368,7 @@ the general case.
           \draw[->] (r) -- (s);
       \end{tikzpicture}, \alpha, l, \textbf{Emul}$}}} & $\Rightarrow$ &
     \begin{tikzpicture}[baseline = (current bounding box.center)]
-      \node (r) {\texttt{push} y's address};
+      \node (r) {\texttt{push} Y's address};
       \node (s) [below = .3 of r] {\twolineNT{$\mathrm{X}, \mathit{adv}(\mathrm{X},\alpha),$}{$l, \textbf{Unlock}$}};
       \draw[->] (r) -- (s);
     \end{tikzpicture} & \RaggedRight X not a library function & \production{4_c} \\
@@ -461,12 +463,11 @@ type is used to represent the program's positions in the various
 regular automata:
 \begin{itemize}
 \item $\mathit{static}$ gives the position in the program's
-  \gls{static cfg}.
+  \gls{static cfg};
 \item $\mathit{dynamic}$ gives the set of possible positions in the
-  \gls{dynamic cfg}.
+  \gls{dynamic cfg};
 \item $\mathit{lock}$ gives the position in the lock discipline
-  automaton (either $\mathit{held}$ for the lock held state or
-  $\mathit{unheld}$ for the lock unheld one).
+  automaton; and
 \item $\mathit{phase}$ records the program's progress through the
   various phases within a particular instruction.
 \end{itemize}
@@ -477,15 +478,15 @@ The grammar makes use of two utility functions:
   start a new \gls{dynamic cfg} fragment.  In the example of
   \autoref{fig:fix:eg}, $\mathit{startingAt}$ maps B to $\{B_0\}$ and
   every other instruction to $\varnothing$.
-\item $\mathit{adv}(\mathrm{x}, \alpha)$, where $\mathrm{x}$ is a
+\item $\mathit{adv}(\mathrm{X}, \alpha)$, where $\mathrm{X}$ is a
   \gls{static cfg} node and $\alpha$ a set of dynamic ones, is defined
   by
   \begin{displaymath}
-    \mathit{adv}(\mathrm{x}, \alpha) = \left\{r \middle| s \in \alpha \wedge r \in s.\mathit{next} \wedge r.\mathit{static} = \mathrm{x}\right\}
+    \mathit{adv}(\mathrm{X}, \alpha) = \left\{r \middle| s \in \alpha \wedge r \in s.\mathit{next} \wedge r.\mathit{static} = \mathrm{X}\right\}
   \end{displaymath}
-  $n.\mathit{next}$ is the set of \gls{dynamic cfg} nodes which can
-  follow the $n$ and $n.\mathit{static}$ is the \gls{static cfg} node
-  corresponding to $n$.
+  $s.\mathit{next}$ is the set of \gls{dynamic cfg} nodes which can
+  follow $s$ and $r.\mathit{static}$ is the \gls{static cfg} node
+  corresponding to $r$.
 \end{itemize}
 
 \noindent
@@ -707,7 +708,7 @@ graphically.
 
 This implies that {\technique} could potentially hold its lock for a
 very long time, and hence that lock acquisition could impose long
-delays on the program.  In extreme cases, it could even deadlock.
+delays on the program and, in extreme cases, could even deadlock.
 {\Technique} mitigates this problem using a timeout in the lock
 acquire operation.  If this timeout expires then the
 \gls{shadowfragment} returns the program to normal operation,
@@ -779,22 +780,22 @@ program branch's possible targets.  There are three cases to consider:
 \item The branch might instead select an X such that
   $\mathit{adv}(\textrm{X}, \alpha)$ is empty but $\mathrm{X} \in
   \mathit{Cont}$.  There is no longer any need for the
-  \gls{shadowfragment} to continue holding the lock, as
-  $\mathit{dynamic}$ becomes empty, but it cannot safely return the
-  program to normal operation.  The \gls{shadowfragment} must select
-  the non-terminal \graphNT{X, $\varnothing$, $l$, \textbf{Unlock}},
-  and the grammar must ensure that that non-terminal is
-  generated.
-\item Finally, the branch might select a successor which matches
-  neither of the other two cases.  The \gls{shadowfragment} should
-  return the program to normal operation, releasing the lock first if
-  necessary.
+  \gls{shadowfragment} to continue holding the lock, as the
+  $\mathit{dynamic}$ field of the \textsc{Configuration} becomes
+  empty, but it cannot safely return the program to normal operation.
+  The \gls{shadowfragment} must select the non-terminal \graphNT{X,
+    $\varnothing$, $l$, \textbf{Unlock}}, and the grammar must ensure
+  that that non-terminal is generated.
+\item Finally, the branch might select a successor X such that
+  $\mathit{adv}(\textrm{X}, \alpha)$ is empty and $\mathrm{X} \not\in
+  \mathit{Cont}$.  The \gls{shadowfragment} should return the program
+  to normal operation, releasing the lock first if necessary.
 \end{itemize}
 \autoref{fig:fix:eg_indirect} shows how this works for indirect branch
 instructions using an example \textsc{Configuration} and
 $\mathit{Cont}$ set.  Indirect calls and \texttt{ret} instructions
-behave in a broadly similar way, except that they also need to include
-some updates to the stack.
+behave in a broadly similar way with some additional updates to the
+stack.
 
 \begin{sanefig}
   \shortstack[c]{
