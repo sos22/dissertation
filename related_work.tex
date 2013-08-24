@@ -72,13 +72,13 @@ initially contains every lock in the program and is intersected with
 the set of currently-held locks whenever a thread accesses the
 location.  If the set ever becomes empty then there is no locking
 discipline which is compatible with the program's behaviour, and so
-the tool flags a potential concurrency error\fnote{There is an
+the tool flags a potential concurrency error.\kern-.5pt\fnote{There is a
   similarity here with {\technique}'s dynamic alias analysis
   (\autoref{sect:program_model}), in that both approaches justify
   their analysis with reference to the fields of high-level language
   structures but must perform the actual analysis on memory locations,
   and hence the two techniques make similar assumptions about memory
-  type stability.}.
+  type stability.}
 
 Eraser is both sound and complete, in the sense that if it reports a
 lock discipline violation there has definitely been such a violation,
@@ -250,7 +250,7 @@ results:
 \item \emph{Bounded preemptions} Most concurrency bugs can be
   reproduced without requiring particularly complicated concurrent
   behaviour~\cite{Musuvathi2007}.  Chess takes advantage of this by
-  limiting the number of times they switch between threads in any
+  limiting the number of times it switches between threads in any
   given run of the program, vastly reducing the number of program
   schedules which must be considered at the expense of failing to
   detect bugs which depend on more complex interleavings.  A similar
@@ -386,12 +386,12 @@ increase TESLA's ability to reproduce rare behaviour.
 \subsection{Typestate systems}
 
 Typestate systems~\cite{Strom1986a} are an older mechanism allowing
-programmers to express complex program properties.  In this model,
-assertions are described by extending program types with some number
-of states and specifying how they move between them and which
-operations are valid in each.  These assertions are typically checked
-at run time~\cite{FFFWolff2011}, whether in an
-ad-hoc~\cite[pages~305--314]{Gamma1995} or
+programmers to express, and automated tools to check, complex
+properties of programs.  In this model, assertions are described by
+extending program types with some number of states and specifying how
+they move between them and which operations are valid in each.  These
+assertions are typically checked at run time~\cite{FFFWolff2011},
+whether in an ad-hoc~\cite[pages~305--314]{Gamma1995} or
 systematic~\cite{Aldrich2009} manner, but can also in some cases be
 checked statically~\cite{Lam2005}.  Some systems, such as
 Clara~\cite{Bodden2010}, take an intermediate position between these
@@ -400,9 +400,8 @@ the rest to run time.  This gives them a great deal of flexibility to
 trade the incompleteness of dynamic analysis off against the high
 computational cost of sound static analysis.  There is some scope for
 combining this sort of technique with {\technique}'s enforcer
-mechanism to evaluate some side-conditions statically, which could
-potentially reduce the overhead which enforcers impose on running
-programs.
+mechanism to evaluate some side-conditions statically, potentially
+reducing the overhead which enforcers impose on running programs.
 
 2ndStrike~\cite{Gao2011} is a typestate checking system which is
 particularly relevant to {\technique}.  In that work, the authors
@@ -431,10 +430,10 @@ approaches to the symbolic execution problem
 itself~\cite{D'Amorim2008,Gligoric2010} and to verify large-scale
 systems in an industrial context~\cite{FFFPCZsCZreanu2008}.  As such,
 it represents one of the most well-developed symbolic execution
-systems in use today; it is certainly more so than the quite primitive
-symbolic execution engine used by {\implementation}.  JPF cannot,
-however, be applied as easily to binary programs, as it relies in many
-ways on the far greater information available in Java
+systems in use today; it is certainly far more so than the quite
+primitive symbolic execution engine used by {\implementation}.  JPF
+cannot, however, be applied as easily to binary programs, as it relies
+in many ways on the far greater information available in Java
 bytecode~\cite{Lindholm2013}.
 
 KLEE~\cite{Cadar}, a symbolic execution engine for LLVM
@@ -447,11 +446,11 @@ initial static analysis to find plausible bugs and then build tests to
 check which are actually reproducible.  The difference is that
 {\technique}'s tests are expressed in terms of the concurrency
 schedules which are to be exercised, whereas KLEE's are expressed in
-terms of the inputs to the program\fnote{KLEE itself can be
+terms of the inputs to the program.\fnote{KLEE itself can be
   parallelised, as in, for instance, Cloud9~\cite{Ciortea2010}, but
   this is not the same as exploring parallel schedules in the program
-  under test.}.  It would be possible to combine the two techniques
-by, for instance, using KLEE to find program inputs which allow
+  under test.}  It would be possible to combine the two techniques by,
+for instance, using KLEE to find program inputs which allow
 {\technique} enforcer side-conditions to be satisfied.  This would
 mitigate {\technique}'s most important weakness, that most of the
 enforcers it generates require conditions which the program can never
@@ -474,12 +473,13 @@ is between the \gls{crashingthread} and this agreement, rather than
 directly between the two threads, dramatically reducing the total size
 of the search space.  At a high level, {\technique}'s simplifiers and
 the distinction between local and non-local side effects in the cross
-product algorithm, but, judging from their paper, are somewhat less
-effective than their mechanism.  On the other hand, their mechanism
-relies on more complete aliasing information than the {\technique}
-ones, and, as noted in the evaluation, {\technique} is far more
-limited by alias analysis than it is by an explosion of interleavings,
-making it difficult to apply their technique in this context.
+product algorithm exploit a similar redundancy, but, judging from
+their paper, are somewhat less effective than their mechanism.  On the
+other hand, their mechanism relies on more complete aliasing
+information than the {\technique} ones, and, as noted in the
+evaluation, {\technique} is far more limited by alias analysis than it
+is by an explosion of interleavings, making it difficult to apply
+their technique in this context.
 
 There have been many refinements proposed to the basic symbolic
 execution method, such as counter-example guided abstraction
@@ -613,17 +613,16 @@ deciding how to synthesise the results of wild reads so as to minimise
 the potential for error propagation, or even, in a somewhat extreme
 form, to proactively fix data structures which have suffered
 corruption.  This potentially increases the effectiveness of error
-hiding, but also potentially increases the potential for the program
-to generate completely nonsensical results.  In the original paper,
-these data structure invariants were obtained from
-\verb|assert()|-like statements in the program source, combined with
-some basic static analysis.  A later version, proposed by Malik et
-al.~\cite{Malik}, used Daikon-like detection of statistically
-justified invariants during normal program operation, which allowed
-the technique to be applied without source code.
-ClearView~\cite{Perkins} refined this approach by combining it with an
-automated testing system to try to reduce the risk of introducing new
-bugs.
+hiding, but also potentially increases the scope for the program to
+generate completely nonsensical results.  In the original paper, these
+data structure invariants were obtained from \verb|assert()|-like
+statements in the program source, combined with some basic static
+analysis.  A later version, proposed by Malik et al.~\cite{Malik},
+used Daikon-like detection of statistically justified invariants
+during normal program operation, allowing the technique to be applied
+without source code.  ClearView~\cite{Perkins} refined this approach
+by combining it with an automated testing system to try to reduce the
+risk of introducing new bugs.
 
 DieHard~\cite{Berger2006} is another application of the failure
 oblivious concept to heap-related issues.  In this system, however, no
@@ -632,11 +631,11 @@ instead, the heap is structured so as to minimise the probability of
 certain common types of bugs causing user-visible errors.  The authors
 used two main techniques to achieve this:
 \begin{itemize}
-\item First, the heap is expanded, such that there are likely to be
-  large dead zones between any two allocations, which makes buffer
+\item First, the heap is expanded such that there are likely to be
+  large dead zones between any two allocations, making buffer
   overflows much less dangerous.
 \item Second, they avoid reusing heap locations quickly after they
-  have been \texttt{free()}d, which reduces the risk of use-after-free
+  have been \texttt{free()}d, reducing the risk of use-after-free
   errors causing recognisable bugs.
 \end{itemize}
 Neither of these techniques will eliminate bugs, but they can
@@ -644,12 +643,12 @@ dramatically reduce the probability of their causing user-visible
 problems (at the expense of dramatically increasing memory
 requirements and marginally increasing runtimes).
 Exterminator~\cite{Novark2007} further built on this work by using
-heuristics to identify probable bugs and only applying heap
-expansion to allocations which are likely to benefit from it.
-Assuming that all such allocations are detected, this retains all of
-the bug-fixing benefits of DieHard while noticeably reducing its
-overhead (at least in the common case where only a small number of
-allocations actually need padding).
+heuristics to identify probable bugs and only applying heap expansion
+to allocations which are likely to benefit from it.  Assuming that all
+such allocations are detected, this retains all of the bug-fixing
+benefits of DieHard while noticeably reducing its overhead in the
+common case where only a small number of allocations actually need
+padding.
 
 The AutoPaG system~\cite{Lin2007} tackled a related problem, that of
 overflows of stack-based buffers.  In this work, the authors assume
@@ -668,8 +667,8 @@ must occasionally fall back to a dynamic scheme.
 
 Rather than trying to fix bugs in a program, another strategy is to
 sanitise the program's inputs so that it never sees anything which
-might upset it.  RX~\cite{Qin2007} is one example of such a system.  RX
-protects a program reactively.  When it notices that something has
+might upset it.  RX~\cite{Qin2007} is one example of such a system.
+RX protects a program reactively.  When it notices that something has
 gone wrong, it rolls the program to an earlier checkpoint and then
 replays it in a slightly different environment, with slightly
 different inputs and a slightly different thread schedule, in the hope
@@ -678,7 +677,7 @@ works it caches the details of the modifications it made, so that next
 time it encounters a similar failure it can simply repeat those
 modifications.  In this way it is able to protect the program from the
 dangerous inputs without needing any knowledge of the program
-structure, and very little knowledge of its interactions with the
+structure and with very little knowledge of its interactions with the
 environment.  First-Aid~\cite{Gao2009} extended RX to handle certain
 kinds of heap-related errors using a similar strategy of rolling the
 program back and then trying it again with slightly different heap
@@ -766,10 +765,10 @@ automatically eliminate every race bug in the program, if it can be
 analysed for long enough with a sufficiently diverse workload and if
 the fix pattern library is sufficiently complete.  In practice, it is
 not clear that it is possible to build such a complete library using
-the techniques presented in the paper\fnote{The paper only considers
+the techniques presented in the paper,\fnote{The paper only considers
   simple two-access atomicity violation bugs, with more complicated
-  patterns deferred to future work.}, making the technique's
-generality questionable.  Beyond this, ConTest also suffers the more
+  patterns deferred to future work.} making the technique's generality
+questionable.  Beyond this, ConTest also suffers the more
 philosophical objection that races are not all concurrency bugs and
 not all concurrency bugs are races, and so eliminating races is in
 some sense solving the wrong problem.  Tallam et al.~\cite{Tallam2008}
@@ -822,7 +821,7 @@ software implementation causes a roughly twenty-five-fold slow-down,
 making it impractical to use in production systems.
 
 Kivati~\cite{Chew2010} can be thought of as a refinement to AVIO which
-reduces these weaknesses.  In Kivati, the access interleaving
+mitigates these weaknesses.  In Kivati, the access interleaving
 invariants are discovered by means of a static analysis conducted
 before the program starts running.  This set is usually far smaller
 than the set which is discovered by AVIO.  That then allows Kivati's
@@ -879,8 +878,8 @@ violation bugs (roughly, those in which one thread spawns an
 additional thread and then assumes that the new thread advances more
 quickly than the original one does), and even within that class relies
 on fix-generating heuristics which cannot fix every possible bug.
-Nevertheless, it was able to fix a wide variety of otherwise difficult
-to fix bugs in widely-used software, and so represents a potentially
+Nevertheless, it was able to fix a variety of otherwise difficult to
+fix bugs in widely-used software, and so represents a potentially
 interesting starting point for future work in the area.
 
 ConAir~\cite{Zhang2013} and ConMem~\cite{Zhang2010} take a completely
@@ -925,9 +924,9 @@ outside of the one afflicted thread.
 \subsection{Deadlock bugs}
 The final class of bugs considered here is deadlocks.  Techniques for
 healing deadlocks in multithreaded applications have only been
-investigated relatively recently\fnote{Deadlock avoidance has been
+investigated relatively recently.\fnote{Deadlock avoidance has been
   studied in other contexts for much longer; see
-  e.g.~\cite{Dijkstra2004} or~\cite{Viswanadham1990}.}.  One of the
+  e.g.~\cite{Dijkstra2004} or~\cite{Viswanadham1990}.}  One of the
 earliest, proposed by Nir-Buchbinder et al.~\cite{Nir-Buchbinder2008},
 was to build the dynamic lock graph as the program runs, discover any
 strongly-connected components (SCCs), and then reduce every SCC to a
@@ -949,13 +948,13 @@ Second, they use discrete control theory to derive a ``controller''
 co-program which inserts delays in the dynamic program execution in
 some minimal set of places so as to avoid deadlocks, without
 introducing unnecessary serialisation.  Of course, the use of a
-conservative approximation means that they will occasionally detect a
-deadlock where none is actually possible, and this will lead to
-additional synchronisation operations; it is unclear from the paper
-whether Gadara-protected systems are more or less serialised than
-Nir-Buchbinder-protected ones.  At a high-level this controller is
-similar to the message-passing machines used in {\technique}'s crash
-enforcers, although the details and purpose of the technique are
+conservative approximation means that they will occasionally defend
+against a deadlock which is already impossible, and this will lead to
+additional redundant synchronisation operations; it is unclear from
+the paper whether Gadara-protected systems are more or less serialised
+than Nir-Buchbinder-protected ones.  At a high-level this controller
+is similar to the message-passing machines used in {\technique}'s
+crash enforcers, although the details and purpose of the technique are
 significantly different.
 
 It is also possible to make progress on these problems in a purely
@@ -1022,13 +1021,14 @@ and, while this overhead is far less than that of {\atechnique}
 the program runs, whereas \glspl{bugenforcer} only impose any overhead
 at all when investigating a particular bug.  Second, and more subtly,
 deterministic threading can be argued to merely hide bugs rather than
-completely removing.  The behaviour of programs written for systems
-such as dOS is, in practice, highly dependent on the precise placement
-of epoch boundaries, which is itself dependent on complex, global
-properties of the program's structure.  This makes it difficult to
-reason locally about the impact of a given modification, potentially
-leading to unfortunate program maintenance issues.  Techniques such as
-{\technique} remain useful for understanding these latent bugs.
+completely removing them.  The behaviour of programs written for
+systems such as dOS is, in practice, highly dependent on the precise
+placement of epoch boundaries, which is itself dependent on complex
+global properties of the program's structure.  This makes it difficult
+to reason locally about the impact of a given modification,
+potentially leading to unfortunate program maintenance issues.
+Techniques such as {\technique} remain useful for understanding these
+latent bugs.
 
 \section{Decompilation and machine code analysis}
 
@@ -1045,20 +1045,20 @@ Waddington~\cite{Emmerik2004} described some of the issues commonly
 encountered when attempting to use these techniques in practice.
 
 CodeSurfer~\cite{Balakrishnan2008,Balakrishnan2005a}, also known as
-WYSINWYX, is a more recent example of a decompilation platform.  The
-intent here is to provide a human user with assistance in determining
-what a binary-only program does, rather than supporting extensive
-automated analyses.  It has only limited support for multi-threaded
-programs, making it hard to compare directly to {\technique}.  On the
-other hand, it does support an advanced memory aliasing analysis,
-value-set analysis~\cite{Balakrishnan2004}.  Aliasing analysis is
-currently one of {\technique}'s major weaknesses, and so combining
-these techniques might produce interesting results.
+WYSINWYX, is a recent example of a decompilation platform.  The intent
+here is to provide a human user with assistance in determining what a
+binary-only program does, rather than supporting extensive automated
+analyses.  It has only limited support for multi-threaded programs,
+making it hard to compare directly to {\technique}.  On the other
+hand, it does support an advanced memory aliasing analysis, value-set
+analysis~\cite{Balakrishnan2004}.  Aliasing analysis is currently one
+of {\technique}'s major weaknesses, and so combining these techniques
+might produce interesting results.
 
 Decompilation is not the only kind of analysis which has been applied
 to machine code.  BAP, the Binary Analysis
 Platform~\cite{Brumley2011}, is one of the more recent examples.  It
-was a set of tools used to convert machine code into an intermediate
+is a set of tools used to convert machine code into an intermediate
 language suitable for other forms of analysis.  Along the same lines,
 the BitBlaze~\cite{Song2008} project designed a number of analyses on
 machine code intended to uncover security problems given only a binary
@@ -1113,7 +1113,7 @@ under certain circumstances.  Compared to these prior systems,
   targeted, static changes to a program's machine code without access
   to any more abstract representations.
 \end{itemize}
-Of course, these features imply certain weaknesses, as well as
+Of course, these features imply certain weaknesses as well as
 strengths.  In particular, \gls{bugenforcer}'s use of those
 non-concurrency preconditions means that {\technique} must perform an
 initial analysis step to discover what they are, and operating at such

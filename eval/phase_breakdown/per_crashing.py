@@ -167,7 +167,12 @@ for (v, k) in sorted([(v, k) for (k, v) in defects.iteritems()]):
 tot_defect -= defects["leftover"]
 output.write("%%%% total: %f\n" % tot_defect)
 
+nr_chartsets_built = 0
 def sequences_to_chartset(sequences):
+    global nr_chartsets_built
+    print "Building chartset %d" % nr_chartsets_built
+    nr_chartsets_built += 1
+    
     charts = {}
     for k in chart_keys:
         charts[k] = common.Chart()
@@ -214,7 +219,6 @@ def sequences_to_chartset(sequences):
             total_samples.append(total)
         cntr += 1
         defect_samples.append(defect)
-    print "%d/%d" % (len(total_samples), cntr)
     acc = 0
     for ck in chart_keys:
         charts[ck].pre_failed = acc

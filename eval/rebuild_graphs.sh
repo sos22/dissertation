@@ -34,7 +34,7 @@ cd ..
 cd alpha
 for x in 10 20 30 40 50 75 100
 do
-    ./parse_tarball ${x}.tar ${x}.pl
+    ./parse_tarball.py ${x}.tar ${x}.pkl
 done
 ./gen_graph.py
 cd ..

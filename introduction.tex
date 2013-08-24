@@ -14,20 +14,17 @@ increase.  This dissertation presents automated techniques to help
 developers discover, characterise, reproduce, and fix a certain class
 of concurrency bug.
 
-The basic approach is shown in \autoref{fig:basic_pipeline}.  The
-process starts by building an \gls{programmodel}, showing how the
-program accesses memory when it is operating normally, using
 \begin{wrapfigure}{r}{5.4cm}
   \vspace{-14pt}
   \begin{figgure}
     \centerline{
       \begin{tikzpicture}
         [block/.style = {rectangle,draw,fill=white},
-          node distance = 1.2]
+          node distance = 1.3]
         \node [block] (dynamic) {Running program};
         \node [block,below = of dynamic] (model) {\Gls{programmodel}};
         \node [block,below = of model] (statemachines) {\STateMachines};
-        \node [block,below = of statemachines] (candidates) {\Glspl{verificationcondition}};
+        \node [block,below = of statemachines] (candidates) {\shortstack{Verification\\conditions}};
         \node [block,below = of candidates] (repro) {Reproduction};
         \node [block, below = of repro] (fix) {Fixes};
         \draw [->] (dynamic) to node [right] {\shortstack[l]{Dynamic\\analysis}} (model);
@@ -37,7 +34,7 @@ program accesses memory when it is operating normally, using
         \draw [->] (dynamic.west)
           -- ++(-.1,0)
           ..controls +(-0.3,0) and +(0, 0.3) .. ++(-0.5,-0.5)
-          -- ++(0,-6.29)
+          -- ++(0,-7.165)
           ..controls +(0,-0.3) and +(-0.3,0) .. ++( 0.5,-0.5)
           -- (repro.west);
         \draw [->] (repro) to node [right] {\shortstack[l]{Fix\\generation}} (fix);
@@ -49,57 +46,62 @@ program accesses memory when it is operating normally, using
   \end{figgure}
   \vspace{-24pt}
 \end{wrapfigure}
-primarily dynamic analysis (\autoref{sect:program_model}).  The
-\gls{programmodel} is then used to locate potentially relevant
-fragments of the program and to build {\StateMachines} which model
-their behaviour (\autoref{sect:derive}).  These {\StateMachines} can
-in turn be symbolically executed to determine whether they might
-exhibit some hypothesised bug, and, if so, under what circumstances,
-with the results summarised as a set of \glspl{verificationcondition}.
-This set usually contains a large number of false positives, and so
-the next step is to prune it back down using \glspl{bugenforcer}:
-co-programs which, when loaded into a program, adjust its scheduling
-so as to make it far more likely that the bug will reproduce quickly
-(\autoref{sect:reproducing_bugs}).  Bugs which fail to reproduce when
-the program is run under one of these enforcers are discarded and the
-remainder passed to a final fix generation phase which generates
-binary patches which eliminate the bug
-(\autoref{sect:fix_global_lock}).
+The basic approach is shown in \autoref{fig:basic_pipeline}.  The
+process starts by observing the program's behaviour while operating
+normally so as to build up a model of how it accesses memory.  This
+model then allows {\technique} to locate the parts of the program
+which are most relevant to a particular concurrency error, and hence
+to build {\StateMachines} which more precisely model those areas.
+These {\StateMachines} are then symbolically executed to determine
+whether running the modelled program fragments in parallel could lead
+to a concurrency error and, if so, to generate
+\glspl{verificationcondition} which precisely characterise the
+requirements for them to do so.  These \glspl{verificationcondition}
+are in turn used to construct co-programs which, when loaded into the
+running program, gently shepherd it towards these hypothesised bugs,
+allowing {\technique} to identify and discard any false positives with
+minimal manual intervention.  Any \glspl{verificationcondition} which
+survive this winnowing are then converted into patches which, when
+applied to the program, completely eliminate the bug.
 
-An important decision which must be made when designing this kind of
-tool is how much higher-level semantic information to use, and in
-particular whether to operate at the level of machine code or source
-code.  Working with machine code gives a tool the most precise
-description of the program's behaviour, as the effects of compiler
-optimisations are often important when investigating concurrency
-errors, but, on the other hand, source code provides far more useful
-information, and so is usually far easier to analyse.  {\Technique}
-takes the extreme position of operating on machine code as far as
-possible, only relying on access to source code when absolutely
-necessary.  For some non-trivial programs, including Thunderbird and
-pbzip2, the technique can produce useful results without any access to
-source code at all, and for most others very little information is
-needed (MySQL, for instance, required higher-level information for
-just two functions).  {\Technique} explores a particularly difficult
-version of the program analysis problem, and hence provides a form of
-lower bound on what can be achieved in an environment which is
-particularly ill-suited to this kind of technique.
+All of these analyses and transformations are performed on the
+program's machine code, with minimal (or in many non-trivial cases,
+no) higher-level knowledge of the program's structure or environment.
+This is in contrast to many previous systems, such as
+Kivati~\cite{Chew2010} or AFix~\cite{Jin2011}, which operated on
+either LLVM bitcode or the program's original source.  As such,
+{\technique} can be applied to a wider class of programs, as it makes
+no assumptions about the tools used to construct the program, and can
+model the program more accurately, as many concurrency bugs depend on
+details of compiler optimisations which are visible in machine code
+but not at higher levels.  On the other hand, the need to infer
+information which other tools receive as input gives {\technique} much
+higher computational cost, and this can limit its applicability to
+more complicated bugs.  {\Technique} takes the extreme position of
+attempting to analyse concurrency errors with minimal support from the
+program, its environment, or its developers, in some cases sacrificing
+practicality to do so.  As such, while it can, as I demonstrate in the
+evaluation, often be usefully applied to large software systems, such
+as MySQL or Thunderbird, it is perhaps better thought of as an
+exploration of what can be achieved in an unusually hostile analysis
+environment, and hence of the precise trade-offs made when an analysis
+depends on richer input information, rather than as a practical
+program maintenance technique in its own right.
 
 \section{Contributions}
 
 This dissertation makes several contributions:
 \begin{itemize}
 \item
-  Suggest a novel method of finding concurrency-related bugs given
-  only a binary program and some way of running it.
+  Suggest a novel method of finding and characterising
+  concurrency-related bugs given only a binary program and some way of
+  running it.
 \item
-  Describe how the bug description produced when trying to find a bug
-  can be used to automatically fix the bug or to make it more easily
-  reproducible.
+  Describe how these characterisations can be used to automatically
+  fix the bug or to make it more easily reproducible.
 \item
-  Evaluate these techniques, showing that they can find and fix bugs
-  in simple programs quickly, and that the analysis techniques scale
-  up to find real bugs in realistic one.
+  Evaluate the effectiveness and costs of these techniques with
+  respect to a number of real and artificial test programs.
 \end{itemize}
 I give a detailed description of {\technique} and some results
 obtained using \implementation, my prototype implementation.  These
@@ -149,10 +151,11 @@ little more detail:
   available before analysis starts.
 \end{itemize}
 I refer to bugs which satisfy these constraints as \glspl{simple
-  atomicity violation}.  This clearly does not include every possible
-type of concurrent bug (it does not, for instance, include any but the
-most trivial deadlock bugs, and complicated memory corruption bugs are
-difficult to handle), but does include some interesting ones.
+  atomicity violation}, or SAVs.  This clearly does not include every
+possible type of concurrent bug (it does not, for instance, include
+any but the most trivial deadlock bugs, and complicated memory
+corruption bugs are difficult to handle), but does include some
+interesting ones.
 
 \begin{sanefig}
 {\hfill}
@@ -226,17 +229,17 @@ system scheduling effects, which usually ranges from a few tens of
 microseconds to a few milliseconds.  On a modern process, that is
 sufficient time to execute thousands to hundreds of thousands of
 instructions, vastly exceeding {\technique}'s \gls{analysiswindow},
-and {\technique} is highly unlikely to capture an ordering violation
-bug in the same window as an atomicity violation one.  If two bugs are
-analysed in different windows then neither can hide the other, and so
-there is little risk of an ordering violation disguising an atomicity
-violation.
+and so {\technique} is highly unlikely to capture an ordering
+violation bug in the same window as an atomicity violation one.  If
+two bugs are analysed in different windows then neither can hide the
+other, and so there is little risk of an ordering violation disguising
+an atomicity violation.
 
-\subsection{Execution model}
+\subsection{Model of program execution}
 
 In addition to restricting the class of bugs, {\technique} also
 restricts the execution environment by assuming a strongly-ordered
-memory model, so that memory accesses are seen by all processors in
+memory model in which memory accesses are seen by all processors in
 the order in which they appear in the program.  This is a reasonable
 approximation for the widely-used x86 architecture, as that platform
 rarely reorders memory accesses issued by a single
@@ -485,7 +488,7 @@ the strongest safety property which can be hoped for.
 \noindent
 Several of the algorithms in this dissertation are described in terms
 of graph generating node-replacement grammars, and so I now give a
-brief overview of this formalism with reference to the example in
+brief overview of this formalism using the example in
 \autoref{fig:intro:graph_grammar}.  This figure shows a simple grammar
 which produces directed graphs of (terminal) capital letters starting
 from a single (non-terminal) integer.  The grammar works by matching a
@@ -510,9 +513,9 @@ generates a new terminal A with a single successor non-terminal
 once, and so rather than adding a new node to the graph the grammar
 adds an edge back to the previous one.  The grammar continues
 expanding non-terminals in this way until none remain, producing the
-graph at the bottom left of the figure.  It then forgets which
-non-terminal generated each terminal, producing the final graph at the
-bottom right of the figure.
+graph at the bottom left of the figure.  The mapping from terminal
+nodes to the non-terminals which generated them can then be forgotten,
+producing the final graph at the bottom right of the figure.
 
 \section{Structure of this dissertation}
 

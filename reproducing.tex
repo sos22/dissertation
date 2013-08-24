@@ -88,7 +88,7 @@ analysis.
     \draw[->,ifTrue] (l4.west)
       -- ++(-0.7,0)
       .. controls ++(-.3,0) and ++(0,.3) .. ++(-.5,-.5)
-      -- ++(0,-3.9)
+      -- ++(0,-3.97)
       .. controls ++(0,-.3) and ++(-.3,0) .. ++(.5,-.5)
       -- (l7.west);
     \draw[->] (l5) -- (l6);
@@ -277,7 +277,7 @@ This can sometimes be a very expensive algorithm.  In principle, a
 single \gls{verificationcondition} with $n$ $\happensBeforeEdge$ tests
 could produce up to $2^n$ possible happens-before graphs, each with
 its own side condition, and this can become completely unmanageable
-for even quite modest values of $n$.  In practice, though, the number
+for even quite small values of $n$.  In practice, though, the number
 produced is usually far more modest.  Most bugs do not require a
 particularly complicated mapping from happens-before graphs to side
 conditions, in the sense that they will usually only have a small
@@ -290,13 +290,13 @@ all $2^n$ possible paths, and the worst case is avoided.  As I show in
 the evaluation, it can do so for slightly over 99\% of
 \glspl{verificationcondition} generated from real programs, and so
 this algorithm is quite usable in spite of its unfortunate theoretical
-worst case\fnote{There is another, less optimistic, reason why this
-  usually works: {\implementation} makes extensive use of
+worst case.\kern-.9pt\fnote{There is another, less optimistic, reason
+  why this usually works: {\implementation} makes extensive use of
   \protect\glspl{bdd} during symbolic execution, and so if the
   \protect\gls{verificationcondition} were one which is hard to
-  represent as a \protect\gls{bdd} then one of the symbolic execution
-  steps would have failed and it would not have been possible to even
-  start building the \protect\gls{bugenforcer}.}.
+  represent as a \protect\gls{bdd} then one of the earlier symbolic
+  execution steps would have failed and it would not have been
+  possible to even start building the \protect\gls{bugenforcer}.}
 
 \subsection{Unenforceable graphs}
 \label{sect:reproduce:unenforcable}
@@ -306,11 +306,11 @@ worst case\fnote{There is another, less optimistic, reason why this
     {\hfill}
   \subfigure[][An unenforceable control-flow and happens-before graph.]{
     \begin{tikzpicture}
-      \node (thread0) {Thread 0};
-      \node[CfgInstr, below = 1.8 of thread0] (A) {$A_0$};
+      \node (thread0) {\shortstack{Crashing\\thread}};
+      \node[CfgInstr, below = 1.3 of thread0] (A) {$A_0$};
       \node[CfgInstr, below = of A] (B) {$B_0$};
-      \node[right = 2 of thread0] (thread1) {Thread 1};
-      \node[CfgInstr, below = 1.8 of thread1] (C) {$C_1$};
+      \node[right = 2 of thread0] (thread1) {\shortstack{Interfering\\thread}};
+      \node[CfgInstr, below = 1.3 of thread1] (C) {$C_1$};
       \node[CfgInstr, below = of C] (D) {$D_1$};
       \node[below = 0.5 of D] {};
       \draw[->] (A) -- (B);
@@ -325,10 +325,10 @@ worst case\fnote{There is another, less optimistic, reason why this
     that $C_1$ must happen \emph{immediately} before $B_0$, rather than any time
     before it.]{
     \begin{tikzpicture}
-      \node (thread0) {Thread 0};
-      \node[CfgInstr, below = of thread0] (A) {$A_0$};
+      \node (thread0) {\shortstack{Crashing\\thread}};
+      \node[CfgInstr, below = .5 of thread0] (A) {$A_0$};
       \node[CfgInstr, below = of A] (B) {$B_0$};
-      \node[right = 2 of thread0] (thread1) {Thread 1};
+      \node[right = 2 of thread0] (thread1) {\shortstack{Interfering\\thread}};
       \node[CfgInstr] at (thread1 |- B) (C) {$C_1$};
       \node[CfgInstr, below = of C] (D) {$D_1$};
       \draw[->] (A) -- (B);
@@ -346,19 +346,19 @@ worst case\fnote{There is another, less optimistic, reason why this
 
 \noindent
 {\Technique} enforces happens-before edges synchronously, in the sense
-that to enforce $\happensBefore{A}{B}$ it enforces that $A$ happens
-\emph{immediately} before $B$.  This can sometimes restrict the class
-of bugs which can be reproduced.  Consider, for instance, the combined
-control-flow and happens-before graph in
+that to enforce $\happensBefore{A_i}{B_j}$ it enforces that $A_i$
+happens \emph{immediately} before $B_j$.  This can sometimes restrict
+the class of bugs which can be reproduced.  Consider, for instance,
+the combined control-flow and happens-before graph in
 \autoref{fig:reproduce:cyclic_synchronous}, which shows that both
 threads must complete their first instruction before either thread
 starts its second.  It is clearly possible for the program to execute
 its instructions in this order, but this ordering cannot be enforced
 synchronously: in order to enforce edge $\alpha$, $A_0$ must happen
 immediately before $D_1$, and so $A_0$ must wait for $D_1$, but in
-order to enforce edge $\beta$ $C_1$ must wait for $B_0$.  This creates a
-cycle in the graph, and so this program would deadlock if the enforcer
-attempted to enforce the entire graph.
+order to enforce edge $\beta$ $C_1$ must wait for $B_0$.  This creates
+a cycle in the graph, and so this program would deadlock if the
+enforcer attempted to enforce the entire graph.
 
 {\Technique} resolves these cycles by discarding one of the
 happens-before edges, chosen arbitrarily.  In this particular case,
@@ -389,12 +389,14 @@ might be some time after the interpreter gains control of it.  The
 \gls{bugenforcer} must therefore often defer evaluating part of the
 \gls{side condition} until all of the necessary inputs are available.
 
+\newcommand{\crashing}{\mathrm{C}}
+\newcommand{\interfering}{\mathrm{I}}
 \begin{sanefig}
   \hspace{6mm}
   \begin{tikzpicture}
-    \node (t1) {Thread 1};
-    \node[right = 4.5cm of t1] (t2) {Thread 2};
-    \node[below = of t1] (A) {$A_0$};
+    \node (t1) {\shortstack{Crashing\\thread}};
+    \node[right = 4.5cm of t1] (t2) {\shortstack{Interfering\\thread}};
+    \node[below = .5 of t1] (A) {$A_0$};
     \node[below = of A] (B) {$B_0$};
     \node[below = of B] (C) {$C_0$};
     \node[below = of C] (D) {$D_0$};
@@ -417,8 +419,8 @@ might be some time after the interpreter gains control of it.  The
     \draw[->,happensBeforeEdge] (B) to node [above] {$\alpha$} (Y);
     \draw[->,happensBeforeEdge] (Z) to node [above] {$\beta$} (D);
   \end{tikzpicture}
-  \center{Side condition: $\textsc{rax}_1 = 93 \wedge (\textsc{rbx}_2 =
-    72 \vee \controlEdge{1}{C_0}{D_0}) \wedge \textsc{rcx}_1 = \textsc{rcx}_2$}
+  \center{Side condition: $\textsc{rax}_{\crashing} = 93 \wedge (\textsc{rbx}_{\interfering} =
+    72 \vee \controlEdge{\crashing}{C_0}{D_0}) \wedge \textsc{rcx}_{\crashing} = \textsc{rcx}_{\interfering}$}
   \vspace{-4pt}
   \caption{Example control-flow (solid lines) and happens-before
     (dashed lines) graphs.  $D_0$ and $D_1$ are dynamic instructions
@@ -432,24 +434,24 @@ might be some time after the interpreter gains control of it.  The
 
 \begin{sanefig}
   \begin{tikzpicture}
-    \node (t1) {Thread 1};
-    \node[right = 4.5cm of t1] (t2) {Thread 2};
-    \node[below = of t1] (A) {$A_0$};
-    \node[left = 0 of A] {$\textsc{rax}_1$, $\textsc{rcx}_1$};
+    \node (t1) {\shortstack{Crashing\\thread}};
+    \node[right = 4.5cm of t1] (t2) {\shortstack{Interfering\\thread}};
+    \node[below = .5 of t1] (A) {$A_0$};
+    \node[left = 0 of A] {$\textsc{rax}_\crashing$, $\textsc{rcx}_\crashing$};
     \node[below = of A] (B) {$B_0$};
-    \node[left = 0 of B] {$\textsc{rax}_1$, $\textsc{rcx}_1$};
+    \node[left = 0 of B] {$\textsc{rax}_\crashing$, $\textsc{rcx}_\crashing$};
     \node[below = of B] (C) {$C_0$};
-    \path (node cs:name=C,anchor=north east) node [below right] {\shortstack[l]{$\textsc{rax}_1$, $\textsc{rcx}_1$,\\$\textsc{rbx}_2$, $\textsc{rcx}_2$}};
+    \path (node cs:name=C,anchor=north east) node [below right] {\shortstack[l]{$\textsc{rax}_\crashing$, $\textsc{rcx}_\crashing$,\\$\textsc{rbx}_\interfering$, $\textsc{rcx}_\interfering$}};
     \node[below = of C] (D) {$D_0$};
-    \path (node cs:name=D,anchor=north west) node [below left] {\shortstack[r]{$\controlEdge{1}{C_0}{D_0}$,\\$\textsc{rax}_1$, $\textsc{rcx}_1$,\\$\textsc{rbx}_2$, $\textsc{rcx}_2$\phantom{,}}\!\!\!};
+    \path (node cs:name=D,anchor=north west) node [below left] {\shortstack[r]{$\controlEdge{\crashing}{C_0}{D_0}$,\\$\textsc{rax}_\crashing$, $\textsc{rcx}_\crashing$,\\$\textsc{rbx}_\interfering$, $\textsc{rcx}_\interfering$\phantom{,}}\!\!\!};
     \node[left = 4cm of D] (D1) {$D_1$};
-    \path (D1.north) ++(.7,0) node [above] {\shortstack[l]{$\controlEdge{1}{C_0}{D_0}$,\\$\textsc{rax}_1$, $\textsc{rcx}_1$,\\$\textsc{rbx}_2$, $\textsc{rcx}_2$}\!\!\!};
+    \path (D1.north) ++(.7,0) node [above] {\shortstack[l]{$\controlEdge{\crashing}{C_0}{D_0}$,\\$\textsc{rax}_\crashing$, $\textsc{rcx}_\crashing$,\\$\textsc{rbx}_\interfering$, $\textsc{rcx}_\interfering$}\!\!\!};
     \node at (t2 |- A) (X) {$X_0$};
-    \node[below right = 0 of X.north east] {$\textsc{rbx}_2$, $\textsc{rcx}_2$};
+    \node[below right = 0 of X.north east] {$\textsc{rbx}_\interfering$, $\textsc{rcx}_\interfering$};
     \node at (t2 |- B) (Y) {$Y_0$};
-    \node[below right = 0 of Y.north east] {\shortstack[l]{$\textsc{rax}_1$, $\textsc{rcx}_1$,\\$\textsc{rbx}_2$, $\textsc{rcx}_2$}};
+    \node[below right = 0 of Y.north east] {\shortstack[l]{$\textsc{rax}_\crashing$, $\textsc{rcx}_\crashing$,\\$\textsc{rbx}_\interfering$, $\textsc{rcx}_\interfering$}};
     \node at (t2 |- D) (Z) {$Z_0$};
-    \node[below right = 0 of Z.north east] {\shortstack[l]{$\textsc{rax}_1$, $\textsc{rcx}_1$,\\$\textsc{rbx}_2$, $\textsc{rcx}_2$}};
+    \node[below right = 0 of Z.north east] {\shortstack[l]{$\textsc{rax}_\crashing$, $\textsc{rcx}_\crashing$,\\$\textsc{rbx}_\interfering$, $\textsc{rcx}_\interfering$}};
     \draw[->] (A) -- (B);
     \draw[->] (B) -- (C);
     \draw[->] (C) -- (D);
@@ -462,8 +464,8 @@ might be some time after the interpreter gains control of it.  The
       -- ++(3.8,0)
       ..controls +(.3,0) and +(0,-.3).. ++(.5,.5)
       -- (D);
-    \draw[->,happensBeforeEdge] (B) to node [above] {M} node [below] {\shortstack[l]{$\textsc{rax}_1$, $\textsc{rcx}_1$,\\$\textsc{rbx}_2$, $\textsc{rcx}_2$}} (Y);
-    \draw[->,happensBeforeEdge] (Z) to node [above] {N} node [below] {\shortstack[c]{$\controlEdge{1}{C_0}{D_0}$,\\$\textsc{rax}_1$, $\textsc{rcx}_1$,\\$\textsc{rbx}_2$, $\textsc{rcx}_2$\phantom{,}}} (D);
+    \draw[->,happensBeforeEdge] (B) to node [above] {M} node [below] {\shortstack[l]{$\textsc{rax}_\crashing$, $\textsc{rcx}_\crashing$,\\$\textsc{rbx}_\interfering$, $\textsc{rcx}_\interfering$}} (Y);
+    \draw[->,happensBeforeEdge] (Z) to node [above] {N} node [below] {\shortstack[c]{$\controlEdge{\crashing}{C_0}{D_0}$,\\$\textsc{rax}_\crashing$, $\textsc{rcx}_\crashing$,\\$\textsc{rbx}_\interfering$, $\textsc{rcx}_\interfering$\phantom{,}}} (D);
   \end{tikzpicture}
   \vspace{-12pt}
   \caption{\autoref{fig:place_conditions_example} extended to show
@@ -473,20 +475,22 @@ might be some time after the interpreter gains control of it.  The
 
 Consider the example in \autoref{fig:place_conditions_example}.  The
 side-condition to this bug depends on various values which have to be
-collected from the running program: $\textsc{rax}_1$, and
-$\textsc{rcx}_1$, registers in the \gls{crashingthread};
-$\textsc{rbx}_2$ and $\textsc{rcx}_2$, registers in the interfering
-one; and $\controlEdge{1}{C_0}{D_0}$, an expression on the
-\gls{crashingthread}'s control flow.
+collected from the running program: $\textsc{rax}_\crashing$, and
+$\textsc{rcx}_\crashing$, registers in the \gls{crashingthread};
+$\textsc{rbx}_\interfering$ and $\textsc{rcx}_\interfering$, registers
+in the interfering one; and $\controlEdge{\crashing}{C_0}{D_0}$, an
+expression on the \gls{crashingthread}'s control flow.
 \autoref{fig:place_conditions_example:availability} shows how these
 inputs become available as the program progresses through its
 \gls{cfg}:
 \begin{itemize}
-\item $\textsc{rax}_1$ and $\textsc{rcx}_1$ represent the initial
-  values of registers \textsc{rax} and \textsc{rcx} in thread 1, and
-  are therefore in thread 1 as soon as the enforcer gains control of
-  the thread.  Similarly, $\textsc{rbx}_2$ and $\textsc{rcx}_2$ are
-  available throughout thread 2.
+\item $\textsc{rax}_\crashing$ and $\textsc{rcx}_\crashing$ represent
+  the initial values of registers \textsc{rax} and \textsc{rcx} in the
+  \gls{crashingthread}, and are therefore available in the
+  \gls{crashingthread} as soon as the enforcer gains control over it.
+  Similarly, $\textsc{rbx}_\interfering$ and
+  $\textsc{rcx}_\interfering$ are available throughout the
+  \gls{interferingthread}.
 \item All of the program registers are available when evaluating the
   happens-before edge $\alpha$.  As discussed previously, {\technique}
   \glspl{bugenforcer} enforce happens-before edges synchronously, in
@@ -496,27 +500,27 @@ inputs become available as the program progresses through its
 \item Similarly, all registers are available at instructions $C_0$ and
   $Y_0$, as they can be copied from one thread to the other during the
   happens-before edge operation.  Note that the additional registers
-  become available at $Y_0$, the edge's ending instruction, in thread
-  2, but not until $C_0$, the instruction after the edge's beginning
-  instruction, in thread 1.  This is because the edge $\alpha$ links
-  the end of instruction $B_0$ to the start of instruction $Y_0$, and
-  so inputs made available by the edge are available at the end of
-  $B_0$ and the start of $Y_0$.
-\item The control flow expression $\controlEdge{1}{C_0}{D_0}$ becomes
-  available once instruction $C_0$ has selected which instruction will
-  be executed next, and hence is available in $C_0$'s successors $D_0$
-  and $D_1$.  It is also available on happens-before edge $\beta$ because
-  $D_0$ is $\beta$'s ending instruction.
+  become available at $Y_0$, the edge's ending instruction, in the
+  \gls{interferingthread}, but not until $C_0$, the instruction after
+  the edge's beginning instruction, in the crashing one.  This is
+  because the edge $\alpha$ links the end of instruction $B_0$ to the
+  start of instruction $Y_0$, and so inputs made available by the edge
+  are available at the end of $B_0$ and the start of $Y_0$.
+\item The control flow expression $\controlEdge{\crashing}{C_0}{D_0}$
+  becomes available once instruction $C_0$ has selected which
+  instruction will be executed next, and hence is available in $C_0$'s
+  successors $D_0$ and $D_1$.  It is also available on happens-before
+  edge $\beta$ because $D_0$ is $\beta$'s ending instruction.
 \end{itemize}
 \begin{sanefig}
   \sloppy
   \subfigure[][Reordered \protect\gls{bdd}]{
     \begin{tikzpicture}
-      \node (root) [BddNode,color=blue] {$\textsc{rax}_1\!= 93$};
-      \node (alpha) [BddNode, below = of root] {$\controlEdge{1}{C_0}{D_0}$\hspace{-1.45cm}~};
-      \node (c0) [BddNode, below = of alpha] {$\textsc{rcx}_1\!\!=\!\textsc{rcx}_2$\hspace{-4mm}~};
-      \path (node cs:name=c0,anchor=east) node (c1) [BddNode,right] {~~$\textsc{rcx}_1\!\!=\!\textsc{rcx}_2$};
-      \path (barycentric cs:c0=0.5,c1=0.5) ++(0,-0.8) node (b) [BddNode, below] {$\textsc{rbx}_2\!= 72$};
+      \node (root) [BddNode,color=blue] {$\textsc{rax}_\crashing\!= 93$};
+      \node (alpha) [BddNode, below = of root] {$\controlEdge{\crashing}{C_0}{D_0}$\hspace{-1.45cm}~};
+      \node (c0) [BddNode, below = of alpha] {$\textsc{rcx}_\crashing\!\!=\!\textsc{rcx}_\interfering$\hspace{-4mm}~};
+      \path (node cs:name=c0,anchor=east) node (c1) [BddNode,right] {~~$\textsc{rcx}_\crashing\!\!=\!\textsc{rcx}_\interfering$};
+      \path (barycentric cs:c0=0.5,c1=0.5) ++(0,-0.8) node (b) [BddNode, below] {$\textsc{rbx}_\interfering\!= 72$};
       \path (node cs:name=c1,anchor=south) ++(0,-2) node (false) [BddLeaf] {\false};
       \node (true) at (c0 |- false) [BddLeaf] {\true};
       \draw[BddTrue] (root) -- (alpha);
@@ -532,24 +536,24 @@ inputs become available as the program progresses through its
     \end{tikzpicture}
     \label{fig:place_conditions:example:instr_a:reordered}
   } \subfigure[][Condition evaluable at $A_0$]{
-    \hspace{-3.5mm}
+    \hspace{-4.5mm}
     \raisebox{2.55cm}{\Large =}
-    \hspace{-5mm}
+    \hspace{-7.5mm}
     \begin{tikzpicture}
-      \node (root) [BddNode,color=blue] {$\textsc{rax}_1\!= 93$};
+      \node (root) [BddNode,color=blue] {$\textsc{rax}_\crashing\!= 93$};
       \node (true) [BddLeaf, below = 5 of root] {\true};
       \node (false) [BddLeaf, right = of true] {\false};
       \draw[BddTrue] (root) -- (true);
       \draw[BddFalse] (root.east) ..controls +(2.5,-.5) and +(.4,3).. (false);
     \end{tikzpicture}
-    \hspace{-4mm}\raisebox{2.55cm}{$\bigwedge$}
+    \hspace{-5mm}\raisebox{2.55cm}{$\bigwedge$}
     \label{fig:place_conditions:example:instr_a:evaluable}
-  } \hspace{-3.5mm}\subfigure[][Residual condition]{
+  } \hspace{-4mm}\subfigure[][Residual condition]{
     \begin{tikzpicture}
-      \node (alpha) [BddNode] {$\controlEdge{1}{C_0}{D_0}$\hspace{-1.45cm}~};
-      \node (c0) [BddNode, below = of alpha] {$\textsc{rcx}_1\!\!=\!\textsc{rcx}_2$\hspace{-4mm}~};
-      \path (node cs:name=c0,anchor=east) node (c1) [BddNode,right] {~~$\textsc{rcx}_1\!\!=\!\textsc{rcx}_2$};
-      \path (barycentric cs:c0=0.5,c1=0.5) ++(0,-0.8) node (b) [BddNode, below] {$\textsc{rbx}_2\!= 72$};
+      \node (alpha) [BddNode] {$\controlEdge{\crashing}{C_0}{D_0}$\hspace{-1.45cm}~};
+      \node (c0) [BddNode, below = of alpha] {$\textsc{rcx}_\crashing\!\!=\!\textsc{rcx}_\interfering$\hspace{-4mm}~};
+      \path (node cs:name=c0,anchor=east) node (c1) [BddNode,right] {~~$\textsc{rcx}_\crashing\!\!=\!\textsc{rcx}_\interfering$};
+      \path (barycentric cs:c0=0.5,c1=0.5) ++(0,-0.8) node (b) [BddNode, below] {$\textsc{rbx}_\interfering\!= 72$};
       \path (node cs:name=c1,anchor=south) ++(0,-2) node (false) [BddLeaf] {\false};
       \node (true) at (c0 |- false) [BddLeaf] {\true};
       \draw[BddTrue] (alpha) -- (c0);
@@ -565,7 +569,7 @@ inputs become available as the program progresses through its
   }
   \caption{Factorisation of the side condition in
     \autoref{fig:place_conditions_example} at CFG node $A_0$.
-    $\textsc{rax}_1$ and $\textsc{rcx}_1$ are the only available input
+    $\textsc{rax}_\crashing$ and $\textsc{rcx}_\crashing$ are the only available input
     expressions.  Evaluable BDD variables are shown in blue.}
   \label{fig:place_conditions_example:instr_a}
 \end{sanefig}
@@ -585,7 +589,7 @@ condition has been evaluated or {\technique} reaches the end of the
 
 Consider now what happens when {\technique} attempts to evaluate the
 side condition in \autoref{fig:place_conditions_example} at $A_0$.
-The only available input is $\textsc{rax}_1$, so $\textsc{rax}_1 = 93$
+The only available input is $\textsc{rax}_\crashing$, so $\textsc{rax}_\crashing = 93$
 is evaluable but nothing else is.  {\Technique} will re-express the
 side condition as a \gls{bdd}, shown in
 \autoref{fig:place_conditions:example:instr_a:reordered}, with the
@@ -597,13 +601,12 @@ an unevaluable one with an edge to \true; likewise, the unevaluable
 component, \autoref{fig:place_conditions:example:instr_a:residual},
 can be derived by removing every edge from an evaluable expression to
 {\false} and then renormalising.  The \gls{bugenforcer} will evaluate
-the evaluable component, $\textsc{rax}_1 = 93$, at $A_0$, and will
-defer the unevaluable component to later in the \gls{cfg}\fnote{This
+the evaluable component, $\textsc{rax}_\crashing = 93$, at $A_0$, and will
+defer the unevaluable component to later in the \gls{cfg}\kern-.8pt.\kern-.5pt\fnote{This
   is in essence a predicate abstraction problem, and {\technique}'s
   algorithm for doing so can be regarded as a modest generalisation of
   Cavada's \protect\Gls{bdd} Modulo Theory
-  algorithm~\cite{cavada2007}, applied in a slightly unusual
-  context.}.
+  algorithm~\cite{cavada2007}, applied in a slightly unusual context.}
 
 To understand why this is a correct factorisation of the condition,
 consider the paths through the \gls{bdd}.  Any which test only
@@ -620,10 +623,10 @@ evaluable component other than \true.  {\Technique} will therefore
 attempt to evaluate the unevaluable component from $A_0$ as part of
 the happens-before edge $\alpha$, as shown in
 \autoref{fig:place_conditions:example:hb_m}.  The evaluable component
-is now $\textsc{rcx}_1 = \textsc{rcx}_2$, and so the \gls{bugenforcer}
+is now $\textsc{rcx}_\crashing = \textsc{rcx}_\interfering$, and so the \gls{bugenforcer}
 will only attempt to enforce this happens-before edge between threads
 whose RCX registers coincide.  Note that in this case the evaluable
-expression $\textsc{rbx}_2 = 72$ remains present in the unevaluable
+expression $\textsc{rbx}_\interfering = 72$ remains present in the unevaluable
 component.  This is because, while the expression could be evaluated
 as part of the $\alpha$ edge, doing so would never allow the enforcer
 to abort the enforcement process early, and so would have no actual
@@ -645,11 +648,11 @@ resulting placement of side conditions is shown in
 \begin{sanefig}
   \subfigure[][Reordered \protect\gls{bdd}]{
     \begin{tikzpicture}
-      \node (c) [BddNode,color=blue] {$\textsc{rcx}_1 = \textsc{rcx}_2$\hspace{-4mm}\!};
-      \node (b) [BddNode,below = of c,color=blue] {$\textsc{rbx}_2 = 72$};
+      \node (c) [BddNode,color=blue] {$\textsc{rcx}_\crashing = \textsc{rcx}_\interfering$\hspace{-4mm}\!};
+      \node (b) [BddNode,below = of c,color=blue] {$\textsc{rbx}_\interfering = 72$};
       \node (true) [BddLeaf, below = 2 of b] {\true};
       \node (false) [BddLeaf, right = of true] {\false};
-      \path (node cs:name=false) ++(0,1.3) node (alpha) [BddNode] {$\controlEdge{1}{C}{D_0}$};
+      \path (node cs:name=false) ++(0,1.3) node (alpha) [BddNode] {$\controlEdge{\crashing}{C}{D_0}$};
       \draw[BddTrue] (c) -- (b);
       \draw[BddFalse] (c) ..controls +(2,-1) and +(.5,3).. (false);
       \draw[BddTrue] (b) -- (true);
@@ -658,11 +661,11 @@ resulting placement of side conditions is shown in
       \draw[BddFalse] (alpha) -- (false);
     \end{tikzpicture}
   } \subfigure[][Condition evaluable at $\alpha$]{
-    \hspace{-2.5mm}
+    \hspace{-3mm}
     \raisebox{2.1cm}{\Large =}
-    \hspace{-1mm}
+    \hspace{-2mm}
     \begin{tikzpicture}
-      \node (c) [BddNode, color=blue] {$\textsc{rcx}_1 = \textsc{rcx}_2$\hspace{-4mm}\!};
+      \node (c) [BddNode, color=blue] {$\textsc{rcx}_\crashing = \textsc{rcx}_\interfering$\hspace{-4mm}\!};
       \node (true) [BddLeaf, below = 3.6 of root] {\true};
       \node (false) [BddLeaf, right = of true] {\false};
       \draw[BddTrue] (c) -- (true);
@@ -671,10 +674,10 @@ resulting placement of side conditions is shown in
     \raisebox{2.1cm}{$\bigwedge$} 
   } \subfigure[][Residual condition]{
     \begin{tikzpicture}
-      \node (b) [BddNode,color=blue] {$\textsc{rbx}_2 = 72$\hspace{-1cm}~};
+      \node (b) [BddNode,color=blue] {$\textsc{rbx}_\interfering = 72$\hspace{-1cm}~};
       \node (true) [BddLeaf, below = 2 of b] {\true};
       \node (false) [BddLeaf, right = of true] {\false};
-      \path (node cs:name=false) ++(0,1.3) node (alpha) [BddNode] {$\controlEdge{1}{C}{D_0}$};
+      \path (node cs:name=false) ++(0,1.3) node (alpha) [BddNode] {$\controlEdge{\crashing}{C}{D_0}$};
       \draw[BddTrue] (b) -- (true);
       \draw[BddFalse] (b) -- (alpha);
       \draw[BddTrue] (alpha) -- (true);
@@ -691,10 +694,10 @@ resulting placement of side conditions is shown in
 \begin{sanefig}
   \subfigure[][Reordered \protect\gls{bdd}]{
     \begin{tikzpicture}
-      \node (b) [BddNode,color=blue] {$\textsc{rbx}_2 = 72$};
+      \node (b) [BddNode,color=blue] {$\textsc{rbx}_\interfering = 72$};
       \node (true) [BddLeaf, below = 2 of b] {\true};
       \node (false) [BddLeaf, right = of true] {\false};
-      \path (node cs:name=false) ++(0,1.3) node (alpha) [BddNode, color=blue] {$\controlEdge{1}{C}{D_0}$};
+      \path (node cs:name=false) ++(0,1.3) node (alpha) [BddNode, color=blue] {$\controlEdge{\crashing}{C}{D_0}$};
       \draw[BddTrue] (b) -- (true);
       \draw[BddFalse] (b) -- (alpha);
       \draw[BddTrue] (alpha) -- (true);
@@ -705,10 +708,10 @@ resulting placement of side conditions is shown in
     \raisebox{15mm}{\Large =}
     \hspace{-1.5mm}
     \begin{tikzpicture}
-      \node (b) [BddNode,color=blue] {$\textsc{rbx}_2 = 72$};
+      \node (b) [BddNode,color=blue] {$\textsc{rbx}_\interfering = 72$};
       \node (true) [BddLeaf, below = 2 of b] {\true};
       \node (false) [BddLeaf, right = of true] {\false};
-      \path (node cs:name=false) ++(0,1.3) node (alpha) [BddNode, color=blue] {$\controlEdge{1}{C}{D_0}$};
+      \path (node cs:name=false) ++(0,1.3) node (alpha) [BddNode, color=blue] {$\controlEdge{\crashing}{C}{D_0}$};
       \draw[BddTrue] (b) -- (true);
       \draw[BddFalse] (b) -- (alpha);
       \draw[BddTrue] (alpha) -- (true);
@@ -726,15 +729,15 @@ resulting placement of side conditions is shown in
 
 \begin{sanefig}
   \begin{tikzpicture}
-    \node (t1) {Thread 1};
-    \node[right = 4.5cm of t1] (t2) {Thread 2};
-    \node[below = of t1] (A) {$A_0$};
-    \node[left = 0 of A] {$\textsc{rax}_1 = 93$};
+    \node (t1) {\shortstack{Crashing\\thread}};
+    \node[right = 4.5cm of t1] (t2) {\shortstack{Interfering\\thread}};
+    \node[below = .5 of t1] (A) {$A_0$};
+    \node[left = 0 of A] {$\textsc{rax}_\crashing = 93$};
     \node[below = of A] (B) {$B_0$};
     \node[below = of B] (C) {$C_0$};
     \node[below = of C] (D) {$D_0$};
     \node[left = 4cm of D] (D1) {$D_1$};
-    \path (D1.north) ++(1,0) node [above] {\shortstack[l]{$\controlEdge{1}{C_0}{D_0} \vee$\\$\textsc{rbx}_2 = 72$}};
+    \path (D1.north) ++(1,0) node [above] {\shortstack[l]{$\controlEdge{\crashing}{C_0}{D_0} \vee$\\$\textsc{rbx}_\interfering = 72$}};
     \node at (t2 |- A) (X) {$X_0$};
     \node at (t2 |- B) (Y) {$Y_0$};
     \node at (t2 |- D) (Z) {$Z_0$};
@@ -750,8 +753,8 @@ resulting placement of side conditions is shown in
       -- ++(3.8,0)
       ..controls +(.3,0) and +(0,-.3).. ++(.5,.5)
       -- (D);
-    \draw[->,happensBeforeEdge] (B) to node [above] {$\alpha$} node [below] {$\textsc{rcx}_1 = \textsc{rcx}_2$} (Y);
-    \draw[->,happensBeforeEdge] (Z) to node [above] {$\beta$} node [below] {\shortstack{$\controlEdge{1}{C_0}{D_0} \vee$\\$\textsc{rbx}_2 = 72$}} (D);
+    \draw[->,happensBeforeEdge] (B) to node [above] {$\alpha$} node [below] {$\textsc{rcx}_\crashing = \textsc{rcx}_\interfering$} (Y);
+    \draw[->,happensBeforeEdge] (Z) to node [above] {$\beta$} node [below] {\shortstack{$\controlEdge{\crashing}{C_0}{D_0} \vee$\\$\textsc{rbx}_\interfering = 72$}} (D);
   \end{tikzpicture}
   \caption{Final placement of side-condition checks for the example
     control flow graph in \autoref{fig:place_conditions_example}.}
@@ -856,13 +859,13 @@ The algorithm starts with the (valid, complete, insufficient) empty
 needed instruction at a time (line 4).  \textsc{extend}ing a
 \textsc{Strategy} renders it incomplete, and so the main loop of the
 algorithm restores completeness using the \textsc{patch} and
-\textsc{prefix} functions (lines 5 to 13)\fnote{Equivalently,
+\textsc{prefix} functions (lines 5 to 13).  Once every instruction has
+been added the resulting strategy is both valid and sufficient, and is
+hence a correct solution to the patching problem.\fnote{Equivalently,
   \textsc{buildStrategy} implements a search over the space of
   \textsc{Strategy}s using the \textsc{prefix} and \textsc{patch}
   operators with a cut point between every instruction at which the
-  enforcer must gain control.}.  Once every instruction has been added
-the resulting strategy is both valid and sufficient, and is hence a
-correct solution to the patching problem.
+  enforcer must gain control.}
 \begin{sanefig}
   \begin{algorithmic}[1]
     \Function{buildPatchStrategy}{$\mathit{gainControl}$}
@@ -895,7 +898,8 @@ correct solution to the patching problem.
       \textsc{prefix}(s) \hspace{5mm} = \left\{\textsc{Strategy}\!\!\left(\!\!\!\!\begin{array}{rcl}
         \mathit{Patch}   & = & s.\mathit{Patch},\\
         \mathit{Cont}    & = & s.\mathit{Cont} + i,\\
-        \mathit{Pending} & = & s.\mathit{Pending} \cup i.\mathit{pred}
+        \mathit{Pending} & = & s.\mathit{Pending} -i \\
+                         &   & \cup i.\mathit{pred}
       \end{array}\!\!\right)\middle| i \in s.\mathit{Pending}\!\!\right\}
     \end{math}\\
     $\textsc{patch}(s) \hspace{6mm} =$\\
@@ -931,24 +935,22 @@ proportional to the number of static instructions affected,
 $|\mathit{Cont} \cup \mathit{Patch}|$.  {\Implementation} will
 therefore always choose to expand the strategy where that quantity is
 smallest, which usually causes it to find the strategy which minimises
-the cost of the patch\fnote{The result is only usually minimal, rather
-  than guaranteed to be minimal, because the $\mathit{gainControl}$
-  set is processed incrementally, with no backtracking from one
-  instruction to an earlier one, and so it might be that the first
-  instruction processed produces a strategy which is incompatible with
-  the optimal strategy for the second instruction.  There is an
-  alternative non-incremental version of the algorithm which starts by
-  setting $\mathit{Pending}$ to $\mathit{gainControl}$, rather than
-  adding one instruction at a time, and that alternative version would
-  be guaranteed to find the optimal solution.  On the other hand, the
-  search process itself would be far more expensive, as it would
-  attempt to explore from every $\mathit{gainControl}$ instruction
-  simultaneously.  This would raise the cost from $O(nk)$ to $O(n^k)$,
-  where $k = |\mathit{gainControl}|$ and $n/k$ is the cost of the
-  current algorithm.  In practice, the algorithm given here rarely
-  needs to add more than one or two instructions to the
-  $\mathit{Cont}$ set anyway, and so this would not be a good
-  trade-off.}.
+the cost of the patch.\fnote{The result is only usually minimal,
+  rather than guaranteed to be minimal, because the
+  $\mathit{gainControl}$ set is processed incrementally, with no
+  backtracking from one instruction to an earlier one, and so it might
+  be that the first instruction processed produces a strategy which is
+  incompatible with the optimal strategy for the second instruction.
+  There is an alternative non-incremental version of the algorithm
+  which starts by setting $\mathit{Pending}$ to
+  $\mathit{gainControl}$, rather than adding one instruction at a
+  time, and that alternative version would be guaranteed to find the
+  optimal solution.  On the other hand, the search process itself
+  would be far more expensive, as it would attempt to explore from
+  every $\mathit{gainControl}$ instruction simultaneously.  In
+  practice, the algorithm given here rarely needs to add more than one
+  or two instructions to the $\mathit{Cont}$ set anyway, and so this
+  would not be a good trade-off.}
 
 \section{Enforcing the plan}
 \label{sect:enforce:interpreting}
@@ -977,7 +979,7 @@ Note three things:
   it waits for {\tt a} without first emulating {\tt c}.  This is
   because the happens-before edge orders {\tt a} before {\tt c} and so
   links the end of {\tt a} to the beginning of {\tt c}.
-\item {\tt c} must wait for {\tt a}, even though the only requirement
+\item {\tt a} must wait for {\tt c}, even though the only requirement
   imposed by the happens-before edge is for {\tt c} to happen some
   time after {\tt a}; as discussed in
   \autoref{sect:reproduce:unenforcable}, {\technique} enforces
@@ -988,12 +990,12 @@ Note three things:
   operation.
 \end{enumerate}
 This wait operation both enforces the happens-before edge itself and,
-just as importantly, identifies the crashing and interfering threads
-out of the many which might be executing within the program at the
-time.  Whichever program thread executed {\tt a} will become the
-crashing thread and whichever executed {\tt c} will become the
-interfering one.  The two threads are said to have been bound together
-and will execute the rest of the plan together.
+just as importantly, determines how the dynamic threads in a running
+program map onto the analysis level threads in the plan.  Whichever
+program thread executed {\tt a} will become the crashing thread and
+whichever executed {\tt c} will become the interfering one.  The two
+threads are said to have been bound together and will execute the rest
+of the plan together.
 
 Once the wait has completed and the threads have been bound, the
 \gls{bugenforcer} continues through the plan, emulating \texttt{c} in
@@ -1011,11 +1013,11 @@ emulated \texttt{c}, and so \texttt{y} is now set to \texttt{7}.  The
 side condition imposed at the start of the plan will have ensured that
 \texttt{x} is not \texttt{7}, and so the \gls{crashingthread}'s
 assertion will fail and the bug will be correctly
-reproduced\fnote{Note that the \protect\gls{bugenforcer} finishes
+reproduced.\kern-.6pt\fnote{Note that the \protect\gls{bugenforcer} finishes
   before the bug reproduces and that the fatal \texttt{assert} is run
   without direct interference from {\technique}.  This simplifies the
   integration of {\technique} with existing debugging tools which
-  might be confused by the interposition of an unknown interpreter.}.
+  might be confused by the interposition of an unknown interpreter.}
 The complete procedure is shown in
 \autoref{fig:enforcement:example_bug:replacements}.
 
@@ -1157,10 +1159,10 @@ This set construct also provides a convenient way of handling
 ambiguities caused by the \gls{cfg} unrolling algorithm (see
 \autoref{sect:derive:build_crashing_cfg}).  The plan is defined in
 terms of the \gls{dynamic cfg}, but only the \gls{static cfg} can be
-directly observed at run time\fnote{More precisely, the enforcer can
-  observe a thread's position in the \gls{static cfg}, as that is
-  given by its instruction pointer, but not its position in the
-  \gls{dynamic cfg}.}, and this can sometimes make it difficult to
+directly observed at run time,\kern-.4pt\fnote{More precisely, the
+  enforcer can observe a thread's position in the \gls{static cfg}, as
+  that is given by its instruction pointer, but not its position in
+  the \gls{dynamic cfg}.} and this can sometimes make it difficult to
 determine a thread's position within a plan.  {\Technique} deals with
 these ambiguities by forking the plan state and having one fork follow
 each possible outcome of the ambiguous choice.  Instruction $C_0$ in
@@ -1171,7 +1173,7 @@ chosen, but the enforcer simply observes that static instruction C is
 followed by static instruction D and cannot tell which to use.  It
 avoids the issue by pretending that there were two copies of the plan
 in its initial plan set and having one go to $D_0$ and the other to
-$D_1$\fnote{There is a potentially useful analogy here with the power
+$D_1$\kern-.2pt.\kern-.3pt\fnote{There is a potentially useful analogy here with the power
   set construction used to convert a non-deterministic finite state
   automaton into a deterministic one.  In that model, a deterministic
   FSA emulates a non-deterministic one by tracking the set of states
@@ -1180,7 +1182,7 @@ $D_1$\fnote{There is a potentially useful analogy here with the power
   information to resolve them unambiguously.  In the same way,
   {\technique}s set of plans allows it to defer an ambiguous choice
   until one or other of the possible options leads to a failed plan,
-  at which point it can arrange to have chosen the other one.}.
+  at which point it can arrange to have chosen the other one.}
 
 I now give more details of how the plan enforcement interpreter works,
 starting with a more complete description of the single-plan version
@@ -1203,6 +1205,8 @@ The single-plan interpreter runs some simple stages in a tight loop:
   operations are discussed below.
 
 \item \textbf{Emul} Emulate the instruction in the original program.
+  {\Implementation}'s instruction emulator is based on the one used in
+  the Xen hypervisor~\cite{XenInstructionEmul}.
 
 \item \textbf{TX} Send any messages required by the plan.
 
@@ -1267,9 +1271,9 @@ interpreter cycle (either \textbf{Emul} for a receive operation or
 A message operation can fail in three ways:
 \begin{enumerate}
 \item
-  First, the side condition might evaluate to false.  This simply
-  indicates that the data-dependent part of the
-  \gls{verificationcondition} cannot be satisfied by this execution.
+  The side condition might evaluate to false.  This simply indicates
+  that the data-dependent part of the \gls{verificationcondition}
+  cannot be satisfied by this execution.
 
 \item
   A plan's first, unbound, message operation might time out.  In the
@@ -1289,8 +1293,8 @@ A message operation can fail in three ways:
   own and that this has deadlocked against the plan-level kind.
 \end{enumerate}
 Regardless of the cause of the failure, the enforcer will recover in
-the same way: the fails and exits, along with its bound plan, if any,
-and the program is allowed to return to normal operation.  This
+the same way: the plan fails and exits, along with its bound plan, if
+any, and the program is allowed to return to normal operation.  This
 attempt to reproduce the bug has failed and the enforcer must wait
 until the program next runs the potentially-buggy fragment of code.
 
@@ -1324,9 +1328,8 @@ from the dynamic plan set.  If the dynamic plan set ever becomes empty
 then the enforcement interpreter exits and the program is returned to
 normal operation.
 
-The simplest phase to implement in this model is \textbf{Succ}, which
-is responsible for determining which \glspl{dynamic cfg} node each
-dynamic plan might execute next.  The \textbf{Emul} stage will
+Most of the work of maintaining this set of dynamic plans is performed
+as part of the \textbf{Succ} phase.  The \textbf{Emul} stage will
 determine which \gls{static cfg} node the program thread will move to
 next, but, as already noted, this can map to several dynamic ones, and
 the multi-plan interpreter must somehow resolve this ambiguity.  It
@@ -1416,10 +1419,10 @@ $\alpha_1$, and so the enforcer will put the thread to sleep waiting
 for one of those messages to arrive.  Now suppose that, after some
 suitably short delay, the interfering thread arrives at instruction A.
 The enforcer will now gain control of that thread and create a third
-dynamic plan, $p_2$, at $A_0$, and sends message $\alpha_0$,
-unblocking $p_0$.  $p_1$ now has a problem: it cannot advance until
-the \gls{interferingthread} reaches C, creates a $C_1$ plan, and sends
-message $\alpha_1$, but that cannot happen until the
+dynamic plan, $p_2$, at $A_0$.  $p_2$ immediately sends message
+$\alpha_0$, unblocking $p_0$.  $p_1$ now has a problem: it cannot
+advance until the \gls{interferingthread} reaches C, creates a $C_1$
+plan, and sends message $\alpha_1$, but that cannot happen until the
 \gls{interferingthread} has finished with instruction A, which is only
 possible once message operation $\alpha_0$ is complete.  The
 \gls{crashingthread}, meanwhile, has effectively tied messages
