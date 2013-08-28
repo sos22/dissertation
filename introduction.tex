@@ -4,14 +4,14 @@
 
 Commodity hardware is becoming increasingly concurrent, whether due to
 more packages per machine, more cores per package, or more threads per
-core, and this change brings the promise of greatly increased
-performance.  Unfortunately, it also promises greatly reduced
-reliability.  Highly-concurrent software is infamously prone to
-complex, unpredictable, and hard-to-reproduce bugs, and as it becomes
-more widespread, especially amongst less able developers, we should
-expect to see the frequency of serious bugs in important software
-increase.  This dissertation presents automated techniques to help
-developers discover, characterise, reproduce, and fix a certain class
+core, and this change promises greatly increased performance.
+Unfortunately, it also promises greatly reduced reliability.
+Highly-concurrent software is infamously prone to complex,
+unpredictable, and hard-to-reproduce bugs, and as it becomes more
+widespread, especially amongst less able developers, we should expect
+to see the frequency of serious bugs in important software increase.
+This dissertation presents automated techniques to help developers
+discover, characterise, reproduce, and ultimately fix a certain class
 of concurrency bug.
 
 \begin{wrapfigure}{r}{5.4cm}
@@ -49,20 +49,22 @@ of concurrency bug.
 The basic approach is shown in \autoref{fig:basic_pipeline}.  The
 process starts by observing the program's behaviour while operating
 normally so as to build up a model of how it accesses memory.  This
-model then allows {\technique} to locate the parts of the program
-which are most relevant to a particular concurrency error, and hence
-to build {\StateMachines} which more precisely model those areas.
-These {\StateMachines} are then symbolically executed to determine
-whether running the modelled program fragments in parallel could lead
-to a concurrency error and, if so, to generate
-\glspl{verificationcondition} which precisely characterise the
-requirements for them to do so.  These \glspl{verificationcondition}
-are in turn used to construct co-programs which, when loaded into the
-running program, gently shepherd it towards these hypothesised bugs,
-allowing {\technique} to identify and discard any false positives with
-minimal manual intervention.  Any \glspl{verificationcondition} which
-survive this winnowing are then converted into patches which, when
-applied to the program, completely eliminate the bug.
+model allows {\technique} to locate the parts of the program which are
+most relevant to a particular concurrency error, and hence to build
+\emph{\StateMachines} which more precisely model those areas.  These
+     {\StateMachines} are then symbolically executed to determine
+     whether running the modelled program fragments in parallel could
+     lead to a concurrency error and, if so, to generate
+     \glspl{verificationcondition} which precisely characterise the
+     requirements for them to do so.  These
+     \glspl{verificationcondition} are in turn used to construct
+     co-programs which, when loaded into the running program, gently
+     shepherd it towards these hypothesised bugs, allowing
+     {\technique} to identify and discard any false positives with
+     minimal manual intervention.  Any \glspl{verificationcondition}
+     which survive this winnowing are then converted into binary
+     patches which, when applied to the program, completely eliminate
+     the bug.
 
 All of these analyses and transformations are performed on the
 program's machine code, with minimal (or in many non-trivial cases,
@@ -72,21 +74,22 @@ Kivati~\cite{Chew2010} or AFix~\cite{Jin2011}, which operated on
 either LLVM bitcode or the program's original source.  As such,
 {\technique} can be applied to a wider class of programs, as it makes
 no assumptions about the tools used to construct the program, and can
-model the program more accurately, as many concurrency bugs depend on
-details of compiler optimisations which are visible in machine code
-but not at higher levels.  On the other hand, the need to infer
-information which other tools receive as input gives {\technique} much
-higher computational cost, and this can limit its applicability to
-more complicated bugs.  {\Technique} takes the extreme position of
-attempting to analyse concurrency errors with minimal support from the
-program, its environment, or its developers, in some cases sacrificing
-practicality to do so.  As such, while it can, as I demonstrate in the
-evaluation, often be usefully applied to large software systems, such
-as MySQL or Thunderbird, it is perhaps better thought of as an
-exploration of what can be achieved in an unusually hostile analysis
-environment, and hence of the precise trade-offs made when an analysis
-depends on richer input information, rather than as a practical
-program maintenance technique in its own right.
+model the program's concurrency behaviour more accurately, as this
+often depends on details of compiler optimisations which are visible
+in machine code but not at higher levels.  On the other hand, the need
+to infer information which other tools receive as input gives
+{\technique} much higher computational cost, and this can limit its
+applicability to more complicated bugs.  {\Technique} takes the
+extreme position of attempting to analyse concurrency errors with
+minimal support from the program, its environment, or its developers,
+in some cases sacrificing practicality to do so.  As such, while it
+can, as I demonstrate in the evaluation, often be usefully applied to
+large software systems, such as MySQL or Thunderbird, it is perhaps
+better thought of as an exploration of what can be achieved in an
+unusually hostile analysis environment, and hence of the precise
+trade-offs made when an analysis depends on richer input information,
+rather than as a practical program maintenance technique in its own
+right\editorial{That really isn't what I want to be saying.}.
 
 \section{Contributions}
 
@@ -150,12 +153,12 @@ little more detail:
   program to be analysed and how much information about the bug is
   available before analysis starts.
 \end{itemize}
-I refer to bugs which satisfy these constraints as \glspl{simple
-  atomicity violation}, or SAVs.  This clearly does not include every
-possible type of concurrent bug (it does not, for instance, include
-any but the most trivial deadlock bugs, and complicated memory
-corruption bugs are difficult to handle), but does include some
-interesting ones.
+I refer to bugs which satisfy these constraints as \glslink{simple
+  atomicity violation}{Simple Atomicity Violations}, or SAVs.  This
+clearly does not include every possible type of concurrent bug (it
+does not, for instance, include any but the most trivial deadlock
+bugs, and complicated memory corruption bugs are difficult to handle),
+but does include some interesting ones.
 
 \begin{sanefig}
 {\hfill}
@@ -225,7 +228,7 @@ Concurrency bugs in real programs tend to be at least moderately
 difficult to reproduce, as easily reproduced bugs are generally fixed
 quickly.  For this kind of bug, that implies that the local
 computation must take time at least on the same order as operating
-system scheduling effects, which usually ranges from a few tens of
+system scheduling effects, which usually range from a few tens of
 microseconds to a few milliseconds.  On a modern process, that is
 sufficient time to execute thousands to hundreds of thousands of
 instructions, vastly exceeding {\technique}'s \gls{analysiswindow},
@@ -528,6 +531,6 @@ and then moving on to describe how it first reproduces
 itself described, I then give some experimental results obtained with
 my prototype implementation {\implementation} (\autoref{chapter:eval})
 and compare the technique to existing work in this area
-(\autoref{chapter:related_work}).  Finally, I conclude and present
+(\autoref{chapter:related_work}).  Finally, I conclude and suggest
 some possible avenues for future work (Chapters~\ref{sect:fw}
 and~\ref{sect:concl}).

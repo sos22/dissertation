@@ -32,12 +32,12 @@ the section describes them in more detail.
     Stereotyping               & Anomalous behaviour                          & Dynamic         & Anomaly-based IDSes~\cite{Forrest1996a}, Pu and Wei~\cite{Pu2006}, HeapMD~\cite{Chilimbi2006}, DIDUCE~\cite{Hangal2002}, MUVI~\cite{Lu2007} \\
                                &                                              & Static          & Bugs as deviant behaviours~\cite{Engler2001}\\
     \hgreyline
-    Extended assertions        & \multirow{2}{*}{\parbox{5.5cm}{Violations of programmer-identified properties}} & Dynamic        & TESLA~\cite{FFFLocielski2011,Watson2013}\editorial{Need a better cite}, Uppuluri et al.~\cite{Uppuluri2005} \\
+    Extended assertions        & \multirow{2}{*}{\parbox{5.5cm}{Violations of programmer-identified properties}} & Dynamic        & TESLA~\cite{FFFLocielski2011,FFFWatson2013}, Uppuluri et al.~\cite{Uppuluri2005} \\
                                &                                              & Static          & Meta-compilation~\cite{Engler2000a}\\
     \hgreyline
-    Typestate systems          & \multirow{2}{*}{\parbox{5.5cm}{Object access protocol sequencing violations}} & Dynamic & Gradual typestates~\cite{FFFWolff2011}, 2ndStrike~\cite{Gao2011} \\
+    Typestate systems          & \multirow{2}{*}{\parbox{5.5cm}{\raggedright Object access protocol sequencing violations}} & Dynamic & Gradual typestates~\cite{FFFWolff2011}, 2ndStrike~\cite{Gao2011} \\
                                &                                                                             & Static  & Plaid~\cite{Sunshine2011}\\
-                               &                                                                             & Hybrid  & Clara~\cite{Bodden2010}\\
+                               &                                                                             & Hybrid  & Clara~\cite{FFFBodden2010}\\
     \hgreyline
     Symbolic execution         & Most forms of bugs                           & Static          & SLAM~\cite{Ball2011}, KLEE~\cite{Cadar}, JPF~\cite{Havelund2000} \\
                                & Most forms of bugs                           & Hybrid          & S2E~\cite{Chipounov2011} \\
@@ -160,29 +160,13 @@ accesses to memory, determine which parts of that partial order might
 affect the program's operation, and flag a potential error if the
 program is dependent on an unsafe property of the ordering.  A tool
 might, for instance, declare that a program is allowed to depend on
-the order in which threads are granted a lock when they contend for
-it, but that it should not depend on the order of concurrent accesses
-to the same memory location, in which case it would detect some kinds
-of data races.  In principle, it is possible to do this by building
-the entire happens-before graph~\cite{Netzer1991}, but for performance
-reasons most practical tools model only the most relevant part of it
-using a variant of Lamport's vector clock
-algorithm~\cite{Lamport1978}.
-
-Schemes based on this idea can, in principle, be made sound, in the
-sense that they can report every place in a particular program's
-execution which depends on the order in which concurrent operations
-are executed.  Practical implementations, however, compromise
-soundness in order to reduce the false positive rate.  Consider, for
-instance, two programs $P$ and $P'$ where $P'$ is the same as $P$
-except for the introduction of the sequence ``release($x$);
-acquire($x$);'' in some part of the program which holds lock $x$.  It
-is clearly possible for this transformation to introduce additional
-bugs, but the only edges introduced to the partial order will be
-between lock operations.  A tool which reported all of the lock edges
-would have a very high false positive rate for lock-based concurrent
-software, but one which does not cannot distinguish $P$ and $P'$ and
-so must have false negatives.
+the order in which threads are granted a lock when they contend for it
+but that it must not depend on the order of concurrent accesses to the
+same memory location; such a tool would detect some kinds of data
+races.  In principle, it is possible to do this by building the entire
+happens-before graph~\cite{Netzer1991}, but for performance reasons
+most practical tools model only the most relevant part of it using a
+variant of Lamport's vector clock algorithm~\cite{Lamport1978}.
 
 Ordering-based schemes can also be applied statically as in, for
 instance, the Chord static race detector~\cite{Naik2006}.  At a high
@@ -368,18 +352,18 @@ this form are easily identified when implementing \texttt{lock} and
 having the compiler check them automatically can detect a useful
 number of bugs for relatively little cost.
 
-The TESLA project~\cite{FFFLocielski2011,Watson2013}\editorial{still
-  need a better cite} represents another approach to this idea.  In
-the TESLA model, the programmer provides an approximation of the
-desired state machine for some fragment of the program, expressed as a
-formula in a linear-time temporal logic.  This is then compiled into a
-co-program which runs alongside the program and checks that it
-conforms to this state machine.  There are close parallels here with
-{\technique}'s \glspl{bugenforcer}.  It would be interesting to
-combine the two approaches by, for instance, using TESLA assertions as
-input to the \gls{bugenforcer} building algorithm, rather than trying
-to infer them directly from the binary; doing so would simultaneously
-alleviate {\technique}'s greatest weakness, that building
+The TESLA project~\cite{FFFLocielski2011,FFFWatson2013} represents
+another approach to this idea.  In the TESLA model, the programmer
+provides an approximation of the desired state machine for some
+fragment of the program, expressed as a formula in a linear-time
+temporal logic.  This is then compiled into a co-program which runs
+alongside the program and checks that it conforms to this state
+machine.  There are close parallels here with {\technique}'s
+\glspl{bugenforcer}.  It would be interesting to combine the two
+approaches by, for instance, using TESLA assertions as input to the
+\gls{bugenforcer} building algorithm, rather than trying to infer them
+directly from the binary; doing so would simultaneously alleviate
+{\technique}'s greatest weakness, that building
 \glspl{verificationcondition} is difficult for complex bugs, and
 increase TESLA's ability to reproduce rare behaviour.
 
@@ -394,7 +378,7 @@ assertions are typically checked at run time~\cite{FFFWolff2011},
 whether in an ad-hoc~\cite[pages~305--314]{Gamma1995} or
 systematic~\cite{Aldrich2009} manner, but can also in some cases be
 checked statically~\cite{Lam2005}.  Some systems, such as
-Clara~\cite{Bodden2010}, take an intermediate position between these
+Clara~\cite{FFFBodden2010}, take an intermediate position between these
 two extremes, checking as much as possible statically and deferring
 the rest to run time.  This gives them a great deal of flexibility to
 trade the incompleteness of dynamic analysis off against the high
@@ -451,11 +435,11 @@ terms of the inputs to the program.\fnote{KLEE itself can be
   this is not the same as exploring parallel schedules in the program
   under test.}  It would be possible to combine the two techniques by,
 for instance, using KLEE to find program inputs which allow
-{\technique} enforcer side-conditions to be satisfied.  This would
-mitigate {\technique}'s most important weakness, that most of the
-enforcers it generates require conditions which the program can never
-actually reach, and increase KLEE's ability to find interesting
-concurrency bugs.
+{\technique} enforcer side-conditions to be satisfied.  Such a
+composite system would represent a useful improvement on KLEE, by
+increasing its ability to find interesting concurrency bugs, and on
+{\technique}, by reducing the number of enforcer's with unsatisfiable
+side conditions which require run-time checking.
 
 SLAM~\cite{Ball2011}, and the many systems based on it, such as
 SLAyer~\cite{Berdine2011} and Terminator~\cite{Cook2006a}, is another
@@ -599,11 +583,11 @@ implementation did this by forcing functions to return immediately
 with an error value, obtained by type analysis on the source code;
 this was refined in the ASSURE system~\cite{Sidiroglou2009} to instead
 take snapshots at places where it is convenient to inject errors and
-then roll back when an error is detected.  Of course, error handling
-is often rather buggy itself, and so recovery to error handling is not
-always useful.  This issue was investigated in detail by
-S\"{u}\ss{}kraut et al.~\cite{FFFSusskraut2006}, who also propose some
-techniques for automatically improving its robustness.
+then roll back when an error is detected.  Unfortunately, error
+handling is often rather buggy itself, and so recovery to error
+handling is not always useful.  This issue was investigated in detail
+by S\"{u}\ss{}kraut et al.~\cite{FFFSusskraut2006}, who also propose
+some techniques for automatically improving its robustness.
 
 One potentially interesting approach, proposed by Elkarablieh et
 al.~\cite{Elkarablieh2007} in a slightly different context, would be
@@ -650,18 +634,18 @@ benefits of DieHard while noticeably reducing its overhead in the
 common case where only a small number of allocations actually need
 padding.
 
-The AutoPaG system~\cite{Lin2007} tackled a related problem, that of
+The AutoPaG system~\cite{Lin2007} tackled the related problem of
 overflows of stack-based buffers.  In this work, the authors assume
 that a buffer overflow has already been identified by some mechanism
-(a CCured~\cite{Necula2005}-like safe compiler in the paper, but others
-are possible), and then apply static analysis to find its root cause
-at the source code level.  They then generate a source-level patch
-which redirects any out-of-bounds accesses to the array back to a safe
-location, in what is essentially a variant of failure obliviousness.
-This allows them to mask the bug until a true fix can be obtained,
-with very low run-time overhead in both time and space.
-Unfortunately, their static analysis is not complete, and so they
-must occasionally fall back to a dynamic scheme.
+(a CCured~\cite{Necula2005}-like safe compiler in the paper, but
+others are possible), and then apply static analysis to find its root
+cause at the source code level.  They then generate a source-level
+patch which redirects any out-of-bounds accesses to the array back to
+a safe location, in what is essentially a variant of failure
+obliviousness.  This allows them to mask the bug until a true fix can
+be obtained, with very low run-time overhead in both time and space.
+Unfortunately, their static analysis is not complete, and so they must
+occasionally fall back to a dynamic scheme.
 
 \subsection{Input rectification}
 
@@ -673,7 +657,7 @@ gone wrong, it rolls the program to an earlier checkpoint and then
 replays it in a slightly different environment, with slightly
 different inputs and a slightly different thread schedule, in the hope
 that doing so will avoid the bug.  When it finds a strategy which
-works it caches the details of the modifications it made, so that next
+works it caches the details of the modifications it made so that next
 time it encounters a similar failure it can simply repeat those
 modifications.  In this way it is able to protect the program from the
 dangerous inputs without needing any knowledge of the program
@@ -800,7 +784,7 @@ incorrect ones.  \textsc{Isolator}~\cite{Ramalingam2009} fixes this
 defect by introducing implicit per-page locks enforced using virtual
 memory techniques.  However, it is still necessary for the programmer
 to provide a manually-specified locking discipline, which makes these
-techniques difficult to use in practise.
+techniques difficult to use in practice.
 
 AVIO~\cite{Lu} is another approach to automatically fixing
 concurrency-related bugs.  It is essentially the application of
@@ -811,7 +795,7 @@ accesses interleave when it is behaving normally, and future
 executions are then shepherded so that only those normal interleavings
 are possible.  The intuition here is that bugs are unusual events, and
 so preventing anything unusual from happening will prevent any bugs
-from occurring.  The weakness, of course, is that sometimes something
+from occurring.  The flaw in this approach is that sometimes something
 unusual does happen (if, for instance, the program receives some input
 which was not adequately covered by the training data), and AVIO will
 be unable to provide protection in this case.  AVIO also has the
@@ -915,11 +899,11 @@ hence to ensure that the bad features of the schedule never reproduce.
 Assuming that the cause of the misbehaviour has been correctly
 identified, this eliminates the bug.  Because threads never need to
 roll back, there is no danger of a rollback failing, and Aviso can
-protect against a broader class of bugs than ConAir.  The downside, of
-course, is that threads never roll back, and so any misbehaviour in a
-thread will be externally visible, whereas ConAir's rollback strategy
-can often fix the damage caused by the race before it can propagate
-outside of the one afflicted thread.
+protect against a broader class of bugs than ConAir.  The
+disadvantage, of course, is that threads never roll back, and so any
+misbehaviour in a thread will be externally visible, whereas ConAir's
+rollback strategy can often fix the damage caused by the race before
+it can propagate outside of the one afflicted thread.
 
 \subsection{Deadlock bugs}
 The final class of bugs considered here is deadlocks.  Techniques for
@@ -947,14 +931,14 @@ graph (rather than the optimistic one produced by a dynamic analysis).
 Second, they use discrete control theory to derive a ``controller''
 co-program which inserts delays in the dynamic program execution in
 some minimal set of places so as to avoid deadlocks, without
-introducing unnecessary serialisation.  Of course, the use of a
-conservative approximation means that they will occasionally defend
-against a deadlock which is already impossible, and this will lead to
-additional redundant synchronisation operations; it is unclear from
-the paper whether Gadara-protected systems are more or less serialised
-than Nir-Buchbinder-protected ones.  At a high-level this controller
-is similar to the message-passing machines used in {\technique}'s
-crash enforcers, although the details and purpose of the technique are
+introducing unnecessary serialisation.  The use of a conservative
+approximation means that they will occasionally defend against a
+deadlock which is already impossible, and this will lead to additional
+redundant synchronisation operations; it is unclear from the paper
+whether Gadara-protected systems are more or less serialised than
+Nir-Buchbinder-protected ones.  At a high-level this controller is
+similar to the message-passing machines used in {\technique}'s crash
+enforcers, although the details and purpose of the technique are
 significantly different.
 
 It is also possible to make progress on these problems in a purely
@@ -1113,15 +1097,15 @@ under certain circumstances.  Compared to these prior systems,
   targeted, static changes to a program's machine code without access
   to any more abstract representations.
 \end{itemize}
-Of course, these features imply certain weaknesses as well as
-strengths.  In particular, \gls{bugenforcer}'s use of those
-non-concurrency preconditions means that {\technique} must perform an
-initial analysis step to discover what they are, and operating at such
-a low level of abstraction means that that analysis is comparatively
-expensive.  These weaknesses could, to some extent, be mitigated by
-incorporating insights, or even implementations, from some of these
-previous systems; I have indicated in the preceding text where I
-believe that this would be most profitable.
+These features imply certain weaknesses as well as strengths.  In
+particular, \gls{bugenforcer}'s use of those non-concurrency
+preconditions means that {\technique} must perform an initial analysis
+step to discover what they are, and operating at such a low level of
+abstraction means that that analysis is comparatively expensive.
+These weaknesses could, to some extent, be mitigated by incorporating
+insights, or even implementations, from some of these previous
+systems; I have indicated in the preceding text where I believe that
+this would be most profitable.
 
 Even with these refinements, it is unlikely that techniques derived
 from {\technique} will ever be truly light-weight: a {\technique}

@@ -155,9 +155,9 @@ ensures that it completes in a finite number of steps, greatly
 simplifying later analysis.  Of course, this also implies that the
 resulting {\StateMachine} will only be able to capture the behaviour
 of finite fragments of the program's execution but, since
-{\StateMachines} are only used to investigate \glspl{simple atomicity
-  violation} which involve at most \gls{alpha} instructions, this does
-not cause any actual problems.
+{\StateMachines} are only used to investigate \glslink{simple
+  atomicity violation}{SAVs} which involve at most \gls{alpha}
+instructions, this does not cause any actual problems.
 
 Second, and more subtly, the use of a \gls{dynamic cfg} also makes it
 meaningful to talk about whether one access happens before or after
@@ -186,6 +186,7 @@ than meaningful: \glspl{verificationcondition} are used primarily to
 build \glspl{bugenforcer}, which are themselves inherently incomplete,
 so minor lacunae in the \gls{cfg} cause few real problems.
 
+\addtocounter{figure}{1}
 \begin{wrapfigure}{o}{3.9cm}
 \vspace{-16pt}
 \begin{figgure}
@@ -218,6 +219,7 @@ so minor lacunae in the \gls{cfg} cause few real problems.
 \end{figgure}
 \vspace{-8pt}
 \end{wrapfigure}
+\addtocounter{figure}{-2}
 Once an appropriate \gls{static cfg} has been built, {\technique}
 converts it to a dynamic one by unrolling any loops.
 \autoref{fig:cyclic_cfg} gives an example.  The \gls{static cfg}, on
@@ -261,6 +263,8 @@ must be removed in a way which maintains all paths of length
 \label{fig:derive:read:unroll_cycle_break}
 \end{sanefig}
 
+\addtocounter{figure}{1}
+
 This might appear, on the face of it, to be a rather expensive
 algorithm: it must explore every path of length \gls{alpha} ending at
 the crashing instruction, and the number of such paths is potentially
@@ -277,7 +281,7 @@ analysis time.
 The algorithm given in \autoref{sect:derive:build_crashing_cfg}
 assumed that the \gls{crashing instruction} was somehow
 pre-identified, but {\technique} can also be used to discover unknown
-bugs, in which case the \gls{crashing instruction} is initially
+bugs, for which the \gls{crashing instruction} is initially
 mysterious.  {\Technique} discovers it by brute force: it enumerates
 every possible \gls{crashing instruction} in the program, for a given
 class of bug, and attempts to generate \glspl{verificationcondition}
@@ -396,7 +400,7 @@ suffer some fatal error other than the bug of interest.
 \hdashline
  & \state{Assert}               & \state{expr} & Boolean expression & Note that a given condition is true at a particular point in the {\StateMachine}'s execution. \\
 \hdashline
- & $\Phi$                       &              &                 & Implement an SSA $\Phi$ node~\cite{cytron1991}. \\
+ & $\Phi$                       &              &                 & Implement an SSA $\Phi$ node. \\
 \hdashline
  & {\stStartAtomic}          &              &                 & \multirow{3}{6.05cm}{Delimit atomic blocks, used to constrain the set of schedules which must be considered; see \autoref{sect:using:build_cross_product}.} \\
  & {\stEndAtomic}            \\
@@ -930,19 +934,19 @@ any instructions prior to the first member of $\beta$.  Suppose, for
 instance, that the \gls{interferingthread} consists of the instruction
 sequence $aBc$, where $a$ is some sequence of instructions none of
 which belong to $\beta$, $B$ is a member of $\beta$, and $c$ is
-another sequence of instructions.  Any \glspl{sav} which could be
-derived by racing the \gls{crashingthread} {\StateMachine} against the
-interfering instruction sequence $aBc$ could also be derived by racing
-it against the sequence $Bc$.  $a$ cannot directly influence the
-\gls{crashingthread}, by definition, and so its only possible effect
-is on the behaviour of the \gls{interferingthread}, by restricting the
-possible values of program memory and registers when it starts.
-{\Technique} will generate a \gls{verificationcondition} if \emph{any}
-possible initial values could lead to an atomicity violation, and the
-set of possible values after running $a$ is clearly a subset of the
-set of all possible values, and so discarding $a$ can never lead to
-any possible \glspl{sav} being omitted.  It is therefore always safe to
-do so.
+another sequence of instructions.  Any \glslink{sav}{SAVs} which could
+be derived by racing the \gls{crashingthread} {\StateMachine} against
+the interfering instruction sequence $aBc$ could also be derived by
+racing it against the sequence $Bc$.  $a$ cannot directly influence
+the \gls{crashingthread}, by definition, and so its only possible
+effect is on the behaviour of the \gls{interferingthread}, by
+restricting the possible values of program memory and registers when
+it starts.  {\Technique} will generate a \gls{verificationcondition}
+if \emph{any} possible initial values could lead to an atomicity
+violation, and the set of possible values after running $a$ is clearly
+a subset of the set of all possible values, and so discarding $a$ can
+never lead to any possible \glspl{sav} being omitted.  It is therefore
+always safe to do so.
 
 While safe, it is not always desirable to discard $a$ if the
 restricted set of initial values would have been easier to analyse.
@@ -1022,16 +1026,16 @@ considered in turn by the rest of the analysis.
 The static interfering \glspl{cfg} are converted to dynamic ones using
 the \textsc{staticToDynamicInterfering} algorithm given in
 \autoref{fig:derive:store_cfg_unroll_alg}.  This is more complicated
-than the \textsc{staticToDynamicCrashing}.  In particular, determining
-whether a loop has been sufficiently unrolled is more difficult: where
-the \gls{crashingthread} algorithm preserves \gls{alpha}-instruction
-paths which end at the (single) \gls{crashing instruction}, and so
-need only track an instruction's distance from that \gls{crashing
-  instruction}, the \gls{interferingthread} one must preserve those
-which go between any member of $\beta$ and any member of $i2c$,
-requiring a more complicated notion of node position.  In this
-algorithm, the position of a node in the graph is given by two maps,
-$\mathit{min\_from}$ and $\mathit{min\_to}$:
+than the \textsc{staticToDynamicCrashing} algorithm given earlier.  In
+particular, determining whether a loop has been sufficiently unrolled
+is more difficult: where the \gls{crashingthread} algorithm preserves
+\gls{alpha}-instruction paths which end at the (single) \gls{crashing
+  instruction}, and so need only track an instruction's distance from
+that \gls{crashing instruction}, the \gls{interferingthread} one must
+preserve those which go between any member of $\beta$ and any member
+of $i2c$, requiring a more complicated notion of node position.  In
+this algorithm, the position of a node in the graph is given by two
+maps, $\mathit{min\_from}$ and $\mathit{min\_to}$:
 \begin{itemize}
 \item
   $\mathit{min\_from}_l(c)$ is the number of instructions on the
@@ -1398,6 +1402,8 @@ until the graph becomes completely acyclic:
 \noindent
 As desired, the graph has been rendered acyclic while preserving all
 paths of length up to five instructions between $\beta$ and $i2c$.
+The resulting \gls{dynamic cfg} can now be converted to
+{\AStateMachine}.
 
 \section{Generating a verification condition}
 \label{sect:using:check_realness}
@@ -1984,7 +1990,7 @@ directly:
 \begin{itemize}
 \item Production \production{1'} corresponds to productions
   \production{1_a} and \production{1_b} in the simple grammar,
-  production \production{2'} to \production{2} and \production{3'} to
+  production \production{2'} to \production{2}, and \production{3'} to
   \production{3}.  These need no further explanation.
 \item Production \production{4'} allows either of the {\StateMachines}
   to advance past a local side effect without needing to perform a
@@ -2137,7 +2143,7 @@ There is also an engineering consideration which argues in favour of
 building and simplifying the cross-product {\StateMachine} rather than
 integrating equivalent optimisations into the symbolic execution
 engine: {\implementation} already needs all of the simplifiers in
-order to build the input {\StateMachines}, and so re-using them here
+order to build the input {\StateMachines} and so re-using them here
 halves the implementation effort.
 
 \begin{sanefig}
@@ -2172,7 +2178,7 @@ from being applied to realistically large programs.  In the case of
   can be satisfied.  If there are $n$ \state{Load}s and $m$
   \state{Store}s then the number of such patterns to be considered is
   $O((m+1)^n)$, which grows very quickly in the number of accesses.
-  The use of lazy alias resolution helps mitigate this to some extent,
+  The use of lazy alias resolution helps mitigate this to some extent
   but does not eliminate it completely.  This represents one of the
   major limitations to \technique's scalability.
 \item
@@ -2301,21 +2307,20 @@ program instructions, and so this is generally reasonably precise
 despite being completely flow- and context-insensitive.
 
 The chief weakness of this approach (aside from the fact that, as a
-dynamic analysis, it inherently commits the inductive fallacy) is that
-it must be able to tell when the type of structure stored at a
-particular memory location changes.  For most programs, that means
-that it must be able to identify dynamic memory management functions,
-and in particular functions such as \texttt{free} which release
-memory.  Failing to correctly identify these functions will
-effectively merge all of the structures managed by a particular
-allocator, potentially leading to a very imprecise analysis.
-{\Technique} relies on the user to manually identify these functions.
-This is not an unreasonable burden: most programs rely on allocation
-functions in libraries, which only have to be identified once for all
-users of the library, and the remainder generally use only a very
-small number of custom allocators.  MySQL, for instance, had only two
-functions which needed to be annotated, and Thunderbird and pbzip2 had
-none.
+dynamic analysis, it is inherently incomplete) is that it must be able
+to tell when the type of structure stored at a particular memory
+location changes.  For most programs, that means that it must be able
+to identify dynamic memory management functions, and in particular
+functions such as \texttt{free} which release memory.  Failing to
+correctly identify these functions will effectively merge all of the
+structures managed by a particular allocator, potentially leading to a
+very imprecise analysis.  {\Technique} relies on the user to manually
+identify these functions.  This is not an unreasonable burden: most
+programs rely on allocation functions in libraries, which only have to
+be identified once for all users of the library, and the remainder
+generally use only a very small number of custom allocators.  MySQL,
+for instance, had only two functions which needed to be annotated, and
+Thunderbird and pbzip2 had none.
 
 \subsubsection{Escape analysis}
 {\Implementation} includes one minor refinement to the basic dynamic
@@ -2328,8 +2333,8 @@ excessive time considering what would happen if they did.
 \texttt{malloc} as thread-local, and they remain so until a pointer to
 them is stored in non-stack memory.  Entries in the aliasing table
 include a flag indicating whether the access is thread-private or
-potentially racing, and this is used by later phases of the analysis
-to constrain the aliasing problem.
+potentially racing and this is used by later phases of the analysis to
+constrain the aliasing problem.
 
 This policy might seem to be overly conservative, in that a block of
 memory is marked as shared whenever a pointer to it is stored into any
@@ -2379,7 +2384,7 @@ will produce incorrect results if the program makes use of them in the
 they have very poor performance on most modern
 processors,\kern-.1pt\fnote{Indeed, many processors do not support
   unaligned accesses at all and require them to be emulated in the
-  operating system, and performance in that case is generally abysmal
+  operating system, and performance in that case is generally dreadful
   rather than merely poor.} and removing this limitation would
 complicate alias analysis even for programs which never make unaligned
 accesses.  Alias analysis is already one of the main factors limiting

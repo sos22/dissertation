@@ -101,10 +101,10 @@ the same crashing thread as the previous example but an interfering
 thread in which the pointer is assigned to twice, as shown in
 \autoref{fig:fix_bug:complex_local2}.  The fix generating process must
 now decide whether to release the lock between \texttt{8a} and
-\texttt{8b}; or, equivalently, it must decide whether to use two
-critical sections, each covering a single instruction, or a single
-section which covers both.  Either approach will correctly eliminate
-the bug, but with different performance characteristics: dropping and
+\texttt{8b}; equivalently, it must decide whether to use two critical
+sections, each covering a single instruction, or a single section
+which covers both.  Either approach will correctly eliminate the bug,
+but with different performance characteristics: dropping and
 reacquiring the lock reduces the duration of the critical sections,
 and so will improve the program's liveness properties, but increases
 the number of lock operations, and so will degrade the program's
@@ -245,17 +245,15 @@ but the patch strategy was in this case unable to do so and instead
 gained control at A.  The resulting \gls{shadowfragment} starts by
 emulating A, compensating for the patch strategy's deficiency, before
 acquiring the lock.  It then proceeds to emulate the original program
-loop under the lock, until the branch at C indicates that the loop
+loop under the lock until the branch at C indicates that the loop
 should finish.  At that point, the \gls{shadowfragment} releases the
 lock and returns the program to its normal operation by branching to
-the original instruction B.
+the original instruction D.
 
 The \glspl{cfg} involved in building a fix can usefully be read as
-regular automata.  The static and shadow \glspl{cfg} effectively
-generate streams of instructions, and
-the dynamic one
+regular automata.  The
 \begin{wrapfigure}{o}{4.4cm}
-  \vspace{-12pt}
+  \vspace{3pt}
   \begin{figgure}
     \centerline{
   \begin{tikzpicture}[node distance = 0.5]
@@ -284,14 +282,14 @@ the dynamic one
   }
   \caption{Lock discipline automaton.  The \texttt{jmp} state matches
     transfers of control back to the original program and the * states
-    any ordinary instruction.}
+    any ordinary (non-\texttt{jmp}, non-lock) instruction.}
   \label{fig:fix:lock_discipline}
   \end{figgure}
-  \vspace{-12pt}
 \end{wrapfigure}
-recognises fragments of those streams.  This provides a convenient way
-of describing the correctness requirements for the
-\gls{shadowfragment}:
+static and shadow \glspl{cfg} effectively generate streams of
+instructions, and the dynamic one recognises fragments of those
+streams.  This provides a convenient way of describing the correctness
+requirements for the \gls{shadowfragment}:
 \begin{enumerate}
 \item It must correctly emulate the \gls{static cfg}, in the sense of
   generating the same sequences of instructions (ignoring lock acquire
@@ -716,9 +714,8 @@ abandoning its attempt to impose the desired
 synchronisation.\kern-1.25pt\fnote{At the level of the graph grammar,
   this means that production \production{2_a} is extended to branch to
   \graphNT{X, $\varnothing$, $\mathit{unheld}$, \textbf{Return}} when
-  lock acquisition fails.}  This risks re-introducing the original
-bug, but ensures that {\technique} will never introduce any new
-deadlocks.
+  lock acquisition fails.}  This risks re-introducing the original bug
+but ensures that {\technique} will never introduce any new deadlocks.
 
 \section{Control flow}
 Most instructions in the input \gls{cfg} will be copied verbatim to
@@ -784,7 +781,7 @@ program branch's possible targets.  There are three cases to consider:
   $\mathit{dynamic}$ field of the \textsc{Configuration} becomes
   empty, but it cannot safely return the program to normal operation.
   The \gls{shadowfragment} must select the non-terminal \graphNT{X,
-    $\varnothing$, $l$, \textbf{Unlock}}, and the grammar must ensure
+    $\varnothing$, $l$, \textbf{Unlock}} and the grammar must ensure
   that that non-terminal is generated.
 \item Finally, the branch might select a successor X such that
   $\mathit{adv}(\textrm{X}, \alpha)$ is empty and $\mathrm{X} \not\in
@@ -881,8 +878,8 @@ eliminate the original bug, all without further manual intervention.
 The resulting fixes consist of duplicated copies of the buggy code
 with the minimal changes necessary to introduce the desired
 synchronisation, and so performance will generally be similar to that
-of the original program, beyond the necessary loss of concurrency and
-lock overheads.  Further, the patch generation algorithm is itself
+of the original program (beyond the lock overheads and necessary loss
+of concurrency).  Further, the patch generation algorithm is itself
 sufficiently simple that it could plausibly be implemented correctly,
 helping to give confidence that the generated fixes will not
 themselves introduce additional bugs.
