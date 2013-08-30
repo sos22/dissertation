@@ -250,46 +250,42 @@ should finish.  At that point, the \gls{shadowfragment} releases the
 lock and returns the program to its normal operation by branching to
 the original instruction D.
 
-The \glspl{cfg} involved in building a fix can usefully be read as
-regular automata.  The static and shadow \glspl{cfg} effectively
-generate streams of instructions, and the dynamic one
-\begin{wrapfigure}{o}{4.4cm}
-  \vspace{-16pt}
-  \begin{figgure}
-    \centerline{
-  \begin{tikzpicture}[node distance = 0.5]
-    \node (A) {*} edge [in=150,out=210,loop] ();
-    \node [right = 0.5 of A] (E) {\texttt{jmp}};
-    \node [below = of A] (B) {\shortstack{Acquire\\lock}};
-    \node [below = of B] (C) {*} edge [in=150,out=210,loop] ();
-    \node [below = of C] (D) {\shortstack{Release\\lock}};
-    \node [left = .8 of A] {\shortstack[r]{Lock\\unheld}};
-    \node [left = .8 of C] {\shortstack[r]{Lock\\held}};
+\begin{sanefig}
+  \centerline{
+  \begin{tikzpicture}[node distance = 2]
+    \node (A) {*} edge [in=60,out=120,loop] ();
+    \node [right = of A] (B) {\shortstack[c]{Acquire\\lock}};
+    \node [right = of B] (C) {*} edge [in=60,out=120,loop] ();
+    \node [right = of C] (D) {\shortstack[c]{Release\\lock}};
+    \node [below = 0.5 of A] (E) {\texttt{jmp}};
     \draw[->] (A) -- (B);
     \draw[->] (B) -- (C);
     \draw[->] (C) -- (D);
     \draw[->] (A) -- (E);
-    \draw[->] (D.south)
-      ..controls +(0,-.1) and +(.1,0) .. ++(-.2,-.2)
-      -- ++(-.6,0)
-      ..controls +(-.1,0) and +(0,-.1) .. ++(-.2,.2)
-      -- ++(0,4.9)
-      ..controls +(0,.1) and +(-.1,0) .. ++(.2,.2)
-      -- ++(.6,0)
-      ..controls +(.1,0) and +(0,.1) .. ++(.2,-.2)
-      -- (A.north);
-    \draw[->] (A.north) ++(0,.5) -- (A.north);
+    \draw[->] (D.east)
+      ..controls +(0.3,0) and +(0,-.3).. ++ (.5, .5)
+      -- ++(0,.3)
+      ..controls +(0,0.3) and +(0.3,0).. ++ (-.5, .5)
+      -- ++(-10.4,0)
+      ..controls +(-0.3,0) and +(0,.3).. ++ (-.5, -.5)
+      -- ++(0,-.3)
+      ..controls +(0,-0.3) and +(-0.3,0).. ++(.5, -.5)
+      -- (A.west)
+      ;
+    \draw[->] (A.west) ++(-1.0,0) -- (A.west);
   \end{tikzpicture}
   }
   \caption{Lock discipline automaton.  The \texttt{jmp} state matches
     transfers of control back to the original program and the * states
     any ordinary (non-\texttt{jmp}, non-lock) instruction.}
   \label{fig:fix:lock_discipline}
-  \end{figgure}
-\end{wrapfigure}
-recognises fragments of those streams.  This provides a convenient way
-of describing the correctness requirements for the
-\gls{shadowfragment}:
+\end{sanefig}
+
+The \glspl{cfg} involved in building a fix can usefully be read as
+regular automata.  The static and shadow \glspl{cfg} effectively
+generate streams of instructions, and the dynamic one recognises
+fragments of those streams.  This provides a convenient way of
+describing the correctness requirements for the \gls{shadowfragment}:
 \begin{enumerate}
 \item It must correctly emulate the \gls{static cfg}, in the sense of
   generating the same sequences of instructions (ignoring lock acquire
@@ -467,7 +463,7 @@ regular automata:
 \item $\mathit{lock}$ gives the position in the lock discipline
   automaton; and
 \item $\mathit{phase}$ records the program's progress through the
-  various phases within a particular instruction.
+  phases within an instruction.
 \end{itemize}
 The grammar makes use of two utility functions:
 \begin{itemize}
