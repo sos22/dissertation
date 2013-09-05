@@ -93,20 +93,20 @@ unpromising context.
 This dissertation makes several contributions:
 \begin{itemize}
 \item
-  Suggest a novel method of finding and characterising
+  Suggests a novel method of finding and characterising
   concurrency-related bugs given only a binary program and some way of
-  running it.
+  running it;
 \item
-  Describe how these characterisations can be used to automatically
-  fix the bug or to make it more easily reproducible.
+  Describes how these characterisations can be used to automatically
+  fix the bug or to make it more easily reproducible; and
 \item
-  Evaluate the effectiveness and costs of these techniques with
+  Evaluates the effectiveness and costs of these techniques with
   respect to a number of real and artificial test programs.
 \end{itemize}
 I give a detailed description of {\technique} and some results
 obtained using \implementation, my prototype implementation.  These
-include details of the fixes generated for a selection of bugs, both
-artificial ones and some from real programs (including two which were
+include details of the fixes generated for a selection of bugs, some
+artificial and some from real programs (including two which were
 unknown to me before writing the tool), along with a demonstration
 that the analysis scales to realistically large programs with
 acceptable computational cost.  I also show that the fixes generated
@@ -154,8 +154,7 @@ I refer to bugs which satisfy these constraints as \glslink{simple
   atomicity violation}{Simple Atomicity Violations}, or SAVs.  This
 clearly does not include every possible type of concurrent bug (it
 does not, for instance, include any but the most trivial deadlock
-bugs, and complicated memory corruption bugs are difficult to handle),
-but does include some interesting ones.
+bugs), but does include some interesting ones.
 
 \begin{sanefig}
 {\hfill}
@@ -196,20 +195,21 @@ Crashing thread:          & Interfering thread: \\
 \end{sanefig}
 
 \subsection{Order-violation bugs}
+\smh{Move to eval, or generally later}
 The class of bugs described above does not include order violation
 bugs, and so {\technique} will never report any.  Order violation bugs
 in the program can, however, still sometimes affect the results.
 Consider, for instance, the threads shown in
 \autoref{fig:mandatory_concurrency1}.  These threads have an order
 violation bug, in that the thread on the left will crash if it gets
-from statement 2 to statement 3 before the thread on the right
+from statement 2 to statement 4 before the thread on the right
 executes.  Running the left-hand thread in isolation always leads to a
 crash and so, within the definition used by {\technique}, this program
 does not have a concurrency bug and no bug will be discovered,
 reproduced, or fixed.
 
-Suppose now that the ordering violation bug is fixed as shown in
-\autoref{fig:mandatory_concurrency2}.  This program is ``more
+Suppose now that the ordering violation bug is transformed to the one
+shown in \autoref{fig:mandatory_concurrency2}.  This program is ``more
 correct'' than the previous one, in the sense that any instruction
 interleaving which causes the new program to crash will also crash the
 old one and some which crash the old will not crash the new, but
@@ -285,6 +285,7 @@ the strongest safety property which can be hoped for.
   {\hfill}
   \tikzstyle{graphNT}+=[text width=1cm,fill=white]
   \begin{tabular}{lcclccrcc}
+    \\
     \graphNT{$n$} & $\Rightarrow$ & \raisebox{-6mm}{\begin{tikzpicture}
         \node (n) {A};
         \node (nn) [style=graphNT, below=.5 of n] {$3n+1$};
@@ -297,6 +298,7 @@ the strongest safety property which can be hoped for.
         \draw[->] (2) -- (1);
       \end{tikzpicture}
     } & \production{3} \\
+    \\
     \graphNT{$m$} & $\Rightarrow$ & \raisebox{-6mm}{\begin{tikzpicture}
         \node (m) {B};
         \node (mm) [style=graphNT, below left =.5 of m] {$\frac{m}{2}$};
@@ -311,6 +313,7 @@ the strongest safety property which can be hoped for.
         \draw[->] (4) -- (2);
       \end{tikzpicture}
     } & \production{4} \\
+    \\
   \end{tabular}
   {\hfill}
   \caption{Productions for the example graph generating grammar.  The
@@ -531,3 +534,6 @@ and compare the technique to existing work in this area
 (\autoref{chapter:related_work}).  Finally, I conclude and suggest
 some possible avenues for future work (Chapters~\ref{sect:fw}
 and~\ref{sect:concl}).
+
+
+\smh{Need a thesis statement explicitly somewhere}

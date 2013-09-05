@@ -15,8 +15,8 @@ follows:
   details are given in \autoref{sect:derive:build_crashing_cfg}, in
   the case where the crashing instruction is known in advance, and
   \autoref{sect:derive:unknown_bugs}, in the case where it is not.
-\item Decompile the \gls{crashingthread}'s \gls{cfg} into
-  {\AStateMachine}.  The {\StateMachine} abstraction is described in
+\item Decompile the \gls{crashingthread}'s \gls{cfg} into an
+  \emph{approximant}.  The {\StateMachine} abstraction is described in
   \autoref{sect:derive:state_machines} and the decompilation process
   in \autoref{sect:derive:compile_cfg}.
 \item Simplify the {\StateMachine}.  {\STateMachines}, when initially
@@ -157,7 +157,7 @@ resulting {\StateMachine} will only be able to capture the behaviour
 of finite fragments of the program's execution but, since
 {\StateMachines} are only used to investigate \glslink{simple
   atomicity violation}{SAVs} which involve at most \gls{alpha}
-instructions, this does not cause any actual problems.
+instructions, this is not in practice a problem.
 
 Second, and more subtly, the use of a \gls{dynamic cfg} also makes it
 meaningful to talk about whether one access happens before or after
@@ -169,24 +169,24 @@ characterise the circumstances under which a concurrency bug will
 reproduce.  Dynamic instructions happen at most once, by definition,
 avoiding the issue completely.
 
-As indicated above, the \gls{static cfg} for a bug is built by taking
-the complete program \gls{static cfg} and trimming it to contain only
-the relevant instructions.  This presumes that {\technique} is able to
-generate the complete \gls{cfg} in the first place.  {\Technique} does
-so using a standard recursive traversal disassembler~\cite{Schwarz}.
-Information from the dynamic analysis is used to identify instructions
-in the program which can be branched to by library code, and such
-instructions are used as roots of the traversal.  Information from the
-dynamic analysis is also used to locate possible targets of computed
-branch instructions.  As it is collected from a dynamic analysis, this
-information is potentially incomplete, and so the program \gls{cfg}
-might also be incomplete, and so might, ultimately, be the eventual
-set of \glspl{verificationcondition}.  This weakness is more aesthetic
-than meaningful: \glspl{verificationcondition} are used primarily to
-build \glspl{bugenforcer}, which are themselves inherently incomplete,
-so minor lacunae in the \gls{cfg} cause few real problems.
+As indicated above, the \gls{static cfg} used when analysing a
+particular bug is built by taking the complete program \gls{static
+  cfg} and trimming it to contain only the relevant instructions.
+This presumes that {\technique} is able to generate the complete
+\gls{cfg} in the first place.  {\Technique} does so using a standard
+recursive traversal disassembler~\cite{Schwarz}.  Information from the
+dynamic analysis is used to identify instructions in the program which
+can be branched to by library code, and such instructions are used as
+roots of the traversal.  Information from the dynamic analysis is also
+used to locate possible targets of computed branch instructions.  As
+it is collected from a dynamic analysis, this information is
+potentially incomplete, and so the program \gls{cfg} might also be
+incomplete, and so might, ultimately, be the eventual set of
+\glspl{verificationcondition}.  This weakness is more aesthetic than
+meaningful: \glspl{verificationcondition} are used primarily to build
+\glspl{bugenforcer}, which are themselves inherently incomplete, so
+minor lacunae in the \gls{cfg} cause few real problems.
 
-\addtocounter{figure}{1}
 \begin{wrapfigure}{r}{3.9cm}
 \vspace{-19pt}
 \begin{figgure}
@@ -213,13 +213,12 @@ so minor lacunae in the \gls{cfg} cause few real problems.
 \end{tikzpicture}
 \caption{Fully unrolled version of the CFG in
   \autoref{fig:cyclic_cfg}, preserving all paths of length six or
-  less.}
+  less. \smh{Not refed from text here (although it is used much later)}}
 \label{fig:unrolled_cyclic_cfg}
 \vspace{-4pt}
 \end{figgure}
 \vspace{-8pt}
 \end{wrapfigure}
-\addtocounter{figure}{-2}
 Once an appropriate \gls{static cfg} has been built, {\technique}
 converts it to a dynamic one by unrolling any loops.
 \autoref{fig:cyclic_cfg} gives an example.  The \gls{static cfg}, on
@@ -262,8 +261,6 @@ must be removed in a way which maintains all paths of length
   first edge which completes a cycle.}
 \label{fig:derive:read:unroll_cycle_break}
 \end{sanefig}
-
-\addtocounter{figure}{1}
 
 This might appear, on the face of it, to be a rather expensive
 algorithm: it must explore every path of length \gls{alpha} ending at
@@ -318,6 +315,7 @@ crashing instructions.
 
 \subsection{Timeouts}
 
+\smh{Should be clear that this is less relevant to 2.1.}
 Many of the algorithms used by {\technique} require far more time in
 their worst case than in their expected case, in many cases by many
 orders of magnitude.  This is irritating but tolerable when the
@@ -590,7 +588,9 @@ $\smReg{r}{t}$ & The initial value of register \textsc{r} in thread $t$.\\
     rules evaluate to \textsc{Unreached}.  $\mathrm{expr}
     \downarrow_{c,t} \mathrm{value}$ is true when the expression
     $\mathrm{expr}$ evaluates to the value $\mathrm{value}$ under
-    environment $c$ and variables $t$.}
+    environment $c$ and variables $t$.  \smh{I was surprised that
+      false asserts eval to UNREACHED rather than CRASH} \smh{What's
+      the difference between the speicher and the memory?}}
   \label{fig:derive:sm_semantics}
 \end{sanefig}
 
@@ -598,11 +598,11 @@ $\smReg{r}{t}$ & The initial value of register \textsc{r} in thread $t$.\\
 \label{sect:derive:compile_cfg}
 
 The {\StateMachine} analysis language is powerful enough to make
-translating individual instructions in isolation completely
-straightforward,\kern-.6pt\fnote{{\Implementation} uses LibVEX~\cite[Chapter
-    2]{FFFSeward2012} to decode AMD64 machine code before performing
-  this translation.} but connecting the instructions together is not
-always completely trivial.  There are three cases which require
+translating individual instructions in isolation
+straightforward,\kern-.6pt\fnote{{\Implementation} uses
+  LibVEX~\cite[Chapter 2]{FFFSeward2012} to decode AMD64 machine code
+  before performing this translation.} but connecting the instructions
+together is not always trivial.  There are three cases which require
 special care:
 \begin{itemize}
 \item
@@ -667,20 +667,20 @@ otherwise.  This will produce a \gls{dynamic cfg} as in
   \node[stateIf] (l1) {\stIf{\entryExpr{A_0}}};
   \node[right = of l1] (dummy1) {};
   \node[stateSideEffect,below = of l1] (l2) {$A_0$: \state{Copy} $\smReg{rdx}{} \rightarrow \smVar{0}$};
-  \node[stateIf,below = of l2, inner sep = -5mm] (l3) {$A_0'$: \stIf{{\controlEdgeName}(A_0 \!\rightarrow\! B_0)}};
+  \node[stateIf,below = of l2, inner sep = -5mm] (l3) {$A_0$: \stIf{{\controlEdgeName}(A_0 \!\rightarrow\! B_0)}};
   \node[stateSideEffect,below = of l3] (l3b) {\state{$\Phi$} $(\smVar{0}, \smVar{4}) \rightarrow \smVar{5}$};
   \node[stateSideEffect,below = of l3b] (l4) {$B_0$: \state{Load} $\ast(\smVar{5}) \rightarrow \smVar{6}$};
   \node[stateSideEffect,below = of l4] (l5) {$C_0$: \stLoad{7}{\smVar{6}+8}};
-  \node[stateIf,below = of l5] (l6) {$C_0'$: \stIf{\smVar{7} = 0}};
+  \node[stateIf,below = of l5] (l6) {$C_0$: \stIf{\smVar{7} = 0}};
   \node[stateIf,below = of l6] (l7) {$D_0$: \stIf{\smBadPtr{\smVar{6}}}};
 
   \node[stateSideEffect] (l11) at (dummy1 |- l2) {$C_2$: \stLoad{1}{\smReg{rcx}{}+8}};
-  \node[stateIf] at (l3 -| l11) (l12) {$C_2'$: \stIf{\smVar{1} = 0}};
+  \node[stateIf] at (l3 -| l11) (l12) {$C_2$: \stIf{\smVar{1} = 0}};
 
   \node[stateSideEffect] at (l12 |- l3b) (l8b) {\state{$\Phi$} $(\smVar{0}, \smReg{rcx}{}) \rightarrow \smVar{2}$};
   \node[stateSideEffect] at (l12 |- l4) (l8) {$B_1$: \state{Load} $\ast(\smVar{2}) \rightarrow \smVar{3}$};
   \node[stateSideEffect] at (l8 |- l5) (l9) {$C_1$: \stLoad{4}{\smVar{3}+8}};
-  \node[stateIf] at (l9 |- l6) (l10) {$C_1'$: \stIf{\smVar{4} = 0}};
+  \node[stateIf] at (l9 |- l6) (l10) {$C_1$: \stIf{\smVar{4} = 0}};
 
   \node[stateTerminal,below = of l7, minimum width=3.5cm] (lBeta) {\stCrash};
   \node[stateTerminal,minimum width=3.5cm] at (lBeta -| l10)(lAlpha) {\stUnreached};
@@ -748,14 +748,14 @@ descriptor, updating the file on disk and the file descriptor offset,
 and returns either the number of bytes written or an error code; in
 {\atechnique} {\StateMachine}, it simply returns the size of the
 buffer, claiming to have completed successfully despite discarding
-most of its arguments.  They are therefore insufficient to properly
-investigate bugs which depend on interactions with library functions
-(a race which can only be triggered following an IO error, for
-instance, will not be detected), but are sufficient when library calls
-incidentally happen near to the buggy code without meaningfully
-influencing its behaviour.\kern-.2pt\fnote{Even with a more complete
-  {\StateMachine} library implementation, {\technique} would still be
-  a poor choice for investigating environmentally-dependent bugs:
+most of its arguments.  This is insufficient to properly investigate
+bugs which depend on interactions with library functions (a race which
+can only be triggered following an IO error, for instance, will not be
+detected), but is sufficient when library calls incidentally happen
+near to the buggy code without meaningfully influencing its
+behaviour.\kern-.2pt\fnote{Even with a more complete {\StateMachine}
+  library implementation, {\technique} would still be a poor choice
+  for investigating environmentally-dependent bugs:
   \protect\glspl{bugenforcer} only influence the program's scheduling
   and so are unlikely to be effective for bugs which depend on more
   complicated interactions with the environment.}
@@ -768,11 +768,12 @@ concurrency bugs.  \autoref{fig:library_mux} shows how they are
 implemented in {\technique}.  Note that the lock operation does not
 include any logic to wait for the lock to be released, as such
 operations are difficult to express in the acyclic {\StateMachine}
-structure, but instead simply asserts that it is not currently held.
-That is sufficient: the key property of a lock is that it cannot
-simultaneously be held by multiple threads, and this assertion ensures
-that any paths on which that property is violated will evaluate to
-\textsc{Unreached} and hence be discarded by the rest of the analysis.
+structure, but instead simply {\stAssert}s that it is not currently
+held.  That is sufficient: the key property of a lock is that it
+cannot simultaneously be held by multiple threads, and this assumption
+ensures that any paths on which that property is violated will
+evaluate to \textsc{Unreached} and hence be discarded by the rest of
+the analysis.
 
 \begin{sanefig}
   \centerline{
@@ -818,10 +819,9 @@ Similarly, correctly modelling the \texttt{free} function is
 particularly important when investigating double-free bugs.
 {\Technique} uses two implementations of \texttt{free}: the crashing
 \texttt{free}, for the call which is being investigated as a potential
-crash site, and the non-crashing \texttt{free}, for every other
-call\kern.2pt.\kern-.3pt\fnote{Note that this includes other calls to \texttt{free} in
-  the \gls{crashingthread}.}  Both are shown in
-\autoref{fig:library_free}.  Non-crashing \texttt{free}s set the
+crash site, and the non-crashing \texttt{free}, for every other call
+(including other calls in the \gls{crashingthread}).  Both are shown
+in \autoref{fig:library_free}.  Non-crashing \texttt{free}s set the
 special $\mathit{last\_free}$ address to the pointer which was
 released and the crashing \texttt{free} asserts that the pointer which
 it releases is not the one which was most recently released.  This
@@ -872,8 +872,8 @@ expensive.  The main techniques used to do so are:
 \item \emph{Copy propagation}, based on the algorithm from the
   dcc~\cite{Cifuentes1994} decompiler, is used to shorten long chains
   of assignments.  One minor extension over the dcc algorithm is that
-  {\technique} can make use of \state{Assert} side-effects during this
-  transformation, so that, for instance, if $x$ is asserted to be less
+  {\technique} can make use of {\stAssert} side-effects during this
+  transformation, so that, for instance, if $x$ is assumed to be less
   than $7$ then the expression $x > 22$ can be replaced by \false.
   This does not require any important changes to the algorithm, beyond
   a few simple rules describing when such rewrites are valid.
@@ -931,21 +931,21 @@ the \gls{crashingthread} and hence cannot influence whether the bug of
 interest will reproduce.  Less obviously, it is also safe to discard
 any instructions prior to the first member of $\beta$.  Suppose, for
 instance, that the \gls{interferingthread} consists of the instruction
-sequence $aBc$, where $a$ is some sequence of instructions none of
-which belong to $\beta$, $B$ is a member of $\beta$, and $c$ is
-another sequence of instructions.  Any \glslink{sav}{SAVs} which could
-be derived by racing the \gls{crashingthread} {\StateMachine} against
-the interfering instruction sequence $aBc$ could also be derived by
-racing it against the sequence $Bc$.  $a$ cannot directly influence
-the \gls{crashingthread}, by definition, and so its only possible
-effect is on the behaviour of the \gls{interferingthread}, by
-restricting the possible values of program memory and registers when
-it starts.  {\Technique} will generate a \gls{verificationcondition}
-if \emph{any} possible initial values could lead to an atomicity
-violation, and the set of possible values after running $a$ is clearly
-a subset of the set of all possible values, and so discarding $a$ can
-never lead to any possible \glspl{sav} being omitted.  It is therefore
-always safe to do so.
+sequence $aBc$, where $a$ is some sequence of instructions not
+belonging to $\beta$, $B$ is a member of $\beta$, and $c$ is another
+sequence of instructions.  Any \glslink{sav}{SAVs} which could be
+derived by racing the \gls{crashingthread} {\StateMachine} against the
+interfering instruction sequence $aBc$ could also be derived by racing
+it against the sequence $Bc$.  $a$ cannot directly influence the
+\gls{crashingthread}, by definition, and so its only possible effect
+is on the behaviour of the \gls{interferingthread}, by restricting the
+possible values of program memory and registers when it starts.
+{\Technique} will generate a \gls{verificationcondition} if \emph{any}
+possible initial values could lead to an atomicity violation, and the
+set of possible values after running $a$ is clearly a subset of the
+set of all possible values, and so discarding $a$ can never lead to
+any possible \glspl{sav} being omitted.  It is therefore always safe
+to do so.
 
 While safe, it is not always desirable to discard $a$ if the
 restricted set of initial values would have been easier to analyse.
@@ -956,22 +956,23 @@ definitely be a valid pointer, is often useful.  The approach taken by
 {\implementation} is to first generate a set of minimal \glspl{cfg}
 (i.e. one in which every root is a member of $\beta$) and to then
 extend the \glspl{cfg} backwards to include a small amount of
-additional context, provided that doing so does not increase the number
-of paths through the \gls{cfg} or cause the length of any path to
-exceed \gls{alpha}.  In other words, a \gls{cfg} rooted at instruction
-A will be extended to include its predecessor instruction B provided
-that B is A's only predecessor and the longest path starting at A is
-at most $\alpha - 1$ instructions long.  Because the number of paths
-through the \gls{cfg} does not increase, this leads to only a modest
-increase in the eventual cost of symbolically executing the resulting
-{\StateMachine}, and this extra context can often provide useful hints
-to the analysis.
+additional context, provided that doing so does not increase the
+number of paths through the \gls{cfg} or cause the length of any path
+to exceed \gls{alpha}.  In other words, a \gls{cfg} rooted at
+instruction A will be extended to include its predecessor instruction
+B provided that B is A's only predecessor and the longest path
+starting at A is at most $\alpha - 1$ instructions long.  Because the
+number of paths through the \gls{cfg} does not increase, this leads to
+only a modest increase in the eventual cost of symbolically executing
+the resulting {\StateMachine}, and this extra context can often
+provide useful hints to the analysis.  \smh{Would it ever be useful to
+  increase number of paths as well?}
 
 \subsection[Building the \glsentrytext{interferingthread} \glsentrytext{cfg}s]{Building the \gls{interferingthread} \glspl{cfg}}
 
-The procedure for building the \gls{interferingthread}
-{\StateMachines} is similar to that for building a
-\gls{crashingthread} one: determine some starting point instructions,
+The procedure for building the \gls{interferingthread}'s
+{\StateMachines} is similar to that for building the
+\gls{crashingthread}'s: determine some starting point instructions,
 build a \gls{static cfg} of the ``nearby'' instructions, unroll that
 \gls{static cfg} to a dynamic one, and decompile the \gls{dynamic cfg}
 into {\AStateMachine}.  The nature of the starting point is, however,
@@ -1045,10 +1046,10 @@ maps, $\mathit{min\_from}$ and $\mathit{min\_to}$:
   $i2c^\sharp$ consists of all members of $i2c$, plus all of the
   \gls{cfg} nodes created by duplicating one of those instructions.
 \end{itemize}
-The length of the shortest path from an instruction $c
-\in \beta$ to $i \in i2c^\sharp$ via the $l$ is then
-$\mathit{min\_from}_l(c) + \mathit{min\_to}_l(i) + 1$, and so it is safe
-to discard any instruction $l$ where
+The length of the shortest path from an instruction $c \in \beta$ to
+$i \in i2c^\sharp$ via the instruction $l$ is then
+$\mathit{min\_from}_l(c) + \mathit{min\_to}_l(i) + 1$, and so it is
+safe to discard any instruction $l$ where
 \begin{displaymath}
 \min_{c \in \beta}\left(\mathit{min\_from}_l(c)\right) + \min_{i \in i2c^\sharp}\left(\mathit{min\_to}_l(i)\right) {\geq} \alpha
 \end{displaymath}
@@ -1070,8 +1071,8 @@ The remaining differences between \textsc{staticToDynamicInterfering}
 and \textsc{staticToDynamicCrashing} are simpler to explain:
 \begin{itemize}
 \item When \textsc{staticToDynamicCrashing} duplicates a node it
-  duplicates all of that nodes incoming edges, whereas
-  \textsc{staticToDynamicInterfering} duplicates the nodes outgoing
+  duplicates all of that node's incoming edges, whereas
+  \textsc{staticToDynamicInterfering} duplicates the node's outgoing
   edges.  This reflects the fact that interfering \glspl{cfg} are
   built up forwards from known instructions while crashing ones are
   built up backwards.
@@ -1101,7 +1102,7 @@ and \textsc{staticToDynamicCrashing} are simpler to explain:
 }
 
 \noindent
-As an example, consider this cyclic \gls{cfg}:\\
+\smh{I didn't get this example at all.} As an example, consider this cyclic \gls{cfg}:\\
 \centerline{
 \inlinebox{
 \begin{tikzpicture}
@@ -1172,12 +1173,13 @@ duplicating $B_0$, producing this new graph:\\
 \noindent
 New nodes and edges are shown in red, and edges which have been
 removed are shown crossed through.  There are now no more length three
-paths in the graph, and so \textsc{findCycleEdgeCrashing} will report
-the two length four paths $A_0 \shortrightarrow B_0 \shortrightarrow
-B_1 \hspace{-.5pt} \shortrightarrow B_0$ and $A_0 \shortrightarrow B_0
-\shortrightarrow \hspace{1pt} C_0 \shortrightarrow A_0$.  This will
-cause the $B_1 \hspace{-.5pt} \shortrightarrow B_0$ and $C_0
-\shortrightarrow A_0$ edges to be broken, as shown:\\
+cyclic paths in the graph, and so \textsc{findCycleEdgeCrashing} will
+report the two length four paths $A_0 \shortrightarrow B_0
+\shortrightarrow \hspace{1pt} C_0 \shortrightarrow A_0$ and $A_0
+\shortrightarrow B_0 \shortrightarrow B_1 \hspace{-.5pt}
+\shortrightarrow B_0$ and .  This will cause the $C_0 \shortrightarrow
+A_0$ and $B_1 \hspace{-.5pt} \shortrightarrow B_0$ edges to be broken,
+as shown:\\
 \noindent
 \centerline{ \inlinebox{
 \begin{tikzpicture}
@@ -1255,7 +1257,7 @@ cause the $B_1 \hspace{-.5pt} \shortrightarrow B_0$ and $C_0
 paths, $A_0 \shortrightarrow B_0 \shortrightarrow \hspace{1pt} C_0 \shortrightarrow A_1
 \shortrightarrow B_0$ and $A_0 \shortrightarrow B_0 \shortrightarrow B_1
 \hspace{-.5pt} \shortrightarrow B_2 \shortrightarrow B_1$.  The first
-is eliminated by duplicating $B_0$: \\
+is eliminated by once more duplicating $B_0$: \\
 \noindent
 \centerline{
 \inlinebox{
@@ -1441,17 +1443,18 @@ most important features here:
   {\StateMachine} at a time, even when investigating the parallel
   behaviour of two threads.  Rather than investigating thread
   interleavings in the symbolic execution engine, as is done in, for
-  instance, ESD~\cite{Zamfir2010}, {\technique} instead encodes them
-  into special cross-product {\StateMachines}, described in
+  instance, ESD~\cite{Zamfir2010}, {\technique} instead encodes the
+  behaviour of multiple {\StateMachines} into a single cross-product
+  {\StateMachines}, described in
   \autoref{sect:using:build_cross_product}.
 
 \item The {\StateMachine} speicher is represented by a sequence of
   update operations in the style of McCarthy's theory of
   arrays~\cite{McCarthy1962}, rather than attempting to maintain
   separate models for particular objects or memory locations.
-  \state{Store} operations are implemented by simply adding them to
-  the update list and \state{Load} operations have to scan back
-  through the list to find a matching \state{Store}.
+  \state{Store} operations simply add themselves to the update list;
+  \state{Load} operations scan back through it to find a matching
+  \state{Store}.
 
   This is not a particularly efficient approach.  {\Implementation}
   relies on two facts to mitigate its performance problems.  First,
@@ -1461,8 +1464,8 @@ most important features here:
   {\StateMachine}.  Second, {\implementation} maintains a cache of
   previous aliasing queries, and so if, for instance, two paths
   through the {\StateMachine} both need to determine whether
-  \state{Store} A might alias with \state{Load} B the symbolic
-  execution engine usually only needs to do so once.
+  \state{Store} A might alias with \state{Load} B, the symbolic
+  execution engine usually need only do so once.
 
 \item Aliasing problems are resolved lazily.  This means that if the
   engine must execute a \state{Load} operation and cannot immediately
@@ -1505,7 +1508,7 @@ most important features here:
   redundancy.
 \end{itemize}
 The resulting engine is generally adequate but rarely impressive, and
-it is likely that using a more powerful one could usefully improve
+it is likely that using a more powerful one could considerably improve
 {\implementation}'s performance.  Nevertheless, even this relatively
 simple system is sufficient to generate some results in a useful
 selection of cases.
@@ -1539,17 +1542,17 @@ composition of two {\StateMachines}.  {\Technique} therefore builds a
 new {\StateMachine}, the \emph{cross-product {\StateMachine}}, which
 emulates this parallel composition.  The chief complication here is
 that it is not possible to express an arbitrary cross-product
-operation in the {\StateMachine} language,\kern.3pt\fnote{In
-  particular, the number of steps which such a cross-product emulating
-  {\StateMachine} could take would be statically bounded, and so the
-  number of states of the input {\StateMachines} which it could
-  consider would also be statically bounded, and so there is no single
-  {\StateMachine} which can compute the cross-product of two other
-  arbitrary {\StateMachines}.} and so it must be split between a
-first, host, stage, which runs in the same (Turing-complete) model of
-computation as {\technique} itself, and a second, embedded, stage,
-which runs in the (less powerful but symbolically executable) model
-defined by the {\StateMachine} language.
+operation in the {\StateMachine} language,\kern.3pt\fnote{The number
+  of steps which such a cross-product emulating {\StateMachine} could
+  take would be statically bounded, and so the number of states of the
+  input {\StateMachines} which it could consider would also be
+  statically bounded, and so there is no single {\StateMachine} which
+  can compute the cross-product of two other arbitrary
+  {\StateMachines}.} and so it must be split between a first, host,
+stage, which runs in the same (Turing-complete) model of computation
+as {\technique} itself, and a second, embedded, stage, which runs in
+the (less powerful but symbolically executable) model defined by the
+{\StateMachine} language.
 
 \begin{sanefig}
   \newlength{\extrapadA}
@@ -1744,8 +1747,8 @@ over this basic one:
   atomic orderings have already been considered in the
   \gls{inferredassumption}.  This problem can be fixed by extending
   the grammar's non-terminal structure so that it tracks whether the
-  {\StateMachines} have issued any \gls{speicher}-accessing side
-  effects and arranging that if either {\StateMachine} terminates
+  {\StateMachines} have issued any \gls{speicher}-accessing
+  side-effects and arranging that if either {\StateMachine} terminates
   without having done so the cross-product {\StateMachine} ends in the
   {\stUnreached} state.
 
@@ -1773,9 +1776,9 @@ over this basic one:
   more difficult to calculate.  This is purely a performance
   enhancement, and so the simpler implementation is more appropriate.
 \item The basic grammar fails to take account of partial order
-  redundancies caused by {\StateMachine}-local side effects such as
-  \state{Copy} or \state{Assert}.  The complete grammar ameliorates
-  this weakness by only generating happens-before tests for non-local
+  redundancies caused by {\StateMachine}-local side-effects such as
+  \state{Copy} or \stAssert.  The complete grammar ameliorates this
+  weakness by only generating happens-before tests for non-local
   side-effects, defined to be those which could possibly influence or
   be influenced by the other {\StateMachine}.  This definition is
   context-dependent: a \state{Load} in the crashing {\StateMachine},
@@ -1783,9 +1786,9 @@ over this basic one:
   interfering {\StateMachine}'s possible future \state{Store}s, and so
   might switch from being non-local to being local when the
   interfering {\StateMachine} performs a \state{Store}.  A
-  {\stStartAtomic} side effect is considered non-local if any of the
-  side effects in the atomic block which it starts are non-local.
-\item This grammar can sometimes duplicate side effect states, which
+  {\stStartAtomic} side-effect is considered non-local if any of the
+  side-effects in the atomic block which it starts are non-local.
+\item This grammar can sometimes duplicate side-effect states, which
   might break static single assignment form.  {\Technique} uses a
   separate post-pass to restore the SSA invariant after the graph
   grammar has finished.
@@ -1990,7 +1993,7 @@ directly:
   production \production{2'} to \production{2}, and \production{3'} to
   \production{3}.  These need no further explanation.
 \item Production \production{4'} allows either of the {\StateMachines}
-  to advance past a local side effect without needing to perform a
+  to advance past a local side-effect without needing to perform a
   happens-before test, implementing a limited form of partial-order
   reduction.
 \item Production \production{5'} causes paths in which one
@@ -2003,10 +2006,10 @@ directly:
   progress within a block.  Non-local atomic blocks are entered by a
   variant of production \production{2'}, not shown in the figure,
   which races the {\stStartAtomic} side-effect against an appropriate
-  non-local side effect in the other {\StateMachine} using a
+  non-local side-effect in the other {\StateMachine} using a
   $\happensBeforeEdge$ test and, depending on the result of that test,
   either starts the atomic block, in the same way as production
-  \production{6'}, or runs the other side effect.
+  \production{6'}, or runs the other side-effect.
 \end{itemize}
 \begin{sanefig}
   \newcommand{\boxLabel}[2]{\small \raisebox{-1.5pt}{\production{#1'}} #2}
@@ -2258,7 +2261,7 @@ describe each in turn.
 
 \subsection{The stack model}
 The stack model is built using a fairly conventional static
-function-local pointer escape analysis~\cite[Pages
+function-local pointer escape analysis~\cite[pages
   140--141]{Appel2004} based on the observation that stack frames are
 ``created'' when a function starts.  This implies that there should
 not be any pointers to function-local variables unless the function
@@ -2342,9 +2345,10 @@ map from one block to the set of blocks reachable from that block.  It
 is therefore not safe to ``upgrade'' a block from thread-private to
 thread-shared if there is any possibility of that block containing a
 thread-private pointer; upgrading blocks early and pessimistically
-means that it is never necessary to do so.
+means that it is never necessary to do so.  \smh{what does safe mean
+  here?}
 
-\section{Implementation infelicities, and their removal}
+\section{Implementation limitations}
 {\Implementation} makes several important simplifying assumptions,
 some of which can impact the correctness of the analysis.  I now
 briefly discuss these assumptions and their effects, and possible ways
@@ -2361,7 +2365,7 @@ useful higher-level information on library interfaces without needing
 to analyse complex library implementations and in being able to
 perform analysis without access to a library implementation, it
 carries obvious risks of incorrectly characterising bugs.  This is
-particularly irritating because the {\technique} technique itself is
+particularly regrettable since the {\technique} technique itself is
 just as applicable to library code as it is to code in the main
 program.  This weakness could be eliminated by arranging to load the
 library implementation, when available, into the {\implementation}
@@ -2418,25 +2422,25 @@ and {\StateMachines} are generated from the program binary's
 \gls{static cfg}, and this will not accurately reflect the program's
 actual instructions if those instructions can change while the program
 is running.  Solving this problem is impossible in the general
-case,\kern-.1pt\fnote{Consider a program P in a model of computation C which
-  does not permit run-time code generation.  Construct a new P' in a
-  model of computation C' which is identical to C except for allowing
-  run-time code generation such that P' runs P and then uses some
-  run-time generated code.  P' then uses run-time generated code if
-  and only if P terminates.  An algorithm to check for run-time code
-  generation in C' would therefore solve the halting problem in C,
-  and, since there are Turing-powerful models of computation which do
-  not support run-time code generation, that is impossible.} but it
+case,\kern-.1pt\fnote{Consider a program P in a model of computation C
+  which does not permit run-time code generation.  Construct a new P'
+  in a model of computation C' which is identical to C except for
+  allowing run-time code generation such that P' runs P and then uses
+  some run-time generated code.  P' then uses run-time generated code
+  if and only if P terminates.  An algorithm to check for run-time
+  code generation in C' would therefore solve the halting problem in
+  C, and, since there are Turing-powerful models of computation which
+  do not support run-time code generation, that is impossible.} but it
 might be possible to handle some simple cases by having the dynamic
 analysis identify and log such code.  The later analyses could then
 generate the \glspl{cfg} and {\StateMachines} from these logs.  Such
 an approach would have few costs in programs which do not generate
 code at run-time and so could sensibly be incorporated into
 {\implementation}, although the rarity of run-time code generation
-suggests that this would be a dubious use of engineering time.  Even
+suggests that this would be a dubious use of engineering effort.  Even
 with this extension {\implementation} would not be able to support
 true self-modifying code, as the {\StateMachines} cannot be modified
-while they are being symbolically executing; removing \emph{that}
+while they are being symbolically executed; removing \emph{that}
 limitation is probably impractical while retaining the {\StateMachine}
 abstraction.  In any case, true self-modifying code is sufficiently
 rare in real programs that not supporting it is highly unlikely to be
@@ -2455,7 +2459,7 @@ useful to have some support for them.  Signal handlers, and other
 up-call style concurrency, could be added relatively easily by
 treating each signal handling function as a special kind of
 \gls{interferingthread}, although the dynamic analysis might need some
-modest extensions to determine when it is useful to do so.  Supporting
+modest extensions to determine when to do so.  Supporting
 inter-process concurrency would require more fundamental changes to
 {\implementation}, as it would need to be able to model multiple
 address spaces at the same time, but would require few fundamental
@@ -2479,3 +2483,6 @@ show how to convert these \glspl{verificationcondition} into
 \glspl{bugenforcer} which make the potential bugs reproduce far more
 easily, allowing the true bugs to be confirmed and the false ones
 discarded with minimal manual intervention.
+
+\smh{not sure that categorising false positives as the most important
+  limitation makes sense.}

@@ -4,9 +4,9 @@
 \newcommand{\one}{~\hspace{-1.2pt}1\hspace{3.0pt}~}
 
 In addition to finding bugs, {\technique} can also be used to fix
-them.  The technique used is, in essence, to introduce a new global
+them.  The approach taken is, in essence, to introduce a new global
 lock covering the relevant parts of the program's \gls{cfg},
-preventing them from executing in parallel and preventing the
+preventing them from executing in parallel and thus preventing the
 dangerous interleavings from occurring.  This chapter describes in
 detail how this is done.
 
@@ -20,7 +20,7 @@ detail how this is done.
         1 & \multicolumn{2}{l}{ptr = complex\_local\_condition();}\\
         2 & \multicolumn{2}{l}{dptr = *ptr;}\\
         3 & \multicolumn{2}{l}{if (dptr != NULL) \{}\\
-        4 & &dptr = *ptr1;\\
+        4 & &dptr = *ptr;\\
         5 & &*dptr = 5;\\
         6 & \multicolumn{2}{l}{\}}\\
       \end{tabular}
@@ -306,10 +306,10 @@ the general case.
 
 \begin{sanefig}
   \def\myhfill{\hskip0pt plus100fill}
-  \newcommand{\lookaside}[1]{\multicolumn{5}{l}{\leavevmode\leaders\hbox{\vrule height .55ex depth -.45ex width 2pt \hspace{2pt}}\myhfill\hspace{-3pt}\textit{#1}%
-      {\leavevmode\xleaders\hbox{\vrule height .55ex depth -.45ex width 2pt \hspace{2pt}}\myhfill \hspace{-2pt}}%
+  \newcommand{\lookaside}[1]{\multicolumn{5}{l}{\leavevmode\leaders\hbox{\vrule height .55ex depth -.45ex width 2pt \hspace{2pt}}\myhfill\hspace{-1pt}\textit{#1}\hspace{3pt}%
+      {\leavevmode\xleaders\hbox{\vrule height .55ex depth -.45ex width 2pt \hspace{2pt}}\myhfill \hspace{-1pt}}%
     } \vspace{-4pt}\\}
-  \newcommand{\sectsep}[2]{\multicolumn{5}{l}{\leavevmode\cleaders\vrule height .55ex depth -.45ex\myhfill ~#1%
+  \newcommand{\sectsep}[2]{\multicolumn{5}{l}{\leavevmode\cleaders\vrule height .55ex depth -.45ex\myhfill ~#1~%
       {\leavevmode\leaders\vrule height .5ex depth -.45ex\myhfill}
     } \vspace{#2}\\}
   \newcommand{\twolineNT}[2]{%
@@ -322,7 +322,7 @@ the general case.
           }}}}}
   \renewcommand{\arraystretch}{1.2}
   \begin{tabular}{ccc p{3.16cm} c}
-    \sectsep{\textbf{CheckForEntry} to \textbf{Lock}}{-4pt}
+    \sectsep{\textbf{CheckForEntry} to \textbf{Lock}\vspace{1mm}}{-4pt}
     \twolineNT{$\mathrm{X}, \alpha, l$}{\textbf{CheckForEntry}} & $\Rightarrow$ & \twolineNT{$\mathrm{X}, \alpha \cup \mathit{startingAt}(X),$}{$l, \textbf{Lock}$} & & \production{1}\\
 
     \sectsep{\textbf{Lock} to \textbf{Return}}{-4pt}
@@ -338,7 +338,7 @@ the general case.
     \graphNT{$\mathrm{X}, \alpha, l, \textbf{Return}$} & $\Rightarrow$ & \graphNT{$\mathrm{X}, \alpha, l, \textbf{Emul}$} & If $\neg$\production{3_a} & \production{3_b} \\
 
     \sectsep{\textbf{Emul} to \textbf{Unlock}}{-8pt}
-    \lookaside{Indirect control flow instructions described in text}
+    \lookaside{Indirect control flow instructions described in \autoref{sect:fix:control_flow}}
     \raisebox{2.5mm}{\graphNT{\raisebox{-2.5mm}{$\begin{tikzpicture}[baseline = (current bounding box.center)]
         \node (r) {\texttt{jcc}};
         \node (s) at (-.3,-.7) {X};
@@ -443,7 +443,7 @@ the general case.
   {\hfill}
   \caption{The initial set of non-terminals for the graph grammar in
     \autoref{fig:fix:graph_grammar}.  There is one initial
-    non-terminal for every entry in the $\mathit{Patch}$ set.}
+    non-terminal for every entry in the $\mathit{Patch}$ set. \smh{How is Patch calculated?}}
   \label{fig:fix:initial_configuration}
 \end{sanefig}
 
@@ -456,8 +456,8 @@ starting from the non-terminal set $\mathit{initial}$, given in
 type is used to represent the program's positions in the various
 regular automata:
 \begin{itemize}
-\item $\mathit{static}$ gives the position in the program's
-  \gls{static cfg};
+\item $\mathit{static}$ is a reference to the thread's current
+  position in the program's \gls{static cfg};
 \item $\mathit{dynamic}$ gives the set of possible positions in the
   \gls{dynamic cfg};
 \item $\mathit{lock}$ gives the position in the lock discipline
@@ -480,7 +480,8 @@ The grammar makes use of two utility functions:
   \end{displaymath}
   $s.\mathit{next}$ is the set of \gls{dynamic cfg} nodes which can
   follow $s$ and $r.\mathit{static}$ is the \gls{static cfg} node
-  corresponding to $r$.
+  corresponding to $r$.  \smh{Call out similarities to enforcer power
+    set construction more explicitly?}
 \end{itemize}
 
 \noindent
@@ -714,6 +715,7 @@ synchronisation.\kern-1.25pt\fnote{At the level of the graph grammar,
 but ensures that {\technique} will never introduce any new deadlocks.
 
 \section{Control flow}
+\label{sect:fix:control_flow}
 Most instructions in the input \gls{cfg} will be copied verbatim to
 the \gls{shadowfragment}, apart from some straightforward adjustments
 to addressing modes, as part of the \textbf{Emul} phase.  The
@@ -728,8 +730,8 @@ transfer control to a statically-apparent target instruction, and so
 can be conveniently represented in the graph structure of the
 \gls{shadowfragment}.  Conditional branches in the input become
 conditional branches in the output, with just the targets changed
-(production \production{4_b}); unconditional branches disappear
-completely (production \production{4_a}).
+(production \production{4_a}); unconditional branches disappear
+completely (production \production{4_b}).
 
 Direct function calls are only moderately more difficult.  Calls to
 other functions within the program binary can be implemented by
@@ -744,7 +746,7 @@ function into the caller's \gls{cfg}, but will not cross the boundary
 between the program and its libraries, instead treating library
 functions as simple, indivisible operations.  The \gls{shadowfragment}
 algorithm matches this behaviour by inlining intra-program calls into
-the fragment and leaving program to library ones as true function
+the fragment and leaving program-to-library ones as true function
 calls.  Note that this implies that the \gls{shadowfragment} will
 sometimes acquire program-level locks whilst holding the {\technique}
 one, and that this can sometimes lead to deadlocks.  As previously
