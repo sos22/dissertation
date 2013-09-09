@@ -52,7 +52,7 @@ the section describes them in more detail.
 \subsection{Lockset analysis}
 
 When software developers design concurrent software, they usually have
-a plan for avoiding concurrency errors, and this plan is usually
+a plan for avoiding concurrency errors, and this plan is typically
 expressed as a concurrency protocol defining the acceptable forms of
 concurrency and the actions which the program must take to ensure that
 only those forms are possible.  These protocols can take many
@@ -60,7 +60,7 @@ differing forms, reflecting the differing desired behaviour of the
 programs for which they are designed, but the majority have at their
 core a simple lock discipline which associates locks with program
 structures and requires the program hold the lock when operating on
-the structure.  Lockset-type tools detect concurrency errors by
+the structure.  Lock set-type tools detect concurrency errors by
 inferring this lock discipline and then flagging an error whenever the
 program violates it.
 
@@ -129,8 +129,8 @@ analysis without needing to consider the full body of each function
 every time.  This provided useful improvements in both scalability and
 soundness.
 
-These techniques could be used to refine {\technique} in two main ways
-of ways.  Most obviously, including a lockset table in the
+These techniques could be used to refine {\technique} in two main
+ways.  Most obviously, including a lockset table in the
 \gls{programmodel} could potentially allow many of the false positive
 \glspl{verificationcondition} to be eliminated far more easily,
 simultaneously reducing both the cost of the analysis and the number
@@ -231,7 +231,7 @@ behaviour, allowing it to reproduce a wide variety of bugs quickly and
 easily.  Chess makes two major approximations in order to get good
 results:
 \begin{enumerate}
-\item \emph{Bounded preemptions} Most concurrency bugs can be
+\item \emph{Bounded preemptions}. Most concurrency bugs can be
   reproduced without requiring particularly complicated concurrent
   behaviour~\cite{Musuvathi2007}.  Chess takes advantage of this by
   limiting the number of times it switches between threads in any
@@ -243,7 +243,7 @@ results:
   \autoref{sect:eval:complex_hb}, {\technique} is already able to
   handle relatively complicated graphs with little difficulty, and so
   the potential for improving performance by doing so is limited.
-\item \emph{Race induction} Chess's main analysis considers only a
+\item \emph{Race induction}. Chess's main analysis considers only a
   single thread at a time and switches between threads at defined
   preemption points.  For race-free programs, the only preemption
   points needed are at synchronisation-related library functions such
@@ -255,14 +255,14 @@ results:
   to the first few schedules it considers and then simply assuming
   that those schedules contained all of the program's possible data
   races.  This means that Chess will sometimes miss data-dependent
-  races, and hence potentially miss some real bugs, but dramatically
-  reduces the computational cost of the analysis.
+  races, and hence potentially miss some real bugs, but once again
+  dramatically reduces the computational cost of the analysis.
 
   {\Technique} makes a similar but weaker assumption as part of its
   dynamic alias analysis: Chess assumes that two accesses can race if
-  they are observed to race, whereas {\technique} assumes that they
-  can race if they are observed to access the same memory location
-  without an intervening call to a memory retyping instruction such as
+  they are observed to race, while {\technique} assumes that they can
+  race if they are observed to access the same memory location without
+  an intervening call to a memory retyping instruction such as
   \texttt{free}.  This implies that {\technique} is less likely to
   fail to analyse a bug due to an incorrect induction, but is also
   largely responsible for {\technique}'s far weaker scalability to
@@ -317,7 +317,7 @@ removing the one place in which {\technique} currently relies on
 manual assistance.
 
 These techniques can also be applied statically, as in, for example,
-Engler's ``Bugs as deviant behaviour'' system~\cite{Engler2001}.  The
+Engler's ``Bugs as deviant behaviour'' work~\cite{Engler2001}.  The
 idea here is to perform a kind of statistical static analysis to
 identify common patterns in a program's source code and to then flag a
 warning whenever any of these patterns are violated.  It might be, for
@@ -417,7 +417,7 @@ it represents one of the most well-developed symbolic execution
 systems in use today; it is certainly far more so than the quite
 primitive symbolic execution engine used by {\implementation}.  JPF
 cannot, however, be applied as easily to binary programs, as it relies
-in many ways on the far greater information available in Java
+in many ways on the far more extensive information available in Java
 bytecode~\cite{Lindholm2013}.
 
 KLEE~\cite{Cadar}, a symbolic execution engine for LLVM
@@ -442,28 +442,28 @@ increasing its ability to find interesting concurrency bugs, and on
 side conditions which require run-time checking.
 
 SLAM~\cite{Ball2011}, and the many systems based on it, such as
-SLAyer~\cite{Berdine2011} and Terminator~\cite{Cook2006a}, is another
-important example.  Unlike KLEE, it operates primarily at the level of
-source code.  Most SLAM-based analyses are primarily thread-local,
+SLAyer~\cite{Berdine2011} and Terminator~\cite{Cook2006a}, are also
+relevant.  Unlike KLEE, SLAM operates primarily at the level of source
+code.  Most SLAM-based analyses are primarily thread-local,
 considering only the sequential execution case, and so are not
-directly relevant here.~~\cite{Cook2007} is one important exception.
-In that work, the authors investigated ways of extending SLAM to
-perform termination checking on multi-threaded programs.  The heart of
-their approach is to reduce their equivalent of the
-\glspl{interferingthread} to what they term an agreement, specifying
-precisely what changes it can make to shared variables and hence how
-it can interfere with the \gls{crashingthread}.  Their cross product
-is between the \gls{crashingthread} and this agreement, rather than
-directly between the two threads, dramatically reducing the total size
-of the search space.  At a high level, {\technique}'s simplifiers and
-the distinction between local and non-local side effects in the cross
-product algorithm exploit a similar redundancy, but, judging from
-their paper, are somewhat less effective than their mechanism.  On the
-other hand, their mechanism relies on more complete aliasing
-information than the {\technique} ones, and, as noted in the
-evaluation, {\technique} is far more limited by alias analysis than it
-is by an explosion of interleavings, making it difficult to apply
-their technique in this context.
+directly relevant here.  One important exception is the work by Cook
+et al.~\cite{Cook2007}, in which the authors investigate ways of
+extending SLAM to perform termination checking on multi-threaded
+programs.  The heart of their approach is to reduce their equivalent
+of the \glspl{interferingthread} to what they term an agreement,
+specifying precisely what changes it can make to shared variables and
+hence how it can interfere with the \gls{crashingthread}.  Their cross
+product is between the \gls{crashingthread} and this agreement, rather
+than directly between the two threads, dramatically reducing the total
+size of the search space.  At a high level, {\technique}'s simplifiers
+and the distinction between local and non-local side effects in the
+cross product algorithm exploit a similar redundancy, but, judging
+from their paper, are somewhat less effective than their mechanism
+\smh{I hate this}.  On the other hand, their mechanism relies on more
+complete aliasing information than the {\technique} ones, and, as
+noted in the evaluation, {\technique} is far more limited by alias
+analysis than it is by an explosion of interleavings, making it
+difficult to apply their technique in this context.
 
 There have been many refinements proposed to the basic symbolic
 execution method, such as counter-example guided abstraction
@@ -475,13 +475,13 @@ initially using some kind of approximate execution and only switching
 to a more refined mechanism when necessary to achieve adequate
 coverage.  {\Technique}'s lazy aliasing resolution can be regarded as
 a special case of an essentially similar idea, in that \state{Load}
-operations initially return an abstraction representation which
+operations initially return an abstract representation which
 ``contains'' every possible result of the load and {\technique} only
 determines the actual loaded value once it reaches a point in the
 {\StateMachine}'s execution where it actually matters.  Integrating
-some of these existing refinements could potentially expand this to
-cover the effects of states other than \state{Load}, which might give
-a useful reduction in analysis times.
+some of these other refinements could potentially expand this to cover
+the effects of states other than \state{Load}, which might give a
+useful reduction in analysis times.
 
 \section{Automatically characterising bugs}
 \label{sect:rw:auto_characterise}
@@ -516,7 +516,7 @@ is preserved and which abstracted away.  The two techniques also
 impose slightly different restrictions on the type of bug which is to
 be investigated: as discussed in \autoref{sect:types_of_bugs},
 {\technique} considers simple atomicity violation crashes, whereas
-Delta Debugging considers concurrency bug which can be reproduced
+Delta Debugging considers concurrency bugs which can be reproduced
 under their deterministic replay system.
 
 Delta Debugging characterises a bug by comparing a program's behaviour
@@ -548,7 +548,7 @@ important ones.
 In practice, by far the most common approach to ``fixing'' software
 bugs, once the software has been released, is simply to restart the
 affected system and hope that the problem does not recur.  This is
-essentially the idea between software rejuvenation~\cite{Huang1995}.
+essentially the idea behind software rejuvenation~\cite{Huang1995}.
 Later refinements included attempts to calculate the optimum reboot
 schedule~\cite{FFFGarg1998,Li2002,Vaidyanathan2001}, and also some
 attempts at reducing the cost of
@@ -680,14 +680,13 @@ description with a set of safety constraints generated by comparing
 the results of a taint analysis to a set of known-safe inputs.  Future
 inputs to the program are then rectified so that they satisfy these
 constraints.  By providing this intermediate step between passing an
-input to the program unchanged and dropping it completely input
+input to the program unchanged and dropping it completely, input
 rectification gives SOAP much more flexibility than RX when faced with
 complex input-dependent bugs, and so gives SOAP-protected programs
 better availability than RX-protected ones.  The main disadvantage of
-the approach is that these manipulated inputs will often be more
-likely to trigger other undesirable program behaviour; whether this
-trade-off is worthwhile will depend on the nature of the program to be
-protected.
+the approach is that these manipulated inputs may be more likely to
+trigger other undesirable program behaviour; whether this trade-off is
+worthwhile will depend on the nature of the program to be protected.
 
 \subsection{Hardware-based fixes for data races}
 All of the fault remediation systems discussed so far concentrated
@@ -695,10 +694,10 @@ primarily on memory errors such as bad pointer dereferences or buffer
 overflows.  There have also been many systems which attempted to
 automatically fix concurrency errors.  One of the earliest was
 ReEnact~\cite{Prvulovic2003a}, which used modified thread-level
-speculation hardware to capture what happened during a data race and
-to control instruction scheduling so as to avoid the bug in future.
-This is similar to the intent of the fixes generated by {\technique},
-with a few exceptions:
+speculation hardware to capture what happened during a data race, and
+then to control instruction scheduling so as to avoid the bug in
+future.  This is similar to the intent of the fixes generated by
+{\technique}, with a few exceptions:
 \begin{itemize}
 \item The ReEnact scheme requires unusual hardware support, whereas
   {\technique} is purely software-based.
@@ -948,7 +947,7 @@ the program deadlocks, characterises the deadlock by means of a
 ensure that the signature cannot reoccur.  The hope is that preventing
 the signature will also prevent the deadlock, and hence that the
 program will, over time, become immune to whatever deadlocks might be
-concealed within it.  Because it only fix deadlocks which have
+concealed within it.  Because it only fixes deadlocks which have
 actually been observed, serialisation is kept low and the need for
 complete locking information is side-stepped, although at the cost of
 having to suffer every deadlock at least once.
@@ -1008,11 +1007,11 @@ deterministic threading can be argued to merely hide bugs rather than
 completely removing them.  The behaviour of programs written for
 systems such as dOS is, in practice, highly dependent on the precise
 placement of epoch boundaries, which is itself dependent on complex
-global properties of the program's structure.  This makes it difficult
-to reason locally about the impact of a given modification,
-potentially leading to unfortunate program maintenance issues.
-Techniques such as {\technique} remain useful for understanding these
-latent bugs.
+global properties of the program's structure and inputs.  This makes
+it difficult to reason locally about the impact of a given
+modification, potentially leading to unfortunate program maintenance
+issues.  Techniques such as {\technique} remain useful for
+understanding these latent bugs.
 
 \section{Decompilation and machine code analysis}
 
@@ -1073,9 +1072,9 @@ and tested.
 
 \section{Discussion}
 
-This chapter described and summarised the most important existing work
-in the field of automatically detecting, characterising, and fixing
-program bugs, including older systems which concentrated on
+This chapter has described and summarised the most important existing
+work in the field of automatically detecting, characterising, and
+fixing program bugs, including older systems which concentrated on
 memory-related errors and more modern ones which investigated
 concurrency-related ones.  None of these systems represent a panacea,
 even within their restricted bug classes, but all can be valuable
@@ -1098,7 +1097,7 @@ under certain circumstances.  Compared to these prior systems,
   to any more abstract representations.
 \end{itemize}
 These features imply certain weaknesses as well as strengths.  In
-particular, \gls{bugenforcer}'s use of those non-concurrency
+particular, \glspl{bugenforcer}' use of those non-concurrency
 preconditions means that {\technique} must perform an initial analysis
 step to discover what they are, and operating at such a low level of
 abstraction means that that analysis is comparatively expensive.
@@ -1108,7 +1107,7 @@ systems; I have indicated in the preceding text where I believe that
 this would be most profitable.
 
 Even with these refinements, it is unlikely that techniques derived
-from {\technique} will ever be truly light-weight: a {\technique}
+from {\technique} will ever be truly light weight: a {\technique}
 \gls{verificationcondition} contains far more information than the bug
 characterisations derived by other tools such as AFix or ConTest, and
 so will usually require longer to derive, assuming equal quality of

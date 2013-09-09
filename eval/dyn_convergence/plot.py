@@ -95,6 +95,6 @@ for s in series:
 
 for s in series[1:]:
     x = (s[0][0] - min_time) / t_width * fig_width
-    print "  \\draw[dashed,color=black!50] (%f,0) -- (%f,%f);" % (x, x, fig_height)
+    print "  \\draw[dashed,thick,color=black!50] (%f,0) -- (%f,%f);" % (x, x, fig_height)
 
 print "\\end{tikzpicture}"

@@ -140,10 +140,11 @@ producing a \gls{dynamic cfg} which can be compiled into
   \draw[->,thick] (box3) -- (box4) node [midway] {\shortstack[c]{unroll\\$C_1{\rightarrow}B_1$}};
   \draw[->,thick] (box4) -- +(2.28,0) node [above,midway] {$\cdots$};
 \end{tikzpicture}
-\caption{Converting a cyclic \gls{static cfg} to a dynamic one.  In
-  this figure, and throughout this dissertation, instructions in the
-  \gls{static cfg} are shown as roman letters, while those in the
-  \gls{dynamic cfg} are shown as subscripted italic letters.}
+\caption{Converting a cyclic \glsentrytext{static cfg} to a dynamic
+  one.  In this figure, and throughout this dissertation, instructions
+  in the \glsentrytext{static cfg} are shown as roman letters and
+  those in the \glsentrytext{dynamic cfg} are shown as subscripted
+  italic letters.}
 \label{fig:cyclic_cfg}
 \end{sanefig}
 
@@ -582,7 +583,7 @@ $\smReg{r}{t}$ & The initial value of register \textsc{r} in thread $t$.\\
     $\stackrel{e}{\rightarrow}$ relationship shows how to evaluate the
     \StateMachine{} configuration $\{\mathrm{X}, t, m\}$, where
     $\mathrm{X}$ is the current {\StateMachine} state, $t$ the
-    variables, and $m$ the \gls{speicher} under the environment $e$,
+    variables, and $m$ the \glsentrytext{speicher} under the environment $e$,
     giving either a new configuration, \textsc{Survive}, or
     \textsc{Crash}.  Configurations which do not match any of these
     rules evaluate to \textsc{Unreached}.  $\mathrm{expr}
@@ -713,8 +714,8 @@ otherwise.  This will produce a \gls{dynamic cfg} as in
   \draw[->,ifTrue] (l12.east) .. controls +(.3,0) and +(0,.3) .. ++ (.5,-.5) -- ++(0,-11.08) .. controls +(0,-.3) and +(.3,0) .. ++ (-.5,-.5) -- (lAlpha);
   \draw[->,ifFalse] (l12) -- (l8b);
 \end{tikzpicture}
-\caption{{\STateMachine} generated from the \gls{dynamic cfg} shown in
-  Figure~\ref{fig:cyclic_cfg}.}
+\caption{{\STateMachine} generated from the \glsentrytext{dynamic cfg}
+  shown in \autoref{fig:cyclic_cfg}.}
 \label{fig:state_machine_for_cyclic_cfg}
 \end{sanefig}
 
@@ -768,7 +769,7 @@ concurrency bugs.  \autoref{fig:library_mux} shows how they are
 implemented in {\technique}.  Note that the lock operation does not
 include any logic to wait for the lock to be released, as such
 operations are difficult to express in the acyclic {\StateMachine}
-structure, but instead simply {\stAssert}s that it is not currently
+structure, but instead simply {\stAssertN}s that it is not currently
 held.  That is sufficient: the key property of a lock is that it
 cannot simultaneously be held by multiple threads, and this assumption
 ensures that any paths on which that property is violated will
@@ -811,7 +812,7 @@ the analysis.
     pthread\_mutex\_unlock functions.  $\mathit{arg0}$ is an
     expression for the first argument register.  $\smVar{x}$ is a
     fresh {\StateMachine} variable.  $\mathit{tid}$ is the constant 1
-    for the \gls{crashingthread} and 2 for the interfering one.}
+    for the \glsentrytext{crashingthread} and 2 for the interfering one.}
   \label{fig:library_mux}
 \end{sanefig}
 
@@ -872,7 +873,7 @@ expensive.  The main techniques used to do so are:
 \item \emph{Copy propagation}, based on the algorithm from the
   dcc~\cite{Cifuentes1994} decompiler, is used to shorten long chains
   of assignments.  One minor extension over the dcc algorithm is that
-  {\technique} can make use of {\stAssert} side-effects during this
+  {\technique} can make use of {\stAssertN} side-effects during this
   transformation, so that, for instance, if $x$ is assumed to be less
   than $7$ then the expression $x > 22$ can be replaced by \false.
   This does not require any important changes to the algorithm, beyond

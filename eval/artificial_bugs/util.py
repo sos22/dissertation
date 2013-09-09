@@ -4,7 +4,7 @@ fig_width = 6.0
 max_time = 180
 abscissae = [0.1,0.25,0.5,1,2,4,8,16,32,64,180]
 
-decorations = ["", "[dashed]", "[dotted]","[color=black!50]"]
+decorations = ["", "[dashed,thick]", "[dotted,thick]","[color=black!50,thick]"]
 def fail(msg):
     sys.stderr.write("%s\n" % msg)
     sys.exit(1)
