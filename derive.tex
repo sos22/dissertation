@@ -214,7 +214,7 @@ minor lacunae in the \gls{cfg} cause few real problems.
 \end{tikzpicture}
 \caption{Fully unrolled version of the CFG in
   \autoref{fig:cyclic_cfg}, preserving all paths of length six or
-  less. \smh{Not refed from text here (although it is used much later)}}
+  less. \todo{Check wrap with enclosing para}}
 \label{fig:unrolled_cyclic_cfg}
 \vspace{-4pt}
 \end{figgure}
@@ -236,8 +236,9 @@ must be removed in a way which maintains all paths of length
     the same effect when run, and the cycle has moved one instruction
     away from $D_0$.  The process repeats until all cycles are at
     least \gls{alpha} instructions from $D_0$, at which point the
-    cycle closing edges can simply be discarded.  The complete
-    algorithm is shown in
+    cycle closing edges can simply be discarded.  The resulting
+    \gls{dynamic cfg} is shown in \autoref{fig:unreolled_cyclic_cfg}.
+    The complete algorithm is shown in
     \autoref{fig:derive:read:unroll_cycle_break}.
 
 \begin{sanefig}
@@ -279,7 +280,7 @@ The algorithm given in \autoref{sect:derive:build_crashing_cfg}
 assumed that the \gls{crashing instruction} was somehow
 pre-identified, but {\technique} can also be used to discover unknown
 bugs, for which the \gls{crashing instruction} is initially
-mysterious.  {\Technique} discovers it by brute force: it enumerates
+unspecified.  {\Technique} discovers it by brute force: it enumerates
 every possible \gls{crashing instruction} in the program, for a given
 class of bug, and attempts to generate \glspl{verificationcondition}
 for each in turn.  This is feasible because the vast majority of
@@ -291,9 +292,9 @@ days.  Further, this approach is embarrassingly parallel, and so would
 be expected to scale well as hardware concurrency increases, which is
 precisely the scenario in which it would be most useful.
 
-Identifying instructions which might crash depends on the type of bug
-which is to be investigated.  {\Implementation} considers three types
-of bug:
+The way in which these potentially-crashing instructions are
+identified depends on the type of bug which is to be investigated.
+{\Implementation} considers three types of bug:
 \begin{itemize}
 \item Assertion-failure type crashes.  These are caused by the program
   calling a function such as \verb|__assert_fail| or \verb|abort|.
@@ -1103,22 +1104,25 @@ and \textsc{staticToDynamicCrashing} are simpler to explain:
 }
 
 \noindent
-\smh{I didn't get this example at all.} As an example, consider this cyclic \gls{cfg}:\\
+\smh{I didn't get this example at all.} As an example, consider this cyclic \gls{cfg}:
+\vfill
 \centerline{
 \inlinebox{
+\parbox{11.59cm}{
 \begin{tikzpicture}
   \node (A) at (0,2) [CommCfgInstr] {$A_0$};
   \node (B) [CfgInstr, below=of A] {$B_0$} edge [in=30,out=-30,loop] ();
   \node (C) [InterferingCfgInstr, below=of B] {$C_0$};
   \node (dummy) [left = .3 of C] {};
   \node (dummy2) [right = .5 of B] {};
+  \node [left = .45 of dummy] {};
   \draw[->] (A) -- (B);
   \draw[->] (B) -- (C);
   \draw[->] (C.west) .. controls +(-.3,0) and +(0,-.3) .. ++(-.5,.5) -- ++(0,2.28) .. controls +(0,.3) and +(-.3,0) .. ++(.45,.5) -- (A.west);
   \begin{pgfonlayer}{bg}
     \node(box1) [fill=black!10,fit=(A) (B) (C) (dummy) (dummy2)] {};
   \end{pgfonlayer}
-  \draw node [right=of box1] {
+  \draw node [right=1.65 of box1] {
     \begin{tabular}{lcccc}
              & \multicolumn{1}{c}{$\mathit{min\_to}$} & \multicolumn{2}{c}{$\mathit{min\_from}$} & overall min\\
              & $C_0$ & $A_0$ & $C_0$ \\
@@ -1129,7 +1133,9 @@ and \textsc{staticToDynamicCrashing} are simpler to explain:
   };
 \end{tikzpicture}
 }
-}\\
+}
+}
+\vfill
 \noindent $C_0$, in green, is a member of $i2c$ (and therefore also
 $\beta$); $A_0$, in blue, is a member of $\beta$ but not $i2c$.  The
 overall min column is the minimum $\mathit{min\_to}$ value plus the
@@ -1140,7 +1146,8 @@ render this graph acyclic whilst preserving all paths of length 5 or
 less.  \textsc{findCycleEdgeCrashing} will find $A_0 \shortrightarrow B_0
 \shortrightarrow B_0$, of length three, as the first cyclic path, and so
 the algorithm will break the $B_0 \shortrightarrow B_0$ edge by
-duplicating $B_0$, producing this new graph:\\
+duplicating $B_0$, producing this new graph:
+\vfill
 \noindent \centerline{ \inlinebox{
     \begin{tikzpicture}
       \node (A) at (0,2) [CommCfgInstr] {$A_0$};
@@ -1180,7 +1187,7 @@ report the two length four paths $A_0 \shortrightarrow B_0
 \shortrightarrow B_0 \shortrightarrow B_1 \hspace{-.5pt}
 \shortrightarrow B_0$ and .  This will cause the $C_0 \shortrightarrow
 A_0$ and $B_1 \hspace{-.5pt} \shortrightarrow B_0$ edges to be broken,
-as shown:\\
+as shown:\vfill
 \noindent
 \centerline{ \inlinebox{
 \begin{tikzpicture}
@@ -1215,7 +1222,7 @@ as shown:\\
   };
 \end{tikzpicture}
 }
-}\\
+}\vfill
 \centerline{
 \inlinebox{
 \begin{tikzpicture}
@@ -1252,13 +1259,13 @@ as shown:\\
   };
 \end{tikzpicture}
 }
-}\\
+}\vfill
 \noindent
 \textsc{findCycleEdgeCrashing} will now discover two length five cyclic
 paths, $A_0 \shortrightarrow B_0 \shortrightarrow \hspace{1pt} C_0 \shortrightarrow A_1
 \shortrightarrow B_0$ and $A_0 \shortrightarrow B_0 \shortrightarrow B_1
 \hspace{-.5pt} \shortrightarrow B_2 \shortrightarrow B_1$.  The first
-is eliminated by once more duplicating $B_0$: \\
+is eliminated by once more duplicating $B_0$: \vfill
 \noindent
 \centerline{
 \inlinebox{
@@ -1300,7 +1307,7 @@ is eliminated by once more duplicating $B_0$: \\
   };
 \end{tikzpicture}
 }
-}\\
+}\vfill
 \noindent
 The second, by contrast, can be eliminated without needing to
 duplicate any further instructions.  Were $B_1$ to be duplicated, the
@@ -1335,8 +1342,8 @@ cycle-closing edge can simply be deleted:
     \node(box1) [fill=black!10,fit=(A) (A1) (B) (B1) (B2) (B3) (C)] {};
   \end{pgfonlayer}
   \draw node [right=of box1] {
-    \begin{tabular}{lcccc}
-         & \multicolumn{1}{l}{$\mathit{min\_to}$} & \multicolumn{2}{l}{$\mathit{min\_from}$} & overall min\\
+    \begin{tabular}{p{1.8cm}>{\centering}p{1.25cm}ccc}
+         & $\mathit{min\_to}$ & \multicolumn{2}{l}{$\mathit{min\_from}$} & overall min\\
          & $C_0$ & $A_0$ & $C_0$\\
       $A_0$   & 2 & 0 & $\infty$ & 2\\
       $A_1$ & 2 & 3 & 1        & 3\\
@@ -1383,8 +1390,8 @@ until the graph becomes completely acyclic:
     \node(box1) [fill=black!10,fit=(A) (A1) (B) (B1) (B2) (B3) (C) (C1)] {};
   \end{pgfonlayer}
   \draw node [right=of box1] {
-    \begin{tabular}{lccccc}
-            & \multicolumn{2}{l}{$\mathit{min\_to}$} & \multicolumn{2}{l}{$\mathit{min\_from}$} & overall min\\
+    \begin{tabular}{p{1.8cm}ccccc}
+            & \multicolumn{2}{c}{$\mathit{min\_to}$} & \multicolumn{2}{l}{$\mathit{min\_from}$} & overall min\\
             & $C_0$ & $C_1$ & $A_0$ & $C_0$ \\
       $A_0$   & 2 & 5 & 0 & $\infty$ & 2\\
       $A_1$ & $\infty$ & 2 & 3 & 1 & 3\\

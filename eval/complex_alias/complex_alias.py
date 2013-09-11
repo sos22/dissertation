@@ -261,14 +261,14 @@ def contour_map(extent, data, suppress, nr_contours, timeouts, ooms,
         else:
             xx = x - (x % x_step)
         print "  \\node at (%f,%f) [below] {%d};" % (scale_x(xx), scale_y(min_y), xx * step)
-    print "  \\node at (%f,%f) [below] {Number of loads};" % ((scale_x(min_x) + scale_x(max_x)) / 2,
-                                                              scale_y(min_y) - .42)
+    print "  \\node at (%f,%f) [below] {Number of loads, $L$};" % ((scale_x(min_x) + scale_x(max_x)) / 2,
+                                                                   scale_y(min_y) - .42)
 
     print "  %% Y marks"
     for y in xrange(min_y, max_y, y_step):
         print "  \\node at (%f,%f) [left] {%d};" % (scale_x(min_x), scale_y(y), y * step)
-    print "  \\node at (%f,%f) [rotate=90, below] {Number of stores};" % (scale_x(min_x) - 1.3,
-                                                                          (scale_y(min_y) + scale_y(max_y)) / 2)
+    print "  \\node at (%f,%f) [rotate=90, below] {Number of stores, $S$};" % (scale_x(min_x) - 1.3,
+                                                                               (scale_y(min_y) + scale_y(max_y)) / 2)
 
     print "  \\begin{pgfonlayer}{bg}"
     for (x,y) in data.iterkeys():
@@ -577,13 +577,5 @@ contour_map( ((0,0),(figwidth,figheight)), times, suppress, 10, timeouts, ooms,
               100.0: ("color=purple", "", "100s"),
               200.0: ("", "", "200s"),
               })
-contour_map( ((figwidth+sep, 0), (figwidth * 2 + sep, figheight)), mems, suppress, 10, timeouts, ooms,
-             [ 10000000, 30000000, 100000000, 300000000, 1000000000, 2000000000],
-             {(10000000): ("", "", "10MB"),
-              (30000000): ("color=blue", "", "30MB"),
-              (100000000): ("color=brown", "", "100MB"),
-              (300000000): ("color=green", "", "300MB"),
-              (1000000000): ("color=purple", "", "1GB"),
-              (2000000000): ("dotted","", "2GB")})
 
 print "\\end{tikzpicture}"

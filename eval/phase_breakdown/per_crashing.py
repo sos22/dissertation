@@ -37,13 +37,13 @@ bubble_key_to_chart_key = {"early out": "build_ccfg",
                            "misc3": "derive_icfgs",
                            "IO": "build_ccfg"}
 chart_labels = {"early_out": "Early out",
-                "build_ccfg": "Build crashing \\gls{cfg}",
-                "compile_csm": "Compile crashing {\\StateMachine}",
+                "build_ccfg": "\\subcrash{0}",
+                "compile_csm": "\\subcrash{1}",
                 "ssa_csm": "SSA crashing {\\StateMachine}",
-                "simplify_csm": "Simplify crashing {\\StateMachine}",
-                "derive_icfgs": "Derive interfering \\glspl{cfg}",
-                "derive_catomic": "Derive C-atomic",
-                "per_icfg": "Process interfering \\glspl{cfg}"}
+                "simplify_csm": "\\subcrash{2}",
+                "derive_icfgs": "\\subcrash{3}",
+                "derive_catomic": "\\subcrash{4}",
+                "per_icfg": "\\subcrash{5}"}
 
 START_CRASHING_RE = re.compile(r"start crashing thread DynRip\[[0-9a-f]*\]")
 
@@ -237,16 +237,6 @@ replicates = [sequences_to_chartset([random.choice(sequences) for _ in xrange(le
 (charts, defect_samples, total_samples) = sequences_to_chartset(sequences)
 
 main_fig = common.Figure(time_to_y, y_to_time, [])
-main_fig.boxes.append(common.Box(main_fig.lowest() - 0.5,
-                                 main_fig.lowest(),
-                                 lambda x: x.pre_dismissed,
-                                 lambda x: x.pre_failed,
-                                 "Skipped"))
-main_fig.boxes.append(common.Box(main_fig.highest(),
-                                 main_fig.highest() + 0.5,
-                                 lambda x: x.timeouts,
-                                 lambda x: x.ooms,
-                                 "Failed"))
 
 
 output.write("\\begin{tikzpicture}\n")

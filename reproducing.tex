@@ -131,15 +131,14 @@ execution.  As such, it can easily impose the desired happens-before
 graph but cannot directly influence the likelihood of the \gls{side
   condition} holding.  It might, therefore, appear that knowing the
 \gls{side condition} is unhelpful.  This is not the case.  Imposing a
-happens-before graph necessarily implies slowing down one or more of
-the program's threads, which necessarily means that the program will
-run more slowly and that the buggy code will run less frequently; if
-the happens-before graph reproduces easily but the \gls{side
-  condition} passes rarely then this could actually \emph{increase}
-the time needed to reproduce the bug.  Careful use of the \gls{side
-  condition} can reduce the number of delays which the
-\glspl{bugenforcer} must insert into the program, largely avoiding
-this problem.
+happens-before graph implies slowing down one or more of the program's
+threads, which means that the program will run more slowly and that
+the buggy code will run less frequently; if the happens-before graph
+reproduces easily but the \gls{side condition} passes rarely then this
+could actually \emph{increase} the time needed to reproduce the bug.
+Careful use of the \gls{side condition} can reduce the number of
+delays which the \glspl{bugenforcer} must insert into the program,
+largely avoiding this problem.
 
 \section{Outline of algorithm}
 
@@ -380,20 +379,20 @@ guarantee that this approach will always work for more complex graphs.
 
 Once the \glspl{side condition} have been extracted from the
 \gls{verificationcondition}, {\technique} must decide how and when to
-evaluate them.  Ideally, this would as soon as the \gls{plan
-  interpreter} \smh{I'd forgotten about that by the time I got here}
-gains control of the program's execution, so as to avoid unnecessarily
-perturbing executions which cannot lead to reproductions of the bug,
-but this is not always possible.  Most \glspl{side condition} will
-involve some cross-thread state, and so cannot be fully evaluated
-until the enforcer has determined how program threads map onto the
+evaluate them.  Ideally, this would as soon as it gains control of the
+program's execution, so as to avoid unnecessarily perturbing
+executions which cannot lead to reproductions of the bug, but this is
+not always possible.  Most \glspl{side condition} will involve some
+cross-thread state, and so cannot be fully evaluated until the
+enforcer has determined how program threads map onto the
 {\StateMachine}'s crashing and interfering thread.  Even in the
 absence of cross-thread constraints, expressions such as
-${\controlEdgeName}()$ cannot be evaluated until the thread reaches a
-particular point in its \gls{dynamic cfg}, which might be some time
-after the interpreter gains control of it.  The \gls{bugenforcer} must
-therefore often defer evaluating part of the \gls{side condition}
-until all of the necessary inputs are available.
+${\controlEdgeName}()$ which examine a thread's path through its
+\gls{dynamic cfg} often cannot be evaluated until the thread reaches
+the relevant \gls{cfg} node, which might be some time after the
+enforcer gains control of it.  The \gls{bugenforcer} must therefore
+often defer evaluating part of the \gls{side condition} until all of
+the necessary inputs are available.
 
 \newcommand{\crashing}{\mathrm{C}}
 \newcommand{\interfering}{\mathrm{I}}
@@ -1001,17 +1000,16 @@ completes successfully or times out).  The crashing thread will resume
 at instruction {\tt b} by loading \texttt{y} from \texttt{loc1}.
 \texttt{loc1} was last modified when the \gls{interferingthread}
 emulated \texttt{c}, and so \texttt{y} is now set to \texttt{7}.  The
-\gls{side condition} imposed at the start of the plan will have ensured that
-\texttt{x} is not \texttt{7}, and so the \gls{crashingthread}'s
-assertion will fail and the bug will be correctly
-reproduced.\kern-.6pt\fnote{Note that the \protect\gls{bugenforcer}
-  finishes before the bug reproduces and that the fatal
-  \texttt{assert} is run without direct interference from
-         {\technique}.  This simplifies the integration of
-         {\technique} with existing debugging tools which might be
-         confused by the interposition of an unknown interpreter.}
-The complete procedure is shown in
-\autoref{fig:enforcement:example_bug:replacements}.
+\gls{side condition} imposed at the start of the plan will have
+ensured that \texttt{x} is not \texttt{7}, and so the
+\gls{crashingthread}'s assertion will fail and the bug will be
+correctly reproduced. The complete procedure is shown in
+\autoref{fig:enforcement:example_bug:replacements}.  Note that the
+\protect\gls{bugenforcer} finishes before the bug reproduces and that
+the fatal \texttt{assert} is run without direct interference from
+{\technique}.  This simplifies the integration of {\technique} with
+existing debugging tools which might be confused by the interposition
+of an unknown interpreter.
 
 \begin{sanefig}
   \subfigure[][Crashing thread]{
@@ -1147,17 +1145,15 @@ progression through a set of plans, imposing delays and checking
 \glspl{side condition} in a way which allows all of the plans to make
 progress.
 
-This set construct also provides a convenient way of handling
+This set construction also provides a convenient way of handling
 ambiguities caused by the \gls{cfg} unrolling algorithm (see
 \autoref{sect:derive:build_crashing_cfg}).  The plan is defined in
 terms of the \gls{dynamic cfg}, but only the \gls{static cfg} can be
-directly observed at run time,\kern-.4pt\fnote{More precisely, the
-  enforcer can observe a thread's position in the \gls{static cfg}, as
-  that is given by its instruction pointer, but not its position in
-  the \gls{dynamic cfg}.} and this can sometimes make it difficult to
-determine a thread's position within a plan.  {\Technique} deals with
-these ambiguities by forking the plan state and having one fork follow
-each possible outcome of the ambiguous choice.  Instruction $C_0$ in
+directly observed at run time, and this can sometimes make it
+difficult to determine a thread's position within a plan.
+{\Technique} deals with these ambiguities by forking the plan state
+and having one fork follow each possible outcome of the ambiguous
+choice.  Instruction $C_0$ in
 \autoref{fig:place_conditions_example:result} provides an example: in
 the \gls{dynamic cfg}, $C_0$ can be followed by either $D_0$ or $D_1$,
 and the plan must perform different actions depending on which is
@@ -1172,7 +1168,7 @@ $D_1$\kern-.2pt.\kern-.3pt\fnote{There is a potentially useful analogy
   by tracking the set of states which the non-deterministic automaton
   might possibly occupy, allowing it to defer non-deterministic
   choices until it has enough information to resolve them
-  unambiguously.  In the same way, {\technique}s set of plans allows
+  unambiguously.  In the same way, {\technique}'s set of plans allows
   it to defer an ambiguous choice until one or other of the possible
   options leads to a failed plan, at which point it can arrange to
   have chosen the other one. \smh{De-footnote}}
@@ -1261,7 +1257,7 @@ interpreter cycle (either \textbf{Emul} for a receive operation or
   \label{fig:enforce:lli_message}
 \end{sanefig}
 
-A message operation can fail in three ways:
+A message operation can fail \smh{What is fail?} in three ways:
 \begin{enumerate}
 \item
   The \gls{side condition} might evaluate to false.  This simply indicates

@@ -165,7 +165,7 @@ def draw_line(output, base, pts):
     output.write("        ;\n")
 
 def draw_furniture(output, chart_keys, settings):
-    for t_label in ["0.00001", "0.0001", "0.001", "0.01", "0.1", "1", "10", "100"]:
+    for t_label in ["0.00001", "0.0001", "0.001", "0.01", "0.1", "1", "10", "100", "300"]:
         y = settings.time_to_y(float(t_label))
         output.write("\\draw [color=black!10] (%f, %f) -- (%f, %f);\n" % (-settings.x_scale, y, (len(chart_keys) + 1) * settings.figwidth / (len(chart_keys) + 2), y))
         output.write("\\node at (%f, %f) [left] {%s};\n" % (-settings.x_scale, y, t_label))
@@ -423,7 +423,7 @@ def draw_pdfs(output, chart_keys, charts, defect_samples, total_samples, replica
         if len(chart.samples) == 0:
             continue
 
-        nr_samples = float(chart.pre_dismissed + chart.pre_failed + len(chart.samples) + chart.timeouts + chart.ooms)
+        nr_samples = len(chart.samples) #float(chart.pre_dismissed + chart.pre_failed + len(chart.samples) + chart.timeouts + chart.ooms)
         output.write("  %% largest sample = %f\n" % max(chart.samples))
 
         plot_pdf(output, x, chart.samples, [r[0][key].samples for r in replicates], len(chart.samples) / nr_samples, settings, key)

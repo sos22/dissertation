@@ -12,7 +12,7 @@ import common
 random.seed(0)
 
 max_cdfs = 50.0
-nr_replicates = 10
+nr_replicates = 1000
 
 bubble_keys = set(["canonicalise", "prepare summary", "slice by hb", "determine input availability",
                    "happensBeforeMapT() constructor", "place side conditions", "simplify plan",
@@ -34,11 +34,11 @@ bubble_key_to_chart_key["happensBeforeMapT() constructor"] = "place side conditi
 bubble_key_to_chart_key["simplify plan"] = "place side conditions"
 bubble_key_to_chart_key["gcc"] = "compile"
 
-chart_labels["slice by hb"] = "Extract happens-before graph"
-chart_labels["determine input availability"] = "Determine input availability"
-chart_labels["place side conditions"] = "Place side conditions"
-chart_labels["build strategy"] = "Build patch strategy"
-chart_labels["compile"] = "Compile"
+chart_labels["slice by hb"] = "\\subenf{0}"
+chart_labels["determine input availability"] = "\\subenf{1}"
+chart_labels["place side conditions"] = "\\subenf{2}"
+chart_labels["build strategy"] = "\\subenf{3}"
+chart_labels["compile"] = "\\subenf{4}"
 
 def read_one_sequence(defects):
     try:
@@ -183,16 +183,6 @@ main_fig = common.Figure(time_to_y, y_to_time, [])
 main_fig.nr_time_steps = 100.0
 main_fig.kernel_box_height = 1.0
 main_fig.figwidth -= 0.3
-main_fig.boxes.append(common.Box(main_fig.lowest() - 0.5,
-                                 main_fig.lowest(),
-                                 lambda x: x.pre_dismissed,
-                                 lambda x: x.pre_failed,
-                                 "Skipped"))
-main_fig.boxes.append(common.Box(main_fig.highest(),
-                                 main_fig.highest() + 0.5,
-                                 lambda x: x.timeouts,
-                                 lambda x: x.ooms,
-                                 "Failed"))
 
 
 output.write("\\begin{tikzpicture}\n")

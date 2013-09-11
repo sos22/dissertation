@@ -5,10 +5,11 @@ import itertools
 import math
 import random
 
-figwidth = 11.5
-figheight = 3.8
+figwidth = 13
+figheight = 3.7
 timeout = 600.0
 bar_width = 0.05 / figwidth
+kboxheight = .25
 
 y_res = 0.003
 
@@ -117,8 +118,12 @@ def _binom_confidence_interval(nr_success, nr_attempts, interval):
     upper += 1
     return (estimated_prob, lower / float(nr_attempts), upper / float(nr_attempts))
 def binom_confidence_interval(nr_success, nr_attempts, interval):
+    if nr_success in [0, nr_attempts]:
+        return "\\multicolumn{6}{c|}{%d/%d}" % (nr_success, nr_attempts)
     (_estimated_prob, lower, upper) = _binom_confidence_interval(nr_success, nr_attempts, interval)
-    return "$[%.1f,%.1f]_{\\infty}^{%d}$\\%%" % (lower * 100, upper * 100, nr_attempts)
+    def f(x):
+        return ("%.1f" % x).replace(".", "&")
+    return "[&%s&%s&$]_{\\infty}^{%d}$\\%%" % (f(lower * 100), f(upper * 100), nr_attempts)
 
 def float_range(lower, upper, step):
     lower = float(lower)
@@ -318,19 +323,12 @@ def draw_pdf(output, samples, xcoord, xscale, sample_to_y, y_to_sample, upper_bo
     mean_high = quantile(alt_means, 0.95)
     draw_mean_bars(output, xcoord, mean_low, mean, mean_high)
 
-    # Failure indication
-    if nr_failed != 0:
-        f_indication = binom_confidence_interval(nr_failed, len(samples) + nr_failed, 0.9)
-    else:
-        f_indication = "0/%d" % len(samples)
-    output.writeln("\\node at (%f,%f) [right,rotate=45] {\small %s};" % (xcoord-.01, 1, f_indication))
-
     # And the kernel
     output.writeln("\\draw %s (%f,%f) rectangle (%f,%f);" % (line_decoration,
                                                              xcoord - xscale / (bandwidth * (len(samples) + nr_failed) * 2),
-                                                             -.1 - bandwidth / 2,
+                                                             -kboxheight / 2 - bandwidth / 2,
                                                              xcoord + xscale / (bandwidth * (len(samples) + nr_failed) * 2),
-                                                             -.1 + bandwidth / 2))
+                                                             -kboxheight / 2 + bandwidth / 2))
 
 def draw_alpha_field(output, sep):
     with block(output, "pgfonlayer", "{bg}"):
@@ -353,13 +351,11 @@ def draw_time_field(output, time_abscissae, time_to_y, label, failed, kernel):
             y = time_to_y(time[0])
             output.writeln("\\node at (0,%f) [left] {%s};" % (y, time[1]))
         if kernel:
-            output.writeln("\\node at (0,-.1) [left] {Kernel};")
-        if failed:
-            output.writeln("\\node at (0,1.3) [left] {Failed};")
+            output.writeln("\\node at (0,%f) [left] {Kernel};" % (-kboxheight / 2))
         output.writeln("\\draw[->] (0,0) -- (0,1);")
 
 def draw_field(output, time_abscissae, time_to_y):
-    draw_alpha_field(output, -.2)
+    draw_alpha_field(output, - kboxheight)
     draw_time_field(output, time_abscissae, time_to_y, "Time taken, seconds", True, True)
 
 def after_rerun(x):
@@ -377,7 +373,7 @@ output = IndentedFile(file("time_per_crashing.tex", "w"))
 with block(output, "tikzpicture"):
     output.writeln("%% Gross time taken per potentially-crashing instruction")
     with block(output, "scope", "[xscale=%f,yscale=%f]" % (figwidth, figheight)):
-        output.writeln("\\useasboundingbox (-.13,-.4) rectangle (1.1,1.53);")
+        output.writeln("\\useasboundingbox (-.13,-.4) rectangle (1.0,1.0);")
         with block(output, "pgfonlayer", "{bg}"):
             output.writeln("\\fill [color=white] (0,0) rectangle (1,1);")
         (t, s) = time_to_y(mintime, maxtime)
@@ -389,13 +385,13 @@ with block(output, "tikzpicture"):
             samples.sort()
             print "Average for crashing alpha = %d -> %f" % (alpha, sum(samples) / len(samples))
             nr_rerun = len([r for r in ar if r[2] == "timeout" or isinstance(r[2], tuple)])
-            draw_pdf(output, samples, alpha_to_x(alpha), 0.005, t, s, timeout, nr_rerun)
+            draw_pdf(output, samples, alpha_to_x(alpha), 0.007, t, s, timeout, nr_rerun)
 output.close()
 
 output = IndentedFile(file("time_per_interfering.tex", "w"))
 with block(output, "tikzpicture"):
     with block(output, "scope", "[xscale=%f,yscale=%f]" % (figwidth, figheight)):
-        output.writeln("\\useasboundingbox (-.13,-.4) rectangle (1.1,1.47);")
+        output.writeln("\\useasboundingbox (-.13,-.4) rectangle (1.0,1.0);")
         (t, s) = time_to_y(0.001, maxtime)
         with block(output, "pgfonlayer", "{bg}"):
             output.writeln("\\fill [color=white] (0,0) rectangle (1,1);")
@@ -411,7 +407,7 @@ with block(output, "tikzpicture"):
             samples.sort()
             nr_failed = len([r for r in ar if r != None and not r[1] in ["satisfiable", "unsatisfiable"]])
             print "Average for interfering alpha = %d -> %f" % (alpha, sum(samples) / len(samples))
-            draw_pdf(output, samples, alpha_to_x(alpha), 0.005, t, s, timeout, nr_failed)
+            draw_pdf(output, samples, alpha_to_x(alpha), 0.007, t, s, timeout, nr_failed)
 output.close()
 
 output = IndentedFile(file("interfering_per_crashing.tex", "w"))
@@ -485,4 +481,70 @@ with block(output, "tikzpicture"):
                            frac_to_y(estimated_prob),
                            frac_to_y(upper),
                            True)
+output.close()
+
+output = IndentedFile(file("failures.tex", "w"))
+colspec = ">{~~}r@{}r@{.}l@{,~}r@{.}l@{}l<{~~}"
+with block(output, "tabular", "{|p{1cm}|%s|%s|%s|}" % (colspec, colspec, colspec)):
+    output.writeln("\\hline")
+    output.writeln(r"$\alpha$ & \multicolumn{6}{c|}{Phase \subcrash{}} & \multicolumn{6}{c|}{Phase \subinterfering{}} & \multicolumn{6}{c|}{Both phases} \\")
+    output.writeln("\\hline")
+    for alpha in alphas:
+        output.write("%d & " % alpha)
+        # Crashing failure rate
+        d = data[alpha]
+        nr_attempts = len(d)
+        nr_failures = 0
+        for c in d.itervalues():
+            c = after_rerun(c)
+            if not isinstance(c[2], dict):
+                nr_failures += 1
+        output.write("%s & " % binom_confidence_interval(nr_failures, nr_attempts, 0.9))
+        # Interfering failure rate
+        nr_attempts = 0
+        nr_failures = 0
+        for c in d.itervalues():
+            c = after_rerun(c)
+            if not isinstance(c[2], dict):
+                continue
+            nr_attempts += len(c[2])
+            for i in c[2].itervalues():
+                i = after_rerun2(i)
+                if i == None or i[1] == "timeout" or (isinstance(i[1], tuple) and i[1][0] == "oom"):
+                    nr_failures += 1
+        output.write("%s & " % binom_confidence_interval(nr_failures, nr_attempts, 0.9))
+        # Composite rate.  This is a little more tricky.
+        cks = data.keys()
+        def gen_replicate():
+            nr_attempts = 0
+            nr_failures = 0
+            cs = map(after_rerun, d.itervalues())
+            nonFailedCs = filter(lambda c: isinstance(c[2], dict), cs)
+            for _c in d:
+                c = random.choice(cs)
+                if not isinstance(c[2], dict):
+                    preFailed = True
+                    c = random.choice(nonFailedCs)
+                else:
+                    preFailed = False
+                iis = map(after_rerun2, c[2].itervalues())
+                nr_attempts += len(iis)
+                if preFailed:
+                    nr_failures += len(iis)
+                else:
+                    for i in c[2]:
+                        i = random.choice(iis)
+                        if i == None or i[1] == "timeout" or (isinstance(i[1], tuple) and i[1][0] == "oom"):
+                            nr_failures += 1
+            return float(nr_failures)/nr_attempts
+        replicates = [gen_replicate() for _ in xrange(nr_replicates)]
+        replicates.sort()
+        def f(x):
+            return ("%.1f" % x).replace(".", "&")
+        output.write(r"[&%s&%s&$]_{%d}$\%% " % (f(quantile(replicates, 0.05) * 100),
+                                                f(quantile(replicates, 0.95) * 100),
+                                                nr_replicates))
+        output.writeln(r"\\")
+        print "Done alpha = %d" % alpha
+    output.writeln("\\hline")
 output.close()

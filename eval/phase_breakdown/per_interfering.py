@@ -33,15 +33,15 @@ bubble_key_to_chart_key = {"compiling interfering CFG": "sicfg",
                            "sat check": "ce"}
 chart_keys = ["sicfg", "rc", "sia", "eia", "cs", "ce"]
 chart_labels = {"cicfg": "Build interfering \\gls{cfg}",
-                "sicfg": "Build interfering {\\StateMachine}",
-                "rc": "Rederive crashing {\\StateMachine}",
+                "sicfg": "\\subinterfering{0}",
+                "rc": "\\subinterfering{1}",
                 "early-out": "Early-out check",
                 "bia": "Build \\gls{ic-atomic} {\\StateMachine}",
-                "sia": "Build \\gls{ic-atomic} {\\StateMachine}",
-                "eia": "Run \\gls{ic-atomic} {\\StateMachine}",
+                "sia": "\\subinterfering{2}",
+                "eia": "\\subinterfering{3}",
                 "cb": "Build cross-product {\\StateMachine}",
-                "cs": "Build cross-product {\\StateMachine}",
-                "ce": "Run cross-product {\\StateMachine}",
+                "cs": "\\subinterfering{4}",
+                "ce": "\\subinterfering{5}",
                 "sc": "Final satisfiability check"}
 START_INTERFERING_RE = re.compile(r"start interfering CFG [0-9]*/[0-9]* for DynRip\[[0-9a-f]*\]")
 def read_one_sequence(defects, get_line, _pushback, fname):
@@ -203,16 +203,6 @@ replicates = [sequences_to_chartset([random.choice(sequences) for _ in xrange(le
 
 main_fig = common.Figure(time_to_y, y_to_time, [])
 main_fig.figwidth -= 0.5
-main_fig.boxes.append(common.Box(main_fig.lowest() - 0.5,
-                                 main_fig.lowest(),
-                                 lambda x: x.pre_dismissed,
-                                 lambda x: x.pre_failed,
-                                 "Skipped"))
-main_fig.boxes.append(common.Box(main_fig.highest(),
-                                 main_fig.highest() + 0.5,
-                                 lambda x: x.timeouts,
-                                 lambda x: x.ooms,
-                                 "Failed"))
 
 output = file(sys.argv[2], "w")
 
