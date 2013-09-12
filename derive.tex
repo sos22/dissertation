@@ -437,7 +437,10 @@ language's most important features:
   contents of processor registers and program memory when the
   {\StateMachine} started, the path which each thread takes through
   the \gls{dynamic cfg}, and the order in which memory accesses happen
-  when multiple threads are being modelled.
+  when multiple threads are being modelled.  Unlike the
+  \gls{speicher}, the contents of the environment does not change as
+  the {\StateMachine} executes, and so expressions which reference the
+  environment are effectively constants, simplifying the analysis.
 \end{itemize}
 This model of computation is not Turing complete (in particular,
 {\StateMachines} are guaranteed to terminate in a finite number of
@@ -589,8 +592,7 @@ $\smReg{r}{t}$ & The initial value of register \textsc{r} in thread $t$.\\
     match any of these rules evaluate to \textsc{Unreached}.
     $\mathrm{expr} \downarrow_{c,t} \mathrm{value}$ is true when the
     expression $\mathrm{expr}$ evaluates to the value $\mathrm{value}$
-    under environment $c$ and variables $t$.  \smh{What's the
-      difference between the speicher and the memory?}}
+    under environment $c$ and variables $t$.}
   \label{fig:derive:sm_semantics}
 \end{sanefig}
 
@@ -1101,7 +1103,7 @@ and \textsc{staticToDynamicCrashing} are simpler to explain:
 }
 
 \noindent
-\smh{I didn't get this example at all.} As an example, consider this cyclic \gls{cfg}:
+As an example, consider this cyclic \gls{cfg}:
 \vfill
 \centerline{
 \inlinebox{
@@ -2346,12 +2348,11 @@ memory is marked as shared whenever a pointer to it is stored into any
 non-stack memory, even when that non-stack memory is itself marked as
 thread-private.  This is necessary because the analysis does not
 attempt to track the heap reachability graph, and in particular cannot
-map from one block to the set of blocks reachable from that block.  It
-is therefore not safe to ``upgrade'' a block from thread-private to
+map from a block to the set of blocks reachable from it.  There is
+therefore no safe way to ``upgrade'' a block from thread-private to
 thread-shared if there is any possibility of that block containing a
 thread-private pointer; upgrading blocks early and pessimistically
-means that it is never necessary to do so.  \smh{what does safe mean
-  here?}
+means that it is never necessary to do so.
 
 \section{Implementation limitations}
 {\Implementation} makes several important simplifying assumptions,
@@ -2488,6 +2489,3 @@ show how to convert these \glspl{verificationcondition} into
 \glspl{bugenforcer} which make the potential bugs reproduce far more
 easily, allowing the true bugs to be confirmed and the false ones
 discarded with minimal manual intervention.
-
-\smh{not sure that categorising false positives as the most important
-  limitation makes sense.}

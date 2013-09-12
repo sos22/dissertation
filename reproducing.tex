@@ -158,8 +158,7 @@ At a high level, the algorithm used has the following phases:
 \item
   Combine the results of the previous phases with the \gls{plan
     interpreter}, discussed in \autoref{sect:enforce:interpreting},
-  and compile the result into the final \gls{bugenforcer}.  \smh{Need
-    more details of this sooner.}
+  and compile the result into the final \gls{bugenforcer}.
 \end{itemize}
 The resulting \gls{bugenforcer} can be loaded into the running program
 and the two exercised together, hopefully reproducing the bug under
@@ -772,9 +771,9 @@ resulting placement of \glspl{side condition} is shown in
 In order to manipulate a program's execution a \gls{bugenforcer} must
 first gain control of it.  {\Implementation} does so by patching the
 program's binary and replacing certain critical instructions with
-branches to the \gls{plan interpreter}.  This is highly efficient,
-when compared to other techniques such as dynamic binary
-rewriting~\cite{Luk2005,Nethercote2007} or processor breakpoint
+branches to the \gls{bugenforcer}'s instruction interpreter.  This is
+highly efficient, when compared to other techniques such as dynamic
+binary rewriting~\cite{Luk2005,Nethercote2007} or processor breakpoint
 registers~\cite[Chapter 16.2: Debug Registers]{Intel2009}, and avoids
 unnecessarily disturbing the program's state, but requires care to be
 implemented safely.  In particular, the branch operation might be
@@ -844,13 +843,13 @@ $i$, but they have different costs and constraints:
 \begin{itemize}
 \item The \textsc{patch} function gains control directly at
   instruction $i$, and so avoids forcing any additional programs to be
-  run in the interpreter, but potentially corrupts other instructions
-  in the program.  The function must then ensure that it gains control
-  before the program executes any of these corrupted instructions, and
-  hence must add them to the $\mathit{Pending}$ set.  It is,
-  mechanically, only possible to patch $i$ if doing so will neither
-  corrupt not be corrupted by any of the existing entries in the
-  $\mathit{Patch}$ set.
+  run in the instruction interpreter, but potentially corrupts other
+  instructions in the program.  The function must then ensure that it
+  gains control before the program executes any of these corrupted
+  instructions, and hence must add them to the $\mathit{Pending}$ set.
+  It is, mechanically, only possible to patch $i$ if doing so will
+  neither corrupt not be corrupted by any of the existing entries in
+  the $\mathit{Patch}$ set.
 \item The \textsc{prefix} function, by contrast, does not attempt to
   gain control at $i$ itself but instead arranges to gain control at
   the predecessors of $i$ and then emulate the program until it
@@ -981,11 +980,11 @@ Note three things:
 \end{enumerate}
 This wait operation both enforces the happens-before edge itself and,
 just as importantly, determines how the dynamic threads in a running
-program map onto the analysis level threads in the plan.  Whichever
-program thread executed {\tt a} will become the crashing thread and
-whichever executed {\tt c} will become the interfering one.  The two
-threads are said to have been bound together and will execute the rest
-of the plan together.
+program map onto the analysis threads in the plan.  Whichever program
+thread executed {\tt a} will become the crashing thread and whichever
+executed {\tt c} will become the interfering one.  The two threads are
+said to have been bound together and will execute the rest of the plan
+together.
 
 Once the wait has completed and the threads have been bound, the
 \gls{bugenforcer} continues through the plan, emulating \texttt{c} in
@@ -994,10 +993,10 @@ This is handled similarly to the first one: each thread waits for the
 other to arrive at its matching happens-before operation, the
 operation is discharged, and the two threads continue.  In this case,
 the happens-before edge is the final operation in the plan, and so
-both threads will exit the \gls{plan interpreter} and return to normal
-operation once it has finished (regardless of whether the edge
-completes successfully or times out).  The crashing thread will resume
-at instruction {\tt b} by loading \texttt{y} from \texttt{loc1}.
+both threads will exit the enforcer and return to normal operation
+once it has finished (regardless of whether the edge completes
+successfully or times out).  The crashing thread will resume at
+instruction {\tt b} by loading \texttt{y} from \texttt{loc1}.
 \texttt{loc1} was last modified when the \gls{interferingthread}
 emulated \texttt{c}, and so \texttt{y} is now set to \texttt{7}.  The
 \gls{side condition} imposed at the start of the plan will have
@@ -1161,17 +1160,18 @@ chosen, but the enforcer simply observes that static instruction C is
 followed by static instruction D and cannot tell which to use.  It
 avoids the issue by pretending that there were two copies of the plan
 in its initial plan set and having one go to $D_0$ and the other to
-$D_1$\kern-.2pt.\kern-.3pt\fnote{There is a potentially useful analogy
-  here with the power set construction used to convert a
-  non-deterministic finite state automaton into a deterministic one.
-  In that model, a deterministic FSA emulates a non-deterministic one
-  by tracking the set of states which the non-deterministic automaton
-  might possibly occupy, allowing it to defer non-deterministic
-  choices until it has enough information to resolve them
-  unambiguously.  In the same way, {\technique}'s set of plans allows
-  it to defer an ambiguous choice until one or other of the possible
-  options leads to a failed plan, at which point it can arrange to
-  have chosen the other one. \smh{De-footnote}}
+$D_1$\kern-.2pt.
+
+There is a potentially useful analogy with the power set construction
+used to convert a non-deterministic finite state automaton into a
+deterministic one.  In that model, a deterministic FSA emulates a
+non-deterministic one by tracking the set of states which the
+non-deterministic automaton might possibly occupy, allowing it to
+defer non-deterministic choices until it has enough information to
+resolve them unambiguously.  In the same way, {\technique}'s set of
+plans allows it to defer an ambiguous choice until one or other of the
+possible options leads to a failed plan, at which point it can arrange
+to have chosen the other one.
 
 I now give more details of how the plan enforcement interpreter works,
 starting with a more complete description of the single-plan version
@@ -1186,9 +1186,8 @@ interfere with each other (\autoref{sect:enforce:plan_interference}).
 
 The single-plan interpreter runs some simple stages in a tight loop:
 \begin{itemize}
-\item \textbf{Sample}: Look at the thread's registers, determine which
-  ones might be needed to evaluate later \glspl{side condition}, and copy the
-  appropriate registers to the plan's local state.
+\item \textbf{Sample}: Copy any thread registers needed to evaluate later
+  \glspl{side condition} into plan-local state.
 
 \item \textbf{RX}: Receive any messages required by the plan.  Message
   operations are discussed below.
@@ -1202,17 +1201,19 @@ The single-plan interpreter runs some simple stages in a tight loop:
 \item \textbf{Succ}: Determine which node in the \gls{dynamic cfg} the
   plan is going to execute next.
 \end{itemize}
-The message operation is illustrated in
-\autoref{fig:enforce:lli_message}.  It starts by selecting a plan in a
-remote thread with which to communicate; the mechanism for doing so
-depends on details of the multi-plan interpreter and so is deferred to
-\autoref{sect:enforce:hli_messages}.  Each thread then waits for the
-other to arrive, at which point they collectively evaluate the
-\gls{side condition}, synchronise any state necessary to evaluate
-future \glspl{side condition}, and bind the plans together, if they
-are not already bound.  They then advance to the next stage in the
-interpreter cycle (either \textbf{Emul} for a receive operation or
-\textbf{Succ} for a transmit one).
+{\Technique} uses a synchronous message operation, illustrated in
+\autoref{fig:enforce:lli_message}, both to impose the desired
+happens-before edges and to synchronise needed state between the
+different program threads involved in the bug.  The operation starts
+by selecting a plan in a remote thread with which to communicate; the
+mechanism for doing so depends on details of the multi-plan
+interpreter and so is deferred to \autoref{sect:enforce:hli_messages}.
+Each thread then waits for the other to arrive, at which point they
+collectively evaluate the \gls{side condition}, synchronise any state
+necessary to evaluate future \glspl{side condition}, and bind the
+plans together, if they are not already bound.  They then advance to
+the next stage in the interpreter cycle (either \textbf{Emul} for a
+receive operation or \textbf{Succ} for a transmit one).
 
 \begin{sanefig}
   {\hfill}
@@ -1257,7 +1258,7 @@ interpreter cycle (either \textbf{Emul} for a receive operation or
   \label{fig:enforce:lli_message}
 \end{sanefig}
 
-A message operation can fail \smh{What is fail?} in three ways:
+A message operation can fail in three ways:
 \begin{enumerate}
 \item
   The \gls{side condition} might evaluate to false.  This simply indicates
@@ -1418,11 +1419,11 @@ reaches C, creates a $C_1$ plan, and sends message $\alpha_1$, but
 that cannot happen until the \gls{interferingthread} has finished with
 instruction A, which is only possible once message operation
 $\alpha_0$ is complete.  The \gls{crashingthread}, meanwhile, has
-effectively tied messages $\alpha_0$ and $\alpha_1$ together
-\smh{why?}, and will not complete its receive of $\alpha_0$ until
-something sends $\alpha_1$.  The enforcer has deadlocked.  It will not
-proceed until $p_1$'s message operation times out, causing the
-enforcer to abandon that plan and continue with $p_0$ alone.
+effectively tied messages $\alpha_0$ and $\alpha_1$ together , and
+will not complete its receive of $\alpha_0$ until something sends
+$\alpha_1$.  The enforcer has deadlocked.  It will not proceed until
+$p_1$'s message operation times out, causing the enforcer to abandon
+that plan and continue with $p_0$ alone.
 
 \begin{sanefig}
   {\hfill}%
@@ -1508,67 +1509,6 @@ quite inefficiently, in the sense that they either impose many
 pointless delays or make poor use of rare events, but will not usually
 render any of the graphs completely unenforceable.
 
-\smh{Delete this para} This example showed interference between
-unbound message operations.  It is also possible for plans to
-interfere with each other's bound message operations.  Consider, for
-instance, the example in \autoref{fig:enforce:bound_interference}.
-This plan requires instructions A, B, and C to occur between
-instructions D and E, enforced using messages $\alpha$ and $\beta$;
-instruction B can also
-\begin{wrapfigure}{o}{4cm}
-  \vspace{-15pt}
-  \begin{figgure}
-    \centerline{
-      \begin{tikzpicture}
-        \node (left) {};
-        \node [right = of left] (right) {};
-        \node [left = of left] (leftleft) {};
-        \node at (left) (row1) {};
-        \node [below = of row1] (row2) {};
-        \node [below = of row2] (row3) {};
-        \node [below = of row3] (row4) {};
-        \node [below = of row4] (row5) {};
-        \node at (right |- row1) [CfgInstr] (D) {D};
-        \node at (left |- row2) [CfgInstr] (A) {A};
-        \node at (left |- row3) [CfgInstr] (B) {B};
-        \node at (left |- row4) [CfgInstr] (C) {C};
-        \node at (right |- row5) [CfgInstr] (E) {E};
-        \node at (leftleft |- row2) (dummy1) {};
-        \node [right = .5 of right] {};
-        \draw[->] (D) -- (E);
-        \draw[->] (A) -- (B);
-        \draw[->] (B) -- (C);
-        \draw[->,happensBeforeEdge] (D) to node [above] {$\alpha$} (A);
-        \draw[->,happensBeforeEdge] (C) to node [above] {$\beta$} (E);
-        \draw[->,happensBeforeEdge] (dummy1) to node [above] {$\gamma$} (B);
-      \end{tikzpicture}
-    }
-    \caption{Another example of plan interference.}
-    \label{fig:enforce:bound_interference}
-  \end{figgure}
-  \vspace{-12pt}
-\end{wrapfigure}
-receive another message $\gamma$.  Suppose that the path from D to E
-is very quick and that receiving the message $\gamma$ requires a very
-long delay (or, equivalently, that there are actually many other
-message operations between A and C).  The thread on the right will
-then reach the $\beta$ operation a long time before the thread on the
-left, which could potentially lead to $\beta$ timing out spuriously.
-This issue can be avoided by defining the timeout carefully.  Rather
-than running from the start of the operation, a bound message timeout
-runs from the end of the \emph{previous} message operation in the
-other thread and excludes any time spent waiting for other plans.  So,
-in the example, if the message timeout were 10ms then the thread on
-the left would have 10ms to go from receiving $\alpha$ to being ready
-to send $\beta$, excluding time spent processing $\gamma$, regardless
-of how long the thread on the right took to advance from sending
-$\alpha$ to receiving $\beta$.  Similarly, the thread on the right
-would have 10ms to advance from $\alpha$ to $\beta$, excluding time
-spent in any other message operations along the way.  This ensures
-that bound message timeouts reflect incompatibilities between the
-enforcement plan and the structure of the program and not
-incompatibilities between multiple enforcement plans.
-
 \section{Discussion}
 
 The enforcer mechanism described here allows {\technique} to shepherd
@@ -1589,5 +1529,3 @@ is highly undesirable in a production one.  The next chapter
 demonstrates a different, related, technique which instead makes bug
 reproduction much less likely, in many cases eliminating the bug
 completely.
-
-\smh{I don't like the message, plan, and binding terminology.}
