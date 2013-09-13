@@ -189,7 +189,7 @@ meaningful: \glspl{verificationcondition} are used primarily to build
 minor lacunae in the \gls{cfg} cause few real problems.
 
 \begin{wrapfigure}{r}{3.9cm}
-\vspace{-19pt}
+\vspace{-14pt}
 \begin{figgure}
 \vspace{-2pt}
 \begin{tikzpicture}
@@ -214,11 +214,11 @@ minor lacunae in the \gls{cfg} cause few real problems.
 \end{tikzpicture}
 \caption{Fully unrolled version of the CFG in
   \autoref{fig:cyclic_cfg}, preserving all paths of length six or
-  less. \todo{Check wrap with enclosing para}}
+  less.}
 \label{fig:unrolled_cyclic_cfg}
 \vspace{-4pt}
 \end{figgure}
-\vspace{-8pt}
+\vspace{-13pt}
 \end{wrapfigure}
 Once an appropriate \gls{static cfg} has been built, {\technique}
 converts it to a dynamic one by unrolling any loops.
@@ -296,12 +296,12 @@ The way in which these potentially-crashing instructions are
 identified depends on the type of bug which is to be investigated.
 {\Implementation} considers three types of bug:
 \begin{itemize}
-\item Assertion-failure type crashes.  These are caused by the program
-  calling a function such as \verb|__assert_fail| or \verb|abort|.
-  Finding such functions is generally straightforward, given the usual
-  dynamic linker information, and the whole-program \gls{cfg},
-  discussed earlier, can then provide all of their callers.  Each such
-  caller is treated as a potential bug.
+\item Assertion failures.  These are caused by the program calling a
+  function such as \verb|__assert_fail| or \verb|abort|.  Finding such
+  functions is straightforward, given the usual dynamic linker
+  information, and the whole-program \gls{cfg}, discussed earlier, can
+  provide all of their callers.  Each such caller is treated as a
+  potential bug.
 \item Double free errors.  These are caused by the program calling
   \verb|free| in an incorrect manner.  Again, the dynamic linker
   information allows {\implementation} to quickly find all calls to
@@ -755,12 +755,7 @@ bugs which depend on interactions with library functions (a race which
 can only be triggered following an IO error, for instance, will not be
 detected), but is sufficient when library calls incidentally happen
 near to the buggy code without meaningfully influencing its
-behaviour.\kern-.2pt\fnote{Even with a more complete {\StateMachine}
-  library implementation, {\technique} would still be a poor choice
-  for investigating environmentally-dependent bugs:
-  \protect\glspl{bugenforcer} only influence the program's scheduling
-  and so are unlikely to be effective for bugs which depend on more
-  complicated interactions with the environment.}
+behaviour.
 
 Some library functions are more directly relevant to {\technique} and
 deserve more complete implementations.  \texttt{pthread\_mutex\_lock}
@@ -1035,22 +1030,22 @@ is more difficult: where the \gls{crashingthread} algorithm preserves
 that \gls{crashing instruction}, the \gls{interferingthread} one must
 preserve those which go between any member of $\beta$ and any member
 of $i2c$, requiring a more complicated notion of node position.  In
-this algorithm, the position of a node in the graph is given by two
-maps, $\mathit{min\_from}$ and $\mathit{min\_to}$:
+this algorithm, the position of a CFG node $l$ is given by two maps,
+$\mathit{min\_from}$ and $\mathit{min\_to}$:
 \begin{itemize}
 \item
-  $\mathit{min\_from}_l(c)$ is the number of instructions on the
-  shortest path from $c$ to $l$, where $c \in \beta$.
+  $\mathit{min\_from}_l(c)$, where $c \in \beta$, is the number of
+  instructions on the shortest path from node $c$ to node $l$.
 \item
-  $\mathit{min\_to}_l(i)$ is the number of instructions on the
-  shortest path from $l$ to $i$, where $i \in i2c^\sharp$\kern-.34em.
+  $\mathit{min\_to}_l(i)$, where $i \in i2c^\sharp$\kern-.34em, is the
+  number of instructions on the shortest path from node $l$ to node $i$.
   $i2c^\sharp$ consists of all members of $i2c$, plus all of the
   \gls{cfg} nodes created by duplicating one of those instructions.
 \end{itemize}
-The length of the shortest path from an instruction $c \in \beta$ to
-$i \in i2c^\sharp$ via the instruction $l$ is then
-$\mathit{min\_from}_l(c) + \mathit{min\_to}_l(i) + 1$, and so it is
-safe to discard any instruction $l$ where
+The length of the shortest path from a node $c \in \beta$ to $i \in
+i2c^\sharp$ via node $l$ is then $\mathit{min\_from}_l(c) +
+\mathit{min\_to}_l(i) + 1$, and so it is safe to discard any
+node $l$ where
 \begin{displaymath}
 \min_{c \in \beta}\left(\mathit{min\_from}_l(c)\right) + \min_{i \in i2c^\sharp}\left(\mathit{min\_to}_l(i)\right) {\geq} \alpha
 \end{displaymath}
