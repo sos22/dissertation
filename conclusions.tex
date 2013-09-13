@@ -59,45 +59,43 @@ fix generation process simply ignores this information.  It would be
 interesting to investigate alternative schemes which make better use
 of it.
 
-\begin{wrapfigure}{o}{4cm}
-  \vspace{-12pt}
-  \begin{figgure}
+\begin{sanefig}
   \centerline{
-  \begin{tikzpicture}
-    \node (LD1) {Load 1};
-    \node [right = 1.5 of LD1] (dummy) {};
-    \node [below = of dummy] (ST1) {Store 1};
-    \node [below = of ST1] (ST2) {Store 2};
-    \node [below = 0.9 of ST2] (dummy2) {};
-    \node at (dummy2 -| LD1) (LD2) {Load 2};
-    \draw[->] (LD1) -- (LD2);
-    \draw[->] (ST1) -- (ST2);
-    \draw[->,happensBeforeEdge] (LD1) to node [above,sloped] {$i_1 = i_2$} (ST1);
-    \draw[->,happensBeforeEdge] (ST2) -- (LD2);
+  \begin{tikzpicture}[scale = 1.5]
+    \node (threadA) at (-1,0) {Thread A};
+    \node (threadB) at (-1,-1) {Thread B};
+    \node (ldX) at (1,0) {$x = \mathit{V}_1[i]$};
+    \node (st1) at (2,-1) {$\mathit{V}_1[j] = 1$};
+    \node (st2) at (3.5,-1) {$\mathit{V}_2[j] = 1$};
+    \node (ldY) at (4.5,0) {$y = \mathit{V}_2[j]$};
+    \node (assert) at (7,0) {assert($x = 1 \vee y = 0$)};
+    \draw [->] (ldX) -- (ldY);
+    \draw [->] (ldY) -- (assert);
+    \draw [->] (st1) -- (st2);
+    \draw [->,happensBeforeEdge] (ldX) -- (st1);
+    \draw [->,happensBeforeEdge] (st2) -- (ldY);
   \end{tikzpicture}
   }
-  \caption{\smh{de-wrap}}
+  \caption{An example \glsentrytext{sav}.  The arrays $\mathit{V}_1$
+    and $\mathit{V}_2$ initially contain zeroes.  $i$ is a local
+    variable in thread A and $j$ one in thread B.  \todo{width}}
   \label{fig:concl:hb_graph}
-  \end{figgure}
-  \vspace{-12pt}
-\end{wrapfigure}
+\end{sanefig}
+
 One approach to doing so makes use of a kind of extended hazard
 pointer~\cite{Michael2004}.  Consider, for example, the threads in
-\autoref{fig:concl:hb_graph}.  This is intended to illustrate a
-construction in which there is one thread which issues two loads and
-another which issues two stores and in which the program will crash if
-both stores occur in between the two loads and the variable $i$ has
-the same value in both threads.  One way of preventing this bug would
-be to have the first thread publish a ``hazard'', containing the value
-of its $i$ variable, before running the first load and clear it after
-the second one.  The second thread could then check for such hazards
-before running the first store and, if it finds one with a matching
-$i$, make sure to wait for the hazard to clear before running the
-second one.  This would fix the bug and allow the two threads to run
-in parallel for most of the critical section, or for all of it when
-the $i$s differ.  The loss of concurrency, and hence loss of
-performance, associated with the fix would therefore probably be much
-lower.
+\autoref{fig:concl:hb_graph}.  This program will crash if thread B's
+two stores intervene between thread A's two loads and if $i = j$.  One
+way of preventing this bug would be to have the first thread publish a
+``hazard'', containing the value of its $i$ variable, before running
+the first load and clear it after the second one.  The second thread
+could then check for such hazards before running the first store and,
+if it finds one whose $i$ matches its $j$, make sure to wait for the
+hazard to clear before running the second one.  This would fix the bug
+and allow the two threads to run in parallel for most of the critical
+section, or for all of it when the array indices differ.  The loss of
+concurrency, and hence loss of performance, associated with the fix
+would therefore probably be much lower.
 
 \cleardoublepage
 \chapter{Conclusions}

@@ -293,7 +293,13 @@ describing the correctness requirements for the \gls{shadowfragment}:
   strategy's $\mathit{Patch}$ set.
 \item It must correctly enforce the desired synchronisation, in the
   sense that any subsequences which match the \gls{dynamic cfg} must
-  hold the lock for their entire duration.
+  hold the lock for their entire duration.  Note that although the
+  \gls{dynamic cfg} is a deterministic automaton over dynamic CFG
+  nodes, it is potentially non-deterministic when expressed over
+  static ones, as a single static CFG node could potentially map to
+  multiple dynamic ones.  Only the \gls{static cfg} can be directly
+  observed, and so {\technique} must be prepared to deal with this
+  ambiguity.
 \item It must follow correct lock discipline, in the sense that any
   instruction sequences generated must match the automaton in
   \autoref{fig:fix:lock_discipline}.
@@ -301,7 +307,7 @@ describing the correctness requirements for the \gls{shadowfragment}:
 The example in \autoref{fig:fix:eg} follows all three rules; the next
 section explains how to generate \glspl{shadowfragment} which do so in
 the general case.
-\vspace{-6pt}
+
 \section[Generating the \glsentrytext{shadowfragment}]{Generating the \gls{shadowfragment}}
 \label{sect:fixing:shadowfrag}
 
@@ -467,6 +473,12 @@ regular automata:
 \item $\mathit{phase}$ records the program's progress through the
   phases within an instruction.
 \end{itemize}
+The $\mathit{dynamic}$ set is used by the grammar to implement a power
+set construction, allowing it to correctly process non-determinism in
+the \gls{dynamic cfg}, in much the same way that the enforcer plan set
+allows enforcers to compensate for ambiguous plans
+(\autoref{sect:enforce:succ}).
+
 The grammar makes use of two utility functions:
 \begin{itemize}
 \item $\mathit{startingAt}(r)$ maps from a \gls{static cfg} node $r$
@@ -482,8 +494,7 @@ The grammar makes use of two utility functions:
   \end{displaymath}
   $s.\mathit{next}$ is the set of \gls{dynamic cfg} nodes which can
   follow $s$ and $r.\mathit{static}$ is the \gls{static cfg} node
-  corresponding to $r$.  \smh{Call out similarities to enforcer power
-    set construction more explicitly?}
+  corresponding to $r$.
 \end{itemize}
 
 \noindent
