@@ -233,6 +233,36 @@ def time_to_y(t):
 def y_to_time(y):
     return math.e ** ((y - main_fig.y_min) / (main_fig.y_max - main_fig.y_min) * math.log(main_fig.maxtime / main_fig.mintime)) * main_fig.mintime
 
+# Interfering time per crashing instruction
+def gen_replicate1():
+    cs = random.choice(sequences)
+    events = cs[1]
+    res = 0.0
+    cntr = 0
+    for event in events:
+        if event in [no_interfering_stores, early_out, plt]:
+            return 0.0
+        if event["failed"]:
+            return None
+        if event["key"] == "process interfering CFGs":
+            res += event["duration"]
+            cntr += 1
+    return res
+def gen_replicate():
+    acc = 0
+    cntr = 0
+    while cntr < len(sequences):
+        r = gen_replicate1()
+        if r != None:
+            acc += r
+            cntr += 1
+    return acc / cntr
+def gen_replicates():
+    return [gen_replicate() for _ in xrange(nr_replicates)]
+repl = gen_replicates()
+repl.sort()
+print "Interfering time per crashing instruction: %f, %f %d" % (common.quantile(repl, 0.05), common.quantile(repl, 0.95), len(sequences))
+
 replicates = [sequences_to_chartset([random.choice(sequences) for _ in xrange(len(sequences))]) for _2 in xrange(nr_replicates)]
 (charts, defect_samples, total_samples) = sequences_to_chartset(sequences)
 

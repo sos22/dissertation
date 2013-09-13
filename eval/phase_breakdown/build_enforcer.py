@@ -176,8 +176,15 @@ def time_to_y(t):
 def y_to_time(y):
     return math.e ** ((y - main_fig.y_min) / (main_fig.y_max - main_fig.y_min) * math.log(main_fig.maxtime / main_fig.mintime)) * main_fig.mintime
 
-replicates = [sequences_to_chartset([random.choice(sequences) for _ in xrange(len(sequences))]) for _2 in xrange(nr_replicates)]
 (charts, defect_samples, total_samples) = sequences_to_chartset(sequences)
+def gen_replicate():
+    return sum(random.choice(total_samples) for _ in total_samples) / len(total_samples)
+replicates = [gen_replicate() for _ in xrange(nr_replicates)]
+replicates.sort()
+print "Total time: %f, %f, %d" % (common.quantile(replicates, 0.05),
+                                  common.quantile(replicates, 0.95),
+                                  len(total_samples))
+replicates = [sequences_to_chartset([random.choice(sequences) for _ in xrange(len(sequences))]) for _2 in xrange(nr_replicates)]
 
 main_fig = common.Figure(time_to_y, y_to_time, [])
 main_fig.nr_time_steps = 100.0
