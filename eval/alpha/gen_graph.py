@@ -10,6 +10,7 @@ figheight = 3.7
 timeout = 600.0
 bar_width = 0.05 / figwidth
 kboxheight = .25
+blobwidth = 0.005
 
 y_res = 0.003
 
@@ -385,7 +386,7 @@ with block(output, "tikzpicture"):
             samples.sort()
             print "Average for crashing alpha = %d -> %f" % (alpha, sum(samples) / len(samples))
             nr_rerun = len([r for r in ar if r[2] == "timeout" or isinstance(r[2], tuple)])
-            draw_pdf(output, samples, alpha_to_x(alpha), 0.007, t, s, timeout, nr_rerun)
+            draw_pdf(output, samples, alpha_to_x(alpha), blobwidth, t, s, timeout, nr_rerun)
 output.close()
 
 output = IndentedFile(file("time_per_interfering.tex", "w"))
@@ -407,7 +408,7 @@ with block(output, "tikzpicture"):
             samples.sort()
             nr_failed = len([r for r in ar if r != None and not r[1] in ["satisfiable", "unsatisfiable"]])
             print "Average for interfering alpha = %d -> %f" % (alpha, sum(samples) / len(samples))
-            draw_pdf(output, samples, alpha_to_x(alpha), 0.007, t, s, timeout, nr_failed)
+            draw_pdf(output, samples, alpha_to_x(alpha), blobwidth, t, s, timeout, nr_failed)
 output.close()
 
 output = IndentedFile(file("interfering_per_crashing.tex", "w"))

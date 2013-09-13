@@ -4,8 +4,8 @@ import sys
 import math
 import random
 
-figwidth = 12.8
-figheight = 7
+figwidth = 12.6
+figheight = 6.8
 
 nr_replicates = 1000
 c_width = 0.005

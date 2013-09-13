@@ -4,8 +4,8 @@ import math
 import random
 from numpy import matrix
 
-fig_height = 7.0
-fig_width = 14.0
+fig_height = 6.8
+fig_width = 13.3
 maxtime = 600.0
 mintime = 0.1
 maxmem = 8388608

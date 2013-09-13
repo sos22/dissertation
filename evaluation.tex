@@ -402,11 +402,11 @@ discover it automatically using {\technique}.
 
 \subsubsection{Characterising the bugs}
 
-\autoref{tab:eval:real_bugs:analysis_time} shows how long it takes to
+\autoref{tab:eval:real_bugs:analysis_time} shows the time taken to
 build the \gls{programmodel} and \glspl{verificationcondition} for
 these bugs.  Note that the time to build the \gls{programmodel} is
 dramatically larger for real programs than it was for the artificial
-ones considered earlier, but the time to generate the
+ones considered earlier, but the time to generate
 \glspl{verificationcondition} is of similar magnitude.  This is
 because {\technique} must examine the entire program in order to build
 the \gls{programmodel}, but need only examine the \gls{analysiswindow}
@@ -768,7 +768,7 @@ divided into four phases:
 \item \subinterfering{} --- per-\gls{interferingthread} analysis work.
   Each crashing {\StateMachine} will generate zero or more
   \glspl{interferingthread}, each of which is analysed independently.
-\item \subenf{} --- building the \gls{bugenforcer}.  Each
+\item \subenf{} --- building the \glspl{bugenforcer}.  Each
   \gls{interferingthread} in turn generates zero or one
   \glspl{verificationcondition}.  Each \gls{verificationcondition} is
   processed in isolation to produce a single \gls{bugenforcer}.
@@ -778,25 +778,31 @@ divided into four phases:
   produce a single fix.
 \end{itemize}
 \begin{sanetab}
-  \begin{tabbular}{|l|p{3cm}|p{3cm}|p{3cm}|}
+  \begin{tabbular}{|l| c| r@{}r@{.}l@{,~}r@{.}l@{}l |c|}
     \hline
-    Phase & Times invoked per potentially-crashing instruction & Time per invocation & Time per potentially-crashing instruction \\
+                      &         & \multicolumn{7}{c|}{~Average time per \ldots} \\
+    \cline{3-9}
+    Phase~             & ~Invoked~ & \multicolumn{6}{c|}{Invocation} & Potentially-crashing instruction \\
     \hline
-    \subcrash{}       & 1 & & \\
-    \subinterfering{} & 2.7535 & \\
-    \subenf{}         & 0.3870 & \\
-    \subfix{}         & 0.3870 & $0.1141 \pm_\mu^{3870} 0.0004$ & \\
+    \subcrash{}       & 1                             & ~~~~~~[&0&82& 1&03&$]_{10000}^{1000}$~~~~~~ & $[0.82, 1.03]_{10000}^{1000}$ \\
+    \subinterfering{} & $[2.75, 2.76]_{10000}^{1000}$ & [&0&45& 0&60&$]_{27339}^{1000}$ & $[4.61, 9.27]_{10000}^{1000}$ \\
+    \subenf{}         & $[0.37, 0.40]_{10000}^{1000}$ & [&0&33& 0&62&$]_{3838}^{1000}$  & $[0.12, 0.25]_{10000}^{1000}$ \\
+    \subfix{}         & $[0.37, 0.40]_{10000}^{1000}$ & [&0&11& 0&12&$]_{3870}^{1000}$  & $[0.04, 0.05]_{10000}^{1000}$ \\
     \hline
   \end{tabbular}
   \caption{Breakdown of analysis time into principal phases.  All
-    times in seconds. \todo{Fill out}}
+    times in seconds.  The invoked column gives the average number of
+    times each phase is invoked for each potentially-crashing
+    instruction.}
   \label{tab:eval:phase_breakdown1}
 \end{sanetab}
 \autoref{tab:eval:phase_breakdown1} shows how often each phase is
 invoked and how much time each invocation takes.  As can be seen,
 phase \subinterfering{} takes the most time, followed by \subcrash{};
-\subenf{} and \subfix{} are by comparison relatively quick.  The
-following sections examine each phase in turn. \todo{blerg}
+\subenf{} and \subfix{} are, by comparison, relatively quick.  The
+following sections examine each phase in turn, investigating why they
+take as long as they do and hence explaining the performance patterns
+observed.
 
 \subsection{Per-\glsentrytext{crashingthread} analysis}
 
@@ -853,7 +859,7 @@ of information:
   for each potentially-crashing instruction, measured from the start
   of processing to the end.  The ``Defect'' PDF, to its left, shows
   the difference between the total time taken and the sum of all of
-  the measured steps.  As can be seen, it is small relative to the
+  the measured sub-phases.  As can be seen, it is small relative to the
   other quantities measured, which is necessary for the other
   measurements to be meaningful.
   \begin{sanetab}
@@ -876,7 +882,7 @@ of information:
     \caption{Failures and early dismissals during phase \subcrash{}.
       Note that the timeout runs from the start of the per-crashing
       instruction phase, rather than being restarted for each
-      step.}
+      sub-phase.}
     \label{tab:eval:how:failures_per_crashing}
   \end{sanetab}
 \end{itemize}
@@ -999,7 +1005,7 @@ were able to reduce the cross-product {\StateMachine} to the trivial
   \caption{Failures and early dismissals during the \subinterfering{}
     phase.  Note that the timeout runs from the start of the
     \subinterfering{} phase, rather than being restarted for each
-    step.}
+    sub-phase.}
   \label{tab:eval:how:failures_per_interfering}
 \end{sanetab}
 As with \autoref{fig:eval:how:per_crashing_times}, this figure shows
@@ -1027,17 +1033,17 @@ execution can only assume the weaker C-atomic constraint.
 \begin{sanefig}
   \biggraph{eval/phase_breakdown/per_interfering_no_w_atomic}
   \caption{Time taken by phase \subinterfering{}, in seconds, with the
-    \glsentrytext{ic-atomic}-related sub-phases disabled.}
+    \glsentrytext{ic-atomic}-related sub-phases disabled \todo{munge}.}
   \label{fig:eval:how:per_interfering:no_ic_atomic}
 \end{sanefig}
 
 This is further illustrated in
 \autoref{fig:eval:how:per_interfering:no_ic_atomic}, which shows how
-long the various steps take when {\implementation} assumes
+long the various sub-phases take when {\implementation} assumes
 \gls{ic-atomic} is the constant \true, rather than attempting to
 derive it.  This eliminates sub-phases \subinterfering{2} and
 \subinterfering{3}, which take 500ms, but increases the cost of the
-later steps so that the total time taken was
+later sub-phases so that the total time taken was
 unchanged.\kern-.5pt\fnote{In fact, the average time taken actually
   \emph{increased} slightly, from $0.52 \in [0.46,
     0.59]_{1000}^{27338}$ to $0.59 \in [0.51, 0.67]_{1000}^{27432}$,
@@ -1064,11 +1070,11 @@ would require run-time verification.
     \hline
                & \multicolumn{18}{c|}{Percentage of \glspl{verificationcondition}} \\
     \cline{2-19}
-    Sub-phase  & \multicolumn{6}{p{3.85cm}|}{\centerline{Starting sub-phase}} & \multicolumn{6}{p{3.85cm}|}{\centerline{Dismissed}} & \multicolumn{6}{p{3.85cm}|}{\centerline{Out of memory}} \\
+    Sub-phase  & \multicolumn{6}{c|}{Starting sub-phase} & \multicolumn{6}{c|}{Dismissed} & \multicolumn{6}{c|}{Out of memory} \\
     \hline
-    \subenf{0} & \multicolumn{6}{c|}{100}       & \multicolumn{6}{c|}{0/3870} & ~~~\hspace{2pt}~[& 0&51&  0&94&$]_{\infty}^{3870}$~ \\
-    \subenf{1} & ~~~[&99&09& 99&51&$]_{\infty}^{3870}$ & \multicolumn{6}{c|}{0/3843} & \multicolumn{6}{c|}{0/3843} \\
-    \subenf{2} & ~[&99&09& 99&51&$]_{\infty}^{3870}$ & ~~~\hspace{2pt}~[& 0&07&  0&27&$]_{\infty}^{3843}$ & ~[& 0&05&  0&16&$]_{\infty}^{3870}$~ \\
+    \subenf{0} & \multicolumn{6}{c|}{100}       & \multicolumn{6}{c|}{0/3870} & ~~~\hspace{2pt}~[& 0&51&  0&94&$]_{\infty}^{3870}$~~~\hspace{2pt}~ \\
+    \subenf{1} & ~~~[&99&09& 99&51&$]_{\infty}^{3870}$~~~ & \multicolumn{6}{c|}{0/3843} & \multicolumn{6}{c|}{0/3843} \\
+    \subenf{2} & ~[&99&09& 99&51&$]_{\infty}^{3870}$ & ~~~\hspace{2pt}~[& 0&07&  0&27&$]_{\infty}^{3843}$~~~\hspace{2pt}~ & ~[& 0&05&  0&16&$]_{\infty}^{3870}$~ \\
     \subenf{3} & ~[&98&83& 99&32&$]_{\infty}^{3870}$ & \multicolumn{6}{c|}{0/3834} & \multicolumn{6}{c|}{0/3834} \\
     \subenf{4} & ~[&98&83& 99&32&$]_{\infty}^{3870}$ & \multicolumn{6}{c|}{0/3834} & ~[& 0&02&  0&11&$]_{\infty}^{3834}$~ \\
     \hgreyline
@@ -1085,10 +1091,10 @@ would require run-time verification.
 \noindent
 \autoref{fig:eval:how:build_enforcer} shows how long it takes to
 convert \glspl{verificationcondition} into \glspl{bugenforcer}.  The
-figure divides the time taken into five steps:
+figure divides the time taken into five sub-phases:
 \begin{itemize}
 \item \subenf{0} --- extract the happens-before graph
-  (\autoref{sect:enforce:slice_hb_graph}).  This step is generally
+  (\autoref{sect:enforce:slice_hb_graph}).  This sub-phase is generally
   reasonably quick, with a median time of 20ms, but has a long tail of
   slow and memory-hungry operations.  This reflects the nature of the
   algorithm used: BDD reordering has a good common-case cost but a
@@ -1098,13 +1104,13 @@ figure divides the time taken into five steps:
 \item \subenf{1} --- determining when the verification condition's
   input expressions become available
   (\autoref{sect:enforce:place_vcs}).  This is, unsurprisingly, a very
-  quick step, with relatively few outliers, as the rules governing
+  quick sub-phase, with relatively few outliers, as the rules governing
   when inputs become available are simple and easily applied.
 \item \subenf{2} --- decide how to evaluate the
   non-$\happensBeforeEdge$ component of the
   \gls{verificationcondition} by placing \glspl{side condition} on the
   happens-before and control flow graphs
-  (\autoref{sect:enforce:place_vcs}).  Like the first step, this one
+  (\autoref{sect:enforce:place_vcs}).  Like the first sub-phase, this one
   is implemented using BDD reordering operations, and so is generally
   fast with a long tail of slow operations.  The small bulb of
   \glspl{verificationcondition} which complete in around 20$\mu$s
@@ -1122,7 +1128,7 @@ figure divides the time taken into five steps:
   object.  {\Implementation} performs this step by generating a C
   source file and passing it off to the system compiler and linker,
   with the bulk of the time spent in those external programs.  This
-  makes it difficult to provide any useful analysis on why this step
+  makes it difficult to provide any useful analysis on why this sub-phase
   takes as long as it does.
 \end{itemize}
 Somewhat surprisingly, {\implementation} was able to eliminate six
@@ -1174,7 +1180,7 @@ compiler.  This makes it difficult to explain why the process takes as
 long as it does in any meaningful way.  Nevertheless, these results
 confirm that building fixes from \glspl{verificationcondition} is
 itself a very fast operation, compared to building the
-\glspl{verificationcondition} themselves, and so this step is unlikely
+\glspl{verificationcondition} themselves, and so this phase is unlikely
 to be the most important barrier to practical use of {\technique}.
 
 \begin{sanetab}
@@ -1878,7 +1884,7 @@ happens-before graph which {\implementation} is able to generate.
     shown with both.  For the purposes of drawing the contours,
     experiments which failed were treated as if they had completed
     precisely at the timeout; cells in which I made that assumption
-    are shown in red.}
+    are shown in red. \todo{munge}}
   \label{fig:eval:why:complex_aliasing:result1}
 \end{sanefig}
 

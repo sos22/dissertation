@@ -4,8 +4,8 @@ import sys
 import math
 import itertools
 
-figwidth = 6.1
-figheight = 6.0
+figwidth = 5.8
+figheight = 5.7
 sep = 1.5
 tick_width = 0.05
 timeout_time = 300
