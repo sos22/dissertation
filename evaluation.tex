@@ -58,11 +58,11 @@ fixes, as well as {\implementation} itself, was gcc version 4.4.3.
 \section{Does it work?}
 \label{sect:eval:does_it_work}
 
-This part of the evaluation aims to determine whether {\implementation}
-works at all.  In other words, is it able to reproduce and fix
-concurrency bugs?  I investigate this using both small artificial
-bugs, in \autoref{sect:eval:artificial_bugs}, and some real bugs taken
-from large existing pieces of software, in
+This part of the evaluation aims to determine whether
+{\implementation} works at all.  In other words, is it able to
+reproduce and fix concurrency bugs?  I investigate this using both
+artificial bugs, in \autoref{sect:eval:artificial_bugs}, and some real
+bugs taken from large existing pieces of software, in
 \autoref{sect:eval:does:real}.
 
 \subsection{Artificial bugs}
@@ -409,11 +409,12 @@ dramatically larger for real programs than it was for the artificial
 ones considered earlier, but the time to generate
 \glspl{verificationcondition} is of similar magnitude.  This is
 because {\technique} must examine the entire program in order to build
-the \gls{programmodel}, but need only examine the \gls{analysiswindow}
-to build the \glspl{verificationcondition}.  The high cost of building
-the model is somewhat mitigated by the fact that it is built for the
-program rather than for any particular bug, and so the cost would be
-amortised if there were several bugs in the same program.
+the \gls{programmodel}, but only needs to examine the
+\gls{analysiswindow} to build the \glspl{verificationcondition}.  The
+high cost of building the model is somewhat mitigated by the fact that
+it is built for the program rather than for any particular bug, and so
+the cost would be amortised if there were several bugs in the same
+program.
 
 \begin{sanetab}
   \begin{tabbular}{|p{2.72cm}|p{5.8cm}|p{5.8cm}|}
@@ -434,7 +435,7 @@ amortised if there were several bugs in the same program.
 
 {\Implementation} generated one false positive
 \gls{verificationcondition} for each bug, in addition to the desired
-true positive, both of which were caused by incompleteness in
+true positive.  Both false positives were caused by incompleteness in
 {\technique}'s model of the program's behaviour.  In the case of
 \bugname{mysql}, the problem was the lack of knowledge of the
 program's dataflow structure.  {\Implementation} located another
@@ -548,12 +549,12 @@ are similar for both bugs: one critical section covering the two loads
 in the \gls{crashingthread}, and another covering the store in the
 \gls{interferingthread}.  It is hard to validate experimentally that
 these fixes are correct, as the bugs reproduce quite rarely even
-without the fix,\kern-.5pt\fnote{Due to implementation limitations, it is not
-  possible to load {\atechnique} fix and {\atechnique}
-  \gls{bugenforcer} into the same program.} but manual inspection
-suggested that they had correctly eliminated the dangerous
-interleaving.  It is also hard to experimentally evaluate the
-performance impact of these fixes, as, in the case of
+without the fix,\kern-.5pt\fnote{Due to implementation limitations, it
+  is not possible to load a {\implementation} fix and a
+  {\implementation} \gls{bugenforcer} into the same program.} but
+manual inspection suggested that they had correctly eliminated the
+dangerous interleaving.  It is also hard to experimentally evaluate
+the performance impact of these fixes, as, in the case of
 \bugname{thunderbird}, there is no convenient metric of performance,
 beyond noting that performance was qualitatively unaffected, and, in
 the case of \bugname{mysql}, the fix is to code which executes
@@ -576,7 +577,7 @@ interleavings.
 
 The problem lies in {\technique}'s definition of a ``bug'': an
 atomicity violation which might lead to a crash at a particular
-instruction.  Once {\implementation} has ensured that that specific
+instruction.  Once {\technique} has ensured that that specific
 instruction cannot crash, it considers the bug to be fixed; if the
 program then crashes five instructions later, {\technique} defines
 that to be a different bug, requiring a different fix.  This will not
@@ -599,11 +600,12 @@ it means to fix a bug.
     \hline
   \end{tabbular}
   \caption{Time, in seconds, taken to generate a full suite of
-    \glsentrytext{bugenforcer}s for MySQL on an AMD Opteron 6168 with
-    16GiB of memory running Ubuntu Natty Narwhal.  The complete
-    analysis was run eleven times and the results of the first run
-    discarded; the results here are averages of the remaining ten
-    runs.  The last two phases were parallelised; the first was not.}
+    \glsentrytext{bugenforcer}s for MySQL on a twelve-core AMD Opteron
+    6168 with 16GiB of memory running Ubuntu Natty Narwhal.  The
+    complete analysis was run eleven times and the results of the
+    first run discarded; the results here are averages of the
+    remaining ten runs.  The last two phases were parallelised; the
+    first was not.}
   \label{tab:eval:does:building_all_enforcers_times}
 \end{sanetab}
 
@@ -620,12 +622,12 @@ of these enforcers, I ran the \texttt{rpl\_change\_master} test
 repeatedly with each.  The results are shown in
 \autoref{tab:eval:does:finding_unknown}.  Three of the enforcers were
 able to reproduce the bugs for which they were designed.  The first,
-hereafter referred to as enforcer A, reproduced the \bugname{mysql}
-bug, as desired.  The other two, enforcers B and C, reproduced
-essentially similar races elsewhere in MySQL.  I was unaware of these
-bugs before running this experiment.  All three bugs were very rare
-without an enforcer, or with the wrong enforcer, but reproduced very
-easily when an appropriate enforcer was used.
+enforcer A, reproduced the \bugname{mysql} bug, as desired.  The other
+two, enforcers B and C, reproduced essentially similar races elsewhere
+in MySQL.  I was unaware of these bugs before running this experiment.
+All three bugs were very rare without an enforcer, or with the wrong
+enforcer, but reproduced very easily when an appropriate enforcer was
+used.
 
 It is perhaps surprising that the reproduction rates are lower with an
 inappropriate enforcer than they are with no enforcer at all.  This
@@ -798,11 +800,11 @@ divided into four phases:
 \end{sanetab}
 \autoref{tab:eval:phase_breakdown1} shows how often each phase is
 invoked and how much time each invocation takes.  As can be seen,
-phase \subinterfering{} takes the most time, followed by \subcrash{};
-\subenf{} and \subfix{} are, by comparison, relatively quick.  The
-following sections examine each phase in turn, investigating why they
-take as long as they do and hence explaining the performance patterns
-observed.
+phase \subinterfering{} takes the most time, followed by phase
+\subcrash{}; phases \subenf{} and \subfix{} account for a relatively
+small phase of the total analysis time.  The following sections
+examine each phase in turn, investigating why they take as long as
+they do, and hence explaining the performance patterns observed.
 
 \subsection{Per-\glsentrytext{crashingthread} analysis}
 
@@ -831,9 +833,8 @@ sub-phases for each instruction:
 \item \subcrash{4} --- derive the C-atomic assumption
   (Sections~\ref{sect:derive:inferred_assumption}
   and~\ref{sect:derive:w_isolation}).
-\item \subcrash{5} -- process the interfering \glspl{cfg} produced in
-  \subcrash{3} so as to produce the final set of
-  \glspl{verificationcondition}.
+\item \subcrash{5} -- invoked phase \subinterfering{} so as to process
+  each of the interfering \glspl{cfg} produced in \subcrash{3}.
 \end{itemize}
 \autoref{fig:eval:how:per_crashing_times} shows how much time is spent
 in each of these sub-phases.  This figure shows several useful pieces
@@ -890,11 +891,10 @@ Not every instruction completed every sub-phase.  Instructions which
 run out of memory or suffered a timeout during an early phase do not
 start any of the later ones, and similarly, if the analysis in an
 early sub-phase is sufficient to show that a particular instruction
-cannot possibly suffer a \gls{simple atomicity violation} then the
-instruction is dismissed in that sub-phase and needs no processing in
-later ones.  The number of instructions which failed or were dismissed
-in each phase is shown in
-\autoref{tab:eval:how:failures_per_crashing}.
+cannot possibly suffer a \gls{sav} then the instruction is dismissed
+in that sub-phase and needs no processing in later ones.  The
+proportion of instructions which failed or were dismissed in each
+phase is shown in \autoref{tab:eval:how:failures_per_crashing}.
 
 The most important observation to draw from these figures, aside from
 the gross summary of how long each sub-phase takes, is that most of
@@ -939,15 +939,15 @@ in the PDFs.  These are accounted for by various special cases within
   very quickly.
 \end{itemize}
 The overall effect of these special cases is that for most
-potentially-crashing program instructions, we are able to skip most
-steps of the analysis.  This is a useful property when analysing a
-large number of instructions speculatively.
+potentially-crashing program instructions, {\implementation} is able
+to skip most steps of the analysis.  This is a useful property when
+analysing a large number of instructions speculatively.
 
 \subsection{Per-\glsentrytext{interferingthread} analysis}
 \label{sect:eval:how:per_interfering}
 
 Phase \subcrash{} generates a large number of pairs of crashing
-{\StateMachine} and interfering \gls{cfg} which must be analysed in
+{\StateMachines} and interfering \glspl{cfg} which must be analysed in
 phase \subinterfering{}.  Like phase \subcrash{}, this is divided into
 a number of sub-phases:
 \begin{itemize}
@@ -1040,8 +1040,8 @@ execution can only assume the weaker C-atomic constraint.
 This is further illustrated in
 \autoref{fig:eval:how:per_interfering:no_ic_atomic}, which shows how
 long the various sub-phases take when {\implementation} assumes
-\gls{ic-atomic} is the constant \true, rather than attempting to
-derive it.  This eliminates sub-phases \subinterfering{2} and
+\gls{ic-atomic} is the constant \true rather than attempting to derive
+it.  This eliminates sub-phases \subinterfering{2} and
 \subinterfering{3}, which take 500ms, but increases the cost of the
 later sub-phases so that the total time taken was
 unchanged.\kern-.5pt\fnote{In fact, the average time taken actually
@@ -1510,7 +1510,7 @@ hence a \gls{bugenforcer}, for the second thread but not for the
 first.  When loaded into the program, this enforcer attempts to
 enforce a happens-before graph which contradicts the program's
 existing synchronisation and therefore deadlocks.  This causes the
-enforcer's message operations to time out, and so the enforcer exits
+enforcer's message operations to time out so the enforcer exits
 and allows the program to run normally (beyond suffering reduced
 performance).
 
@@ -1622,13 +1622,13 @@ degradation, for several variants of the fix:
   sections.
 \item \textit{Synchronise crashing} --- This fix omits the
   \gls{interferingthread} synchronisation operations from the patch
-  but retains the \gls{crashingthread} ones, and so makes it possible
-  to evaluate the overhead of synchronisation operations in the
-  absence of any contention.  Note that the \gls{interferingthread}
-  actually runs much \emph{faster} in this configuration than it does
-  in the baseline case; this is because slowing down the
-  \gls{crashingthread} reduces contention for the \texttt{global}
-  variable, allowing the interfering one to make faster progress.
+  but retains the \gls{crashingthread} ones, making it possible to
+  evaluate the overhead of synchronisation operations in the absence
+  of any contention.  Note that the \gls{interferingthread} actually
+  runs much \emph{faster} in this configuration than it does in the
+  baseline case; this is because slowing down the \gls{crashingthread}
+  reduces contention for the \texttt{global} variable, allowing the
+  interfering one to make faster progress.
 \item \textit{Normal} --- This configuration uses a complete fix,
   generated using the complete algorithms from
   \autoref{sect:enforce:gain_control} and
@@ -1897,13 +1897,13 @@ used, \bugname{complex\_alias\_hard}$_{L,S}$ and
 \autoref{fig:eval:why:complex_aliasing}.  In both cases, the
 \gls{crashingthread} \gls{analysiswindow} consists of $S$ stores
 followed by $L$ loads and a final assertion on the loaded values; the
-\gls{interferingthread} consists of a single store.  The difference
-between the two tests lies in the final assertion: the hard version
-performs a single test on the sum of the loaded values, whereas the
-easy version performs a separate test on each value and combines the
-results with the boolean connective \texttt{\&\&}.  The cost of
-analysing these test programs is shown in
-\autoref{fig:eval:why:complex_aliasing:result}.
+\gls{interferingthread}, common to both the easy and hard variants,
+consists of a single store.  The difference between the two tests lies
+in the final assertion: the hard version performs a single test on the
+sum of the loaded values, whereas the easy version performs a separate
+test on each value and combines the results with the boolean
+connective \texttt{\&\&}.  The cost of analysing these test programs
+is shown in \autoref{fig:eval:why:complex_aliasing:result}.
 
 As can be seen, the cost of analysing the \bugname{hard} variant, on
 the left of the figure, rises with both $L$ and $S$, with a much

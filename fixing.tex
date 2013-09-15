@@ -115,35 +115,34 @@ instructions then it uses a single critical section, holding the lock
 throughout; otherwise it uses two, releasing the lock between them.
 This rule was chosen largely for ease of implementation, as it matches
 that used for clustering instructions when building the \glspl{cfg},
-but the results produced appear to broadly reasonable in most
+but the results produced appear to be broadly reasonable in most
 circumstances.
 
 \section{Structure of fixes}
 
 \noindent
 Once {\technique} has identified the fragments of \gls{dynamic cfg}
-which are to be made atomic, it must build a fix which does so.  These
-fixes consist of two parts: the \gls{shadowfragment}, a fragment of
-machine code which emulates the relevant part of the original program
-with the addition of appropriate lock acquire and release operations;
-and the patch strategy, a set of modifications to the original program
-which ensure that the shadow gains control of the program when
-necessary.  The patch strategy has already been discussed in
-\autoref{sect:enforce:gain_control}.  The \gls{shadowfragment} is in
-many respects analogous to the crash enforcement interpreter
-(\autoref{sect:enforce:interpreting}): both gain and relinquish
-control of program threads as they run; both are semantically
-equivalent to some fragment of the original program, up to changes in
-operation timing; and both are responsible for introducing additional
-synchronisation to the program's execution.  The differences lie in
-the type of synchronisation added (the enforcement interpreter uses
-message operations to encourage program threads to interleave their
-operations, whereas the \gls{shadowfragment} uses locks to prevent
-them from doing so) and in the way they emulate the program (the
-enforcement interpreter interprets the program's instructions, whereas
-the \gls{shadowfragment} incorporates them directly into its own
-machine code).  These differences lead to significantly different
-algorithms.
+which must execute atomically, it must build a fix which ensures that
+they do so.  These fixes consist of two parts: the
+\gls{shadowfragment}, a fragment of machine code which emulates the
+relevant part of the original program with the addition of appropriate
+lock acquire and release operations; and the patch strategy, a set of
+modifications to the original program which ensure that the shadow
+gains control of the program when necessary.  The patch strategy has
+already been discussed in \autoref{sect:enforce:gain_control}.  The
+\gls{shadowfragment} is in many respects analogous to a
+\gls{bugenforcer} (\autoref{sect:enforce:interpreting}): both gain and
+relinquish control of program threads as they run; both are
+semantically equivalent to some fragment of the original program, up
+to changes in operation timing; and both are responsible for
+introducing additional synchronisation to the program's execution.
+The differences lie in the type of synchronisation added (a
+\gls{bugenforcer} uses message operations to encourage program threads
+to interleave their operations, whereas the \gls{shadowfragment} uses
+locks to prevent them from doing so) and in the way they emulate the
+program (an enforcer emulates the program's instructions, whereas the
+\gls{shadowfragment} incorporates them directly into its own machine
+code).  These differences lead to significantly different algorithms.
 
 \begin{sanefig}
   {\hfill}
@@ -281,10 +280,11 @@ the original instruction D.
 \end{sanefig}
 
 The \glspl{cfg} involved in building a fix can usefully be read as
-regular automata.  The static and shadow \glspl{cfg} effectively
-generate streams of instructions, and the dynamic one recognises
-fragments of those streams.  This provides a convenient way of
-describing the correctness requirements for the \gls{shadowfragment}:
+regular automata.  The static and shadow fragment \glspl{cfg}
+effectively generate streams of instructions, and the dynamic one
+recognises subsequences of those streams.  This provides a convenient
+way of describing the correctness requirements for the
+\gls{shadowfragment}:
 \begin{enumerate}
 \item It must correctly emulate the \gls{static cfg}, in the sense of
   generating the same sequences of instructions (ignoring lock acquire
@@ -740,9 +740,9 @@ special handling.
 The simplest sort of control flow operation is a direct branch.  These
 transfer control to a statically-apparent target instruction, and so
 can be conveniently represented in the graph structure of the
-\gls{shadowfragment}.  Conditional branches in the input become
-conditional branches in the output, with just the targets changed
-(production \production{4_a}); unconditional branches disappear
+\gls{shadowfragment}.  Conditional direct branches in the input become
+conditional direct branches in the output, with just the targets
+changed (production \production{4_a}); unconditional ones disappear
 completely (production \production{4_b}).
 
 Direct function calls are only moderately more difficult.  Calls to
@@ -762,14 +762,14 @@ the fragment and leaving program-to-library ones as true function
 calls.  Note that this implies that the \gls{shadowfragment} will
 sometimes acquire program-level locks whilst holding the {\technique}
 one, and that this can sometimes lead to deadlocks.  As previously
-discussed, these are detected as timeouts, and cause one or more
+discussed, these are detected as timeouts and cause one or more
 threads to proceed unprotected.
 
 Indirect control flow transfers, which set the instruction pointer to
 a computed value, form the final class of instructions requiring
 special handling.  These include computed branches, computed calls,
 and the \texttt{ret} instruction.  The difficulty here is that the
-target of the branch is not statically apparent, and so the branch
+target of the branch is not statically apparent and so the branch
 cannot be represented in the \gls{shadowfragment}'s static graph
 structure.  The fragment must instead determine the target of the
 branch at run-time, and the grammar must ensure that it generates

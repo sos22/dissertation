@@ -11,9 +11,9 @@ follows:
 \item Identify all of the instructions which the \gls{crashingthread}
   might have executed in the \gls{alpha}-instruction
   \gls{analysiswindow} leading up to the crash.  These are represented
-  as a \glslink{dynamic cfg}{dynamic Control Flow Graph (CFG)}; the
-  details are given in \autoref{sect:derive:build_crashing_cfg}, in
-  the case where the crashing instruction is known in advance, and
+  as a \glslink{dynamic cfg}{dynamic \gls{cfg}}; the details are given
+  in \autoref{sect:derive:build_crashing_cfg}, in the case where the
+  crashing instruction is known in advance, and
   \autoref{sect:derive:unknown_bugs}, in the case where it is not.
 \item Decompile the \gls{crashingthread}'s \gls{cfg} into an
   \emph{approximant}.  The {\StateMachine} abstraction is described in
@@ -270,8 +270,8 @@ the crashing instruction, and the number of such paths is potentially
 exponential in \gls{alpha}.  This is true, but several other
 algorithms used by {\implementation} also have exponential worst-case
 running time and larger constant factors, and so in practice deriving
-the crashing \gls{cfg} accounts only a small percentage of the total
-analysis time.
+the crashing \gls{cfg} accounts for only a small percentage of the
+total analysis time.
 
 \section[Generating \glsentryplural{cfg} for unknown bugs]{Generating \glspl{cfg} for unknown bugs}
 \label{sect:derive:unknown_bugs}
@@ -318,17 +318,17 @@ crashing instructions.
 \subsection{Timeouts}
 
 Many of the algorithms used by {\technique} require far more time in
-their worst case than in their expected case, in many cases by many
-orders of magnitude.  This is irritating but tolerable when the
-analysis is being used to investigate a specific bug, but far more of
-a problem when the analysis is applied speculatively to a very large
-number of potential bugs.  Suppose, for instance, that the analysis
-completes in 500ms in 99.9\% of cases but takes forty years in the
-remaining 0.1\% of cases.  An analysis which fails 0.1\% of the time
-would still be quite useful, and so this is reasonable for analysing
-specific bugs.  On the other hand, if the analysis is run 10,000 times
-then the probability of at least one of the steps taking forty years
-is very close to one and the analysis is effectively useless.
+their worst case than in their expected case, often by many orders of
+magnitude.  This is irritating but tolerable when the analysis is
+being used to investigate a specific bug, but far more of a problem
+when the analysis is applied speculatively to a very large number of
+potential bugs.  Suppose, for instance, that the analysis completes in
+500ms in 99.9\% of cases but takes forty years in the remaining 0.1\%
+of cases.  An analysis which fails 0.1\% of the time would still be
+quite useful, and so this is reasonable for analysing specific bugs.
+On the other hand, if the analysis is run 10,000 times then the
+probability of at least one of the steps taking forty years is very
+close to one and the analysis is effectively useless.
 
 {\Technique} works around this problem by applying timeouts to the
 various analysis steps, ensuring that it can produce at least some
@@ -421,9 +421,9 @@ language's most important features:
 \item {\STateMachine} states do not directly correspond to
   instructions in the original program: one state might represent
   several instructions, and a single instruction might be represented
-  by multiple states or none at all.
+  by multiple states or by none at all.
 \item {\STateMachines} have access to an infinite set of
-  {\StateMachine} variables, each of which contains a single integer
+  {\StateMachine} variables each of which contains a single integer
   value.  The {\StateMachine} is maintained in single static
   assignment form~\cite{cytron1991} with respect to these variables.
 \item In addition to the variables, {\StateMachines} also have access
@@ -455,7 +455,7 @@ Expression & Meaning \\
 \hline
 $\smVar{i}$ & The value of {\StateMachine} variable $i$. \\
 $\happensBefore{A_i}{B_j}$ & True if memory access $A_i$ happens before memory access $B_j$. \\
-$\entryExpr{t:A_i}$ & True if thread $t$ starts with instruction $A_i$. \\
+$\entryExpr_t{A_i}$ & True if thread $t$ starts with instruction $A_i$. \\
 $\controlEdge{t}{A_i}{B_j}$ & True if thread $t$ executed dynamic instruction $B_j$ immediately after instruction $A_i$, false if it executed some other instruction after $A_i$, and undefined if it did not execute $A_i$ at all.\\
 $\smBadPtr{expr}$ & True if $\mathit{expr}$ evaluates to a value which is not a valid pointer.\\
 $\smLoad{expr}$ & The initial value of program memory at address $\mathit{expr}$.\\
@@ -611,7 +611,7 @@ special care:
   Some control flow edges will be missing from the \gls{dynamic cfg}.
   For instance, in \autoref{fig:unrolled_cyclic_cfg}, the program's
   \gls{static cfg} contained an edge from C to D but the dynamic one
-  does not include any branches from $C_1$ to any dynamic instruction
+  does not include any edges from $C_1$ to any dynamic instruction
   derived from D.  These missing edges are converted to branches to
   the {\stUnreached} state, reflecting the fact that these paths are
   of no interest to the rest of the analysis.
@@ -731,18 +731,18 @@ to treat libraries identically to the main program, allowing the
 whenever the program's control flow does, but this approach would have
 two important disadvantages.  First, it requires the library to be
 available during the analysis step, which is not always possible.
-More importantly, it does not lead to a particularly effective
-analysis.  Many library functions have simple interfaces but complex
-implementations; incorporating these functions into {\technique}'s
-{\StateMachines} would overwhelm the \gls{analysiswindow} for little
-gain.  It would, for instance, be impractical to detect double-free
-bugs by symbolically executing the \texttt{free} function (or, at the
-very least, would require a far more powerful symbolic execution than
-{\technique} otherwise needs).
+Second, and more importantly, it does not lead to a particularly
+effective analysis.  Many library functions have simple interfaces but
+complex implementations; incorporating these functions into
+{\technique}'s {\StateMachines} would overwhelm the
+\gls{analysiswindow} for little gain.  It would, for instance, be
+impractical to detect double-free bugs by symbolically executing the
+\texttt{free} function (or, at the very least, would require a far
+more powerful symbolic execution than {\technique} otherwise needs).
 
 {\Technique} instead relies on manually translating important library
 functions into {\StateMachine} fragments which can be substituted in
-in place of calls to them.  These implementations are generally quite
+place of calls to them.  These implementations are generally quite
 simplistic and model only the most relevant parts of the function's
 behaviour.  For instance, in a real program the \texttt{write}
 function takes a buffer of a given size and writes it to a given file
@@ -754,8 +754,7 @@ most of its arguments.  This is insufficient to properly investigate
 bugs which depend on interactions with library functions (a race which
 can only be triggered following an IO error, for instance, will not be
 detected), but is sufficient when library calls incidentally happen
-near to the buggy code without meaningfully influencing its
-behaviour.
+near to the buggy code without meaningfully influencing its behaviour.
 
 Some library functions are more directly relevant to {\technique} and
 deserve more complete implementations.  \texttt{pthread\_mutex\_lock}
@@ -896,8 +895,8 @@ behaviour which is most relevant to the bug under investigation.
 \label{sect:derive:write_side}
 
 Once {\technique} has built the crashing {\StateMachine}, the next
-step is to find all the instructions which it might possibly race with
-and convert them to an appropriate set of interfering
+step is to find all of the instructions with which it might possibly
+race and convert them to an appropriate set of interfering
 {\StateMachines}.  In principle, this should consider every possible
 interleaving of the crashing {\StateMachine} with every
 \gls{alpha}-instruction long trace of any other thread in the program,
@@ -1173,10 +1172,10 @@ duplicating $B_0$, producing this new graph:
   }
 }\\
 \noindent
-New nodes and edges are shown in red, and edges which have been
-removed are shown crossed through.  There are now no more length three
-cyclic paths in the graph, and so \textsc{findCycleEdgeCrashing} will
-report the two length four paths $A_0 \shortrightarrow B_0
+New nodes and edges are shown in red and edges which have been removed
+are shown crossed through.  There are now no more length three cyclic
+paths in the graph, and so \textsc{findCycleEdgeCrashing} will report
+the two length four paths $A_0 \shortrightarrow B_0
 \shortrightarrow \hspace{1pt} C_0 \shortrightarrow A_0$ and $A_0
 \shortrightarrow B_0 \shortrightarrow B_1 \hspace{-.5pt}
 \shortrightarrow B_0$ and .  This will cause the $C_0 \shortrightarrow
@@ -1470,15 +1469,15 @@ most important features here:
   execution engine usually need only do so once.
 
 \item Aliasing problems are resolved lazily.  This means that if the
-  engine must execute a \state{Load} operation and cannot immediately
-  determine which \state{Store} operation to use it does not cause an
-  immediate fork of its state, but instead causes the \state{Load} to
-  return {\AStateMachine} expression which describes the aliasing
-  query and selects an appropriate result.  {\Implementation} only
-  determines which precise \state{Store} operation should provide the
-  loaded data when that data is needed.  This is often faster then
-  resolving these queries eagerly.\kern.7pt\fnote{Note that this is not quite
-    the same as the lazy abstraction algorithm used in, for instance,
+  engine must execute a \state{Load} operation and cannot determine
+  which \state{Store} operation to use it does not cause an immediate
+  fork of its state, but instead causes the \state{Load} to return
+  {\AStateMachine} expression which describes the aliasing query and
+  selects an appropriate result.  {\Implementation} only determines
+  which precise \state{Store} operation should provide the loaded data
+  when that data is needed.  This is often faster then resolving these
+  queries eagerly.\kern.7pt\fnote{Note that this is not quite the same
+    as the lazy abstraction algorithm used in, for instance,
     BLAST~\cite{Henzinger2002}, which adjusts which aspects of program
     state are represented in the abstract state.  {\Implementation}
     uses a fixed abstraction; the laziness here lies in the \emph{way}
@@ -1499,7 +1498,7 @@ most important features here:
   {\implementation} does not attempt to detect when it revisits a
   previously-visited configuration.  This is safe because
   {\StateMachines} are acyclic: any path through {\AStateMachine} can
-  visit a given state at most once so there is no possibility of
+  visit a given state at most once, so there is no possibility of
   revisiting a configuration and entering an infinite loop.  It is
   also, surprisingly, reasonably performant, because it is extremely
   rare for multiple paths to visit the same configuration and so there
@@ -1697,11 +1696,11 @@ The productions show how to convert these non-terminals into a single
 {\StateMachine} A begins with an \state{If} state, the output
 {\StateMachine} will be formed by an \state{If} state which tests the
 same discriminant and advances A to the appropriate successor state
-(production \production{1_a}); if both {\StateMachines} are at simple
-side-effects, the output {\StateMachine} uses an \state{If} and
-happens-before test $\happensBeforeEdge$ to select which side-effect
-to do first, does it, and then advances the selected input
-{\StateMachine} (production \production{2}).  These rules are
+(production \production{1_a}).  Similarly, if both {\StateMachines}
+are at simple side-effects, the output {\StateMachine} uses an
+\state{If} and happens-before test $\happensBeforeEdge$ to select
+which side-effect to do first, does it, and then advances the selected
+input {\StateMachine} (production \production{2}).  These rules are
 reasonably direct encodings of the usual parallel interleaving
 semantics into the {\StateMachine} language.
 
@@ -1779,8 +1778,8 @@ over this basic one:
   enhancement, and so the simpler implementation is more appropriate.
 \item The basic grammar fails to take account of partial order
   redundancies caused by {\StateMachine}-local side-effects such as
-  \state{Copy} or \stAssert.  The complete grammar ameliorates this
-  weakness by only generating happens-before tests for non-local
+  \state{Copy} or \state{Assume}.  The complete grammar ameliorates
+  this weakness by only generating happens-before tests for non-local
   side-effects, defined to be those which could possibly influence or
   be influenced by the other {\StateMachine}.  This definition is
   context-dependent: a \state{Load} in the crashing {\StateMachine},
@@ -2120,7 +2119,7 @@ Simplifying the example cross-product {\StateMachine} will produce the
 {\StateMachine} shown in Figure~\ref{fig:cross_product_output_opt}.
 In this case, the actual symbolic execution step will be trivial, and
 will report that the program will reach a {\stCrash} state precisely
-when $y = 0 \wedge \happensBefore{A}{F} \wedge LD(x) \not= 0 \wedge
+when $y = 0 \wedge \happensBefore{A}{F} \wedge \smLoad{x} \not= 0 \wedge
 \happensBefore{F}{C}$; in other words, if $y$ is nonzero, the initial
 value of $x$ is non-zero, and statement F intercedes between
 statements A and C.  Comparison to the input {\StateMachines} will
@@ -2290,23 +2289,25 @@ program's source code; attempting to do so given only a binary is
 completely infeasible.
 
 {\Technique} instead relies on a dynamic analysis to model accesses to
-non-stack locations.  This analysis works by dividing memory into
-fixed-size chunks\footnote{For {\implementation}, these chunks are
-  eight bytes, matching the platform word size. This represents a
-  reasonable trade-off between precision, which argues for smaller
-  chunks, and analysis performance, which argues for larger ones.} and
-then tracking which instructions access each chunk.  If two
-instructions are ever observed to access the same chunk without an
-intervening call to a function such as \texttt{free} then they are
-marked as potentially aliasing; otherwise, they are marked as
-non-aliasing.  In practice, this analysis will, if provided with a
-sufficient cross-section of the program's potential behaviour,
-approximate a source-level static one which considers two accesses to
-potentially alias if and only if they access the same field of the
-same compound structure type.  Most programs are structured so that
-most structure fields are accessed from a relatively small number of
-program instructions, and so this is generally reasonably precise
-despite being completely flow- and context-insensitive.
+non-stack locations.  In the case of {\implementation}, this is
+implemented as a Valgrind skin~\cite{Nethercote2007}.  This analysis
+works by dividing memory into fixed-size chunks\footnote{For
+  {\implementation}, these chunks are eight bytes, matching the
+  platform word size. This represents a reasonable trade-off between
+  precision, which argues for smaller chunks, and analysis
+  performance, which argues for larger ones.} and then tracking which
+instructions access each chunk.  If two instructions are ever observed
+to access the same chunk without an intervening call to a function
+such as \texttt{free} then they are marked as potentially aliasing;
+otherwise, they are marked as non-aliasing.  In practice, this
+analysis will, if provided with a sufficient cross-section of the
+program's potential behaviour, approximate a source-level static one
+which considers two accesses to potentially alias if and only if they
+access the same field of the same compound structure type.  Most
+programs are structured so that most structure fields are accessed
+from a relatively small number of program instructions, and so this is
+generally reasonably precise despite being completely flow- and
+context-insensitive.
 
 The chief weakness of this approach (aside from the fact that, as a
 dynamic analysis, it is inherently incomplete) is that it must be able

@@ -5,15 +5,15 @@ This dissertation leaves many potential refinements uninvestigated.
 Some of these are straightforward improvements to {\implementation}:
 implementing more {\StateMachine} library models, or considering
 alternative architectures, or improving performance, or generalising
-to more types of bugs.  Others involve more fundamental changes to
-{\technique} itself.  I describe some possible ideas below.
+to more types of bugs.  Others involve more fundamental changes to the
+{\technique} technique itself.  I describe some possible ideas below.
 
 \section{Finding and characterising bugs}
 
-The initial analysis which builds \glspl{verificationcondition} is
-probably the weakest part of {\technique}, as it is only capable of
-considering instruction interleavings over fairly small windows of
-instructions.  The obvious way of improving that would be to re-cast
+The initial analysis which builds \glspl{verificationcondition} only
+considers alternate instruction interleavings over a fairly small
+window, limiting its ability to discover and characterise complicated
+bugs.  The obvious way of lifting that limitation would be to re-cast
 the algorithm to take as input either source code or an intermediate
 format such as LLVM bitcode~\cite{FFFLattner2013}.  These provide the
 analysis with far more information than raw machine code and so might
@@ -77,7 +77,7 @@ of it.
   \end{tikzpicture}
   }
   \caption{An example \glsentrytext{sav}.  The arrays $\mathit{V}_1$
-    and $\mathit{V}_2$ initially contain zeroes.  $i$ is a local
+    and $\mathit{V}_2$ are initialised to zero.  $i$ is a local
     variable in thread A and $j$ one in thread B.}
   \label{fig:concl:hb_graph}
 \end{sanefig}
@@ -86,16 +86,16 @@ One approach to doing so makes use of a kind of extended hazard
 pointer~\cite{Michael2004}.  Consider, for example, the threads in
 \autoref{fig:concl:hb_graph}.  This program will crash if thread B's
 two stores intervene between thread A's two loads and if $i = j$.  One
-way of preventing this bug would be to have the first thread publish a
-``hazard'', containing the value of its $i$ variable, before running
-the first load and clear it after the second one.  The second thread
-could then check for such hazards before running the first store and,
-if it finds one whose $i$ matches its $j$, make sure to wait for the
-hazard to clear before running the second one.  This would fix the bug
-and allow the two threads to run in parallel for most of the critical
+way of preventing this bug would be to have thread A publish a
+``hazard'' containing the value of its $i$ variable before running the
+first load and clear it after the second one.  Thread B would then
+check for such hazards before running its first store and, if it finds
+one whose $i$ matches its $j$, make sure to wait for the hazard to
+clear before running its second store.  This would fix the bug and
+allow the two threads to run in parallel for most of the critical
 section, or for all of it when the array indices differ.  The loss of
 concurrency, and hence loss of performance, associated with the fix
-would therefore probably be much lower.
+would therefore be expected to be much lower.
 
 \cleardoublepage
 \chapter{Conclusions}
@@ -103,11 +103,11 @@ would therefore probably be much lower.
 
 I have described {\technique}, a set of techniques for finding,
 characterising, reproducing, and fixing atomicity violation bugs
-starting from a runnable copy of the program, without access to the
-program's source and with minimal user intervention.  I have also
-described my prototype implementation, {\implementation}, and
-discussed in detail its performance and its effects on a variety of
-real and artificial test bugs and programs.  The result is that
+starting from a runnable copy of a machine code program, without
+access to the program's source and with minimal user intervention.  I
+have also described my prototype implementation, {\implementation},
+and discussed in detail its performance and its effects on a variety
+of real and artificial test bugs and programs.  The result is that
 {\technique} is highly effective at all of its goals when used on the
 artificial test cases, and performs well enough to be useful for some
 more realistic tests taken from very large existing pieces of
