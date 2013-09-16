@@ -219,8 +219,8 @@ functionality.
 to analyse these bugs and build either \glspl{bugenforcer} or fixes
 for them.  As might be expected, these very simple bugs are processed
 very quickly, at every stage of the process.  These figures provide a
-reasonable lower bound on the time which {\implementation} might take to
-analyse a bug; realistic ones would, of course, take much longer.
+reasonable lower bound on the time which {\implementation} might take
+to analyse a bug; more realistic ones would, of course, take longer.
 
 \begin{sanetab}
   \begin{tabbular}{|p{2.4cm}|p{2.83cm}|p{2.83cm}|p{2.83cm}|p{2.83cm}|}
@@ -561,7 +561,7 @@ sufficiently rarely that the system-level overhead was immeasurably
 small.
 
 These are not the fixes which a human programmer would make.  In
-particular, the call to \texttt{delete\_current\_thread}, in
+particular, the calls to \texttt{delete\_current\_thread}, in
 \bugname{mysql}, and \texttt{SetTimeout}, in \bugname{thunderbird},
 are not protected in any way.  This means that the
 \gls{crashingthread} might continue to execute a method in
@@ -801,7 +801,7 @@ divided into four phases:
 invoked and how much time each invocation takes.  As can be seen,
 phase \subinterfering{} takes the most time, followed by phase
 \subcrash{}; phases \subenf{} and \subfix{} account for a relatively
-small phase of the total analysis time.  The following sections
+small proportion of the total analysis time.  The following sections
 examine each phase in turn, investigating why they take as long as
 they do, and hence explaining the performance patterns observed.
 
@@ -833,7 +833,7 @@ sub-phases for each instruction:
 \item \subcrash{4} --- derive the C-atomic assumption
   (Sections~\ref{sect:derive:inferred_assumption}
   and~\ref{sect:derive:w_isolation}).
-\item \subcrash{5} -- invoked phase \subinterfering{} so as to process
+\item \subcrash{5} -- invoke phase \subinterfering{} so as to process
   each of the interfering \glspl{cfg} produced in \subcrash{3}.
 \end{itemize}
 \autoref{fig:eval:how:per_crashing_times} shows how much time is spent
@@ -888,8 +888,8 @@ of information:
   \end{sanetab}
 \end{itemize}
 Not every instruction completed every sub-phase.  Instructions which
-run out of memory or suffered a timeout during an early phase do not
-start any of the later ones, and similarly, if the analysis in an
+ran out of memory or suffered a timeout during an early phase do not
+start any of the later ones, and, similarly, if the analysis in an
 early sub-phase is sufficient to show that a particular instruction
 cannot possibly suffer a \gls{sav} then the instruction is dismissed
 in that sub-phase and needs no processing in later ones.  The
@@ -1040,10 +1040,10 @@ execution can only assume the weaker C-atomic constraint.
 This is further illustrated in
 \autoref{fig:eval:how:per_interfering:no_ic_atomic}, which shows how
 long the various sub-phases take when {\implementation} assumes
-\gls{ic-atomic} is the constant \true rather than attempting to derive
-it.  This eliminates sub-phases \subinterfering{2} and
+\gls{ic-atomic} is the constant {\true} rather than attempting to
+derive it.  This eliminates sub-phases \subinterfering{2} and
 \subinterfering{3}, which take 500ms, but increases the cost of the
-later sub-phases so that the total time taken was
+later sub-phases so that the total time taken is
 unchanged.\kern-.5pt\fnote{In fact, the average time taken actually
   \emph{increased} slightly, from $0.52 \in [0.46,
     0.59]_{1000}^{27338}$ to $0.59 \in [0.51, 0.67]_{1000}^{27432}$,
@@ -1388,9 +1388,9 @@ disabled to produce an analysis which is less effective but still
 produces some results.  To quantify these effects, I re-analysed the
 10,000 instructions chosen in \autoref{sect:eval:how_does_it_work}
 with {\implementation} configured to make minimal use of the static
-parts of the \gls{programmodel} and a 1,000 instruction subset with
-{\implementation} configured to make minimal use of the dynamic parts.
-The results are shown in \autoref{tab:eval:why:program_model}.
+parts of the \gls{programmodel} and a 1,000 instruction random subset
+with {\implementation} configured to make minimal use of the dynamic
+parts.  The results are shown in \autoref{tab:eval:why:program_model}.
 
 \begin{sanetab}
   \newcommand{\HangingRaggedRight}{\raggedright \leftskip 2em \parindent -2.2em }
@@ -1408,18 +1408,17 @@ The results are shown in \autoref{tab:eval:why:program_model}.
     Failures per interfering \gls{cfg} (\%)*                             & $[0.62, 0.80]_{\infty}^{27535}$ & $[1.0,1.3]_{\infty}^{27587}$ & $[30,33]_{\infty}^{3187}$ \\
     \hline
   \end{tabbular}
-  \caption{Effect of the \glsentrytext{programmodel} assumption on
-    analysis effectiveness. For the dynamic disabled column,
-    {\implementation} was configured to only use information from the
-    dynamic alias analysis when deriving $\beta$ and $i2c$; for the
-    static disabled one, it was configured to only use information
-    from the static analysis when deriving the static crashing
-    \glsentrytext{cfg}.  All times in seconds.  *: Excluding failures
-    in the per-crashing instruction phase. $\dagger$: Excluding
-    failures in either phase.  Note that the dynamic disabled
-    configuration was tested with only 1,000 potentially crashing
-    instructions, whereas the other two configurations were each
-    tested with 10,000.}
+  \caption{Effect of the \glsentrytext{programmodel} on analysis
+    effectiveness.  For the static disabled column, {\implementation}
+    was configure to only use information from the static alias
+    analysis when deriving the static crashing \glsentrytext{cfg}; for
+    the dynamic disabled on, it was configured to only use information
+    from the dynamic alias analysis when deriving $\beta$ and $i2c$.
+    All times in seconds.  *: Excluding failures in the per-crashing
+    instruction phase. $\dagger$: Excluding failures in either phase.
+    Note that the dynamic disabled configuration was tested with only
+    1,000 potentially crashing instructions, whereas the other two
+    configurations were each tested with 10,000.}
   \label{tab:eval:why:program_model}
 \end{sanetab}
 
@@ -1897,13 +1896,14 @@ used, \bugname{complex\_alias\_hard}$_{L,S}$ and
 \autoref{fig:eval:why:complex_aliasing}.  In both cases, the
 \gls{crashingthread} \gls{analysiswindow} consists of $S$ stores
 followed by $L$ loads and a final assertion on the loaded values; the
-\gls{interferingthread}, common to both the easy and hard variants,
-consists of a single store.  The difference between the two tests lies
-in the final assertion: the hard version performs a single test on the
-sum of the loaded values, whereas the easy version performs a separate
-test on each value and combines the results with the boolean
-connective \texttt{\&\&}.  The cost of analysing these test programs
-is shown in \autoref{fig:eval:why:complex_aliasing:result1}.
+\gls{interferingthread}, common to both the \bugname{easy} and
+\bugname{hard} variants, consists of a single store.  The difference
+between the two tests lies in the final assertion: the hard version
+performs a single test on the sum of the loaded values, whereas the
+easy version performs a separate test on each value and combines the
+results with the boolean connective \texttt{\&\&}.  The cost of
+analysing these test programs is shown in
+\autoref{fig:eval:why:complex_aliasing:result1}.
 
 As can be seen, the cost of analysing the \bugname{hard} variant, on
 the left of the figure, rises with both $L$ and $S$, with a much
@@ -1988,7 +1988,7 @@ probably be more useful.
 
 The fourth chart, \autoref{fig:eval:alpha:interfering_per_crashing},
 shows the number of interfering \glspl{cfg} generated for each
-potentially-crashing instruction.  As can be see, this rises rapidly
+potentially-crashing instruction.  As can be seen, this rises rapidly
 with increasing values of \gls{alpha} until \gls{alpha} reaches 40, at
 which point it begins to fall again.  The initial rise is easily
 explained, and simply reflects the fact that with more instructions

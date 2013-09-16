@@ -323,12 +323,12 @@ magnitude.  This is irritating but tolerable when the analysis is
 being used to investigate a specific bug, but far more of a problem
 when the analysis is applied speculatively to a very large number of
 potential bugs.  Suppose, for instance, that the analysis completes in
-500ms in 99.9\% of cases but takes forty years in the remaining 0.1\%
-of cases.  An analysis which fails 0.1\% of the time would still be
-quite useful, and so this is reasonable for analysing specific bugs.
-On the other hand, if the analysis is run 10,000 times then the
-probability of at least one of the steps taking forty years is very
-close to one and the analysis is effectively useless.
+500ms in 99.9\% of cases but takes forty years in the remaining 0.1\%.
+An analysis which fails 0.1\% of the time would still be quite useful,
+and so this is reasonable for analysing specific bugs.  On the other
+hand, if the analysis is run 10,000 times then the probability of at
+least one of the steps taking forty years is very close to one and the
+analysis is effectively useless.
 
 {\Technique} works around this problem by applying timeouts to the
 various analysis steps, ensuring that it can produce at least some
@@ -455,7 +455,7 @@ Expression & Meaning \\
 \hline
 $\smVar{i}$ & The value of {\StateMachine} variable $i$. \\
 $\happensBefore{A_i}{B_j}$ & True if memory access $A_i$ happens before memory access $B_j$. \\
-$\entryExpr_t{A_i}$ & True if thread $t$ starts with instruction $A_i$. \\
+$\mathsf{Entry}_t{A_i}$ & True if thread $t$ starts with instruction $A_i$. \\
 $\controlEdge{t}{A_i}{B_j}$ & True if thread $t$ executed dynamic instruction $B_j$ immediately after instruction $A_i$, false if it executed some other instruction after $A_i$, and undefined if it did not execute $A_i$ at all.\\
 $\smBadPtr{expr}$ & True if $\mathit{expr}$ evaluates to a value which is not a valid pointer.\\
 $\smLoad{expr}$ & The initial value of program memory at address $\mathit{expr}$.\\
@@ -866,7 +866,7 @@ expensive.  The main techniques used to do so are:
 \begin{itemize}
 \item \emph{Dead code elimination} is used to eliminate redundant
   updates to {\StateMachine} variables.
-\item \emph{Copy propagation}, based on the algorithm from the
+\item \emph{Copy propagation}, based on the algorithm used in the
   dcc~\cite{Cifuentes1994} decompiler, is used to shorten long chains
   of assignments.  One minor extension over the dcc algorithm is that
   {\technique} can make use of {\stAssertN} side-effects during this
@@ -941,8 +941,8 @@ possible values of program memory and registers when it starts.
 possible initial values could lead to an atomicity violation, and the
 set of possible values after running $a$ is clearly a subset of the
 set of all possible values, and so discarding $a$ can never lead to
-any possible \glspl{sav} being omitted.  It is therefore always safe
-to do so.
+any possible SAVs being omitted.  It is therefore always safe to do
+so.
 
 While safe, it is not always desirable to discard $a$ if the
 restricted set of initial values would have been easier to analyse.
@@ -1179,9 +1179,9 @@ paths in the graph, and so \textsc{findCycleEdgeCrashing} will report
 the two length four paths $A_0 \shortrightarrow B_0
 \shortrightarrow \hspace{1pt} C_0 \shortrightarrow A_0$ and $A_0
 \shortrightarrow B_0 \shortrightarrow B_1 \hspace{-.5pt}
-\shortrightarrow B_0$ and .  This will cause the $C_0 \shortrightarrow
-A_0$ and $B_1 \hspace{-.5pt} \shortrightarrow B_0$ edges to be broken,
-as shown:\vfill
+\shortrightarrow B_0$.  This will cause the $C_0 \shortrightarrow A_0$
+and $B_1 \hspace{-.5pt} \shortrightarrow B_0$ edges to be broken, as
+shown:\vfill
 \noindent
 \centerline{ \inlinebox{
 \begin{tikzpicture}
@@ -1406,7 +1406,7 @@ until the graph becomes completely acyclic:
 As desired, the graph has been rendered acyclic while preserving all
 paths of length up to five instructions between $\beta$ and $i2c$.
 The resulting \gls{dynamic cfg} can now be converted to
-{\AStateMachine}.
+{\AStateMachine}, simplified, and passed to the rest of the analysis.
 
 \section{Generating a verification condition}
 \label{sect:using:check_realness}
@@ -1490,7 +1490,7 @@ most important features here:
   because of the use of a flat memory representation: the speicher is
   a single object, so it makes little sense to talk about modelling
   one part of it accurately and another part inaccurately, and without
-  that CEGAR provides little benefit.  The use of lazy aliasing
+  that CEGAR provides far less benefit.  The use of lazy aliasing
   resolution provides some of the benefit of CEGAR, as it allows some
   aliasing queries which do not affect program behaviour to be
   skipped.
@@ -1677,11 +1677,11 @@ the (less powerful but symbolically executable) model defined by the
   \end{tabular}
   {\hfill}
   \caption{A basic {\StateMachine} cross-product algorithm, expressed
-    as a node replacement graph generating grammar.  $m$ matches
-    boolean expressions; $A_0$, $A_1$, and $A$ match fragments of the
-    crashing {\StateMachine}; $B_0$, $B_1$, and $B$ match fragments of
-    the interfering {\StateMachine}; $a$ and $b$ match individual
-    states within the crashing and interfering {\StateMachines},
+    as a node replacement graph grammar.  $m$ matches boolean
+    expressions; $A_0$, $A_1$, and $A$ match fragments of the crashing
+    {\StateMachine}; $B_0$, $B_1$, and $B$ match fragments of the
+    interfering {\StateMachine}; $a$ and $b$ match individual states
+    within the crashing and interfering {\StateMachines},
     respectively; \state{t} matches any terminal state.}
   \label{fig:derive:basic_cross_product}
 \end{sanefig}
@@ -2235,12 +2235,11 @@ main optimisations:
   isolation.  This is because the \gls{w-isolation} property implies
   that \gls{ci-atomic} = \gls{c-atomic} $\wedge$ I-atomic, where
   I-atomic is the condition for the interfering {\StateMachine} to
-  survive in isolation, and I-atomic is implied by \gls{ic-atomic}.
-  \gls{c-atomic} is independent of the interfering {\StateMachine},
-  and so only needs to be calculated once for every crashing
-  {\StateMachine} rather than once for every pair of crashing and
-  interfering {\StateMachines}, which can sometimes provide a modest
-  performance improvement.
+  survive in isolation, and because I-atomic is implied by
+  \gls{ic-atomic}.  \gls{c-atomic} is independent of the interfering
+      {\StateMachine}, and so only needs to be calculated once for
+      every crashing {\StateMachine} rather than once for every pair
+      of crashing and interfering {\StateMachines}.
 \end{itemize}
 The analysis is almost always faster with the \gls{w-isolation}
 assumption, but cannot handle as broad a class of program behaviour.
@@ -2262,21 +2261,21 @@ is composed of separate models of stack and non-stack memory; I
 describe each in turn.
 
 \subsection{The stack model}
-The stack model is built using a fairly conventional static
-function-local pointer escape analysis~\cite[pages
-  140--141]{Appel2004} based on the observation that stack frames are
-``created'' when a function starts.  This implies that there should
-not be any pointers to function-local variables unless the function
-being analysed creates one, and so the static analysis attempts to
-track which registers and memory locations might contain pointers to
-the local stack frame.  This is usually sufficient for the
-{\StateMachine} simplifiers to be able to determine which, if any,
-stack frames a given memory access might refer to; simple arithmetic
-considerations can then usually determine the specific local variable.
-As part of this analysis, {\technique} discovers any registers which
-have constant value at a particular instruction, or those which are
-equal to another register plus a constant, and this information is
-also used during {\StateMachine} simplification.
+The stack model is built using a conventional static function-local
+pointer escape analysis~\cite[pages 140--141]{Appel2004} based on the
+observation that stack frames are ``created'' when a function starts.
+This implies that there should not be any pointers to function-local
+variables unless the function being analysed creates one, and so the
+static analysis attempts to track which registers and memory locations
+might contain pointers to the local stack frame.  This is usually
+sufficient for the {\StateMachine} simplifiers to be able to determine
+which, if any, stack frames a given memory access might refer to;
+simple arithmetic considerations can then usually determine the
+specific local variable.  As part of this analysis, {\technique}
+discovers any registers which have constant value at a particular
+instruction, or those which are equal to another register plus a
+constant, and this information is also used during {\StateMachine}
+simplification.
 
 \subsection{The non-stack model}
 It is much more difficult to characterise the structure of non-stack
