@@ -268,7 +268,7 @@ This might appear, on the face of it, to be a rather expensive
 algorithm: it must explore every path of length \gls{alpha} ending at
 the crashing instruction, and the number of such paths is potentially
 exponential in \gls{alpha}.  This is true, but several other
-algorithms used by {\implementation} also have exponential worst-case
+algorithms used by {\technique} also have exponential worst-case
 running time and larger constant factors, and so in practice deriving
 the crashing \gls{cfg} accounts for only a small percentage of the
 total analysis time.
@@ -285,7 +285,7 @@ every possible \gls{crashing instruction} in the program, for a given
 class of bug, and attempts to generate \glspl{verificationcondition}
 for each in turn.  This is feasible because the vast majority of
 potential \glspl{crashing instruction} can be dismissed very quickly:
-{\implementation} takes, on average, a few seconds to process each
+{\technique} takes, on average, a few seconds to process each
 instruction on fairly modest hardware, allowing even large programs
 with hundreds of thousands of instructions to be analysed in a few
 days.  Further, this approach is embarrassingly parallel, and so would
@@ -293,8 +293,8 @@ be expected to scale well as hardware concurrency increases, which is
 precisely the scenario in which it would be most useful.
 
 The way in which these potentially-crashing instructions are
-identified depends on the type of bug which is to be investigated.
-{\Implementation} considers three types of bug:
+identified depends on the type of bug which is to be investigated.  My
+prototype implementation considers three types of bug:
 \begin{itemize}
 \item Assertion failures.  These are caused by the program calling a
   function such as \verb|__assert_fail| or \verb|abort|.  Finding such
@@ -304,13 +304,13 @@ identified depends on the type of bug which is to be investigated.
   potential bug.
 \item Double free errors.  These are caused by the program calling
   \verb|free| in an incorrect manner.  Again, the dynamic linker
-  information allows {\implementation} to quickly find all calls to
+  information allows {\technique} to quickly find all calls to
   \verb|free| in the program, and these calls are used as the
   potentially-crashing instructions in the program.
 \item Bad pointer dereferences.  Any memory-accessing instruction
-  could potentially dereference a bad pointer, and so
-  {\implementation} simply enumerates all memory accessing
-  instructions discovered by the initial static analysis.
+  could potentially dereference a bad pointer, and so {\technique}
+  simply enumerates all memory accessing instructions discovered by
+  the initial static analysis.
 \end{itemize}
 Other classes of bugs would generate different sets of potentially
 crashing instructions.
@@ -333,11 +333,11 @@ analysis is effectively useless.
 {\Technique} works around this problem by applying timeouts to the
 various analysis steps, ensuring that it can produce at least some
 useful results in a reasonable time even when it occasionally
-encounters one of its bad cases.  {\Implementation} uses two
-independent timeouts, one for per-\gls{crashingthread} work and the
-other for per-\gls{interferingthread} work, both of which are set by
-default to five minutes.  I discuss their effects in more detail in
-the evaluation.
+encounters one of its bad cases.  {\Technique} uses two independent
+timeouts, one for per-\gls{crashingthread} work and the other for
+per-\gls{interferingthread} work, which, in my implementation, are
+both set by default to five minutes.  I discuss their effects in more
+detail in the evaluation.
 
 \section{\STateMachines}
 \label{sect:derive:state_machines}
@@ -354,20 +354,19 @@ model machine code but which is better suited to the needed analyses
 and transformations.  Programs in this language consist of a directed
 acyclic graph of {\StateMachine} states, defined in
 figures~\ref{fig:state_machine_states}
-and~\ref{fig:state_machine_exprs}.\fnote{The actual implementation
-  used by {\implementation} include several features, such as sub-word
-  memory accesses and bounded-range integers, not given in these
-  figures, but these are not essential to the {\technique} technique
-  and I do not give details here.}  These {\StateMachine} programs
-examine the state of the program and, based on that, produce a
-prediction about the program's ultimate behaviour, which is either
-\textsc{Crash}, \textsc{Survive}, or \textsc{Unreached}.
-\textsc{Crash} and \textsc{Survive} indicate that the program either
-will or will not, respectively, reproduce the bug which is under
-investigation.  \textsc{Unreached} indicates that a particular path
-through the {\StateMachine} should be ignored for some reason, most
-often because the matching path through the original program would
-suffer some fatal error other than the bug of interest.
+and~\ref{fig:state_machine_exprs}.\fnote{My implementation includes
+  several features, such as sub-word memory accesses and bounded-range
+  integers, not given in these figures, but these are not essential to
+  the {\technique} technique and I do not give details here.}  These
+{\StateMachine} programs examine the state of the program and, based
+on that, produce a prediction about the program's ultimate behaviour,
+which is either \textsc{Crash}, \textsc{Survive}, or
+\textsc{Unreached}.  \textsc{Crash} and \textsc{Survive} indicate that
+the program either will or will not, respectively, reproduce the bug
+which is under investigation.  \textsc{Unreached} indicates that a
+particular path through the {\StateMachine} should be ignored for some
+reason, most often because the matching path through the original
+program would suffer some fatal error other than the bug of interest.
 
 \begin{sanefig}
 {\hfill}
@@ -601,7 +600,7 @@ $\smReg{r}{t}$ & The initial value of register \textsc{r} in thread $t$.\\
 
 The {\StateMachine} analysis language is powerful enough to make
 translating individual instructions in isolation
-straightforward,\kern-.6pt\fnote{{\Implementation} uses
+straightforward,\kern-.6pt\fnote{My implementation uses
   LibVEX~\cite[Chapter 2]{FFFSeward2012} to decode AMD64 machine code
   before performing this translation.} but connecting the instructions
 together is not always trivial.  There are three cases which require
@@ -950,7 +949,7 @@ For instance, if the bug to be investigated is a bad pointer
 dereference, knowing that the value stored into a shared structure had
 previously been dereferenced by the interfering thread, and hence must
 definitely be a valid pointer, is often useful.  The approach taken by
-{\implementation} is to first generate a set of minimal \glspl{cfg}
+{\technique} is to first generate a set of minimal \glspl{cfg}
 (i.e. one in which every root is a member of $\beta$) and to then
 extend the \glspl{cfg} backwards to include a small amount of
 additional context, provided that doing so does not increase the
@@ -1437,9 +1436,9 @@ checked at run-time.
 \subsection{Symbolically executing {\StateMachines}}
 \label{sect:derive:symbolic_execute}
 
-The symbolic execution engine used by {\implementation} is, for the
-most part, quite conventional.  I give only a brief overview of the
-most important features here:
+The symbolic execution engine used by {\technique} is, for the most
+part, quite conventional.  I give only a brief overview of the most
+important features here:
 \begin{itemize}
 \item The symbolic execution engine considers only a single
   {\StateMachine} at a time, even when investigating the parallel
@@ -1458,12 +1457,12 @@ most important features here:
   \state{Load} operations scan back through it to find a matching
   \state{Store}.
 
-  This is not a particularly efficient approach.  {\Implementation}
+  This is not a particularly efficient approach.  {\Technique}
   relies on two facts to mitigate its performance problems.  First,
   where the relationship between \state{Store}s and \state{Load}s is
   simple, the {\StateMachine} simplifiers will forward data between
   them before the symbolic execution starts, eliminating both from the
-  {\StateMachine}.  Second, {\implementation} maintains a cache of
+  {\StateMachine}.  Second, {\technique} maintains a cache of
   previous aliasing queries, and so if, for instance, two paths
   through the {\StateMachine} both need to determine whether
   \state{Store} A might alias with \state{Load} B, the symbolic
@@ -1474,16 +1473,15 @@ most important features here:
   which \state{Store} operation to use it does not cause an immediate
   fork of its state, but instead causes the \state{Load} to return
   {\AStateMachine} expression which describes the aliasing query and
-  selects an appropriate result.  {\Implementation} only determines
-  which precise \state{Store} operation should provide the loaded data
-  when that data is needed.  This is often faster then resolving these
+  selects an appropriate result.  {\Technique} only determines which
+  precise \state{Store} operation should provide the loaded data when
+  that data is needed.  This is often faster then resolving these
   queries eagerly.\kern.7pt\fnote{Note that this is not quite the same
     as the lazy abstraction algorithm used in, for instance,
     BLAST~\cite{Henzinger2002}, which adjusts which aspects of program
-    state are represented in the abstract state.  {\Implementation}
-    uses a fixed abstraction; the laziness here lies in the \emph{way}
-    the abstract state is represented, not in \emph{what} is
-    represented.}
+    state are represented in the abstract state.  {\Technique} uses a
+    fixed abstraction; the laziness here lies in the \emph{way} the
+    abstract state is represented, not in \emph{what} is represented.}
 
 \item The engine does not use any kind of incremental abstraction
   technique such as CEGAR~\cite{Clarke2003}.  This is primarily
@@ -1496,7 +1494,7 @@ most important features here:
   skipped.
 
 \item Unlike most symbolic execution engines, the one used by
-  {\implementation} does not attempt to detect when it revisits a
+  {\technique} does not attempt to detect when it revisits a
   previously-visited configuration.  This is safe because
   {\StateMachines} are acyclic: any path through {\AStateMachine} can
   visit a given state at most once, so there is no possibility of
@@ -1511,9 +1509,9 @@ most important features here:
 \end{itemize}
 The resulting engine is generally adequate but rarely impressive, and
 it is likely that using a more powerful one could considerably improve
-{\implementation}'s performance.  Nevertheless, even this relatively
-simple system is sufficient to generate some results in a useful
-selection of cases.
+{\technique}'s performance.  Nevertheless, even this relatively simple
+system is sufficient to generate some results in a useful selection of
+cases.
 
 \subsection{Deriving the inferred assumption}
 \label{sect:derive:inferred_assumption}
@@ -2144,7 +2142,7 @@ more complex simplifications, for two reasons:
 There is also an engineering consideration which argues in favour of
 building and simplifying the cross-product {\StateMachine} rather than
 integrating equivalent optimisations into the symbolic execution
-engine: {\implementation} already needs all of the simplifiers in
+engine: {\technique} already needs all of the simplifiers in
 order to build the input {\StateMachines} and so re-using them here
 halves the implementation effort.
 
@@ -2289,25 +2287,24 @@ program's source code; attempting to do so given only a binary is
 completely infeasible.
 
 {\Technique} instead relies on a dynamic analysis to model accesses to
-non-stack locations.  In the case of {\implementation}, this is
-implemented as a Valgrind skin~\cite{Nethercote2007}.  This analysis
-works by dividing memory into fixed-size chunks\footnote{For
-  {\implementation}, these chunks are eight bytes, matching the
-  platform word size. This represents a reasonable trade-off between
-  precision, which argues for smaller chunks, and analysis
-  performance, which argues for larger ones.} and then tracking which
-instructions access each chunk.  If two instructions are ever observed
-to access the same chunk without an intervening call to a function
-such as \texttt{free} then they are marked as potentially aliasing;
-otherwise, they are marked as non-aliasing.  In practice, this
-analysis will, if provided with a sufficient cross-section of the
-program's potential behaviour, approximate a source-level static one
-which considers two accesses to potentially alias if and only if they
-access the same field of the same compound structure type.  Most
-programs are structured so that most structure fields are accessed
-from a relatively small number of program instructions, and so this is
-generally reasonably precise despite being completely flow- and
-context-insensitive.
+non-stack locations, implemented as a Valgrind
+skin~\cite{Nethercote2007}.  This analysis works by dividing memory
+into fixed-size chunks\footnote{For the prototype implementation,
+  these chunks are eight bytes, matching the platform word size. This
+  represents a reasonable trade-off between precision, which argues
+  for smaller chunks, and analysis performance, which argues for
+  larger ones.} and then tracking which instructions access each
+chunk.  If two instructions are ever observed to access the same chunk
+without an intervening call to a function such as \texttt{free} then
+they are marked as potentially aliasing; otherwise, they are marked as
+non-aliasing.  In practice, this analysis will, if provided with a
+sufficient cross-section of the program's potential behaviour,
+approximate a source-level static one which considers two accesses to
+potentially alias if and only if they access the same field of the
+same compound structure type.  Most programs are structured so that
+most structure fields are accessed from a relatively small number of
+program instructions, and so this is generally reasonably precise
+despite being completely flow- and context-insensitive.
 
 The chief weakness of this approach (aside from the fact that, as a
 dynamic analysis, it is inherently incomplete) is that it must be able
@@ -2326,7 +2323,7 @@ for instance, had only two functions which needed to be annotated, and
 Thunderbird and pbzip2 had none.
 
 \subsubsection{Escape analysis}
-{\Implementation} includes one minor refinement to the basic dynamic
+{\Technique} includes one minor refinement to the basic dynamic
 analysis described above.  It is fairly common for programs to
 allocate new heap structures using a function such as \texttt{malloc}
 and to then initialise this structure using a series of stores.  These
@@ -2351,36 +2348,35 @@ thread-private pointer; upgrading blocks early and pessimistically
 means that it is never necessary to do so.
 
 \section{Implementation limitations}
-{\Implementation} makes several important simplifying assumptions,
-some of which can impact the correctness of the analysis.  I now
-briefly discuss these assumptions and their effects, and possible ways
-of removing them.
+{\Technique} makes several important assumptions in order to simplify
+implementation, and some of these can impact the correctness of the
+analysis.  I now briefly discuss these assumptions and their effects,
+and possible ways of removing them.
 
 \subsection{Incomplete library models}
-As has already been discussed, {\implementation} relies on
-hand-written {\StateMachine} implementations of system library
-functions.  If no such implementation is available then
-{\implementation} uses a stub implementation which simply sets the
-return address register to a new free variable.  While this approach
-does have some advantages, most notably in being able to incorporate
-useful higher-level information on library interfaces without needing
-to analyse complex library implementations and in being able to
-perform analysis without access to a library implementation, it
-carries obvious risks of incorrectly characterising bugs.  This is
-particularly regrettable since the {\technique} technique itself is
-just as applicable to library code as it is to code in the main
-program.  This weakness could be eliminated by arranging to load the
-library implementation, when available, into the {\implementation}
-analysis tool along with the program itself, and then extending the
-\gls{static cfg} building algorithms to trace across the
+As has already been discussed, {\technique} relies on hand-written
+{\StateMachine} implementations of system library functions.  If no
+such implementation is available then {\technique} uses a stub
+implementation which simply sets the return address register to a new
+free variable.  While this approach does have some advantages, most
+notably in being able to incorporate useful higher-level information
+on library interfaces without needing to analyse complex library
+implementations and in being able to perform analysis without access
+to a library implementation, it carries obvious risks of incorrectly
+characterising bugs.  This is particularly regrettable since the
+{\technique} technique itself is just as applicable to library code as
+it is to code in the main program.  This weakness could be eliminated
+by arranging to load the library implementation, when available, into
+the analysis tool along with the program itself, and then extending
+the \gls{static cfg} building algorithms to trace across the
 program/library boundary in the same way that they already trace
 across function boundaries within the program.
 
 \subsection{Simplified memory model}
 \label{sect:derive:simpl_mem_model}
 
-In addition to the library limitation, {\implementation} simplifies
-the processor's memory model in three ways.  First, the aliasing
+In addition to the library limitation, {\technique} simplifies the
+processor's memory model in three ways.  First, the aliasing
 resolution algorithm does not support unaligned memory accesses, and
 will produce incorrect results if the program makes use of them in the
 \gls{analysiswindow}.  Such accesses are unusual in most programs, as
@@ -2391,13 +2387,13 @@ processors,\kern-.1pt\fnote{Indeed, many processors do not support
   rather than merely poor.} and removing this limitation would
 complicate alias analysis even for programs which never make unaligned
 accesses.  Alias analysis is already one of the main factors limiting
-{\implementation}'s scalability and so this would be a poor trade-off.
+{\technique}'s scalability and so this would be a poor trade-off.
 
-Second, {\implementation} assumes that every address in the program's
+Second, {\technique} assumes that every address in the program's
 address space is either completely inaccessible or completely
 accessible, and that this status does not change during the lifetime
-of the program.  {\Implementation} will therefore not be able to model
-bugs which depend on read-only memory or those where the
+of the program.  {\Technique} will therefore not be able to model bugs
+which depend on read-only memory or those where the
 \gls{analysiswindow} includes calls to functions such as
 \texttt{mremap}.  Lifting the first restriction would be relatively
 straightforward by extending the $\smBadPtr{}$ expression to include
@@ -2417,13 +2413,13 @@ difficult, and would probably lead to a noticeable reduction in
 analysis performance, even when analysing bugs which do not depend on
 such races.
 
-Third, {\implementation} assumes that the program does not make use of
-any run-time generated code or run-time code modifications.  This
-would be a difficult limitation to remove.  The \glspl{dynamic cfg}
-and {\StateMachines} are generated from the program binary's
-\gls{static cfg}, and this will not accurately reflect the program's
-actual instructions if those instructions can change while the program
-is running.  Solving this problem is impossible in the general
+Third, {\technique} assumes that the program does not make use of any
+run-time generated code or run-time code modifications.  This would be
+a difficult limitation to remove.  The \glspl{dynamic cfg} and
+{\StateMachines} are generated from the program binary's \gls{static
+  cfg}, and this will not accurately reflect the program's actual
+instructions if those instructions can change while the program is
+running.  Solving this problem is impossible in the general
 case,\kern-.1pt\fnote{Consider a program P in a model of computation C
   which does not permit run-time code generation.  Construct a new P'
   in a model of computation C' which is identical to C except for
@@ -2438,34 +2434,33 @@ analysis identify and log such code.  The later analyses could then
 generate the \glspl{cfg} and {\StateMachines} from these logs.  Such
 an approach would have few costs in programs which do not generate
 code at run-time and so could sensibly be incorporated into
-{\implementation}, although the rarity of run-time code generation
-suggests that this would be a dubious use of engineering effort.  Even
-with this extension {\implementation} would not be able to support
-true self-modifying code, as the {\StateMachines} cannot be modified
-while they are being symbolically executed; removing \emph{that}
-limitation is probably impractical while retaining the {\StateMachine}
+{\technique}, although the rarity of run-time code generation suggests
+that this would be a dubious use of engineering effort.  Even with
+this extension {\technique} would not be able to support true
+self-modifying code, as the {\StateMachines} cannot be modified while
+they are being symbolically executed; removing \emph{that} limitation
+is probably impractical while retaining the {\StateMachine}
 abstraction.  In any case, true self-modifying code is sufficiently
 rare in real programs that not supporting it is highly unlikely to be
 a problem in practice.
 
 \subsection{Simplified concurrency model}
-The final simplification made by {\implementation} is in its
-concurrency model.  The only form of concurrency supported by
-{\implementation} is simple multi-thread concurrency within a single
-program.  It does not, for instance, consider races with signal
-handlers, or inter-process races mediated via shared memory regions or
-\texttt{ptrace}-like APIs, or races with hardware DMA.  While these
-mechanisms are much less common than thread-style concurrency, they do
-still occur in some real programs, and so it would potentially be
-useful to have some support for them.  Signal handlers, and other
-up-call style concurrency, could be added relatively easily by
-treating each signal handling function as a special kind of
-\gls{interferingthread}, although the dynamic analysis might need some
-modest extensions to determine when to do so.  Supporting
-inter-process concurrency would require more fundamental changes to
-{\implementation}, as it would need to be able to model multiple
-address spaces at the same time, but would require few fundamental
-changes to the {\technique} technique itself.
+The final simplification made by {\technique} is in its concurrency
+model.  The only form of concurrency supported by {\technique} is
+simple multi-thread concurrency within a single program.  It does not,
+for instance, consider races with signal handlers, or inter-process
+races mediated via shared memory regions or \texttt{ptrace}-like APIs,
+or races with hardware DMA.  While these mechanisms are much less
+common than thread-style concurrency, they do still occur in some real
+programs, and so it would potentially be useful to have some support
+for them.  Signal handlers, and other up-call style concurrency, could
+be added relatively easily by treating each signal handling function
+as a special kind of \gls{interferingthread}, although the dynamic
+analysis might need some modest extensions to determine when to do so.
+Supporting inter-process concurrency would require more fundamental
+changes to the {\technique} tool, as it would need to be able to model
+multiple address spaces at the same time, but would require few
+fundamental changes to the {\technique} technique itself.
 
 \section{Discussion}
 

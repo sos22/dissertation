@@ -216,7 +216,7 @@ $z$ = & $\happensBefore{A_1}{D_0} \wedge \happensBefore{D_0}{C_1} \wedge (\!\!\!
 which must be factorised into a set of happens-before graphs $h_i$,
 expressed as a conjunction of $\happensBeforeEdge$ tests, each paired
 with a $\happensBeforeEdge$-free \gls{side condition} $c_i$ such that
-$\bigvee_i(h_i \wedge c_i) = z$.  {\Implementation} does so by
+$\bigvee_i(h_i \wedge c_i) = z$.  {\Technique} does so by
 constructing a \gls{bdd} representation of the
 \gls{verificationcondition} in which all $\happensBeforeEdge$ tests
 happen before any non-$\happensBeforeEdge$ ones and then examining the
@@ -286,14 +286,14 @@ to \glspl{side condition}, in the sense that they will usually only
 have a small number of distinct \glspl{side condition} and will only
 need to test a small number of happens-before edges to determine which
 condition to use in a particular execution.  Provided
-{\implementation} can identify an appropriate order in which to test
+{\technique} can identify an appropriate order in which to test
 those edges, and hence a suitable ordering for the \gls{bdd}
 variables, there is no need to enumerate all $2^n$ possible paths, and
 the worst case is avoided.  As I show in the evaluation, it can do so
 for slightly over 99\% of \glspl{verificationcondition} generated from
 real programs, and so this algorithm is quite usable in spite of its
 unfortunate theoretical worst case.\kern-.9pt\fnote{There is another,
-  less optimistic, reason why this usually works: {\implementation}
+  less optimistic, reason why this usually works: {\technique}
   makes extensive use of \protect\glspl{bdd} during symbolic
   execution, and so if the \protect\gls{verificationcondition} were
   one which is hard to represent as a \protect\gls{bdd} then one of
@@ -769,7 +769,7 @@ resulting placement of \glspl{side condition} is shown in
 \label{sect:enforce:gain_control}
 
 In order to manipulate a program's execution a \gls{bugenforcer} must
-first gain control of it.  {\Implementation} does so by patching the
+first gain control of it.  {\Technique} does so by patching the
 program's binary and replacing certain critical instructions with
 branches to the \gls{bugenforcer}'s main loop.  This is highly
 efficient, when compared to other techniques such as dynamic binary
@@ -786,7 +786,7 @@ larger than the instruction it is replacing\footnote{The normal AMD64
 replacement risks corrupting the instructions immediately after the
 one which is to be replaced.  The patching mechanism must ensure that
 the program never executes one of these corrupted instructions.
-{\Implementation} does so by introducing further patches which ensure
+{\Technique} does so by introducing further patches which ensure
 that it has control whenever the program attempts to branch to one of
 these corrupted instructions.
 
@@ -803,21 +803,21 @@ these corrupted instructions.
   \label{fig:patch_strategy_type}
 \end{sanefig}
 
-{\Implementation} represents solutions and partial solutions to the
+{\Technique} represents solutions and partial solutions to the
 patch problem using the \textsc{Strategy} type, illustrated in
 \autoref{fig:patch_strategy_type}:
 \begin{itemize}
 \item $\mathit{Patch}$ is the set of instructions in the original
   program which will be replaced with branch instructions.
 \item $\mathit{Cont}$ is the set of instructions at which
-  {\implementation} will have control of the program.  The enforcer
+  {\technique} will have control of the program.  The enforcer
   will not gain control of the program simply because it runs one of
   these instructions, unless the instruction happens to also be a
   member of $\mathit{Patch}$, but it will also not relinquish control
   at one of these instructions, and will instead continue to emulate
   the program until it leaves the $\mathit{Cont}$ set.
 \item $\mathit{Pending}$ contains instructions at which
-  {\implementation} must have control of the program's execution but
+  {\technique} must have control of the program's execution but
   which are not controlled by the current strategy.
 \end{itemize}
 A \textsc{Strategy} is said to be \emph{valid} if gaining control at
@@ -826,7 +826,7 @@ to relinquish it at $\mathit{Cont}$ ones, would ensure that the
 program never executes a corrupted instruction; it is \emph{complete}
 if the $\mathit{Pending}$ set is empty; and it is \emph{sufficient} if
 it is complete and $\mathit{Cont}$ includes every instruction at which
-the enforcer must gain control of the program.  {\Implementation}
+the enforcer must gain control of the program.  {\Technique}
 must, at a minimum, find a strategy which is both valid and
 sufficient, and should, ideally, find one which is efficient, in the
 sense of minimising the number of instructions which must be emulated.
@@ -923,8 +923,8 @@ hence a correct solution to the patching problem.\fnote{Equivalently,
   \caption{The patch search algorithm \textsc{buildPatchStrategy}.
     $\mathit{gainControl}$ is the set of instructions at which the
     enforcer must gain control of the program.  Not shown:
-    {\implementation}'s implementation records all of the strategies
-    which it has visited so far so as to avoid re-visiting them.}
+    {\technique} records all of the strategies which it has visited so
+    far so as to avoid re-visiting them.}
   \label{fig:patch_search_algorithm}
 \end{sanefig}
 
@@ -937,7 +937,7 @@ given strategy will have on performance without a detailed model of
 the program's behaviour, but it can reasonably be approximated to be
 proportional to the number of static instructions affected, which can
 itself be approximated by $|\mathit{Cont} \cup \mathit{Pending}|$.
-{\Implementation} will therefore always choose to expand the strategy
+{\Technique} will therefore always choose to expand the strategy
 where that quantity is smallest, which usually causes it to find the
 strategy which minimises the cost of the patch.
 
@@ -1193,8 +1193,8 @@ The single-plan enforcer runs some simple stages in a tight loop:
   operations are discussed below.
 
 \item \textbf{Emul}: Emulate the instruction in the original program.
-  {\Implementation}'s instruction emulator is based on the one used in
-  the Xen hypervisor~\cite{XenInstructionEmul}.
+  My implementation of this emulator is based on the one used in the
+  Xen hypervisor~\cite{XenInstructionEmul}.
 
 \item \textbf{TX}: Send any messages required by the plan.
 
@@ -1382,7 +1382,7 @@ dynamic plans in the input set.  There are three interesting cases:
 
 As mentioned previously, the first step in an unbound message
 operation is to select a dynamic plan with which to communicate.
-{\Implementation}'s approach to doing so is simple: wait for some
+{\Technique}'s approach to doing so is simple: wait for some
 short interval, gathering up all of the dynamic plans which reach an
 appropriate unbound message operation during that time, and then fork
 the local and remote dynamic plans as many times as necessary to
@@ -1401,7 +1401,7 @@ difficult to reproduce one or both of the bugs.  Consider, for
 instance, the program fragments in
 \autoref{fig:enforce:plan_interference:eg}.  The first happens-before
 graph requires F and G to occur between A and B while the second
-requires them to occur between C and D.  {\Implementation} will
+requires them to occur between C and D.  {\Technique} will
 encounter a deadlock while attempting to reproduce these bugs.
 Suppose that the crashing thread arrives first and that the enforcer
 gains control at instruction F.  It will then create two dynamic plans

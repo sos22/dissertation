@@ -26,23 +26,23 @@ Previous chapters have described {\technique} and how it can, under
 appropriate circumstances, automate every stage of the debugging
 process, from discovering bugs through characterising and reproducing
 them to generating fixes.  This chapter provides an experimental
-evaluation of the effectiveness and performance of my implementation,
-{\implementation}.  This evaluation will consist of four parts:
+evaluation of the effectiveness and performance of my implementation.
+This evaluation will consist of four parts:
 \begin{itemize}
 \item \autoref{sect:eval:does_it_work} investigates whether
-  {\implementation} works at all, looking at the time taken to produce
+  {\technique} works at all, looking at the time taken to produce
   \glspl{verificationcondition}, \glspl{bugenforcer}, and fixes; the
   effects of \glspl{bugenforcer} and fixes on the frequency with which
   bugs reproduce; and the effects of the fixes on the program's
   behaviour.
 \item \autoref{sect:eval:how_does_it_work} then explores some aspects
-  of {\implementation}'s performance in more detail, showing how the
+  of {\technique}'s performance in more detail, showing how the
   analysis time breaks down across the various phases.
 \item Next, \autoref{sect:eval:why_does_it_work} examines the reasons
   for the properties observed in the previous sections and relates
   them back to the design features of {\technique}.
 \item Finally, \autoref{sect:eval:does_it_scale} investigates
-  {\implementation}'s scalability with respect to bug complexity, using a
+  {\technique}'s scalability with respect to bug complexity, using a
   variety of metrics, so as to determine when it is likely to fail.
 \end{itemize}
 Unless otherwise stated, all experiments were run on a four-core Intel
@@ -52,13 +52,13 @@ Q6600 2.40GHz with 8GiB of memory running Ubuntu Lucid Lynx.  The
 analysis timeouts were set to five minutes, and the timeout used by
 \glspl{bugenforcer} was randomly uniformly distributed between 100 and
 200ms.  The system compiler, used to build the \glspl{bugenforcer} and
-fixes, as well as {\implementation} itself, was gcc version 4.4.3.
+fixes, as well as the {\technique} tool itself, was gcc version 4.4.3.
 
 \section{Does it work?}
 \label{sect:eval:does_it_work}
 
 This part of the evaluation aims to determine whether
-{\implementation} works at all.  In other words, is it able to
+{\technique} works at all.  In other words, is it able to
 reproduce and fix concurrency bugs?  I investigate this using both
 artificial bugs, in \autoref{sect:eval:artificial_bugs}, and some real
 bugs taken from large existing pieces of software, in
@@ -179,7 +179,7 @@ bugs taken from large existing pieces of software, in
 \end{sanefig}
 
 \noindent
-I first consider {\implementation}'s behaviour when applied to bugs in
+I first consider {\technique}'s behaviour when applied to bugs in
 three artificial test programs, shown in
 \autoref{fig:eval:artificial_bugs:programs}.  These programs
 illustrate several important features of {\technique}:
@@ -187,7 +187,7 @@ illustrate several important features of {\technique}:
   \item The \bugname{toctou} test,
     figures~\ref{fig:eval:artificial_bugs:programs:toctou:crashing}
     and~\ref{fig:eval:artificial_bugs:programs:toctou:interfering},
-    investigates {\implementation}'s ability to reproduce data-dependent
+    investigates {\technique}'s ability to reproduce data-dependent
     bad pointer dereferencing bugs, and in particular the importance
     of the \gls{side condition} checking mechanism.
   \item The \bugname{multi\_variable} test,
@@ -197,7 +197,7 @@ illustrate several important features of {\technique}:
     approaches, such as Kivati~\cite{Chew2010}, were not able to handle
     this kind of bug.
   \item The final test, \bugname{double\_free}, demonstrates
-    {\implementation}'s ability to handle double free-type bugs.  It
+    {\technique}'s ability to handle double free-type bugs.  It
     consists of three threads: two ``active'' threads, shown in
     \autoref{fig:eval:artificial_bugs:programs:double_free:active},
     and one ``environmental'' one, shown in
@@ -219,7 +219,7 @@ functionality.
 to analyse these bugs and build either \glspl{bugenforcer} or fixes
 for them.  As might be expected, these very simple bugs are processed
 very quickly, at every stage of the process.  These figures provide a
-reasonable lower bound on the time which {\implementation} might take
+reasonable lower bound on the time which {\technique} might take
 to analyse a bug; more realistic ones would, of course, take longer.
 
 \begin{sanetab}
@@ -274,7 +274,7 @@ reproduction time.
 
 \subsubsection{Fixing the bugs}
 
-{\implementation} is able to generate fixes for all three of these
+{\Technique} is able to generate fixes for all three of these
 \begin{sanetab}
   \begin{tabbular}{|p{5cm}|p{3cm}|p{3cm}|p{3cm}|}
     \hline
@@ -326,7 +326,7 @@ cover this theme in more detail in
 \subsection{Bugs in real programs}
 \label{sect:eval:does:real}
 
-The previous section showed that {\implementation} can be used to reproduce
+The previous section showed that {\technique} can be used to reproduce
 and fix bugs in some simple artificial test programs.  This section
 repeats the experiments using two bugs taken from real programs:
 \begin{itemize}
@@ -347,7 +347,7 @@ repeats the experiments using two bugs taken from real programs:
   \gls{interferingthread} in between the two accesses in the crashing
   one then the program will crash.
 \end{itemize}
-{\implementation} is able to reproduce and fix both of these bugs.  For
+{\Technique} is able to reproduce and fix both of these bugs.  For
 these tests, unless otherwise noted, I assumed that the crashing
 instruction had already been identified, rather than attempting to
 discover it automatically using {\technique}.
@@ -432,18 +432,18 @@ program.
   \label{tab:eval:real_bugs:analysis_time}
 \end{sanetab}
 
-{\Implementation} generated one false positive
+{\Technique} generated one false positive
 \gls{verificationcondition} for each bug, in addition to the desired
 true positive.  Both false positives were caused by incompleteness in
 {\technique}'s model of the program's behaviour.  In the case of
 \bugname{mysql}, the problem was the lack of knowledge of the
-program's dataflow structure.  {\Implementation} located another
+program's dataflow structure.  {\Technique} located another
 instruction which could set \texttt{PSI\_server} and which could
 potentially race with the \gls{crashingthread}, but in that case the
 value stored was always a valid pointer and so the interleaving could
 not lead to a crash.  The \bugname{thunderbird} false positive, by
 contrast, was caused by an incomplete model of the program's existing
-synchronisation structure: {\implementation} located another place in
+synchronisation structure: {\technique} located another place in
 the program which set \texttt{m\_transport} to \texttt{NULL}, and
 correctly identified that interleaving that store with the
 \gls{crashingthread} might lead to a crash, but failed to notice that
@@ -549,8 +549,8 @@ in the \gls{crashingthread}, and another covering the store in the
 \gls{interferingthread}.  It is hard to validate experimentally that
 these fixes are correct, as the bugs reproduce quite rarely even
 without the fix,\kern-.5pt\fnote{Due to implementation limitations, it
-  is not possible to load a {\implementation} fix and a
-  {\implementation} \gls{bugenforcer} into the same program.} but
+  is not possible to load a {\technique} fix and a
+  {\technique} \gls{bugenforcer} into the same program.} but
 manual inspection suggested that they had correctly eliminated the
 dangerous interleaving.  It is also hard to experimentally evaluate
 the performance impact of these fixes, as, in the case of
@@ -609,11 +609,11 @@ it means to fix a bug.
 \end{sanetab}
 
 \noindent
-MySQL has an extensive automated test suite, and so {\implementation}
-can be used to look for previously unknown bugs by generating every
+MySQL has an extensive automated test suite, and so {\technique} can
+be used to look for previously unknown bugs by generating every
 possible \gls{bugenforcer} and running the test suite under each of
-them.  {\implementation} took two and a half hours to generate the
-10173 \glspl{bugenforcer} for MySQL (see
+them.  {\Technique} took two and a half hours to generate the 10173
+\glspl{bugenforcer} for MySQL (see
 \autoref{tab:eval:does:building_all_enforcers_times}).  Note that
 these experiments were run on a different computer to those in the
 previous sections; see table for details.  To test the effectiveness
@@ -651,7 +651,7 @@ C        & 0/10                          & 0/10                                 
 Other    & 0/101700                      & $0.014 \in [0.010,0.018]^{101700}_{\infty}\%$ & $0.10 \in [0.08,0.12]^{101700}_{\infty}\%$ \\
 \hline
 \end{tabbular}
-\caption{Effectiveness of {\implementation} at finding previously
+\caption{Effectiveness of {\technique} at finding previously
   unknown bugs. This experiment was structured as eleven rounds, with
   each enforcer used once in each round and the results of the first
   round discarded.  Apart from stragglers at the end of each round, I
@@ -674,7 +674,7 @@ to find all bugs in the program.
 Figures~\ref{fig:eval:dyn_convergence:mysqld},
 \ref{fig:eval:dyn_convergence:thunderbird},
 and~\ref{fig:eval:dyn_convergence:pbzip2} show the number of edges in
-the {\implementation} aliasing table during the dynamic analysis
+the {\technique} aliasing table during the dynamic analysis
 phase, expressed as a proportion of the edges in the final table, as a
 function of time, for a variety of test programs and workloads.  These
 figures show that the aliasing table had in all cases effectively
@@ -748,7 +748,7 @@ PIN~\cite{Luk2005}, might therefore provide a useful speed-up.
 \newcommand{\subenf}[1]{\subphase{E}{#1}}
 \newcommand{\subfix}[1]{\subphase{F}{#1}}
 
-The previous section demonstrated that {\implementation} works, at a basic
+The previous section demonstrated that {\technique} works, at a basic
 level, for at least some real and artificial bugs.  This section aims
 to expand upon this by giving more details of the way in which it
 works, by breaking the time and memory usage down into the different
@@ -762,7 +762,7 @@ The analysis of a single potentially crashing instruction can be
 divided into four phases:
 \begin{itemize}
 \item \subcrash{} --- per-\gls{crashingthread} analysis work.
-  {\implementation} starts analysing a potentially-crashing
+  {\technique} starts analysing a potentially-crashing
   instruction by constructing the crashing {\StateMachine}, and from
   that it builds the interfering \glspl{cfg}.  This work is done once
   for each potentially-crashing instruction.
@@ -911,17 +911,17 @@ mean of eight seconds.
 Aside from those gross features, the distributions also exhibit some
 multi-modal behaviour, visible on the chart as a number of ``bulbs''
 in the PDFs.  These are accounted for by various special cases within
-{\implementation}:
+{\technique}:
 \begin{itemize}
 \item The first phase, \subcrash{0}, has a small mode
   at around 20$\mu$s.  The potentially-crashing instructions in this
-  bulb are all part of the program's ELF PLT stubs.  {\implementation}
+  bulb are all part of the program's ELF PLT stubs.  {\Technique}
   assumes that these will never crash, allowing it to skip further
   processing with very little work.
 \item The same phase also has a mode at about 2ms, which consists of
   instructions which access either the stack or a statically constant
   address.  There is no possibility of these instructions crashing due
-  to a race, so {\implementation} can quickly dismiss the instruction
+  to a race, so {\technique} can quickly dismiss the instruction
   when it detects one.
 \item The next phase, \subcrash{1}, has a mode at about 4ms.  This
   consists of instructions which dereference pointers which the static
@@ -939,7 +939,7 @@ in the PDFs.  These are accounted for by various special cases within
   very quickly.
 \end{itemize}
 The overall effect of these special cases is that for most
-potentially-crashing program instructions, {\implementation} is able
+potentially-crashing program instructions, {\technique} is able
 to skip most steps of the analysis.  This is a useful property when
 analysing a large number of instructions speculatively.
 
@@ -1039,7 +1039,7 @@ execution can only assume the weaker C-atomic constraint.
 
 This is further illustrated in
 \autoref{fig:eval:how:per_interfering:no_ic_atomic}, which shows how
-long the various sub-phases take when {\implementation} assumes
+long the various sub-phases take when {\technique} assumes
 \gls{ic-atomic} is the constant {\true} rather than attempting to
 derive it.  This eliminates sub-phases \subinterfering{2} and
 \subinterfering{3}, which take 500ms, but increases the cost of the
@@ -1125,16 +1125,16 @@ figure divides the time taken into five sub-phases:
   instruction.  Patching these will never corrupt any other
   instructions, and so building the patch strategy is trivial.
 \item \subenf{4} --- compile the resulting enforcer into an ELF shared
-  object.  {\Implementation} performs this step by generating a C
+  object.  {\Technique} performs this step by generating a C
   source file and passing it off to the system compiler and linker,
   with the bulk of the time spent in those external programs.  This
   makes it difficult to provide any useful analysis on why this sub-phase
   takes as long as it does.
 \end{itemize}
-Somewhat surprisingly, {\implementation} was able to eliminate six
+Somewhat surprisingly, {\technique} was able to eliminate six
 \glspl{verificationcondition} whilst placing \glspl{side condition} in
-sub-phase \subenf{2}.  This was due to the incompleteness of
-{\implementation}'s SMT solver.  The solver makes use of a number of
+sub-phase \subenf{2}.  This was due to the incompleteness of the SMT
+solver used in my implementation.  The solver makes use of a number of
 heuristics based on the \gls{bdd} structure of the
 \gls{verificationcondition} as part of its final satisfiability check,
 and these heuristics produce slightly different results as the
@@ -1143,14 +1143,14 @@ six \glspl{verificationcondition}, the solver was unable to show that
 the original condition was unsatisfiable but was able to show that one
 of the rearranged forms was, and hence that the bug could never be
 reproduced.  There was therefore no need to generate
-\glspl{bugenforcer} for any of them and {\implementation} skipped the
+\glspl{bugenforcer} for any of them and {\technique} skipped the
 remaining steps involved in building one.
 
 Ignoring those six unsatisfiable \glspl{verificationcondition}, this
 phase suffered a total of thirty-two failures, giving a failure rate
 of 0.8\%.  The per-\gls{crashingthread} and
 per-\gls{interferingthread} both suffered failure rates of 0.7\%;
-collectively, these suggest that {\implementation}, with these settings,
+collectively, these suggest that {\technique}, with these settings,
 will be unable to generate \glspl{bugenforcer} for roughly 2.2\% of
 potential bugs of the targeted form.  While obviously worse than a 0\%
 failure rate, a 2.2\% one is still reasonably low, and is unlikely to
@@ -1212,7 +1212,7 @@ to be the most important barrier to practical use of {\technique}.
 \section{Why does it work?}
 \label{sect:eval:why_does_it_work}
 
-Previous sections have established that {\implementation} works at a basic
+Previous sections have established that {\technique} works at a basic
 level and given some details of its operation.  This section aims to
 expand on that by providing some explanations for the properties
 observed and showing how they follow from the {\technique} design.
@@ -1277,10 +1277,10 @@ useful.
 
 \subsection{Effect of {\StateMachine} simplification}
 
-{\technique} applies various simplifications to {\StateMachines}
+{\Technique} applies various simplifications to {\StateMachines}
 before attempting to symbolically execute them, and, as previously
 indicated, these simplifications often account for a significant
-proportion of the total analysis time.  {\implementation} is nevertheless
+proportion of the total analysis time.  {\Technique} is nevertheless
 faster because of them, as the cost of the simplification is
 outweighed by the reduction in the cost of the symbolic execution
 steps.  To quantify this, I re-ran the experiments of
@@ -1339,7 +1339,7 @@ repeating the experiments of \autoref{sect:eval:how_does_it_work} with
 \autoref{tab:eval:why:w_isolation}.  These are broadly as expected:
 the \gls{w-isolation} assumption causes the analysis to complete
 slightly more quickly, with a slight reduction in the number of
-failures, and causes {\implementation} to generate a slightly smaller
+failures, and causes {\technique} to generate a slightly smaller
 set of \glspl{verificationcondition}.  In this instance, all of the
 eliminated \glspl{verificationcondition} were false
 positives,\fnote{To confirm this, I converted them all into
@@ -1387,9 +1387,9 @@ aliasing model during symbolic execution, are optional, and can be
 disabled to produce an analysis which is less effective but still
 produces some results.  To quantify these effects, I re-analysed the
 10,000 instructions chosen in \autoref{sect:eval:how_does_it_work}
-with {\implementation} configured to make minimal use of the static
+with {\technique} configured to make minimal use of the static
 parts of the \gls{programmodel} and a 1,000 instruction random subset
-with {\implementation} configured to make minimal use of the dynamic
+with {\technique} configured to make minimal use of the dynamic
 parts.  The results are shown in \autoref{tab:eval:why:program_model}.
 
 \begin{sanetab}
@@ -1409,7 +1409,7 @@ parts.  The results are shown in \autoref{tab:eval:why:program_model}.
     \hline
   \end{tabbular}
   \caption{Effect of the \glsentrytext{programmodel} on analysis
-    effectiveness.  For the static disabled column, {\implementation}
+    effectiveness.  For the static disabled column, {\technique}
     was configure to only use information from the static alias
     analysis when deriving the static crashing \glsentrytext{cfg}; for
     the dynamic disabled on, it was configured to only use information
@@ -1504,7 +1504,7 @@ analysis, whereas the second, in
 \autoref{fig:eval:existing_sync:invisible}, moves it outside of the
 window, so {\technique} will be unaware of it.
 
-As expected, {\implementation} produces a \gls{verificationcondition}, and
+As expected, {\technique} produces a \gls{verificationcondition}, and
 hence a \gls{bugenforcer}, for the second thread but not for the
 first.  When loaded into the program, this enforcer attempts to
 enforce a happens-before graph which contradicts the program's
@@ -1521,12 +1521,12 @@ performance.
 \subsection{Sources of fix overhead}
 \label{sect:eval:why:fix_overhead}
 
-As previously discussed, {\implementation}-generated fixes generally have
+As previously discussed, {\technique}-generated fixes generally have
 low overheads, usually on the order of a few microseconds per critical
 section.  This section gives a more detailed break-down of the sources
 of that overhead.  All experiments described in this section were
 conducted using the test program \bugname{nobug}, shown in
-\autoref{fig:eval:why:nobug}.  {\implementation} generates a single
+\autoref{fig:eval:why:nobug}.  {\Technique} generates a single
 \gls{verificationcondition} for this test program, and can thence
 generate a fix for it, but, since the purported bug is a false
 positive, the fix has no effect beyond degrading the program's
@@ -1634,10 +1634,9 @@ degradation, for several variants of the fix:
   \autoref{fig:fix:graph_grammar}.
 \item \textit{Debug registers} --- This configuration again uses a
   complete fix, except that rather than gaining control using the
-  patch strategy algorithm described in
-  \autoref{sect:enforce:gain_control}, it gains control using the
-  processor's breakpoint registers~\cite[Chapter 16.2: Debug
-    Registers]{Intel2009}.
+  patch strategy algorithm in \autoref{sect:enforce:gain_control}, it
+  gains control using the processor's breakpoint
+  registers~\cite[Chapter 16.2: Debug Registers]{Intel2009}.
 \end{itemize}
 These results show quite clearly that, at least for this test program,
 gaining and maintaining control of a program thread using
@@ -1648,7 +1647,7 @@ release adds 172ns to the loop iteration time, already a greater than
 100\% overhead, and the full fix, which introduces lock contention,
 adds 1$\mu$s to each crashing iteration and 1.3$\mu$s to each
 interfering one.  This suggests that most of the overhead of
-{\implementation}'s fixes comes about simply because they use locks to
+{\technique}'s fixes comes about simply because they use locks to
 impose mutual exclusion, and not because of any inefficiencies in
 realising that scheme.  Further improvements to performance would
 almost certainly involve applying a different type of synchronisation,
@@ -1659,20 +1658,20 @@ performance achieved by a complete fix which gains control using
 processor breakpoint registers rather than via the patch strategy
 mechanism.  The overhead is in this case roughly 3$\mu$s in both the
 crashing and interfering loops, a factor of three higher than that
-observed with the normal {\implementation} fix and a factor of twenty
+observed with the normal {\technique} fix and a factor of twenty
 higher than that observed with the \gls{crashingthread}-only
-{\implementation} fix.  Such high overheads could potentially limit a debug
+{\technique} fix.  Such high overheads could potentially limit a debug
 register-based solution's applicability to bugs in frequently executed
 code (and debug register-based systems are in any case less
-generically applicable than {\implementation} fixes due to the limited
+generically applicable than {\technique} fixes due to the limited
 number of such registers available in most processors).
 
 \section{When does it work?}
 \label{sect:eval:does_it_scale}
 
-Previous sections have investigated whether {\implementation} works,
+Previous sections have investigated whether {\technique} works,
 how it works, and why it works.  This section builds upon these by
-looking at how {\implementation}'s behaviour depends on the complexity
+looking at how {\technique}'s behaviour depends on the complexity
 of the bug to be investigated, quantifying its scalability, and hence
 places some constraints on the situations in which {\technique} is
 likely to be useful.
@@ -1729,7 +1728,7 @@ likely to be useful.
 \end{sanefig}
 
 \noindent
-This section explores {\implementation}'s behaviour as the complexity
+This section explores {\technique}'s behaviour as the complexity
 of the happens-before graph increases, using the test program shown in
 \autoref{fig:eval:why:complex_hb}.  The two threads each consist of a
 series of $N$ memory accesses arranged such that the program crashes
@@ -1773,7 +1772,7 @@ $N$\kern-1pt, and this will limit the complexity of bugs which can be
 analysed with {\technique}.  This is not, however, likely to be the
 most important limitation to {\technique}'s scalability: most bugs in
 real programs require only two or three edges to be
-enforced~\cite{Musuvathi2008}, and {\implementation} was able to
+enforced~\cite{Musuvathi2008}, and {\technique} was able to
 analyse a 79-edge one in under ten minutes.
 
 It is perhaps interesting to note that, although very rapid, the rate
@@ -1798,7 +1797,7 @@ with 80 edges, and this time appears to be roughly linear in the
 number of edges.  Without an enforcer, the bug takes at least ten
 minutes to reproduce for all values of $N$ greater than 2.  This
 suggests that the \glspl{bugenforcer} will be able to reproduce any
-happens-before graph which {\implementation} is able to generate.
+happens-before graph which {\technique} is able to generate.
 
 \subsection{Scalability with respect to memory access complexity}
 
@@ -1888,7 +1887,7 @@ happens-before graph which {\implementation} is able to generate.
 \end{sanefig}
 
 \noindent
-The previous section showed that {\implementation} scales well to
+The previous section showed that {\technique} scales well to
 complicated happens-before graphs; this one investigates how well it
 scales to complicated memory access patterns.  The two test programs
 used, \bugname{complex\_alias\_hard}$_{L,S}$ and
@@ -1909,7 +1908,7 @@ As can be seen, the cost of analysing the \bugname{hard} variant, on
 the left of the figure, rises with both $L$ and $S$, with a much
 stronger response to $L$ than to $S$.  The analysis becomes
 intractable with even a dozen loads.  This reflects the fact that
-{\implementation} effectively solves this aliasing problem by brute
+{\technique} effectively solves this aliasing problem by brute
 force, considering each combination of $S+1$ values of the $L$ loads
 for a total of $(S+1)^L$ aliasing patterns.  This is a rapidly growing
 function of both $L$ and $S$, and, for the relevant values of its
@@ -1923,20 +1922,21 @@ The \bugname{easy} variant, on the right, behaves similarly for small
 values of $L$ but exhibits much better scaling behaviour as $L$
 increases.  This is because the final tests factorises neatly into $L$
 single-load tests, rather than a single $L$-load one, and so
-{\implementation}'s lazy aliasing resolution (see
+{\technique}'s lazy aliasing resolution (see
 \autoref{sect:derive:symbolic_execute}) can process each load
 independently in turn, reducing the number of aliasing patterns which
 must be considered to $(S+1).L$.  This factorisation allows
-{\implementation} to process hundreds of loads in reasonable time.
+{\technique} to process hundreds of loads in reasonable time.
 
 This behaviour is clearly more useful than always exhibiting the
 unfactorised, exponentially poor, performance, but is also difficult
-to characterise crisply.  Sometimes {\implementation} will struggle
+to characterise crisply.  Sometimes {\technique} will struggle
 with bugs which depend on even a dozen memory loads; at other times,
 it will be able to process hundred-load bugs with little difficulty.
 Practical results are likely to fall somewhere between these two
 extremes.
 
+\newpage
 \subsection{Scalability with respect to \glsentrytext{alpha}}
 
 \input{eval/alpha/alpha.ttex}
@@ -1953,9 +1953,9 @@ For these experiments, I increased the timeout from five to ten
 minutes, as that is more appropriate at higher values of \gls{alpha}.
 These experiments were conducted on the same Opteron 6168 as those
 reported in \autoref{sect:how:finding_unknown}, and, as in those
-previous experiments, {\implementation} was configured to analyse ten
-potentially-crashing instructions at a time.  Unlike the previous
-experiments, here {\implementation} was configured to re-run any steps
+previous experiments, the {\technique} tool was configured to analyse
+ten potentially-crashing instructions at a time.  Unlike the previous
+experiments, here {\technique} was configured to re-run any steps
 which ran out of memory in isolation once the parallel phase had
 finished, so as to avoid artifacts caused by contending to allocate
 memory at high values of \gls{alpha}.  Steps which timed out were not
